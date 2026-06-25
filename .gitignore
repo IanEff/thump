@@ -38,3 +38,6 @@ bin/
 
 # Go debug binaries (dlv)
 __debug_bin*
+
+# tooling
+CLAUDE.md
