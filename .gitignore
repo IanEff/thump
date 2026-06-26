@@ -39,5 +39,8 @@ bin/
 # Go debug binaries (dlv)
 __debug_bin*
 
-# tooling
+# Agent Tooling
 CLAUDE.md
+.claude/
+.gemini/
+.zed/

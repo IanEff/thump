@@ -8,3 +8,9 @@
 - **Modification:** Updated `CLAUDE.md.jinja` directly. Resetted commits per user request to allow review before staging/committing.
 - **Security Update:** Modified `/Users/ian/.gemini/policies/librarian.toml` to set `git commit`, `git push`, and all mutating `github-mcp-server` tools to `ask_user`. Read-only GitHub operations are set to `allow` at a higher priority to ease up on prompting for repo reads.
 
+
+## 2026-06-26
+- **Task:** Project initialization and re-scoping to the deterministic reasoning engine design.
+- **Action:** Read the `clank` project architecture, implementation guide, and todo list in `~/Documents/vault/Projects/clank`.
+- **Evaluation:** Acknowledged the shift away from the LLM agent-loop to a static catalog-driven deterministic scoring pipeline. Verified that the existing LLM code in `internal/clank/` is deprecated.
+- **Next Steps:** User is manually clearing the deprecated codebase. I am now initialized as the Librarian and ready to track progress against the `clank-todo.md` checklist.

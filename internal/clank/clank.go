@@ -195,6 +195,8 @@ func (e *Engine) Propose(ctx context.Context, sig Signal) (Outcome, error) {
 
 		for _, call := range completion.ToolCalls {
 			switch call.Name {
+			case "insufficient":
+				return Outcome{Status: StatusNoAction}, nil
 			case "propose":
 				// model is done investigating
 				var d Decision

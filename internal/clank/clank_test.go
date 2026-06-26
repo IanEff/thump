@@ -194,3 +194,20 @@ func proposeArgs(t *testing.T, d clank.Decision) json.RawMessage {
 	}
 	return decision
 }
+
+func TestPropose_WhenModelDeclines_YieldsNoAction(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "insufficient"}}},
+	}}
+
+	e := newTestEngine(model)
+
+	got, err := e.Propose(context.Background(), testSignal())
+	if err != nil {
+		t.Fatalf("Propose returned an unexpected error: %v", err)
+	}
+	if got.Status != clank.StatusNoAction {
+		t.Errorf("a signal investigated to an evidence-backed decision should be proposed: want %s, got %s", clank.StatusNoAction, got.Status)
+	}
+}
