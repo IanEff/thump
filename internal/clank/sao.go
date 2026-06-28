@@ -39,8 +39,10 @@ type ChangeEvent struct {
 	Target string
 	Age    time.Duration
 
-	CausalLikelihood float64  // 0 until scored
-	Rationale        []string // human-legible evidence per score
+	CausalLikelihood    float64       // 0 until scored
+	Rationale           []string      // human-legible evidence per score
+	PredictedSignals    []string      // indicators expected if this change is causal (negative-signal check, defence 3)
+	HistoricalStaleness time.Duration // topology age of the case-base match (freshness-decay, defence 2)
 }
 
 type BlastRadius struct {
