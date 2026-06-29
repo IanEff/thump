@@ -44,10 +44,14 @@ coverage:
 
 build:
 	@mkdir -p bin
-	go build $(LDFLAGS) -o bin/$(PROJECT) ./cmd/$(PROJECT)
+	go build $(LDFLAGS) -o bin/clank ./cmd/clank
+	go build $(LDFLAGS) -o bin/rattle ./cmd/rattle
 
-run:
-	go run ./cmd/$(PROJECT)
+run-clank:
+	go run ./cmd/clank
+
+run-rattle:
+	go run ./cmd/rattle
 
 tidy:
 	go mod tidy
