@@ -6,6 +6,12 @@ import (
 	"sync"
 )
 
+type Store interface {
+	Checkpoint(context.Context, Turn) error
+	Pending(context.Context) ([]Turn, error)
+	Finish(context.Context, string, error) error
+}
+
 type MemStore struct {
 	mu       sync.RWMutex
 	pending  []Turn

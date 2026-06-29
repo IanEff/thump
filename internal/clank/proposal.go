@@ -10,6 +10,7 @@ type ProposalSet struct {
 	SignalRef        string
 	SAOSnapshot      SAO
 	FailureClass     FailureClass
+	CausalScores     []CausalScore
 	Hypotheses       []Hypothesis
 	Evidence         []EvidenceRef
 	ServiceTier      string

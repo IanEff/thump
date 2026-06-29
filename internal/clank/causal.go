@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+type CausalScorer interface {
+	Score(ChangeSnapshot, TopologySnapshot, CausalWeights) []CausalScore
+}
+
 // CausalScore is one change event's causal likelihood, decomposed and explained.
 // The scorer enforces the belief-formation defences (ch9 §7.7).
 type CausalScore struct {
