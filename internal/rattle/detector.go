@@ -27,12 +27,21 @@ type AccelerationDetector struct {
 }
 
 func (d AccelerationDetector) Fires(window []Sample) bool {
+	fired, _ := d.Detect(window)
+	return fired
+}
+
+// Detect reports whether the burn is accelerating AND by how much (the mean
+// second-difference). Fires was bool-only; Detect keeps that answer and stops
+// throwing the magnitude away.
+func (d AccelerationDetector) Detect(window []Sample) (fired bool, accel float64) {
 	if len(window) < 3 {
-		return false // won't math.
+		return false, 0
 	}
 	d1 := diffs(burnRates(window))
 	d2 := diffs(d1)
-	return mean(d1) > 0 && mean(d2) > d.Threshold
+	accel = mean(d2)
+	return mean(d1) > 0 && accel > d.Threshold, accel
 }
 
 func burnRates(w []Sample) []float64 {
