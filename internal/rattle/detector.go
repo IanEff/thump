@@ -26,14 +26,10 @@ type AccelerationDetector struct {
 	Threshold float64
 }
 
-func (d AccelerationDetector) Fires(window []Sample) bool {
-	fired, _ := d.Detect(window)
-	return fired
-}
-
 // Detect reports whether the burn is accelerating AND by how much (the mean
 // second-difference). Fires was bool-only; Detect keeps that answer and stops
-// throwing the magnitude away.
+// throwing the magnitude away. The only entry point — callers that only want
+// the bool still get it, they just don't get a second name for the same op.
 func (d AccelerationDetector) Detect(window []Sample) (fired bool, accel float64) {
 	if len(window) < 3 {
 		return false, 0

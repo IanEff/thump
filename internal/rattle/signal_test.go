@@ -14,7 +14,7 @@ func TestSignalFor_StampsTheKindObjectFingerprintAndSeamFields(t *testing.T) {
 	t.Parallel()
 	slo := rattle.SLO{ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.999}
 
-	got := rattle.SignalFor(slo, window(1, 2, 4, 8), time.Unix(1000, 0))
+	got := rattle.SignalFor(slo, "burn_rate_acceleration", 4.5, time.Unix(1000, 0))
 
 	want := signal.Detection{
 		Fingerprint:   "slo_burn:ceph-rgw", // kind:object -- rattle's dedupe key
@@ -32,15 +32,12 @@ func TestSignalFor_StampsTheKindObjectFingerprintAndSeamFields(t *testing.T) {
 
 func TestSignalFor_QuotesTheAccelerationInDivergence(t *testing.T) {
 	t.Parallel()
-	slo := rattle.SLO{ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1"}
+	slo := rattle.SLO{ID: "ceph-rgw", Tier: "tier-1"}
 
-	got := rattle.SignalFor(slo, window(1, 2, 4, 8), time.Unix(1000, 0))
+	got := rattle.SignalFor(slo, "burn_rate_acceleration", 4.5, time.Unix(1000, 0))
 
-	// window(1,2,4,8): d1=[1,2,4], d2=[1,2] → mean(d2)=1.5
-	if got.Divergence.Observed != 1.5 {
-		t.Errorf("acceleration not quoted into Divergence: got %v, want 1.5", got.Divergence.Observed)
-	}
-	if got.Divergence.Trajectory != "accelerating" {
-		t.Errorf("wrong trajectory: got %q", got.Divergence.Trajectory)
+	if got.Divergence.Observed != 4.5 {
+		t.Error("SignalFor must quote the accel value it was GIVEN, not re-derive its own",
+			cmp.Diff(4.5, got.Divergence.Observed))
 	}
 }

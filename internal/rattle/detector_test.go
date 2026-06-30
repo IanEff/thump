@@ -33,7 +33,7 @@ func TestAccelerationDetector(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := d.Fires(tc.in)
+			got, _ := d.Detect(tc.in)
 			if got != tc.want {
 				t.Error("detector misread the burn shape", cmp.Diff(tc.want, got))
 			}
@@ -44,7 +44,7 @@ func TestAccelerationDetector(t *testing.T) {
 func TestAccelerationDetector_IgnoresNoiseAroundAFlatBurn(t *testing.T) {
 	t.Parallel()
 	d := rattle.AccelerationDetector{Threshold: 0.5}
-	if d.Fires(window(1.0, 1.3, 0.8, 1.2, 1.0)) {
+	if got, _ := d.Detect(window(1.0, 1.3, 0.8, 1.2, 1.0)); got {
 		t.Error("detector fired on noise around a flat burn - threshold too low or no smoothing")
 	}
 }

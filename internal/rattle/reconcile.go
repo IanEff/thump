@@ -27,14 +27,15 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 		if err != nil {
 			return nil, fmt.Errorf("burn samples for %s: %w", slo.ID, err)
 		}
-		if !r.Detector.Fires(window) {
+		fired, accel := r.Detector.Detect(window)
+		if !fired {
 			continue // not accelerating
 		}
 		now := clock()
 		if r.Debounce != nil && !r.Debounce.Allow(fingerprint(slo), now) {
 			continue // said it recently — stay quiet
 		}
-		out = append(out, SignalFor(slo, window, now))
+		out = append(out, SignalFor(slo, "burn_rate_acceleration", accel, now))
 	}
 	return out, nil
 }
