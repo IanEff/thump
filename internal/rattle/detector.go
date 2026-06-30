@@ -64,11 +64,3 @@ func mean(xs []float64) float64 {
 	}
 	return sum / float64(len(xs))
 }
-
-type Reconciler struct {
-	SLOs     []SLO
-	Source   Source
-	Detector AccelerationDetector
-	Debounce *Debouncer
-	Now      func() time.Time
-}
