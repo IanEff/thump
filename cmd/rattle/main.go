@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -17,7 +19,15 @@ var (
 )
 
 func main() {
+	printVersion := flag.Bool("version", false, "print version and exit")
+	flag.Parse()
+	if *printVersion {
+		fmt.Printf("rattle %s\ncommit: %s\nbuilt: %s\n", version, commit, date)
+		return
+	}
+
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	slog.Info("starting rattle", "version", version, "commit", commit, "date", date)
 
 	promURL := os.Getenv("PROM_URL")
 	if promURL == "" {

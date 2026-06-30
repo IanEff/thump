@@ -53,6 +53,24 @@ func TestReconcile_SuppressesADuplicateAcrossPasses(t *testing.T) {
 	}
 }
 
+func TestReconcile_EmitsOnCorrelationEvenWithoutAcceleration(t *testing.T) {
+	t.Parallel()
+	slo := rattle.SLO{ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1"}
+	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 3, 4)})
+	r.Correlation = &rattle.CorrelationDetector{MinSignals: 2}
+	r.CorrelationSource = fakeMultiSignalSource{slo.ID: multiSignal(map[string][]float64{
+		"retries": {1, 2, 3, 4}, "timeouts": {1, 2, 3, 4},
+	})}
+
+	got, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Error("correlation alone should have fired Reconcile", cmp.Diff(1, len(got)))
+	}
+}
+
 func newTestReconciler(slos []rattle.SLO, src rattle.Source) *rattle.Reconciler {
 	frozen := time.Unix(1000, 0)
 	return &rattle.Reconciler{
@@ -67,5 +85,11 @@ func newTestReconciler(slos []rattle.SLO, src rattle.Source) *rattle.Reconciler 
 type fakeSource map[string][]rattle.Sample
 
 func (f fakeSource) BurnSamples(_ context.Context, slo rattle.SLO) ([]rattle.Sample, error) {
+	return f[slo.ID], nil
+}
+
+type fakeMultiSignalSource map[string]rattle.MultiSignalWindow
+
+func (f fakeMultiSignalSource) MultiSignals(_ context.Context, slo rattle.SLO) (rattle.MultiSignalWindow, error) {
 	return f[slo.ID], nil
 }

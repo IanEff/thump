@@ -9,11 +9,13 @@ import (
 )
 
 type Reconciler struct {
-	SLOs     []SLO
-	Source   Source
-	Detector AccelerationDetector
-	Debounce *Debouncer
-	Now      func() time.Time
+	SLOs              []SLO
+	Source            Source
+	Detector          AccelerationDetector
+	Correlation       *CorrelationDetector
+	CorrelationSource MultiSignalSource
+	Debounce          *Debouncer
+	Now               func() time.Time
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) {
@@ -28,18 +30,33 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 			return nil, fmt.Errorf("burn samples for %s: %w", slo.ID, err)
 		}
 		fired, accel := r.Detector.Detect(window)
+		detectorType := "burn_rate_acceleration"
+		if !fired && r.Correlation != nil && r.CorrelationSource != nil {
+			ms, err := r.CorrelationSource.MultiSignals(ctx, slo)
+			if err != nil {
+				return nil, fmt.Errorf("multi-signals for %s: %w", slo.ID, err)
+			}
+			if fired = r.Correlation.Fires(ms); fired {
+				accel = 0 // CorrelationDetector has no acceleration figure
+				detectorType = "multi_signal_correlation"
+			}
+		}
 		if !fired {
-			continue // not accelerating
+			continue
 		}
 		now := clock()
 		if r.Debounce != nil && !r.Debounce.Allow(fingerprint(slo), now) {
 			continue // said it recently — stay quiet
 		}
-		out = append(out, SignalFor(slo, "burn_rate_acceleration", accel, now))
+		out = append(out, SignalFor(slo, detectorType, accel, now))
 	}
 	return out, nil
 }
 
 func fingerprint(slo SLO) string {
 	return "slo_burn:" + slo.Object
+}
+
+type MultiSignalSource interface {
+	MultiSignals(ctx context.Context, slo SLO) (MultiSignalWindow, error)
 }
