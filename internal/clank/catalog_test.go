@@ -7,20 +7,36 @@ import (
 	"github.com/ianeff/clank/internal/signal"
 )
 
-func TestCatalog_ReturnsOnlyAppplicableContracts(t *testing.T) {
+func TestCatalog(t *testing.T) {
 	t.Parallel()
-	cat := clank.NewStaticCatalog(testContracts())
-	got := cat.Applicable(clank.ClassDependencySaturation, "tier-1", saoWithAffectedPct(12))
-	if !containsContract(got, "throttle-non-critical-paths") {
-		t.Errorf("throttle applies to dependency_saturation/tier-1 at !@%% blast: %v", names(got))
-	}
-}
 
-func TestCatalog_DropsContractsFailingAmplificationPrecondition(t *testing.T) {
-	cat := clank.NewStaticCatalog(testContracts())
-	got := cat.Applicable(clank.ClassDependencySaturation, "tier-1", saoWithSharedPoolBottleneck())
-	if containsContract(got, "scale-out") {
-		t.Errorf("scale_out must drop when bottleneck == shared_connection_pool: %v", names(got))
+	cases := map[string]struct {
+		sao      clank.SAO
+		contract string // the contract whose presence we assert on
+		want     bool   // should it be in the applicable set?
+	}{
+		"Catalog returns a contract applicable to the class and tier under blast": {
+			sao:      saoWithAffectedPct(12),
+			contract: "throttle-non-critical-paths",
+			want:     true,
+		},
+		"Catalog drops a contract failing its amplification precondition": {
+			sao:      saoWithSharedPoolBottleneck(),
+			contract: "scale-out",
+			want:     false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cat := clank.NewStaticCatalog(testContracts())
+			got := cat.Applicable(clank.ClassDependencySaturation, "tier-1", tc.sao)
+			if has := containsContract(got, tc.contract); has != tc.want {
+				t.Errorf("contract %q applicable=%v, want %v; applicable set: %v",
+					tc.contract, has, tc.want, names(got))
+			}
+		})
 	}
 }
 

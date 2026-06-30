@@ -9,29 +9,47 @@ import (
 
 func TestGate(t *testing.T) {
 	t.Parallel()
-	withLive := psWithLiveEvidence()
-	histOnly := psHistoricalOnly()
-	noEvidence := psWithNoEvidence()
 
-	cases := []struct {
-		name      string
+	// verdict is the slice of the GateResult this suite asserts on: did the set
+	// pass, and — when it didn't — which minimum vetoed it. Comparing the pair
+	// (not just Passed) is what keeps wantWhy honest.
+	type verdict struct {
+		Passed bool
+		Reason string
+	}
+
+	cases := map[string]struct {
 		ps        clank.ProposalSet
 		openDupes []clank.ProposalSet
-		wantPass  bool
-		wantWhy   string
+		want      verdict
 	}{
-		{"rejects when no evidence", noEvidence, nil, false, "evidence"},
-		{"rejects historical-only with no live citation", histOnly, nil, false, "evidence"},
-		{"suppresses an open duplicate", withLive, []clank.ProposalSet{{}}, false, "dedupe"},
-		{"admits live evidence + no dupe", withLive, nil, true, ""},
+		"Gate rejects a set citing no live evidence": {
+			ps:   psWithNoEvidence(),
+			want: verdict{Passed: false, Reason: "evidence"},
+		},
+		"Gate rejects a historical-only set with no live citation": {
+			ps:   psHistoricalOnly(),
+			want: verdict{Passed: false, Reason: "evidence"},
+		},
+		"Gate suppresses a set with an open duplicate": {
+			ps:        psWithLiveEvidence(),
+			openDupes: []clank.ProposalSet{{}},
+			want:      verdict{Passed: false, Reason: "dedupe"},
+		},
+		"Gate admits a set with live evidence and no dupe": {
+			ps:   psWithLiveEvidence(),
+			want: verdict{Passed: true, Reason: ""},
+		},
 	}
+
 	var gate clank.ReadinessGate
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := gate.Evaluate(tc.ps, tc.openDupes, testPolicy())
-			if got.Passed != tc.wantPass {
-				t.Errorf("gate verdict incorrect for %q\n%s", tc.name, cmp.Diff(tc.wantPass, got.Passed))
+			res := gate.Evaluate(tc.ps, tc.openDupes, testPolicy())
+			got := verdict{Passed: res.Passed, Reason: res.Reason}
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong gate verdict (-want +got)\n", diff)
 			}
 		})
 	}

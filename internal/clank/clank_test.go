@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/clank/internal/clank"
 )
 
@@ -16,8 +17,8 @@ func TestMain_VersionFlag(t *testing.T) {
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d", exitCode)
 	}
-	expectedOut := "clank v1.0.0\ncommit: abcdef\nbuilt: 2026-06-29\n"
-	if stdout.String() != expectedOut {
-		t.Errorf("expected output %q, got %q", expectedOut, stdout.String())
+	want := "clank v1.0.0\ncommit: abcdef\nbuilt: 2026-06-29\n"
+	if diff := cmp.Diff(want, stdout.String()); diff != "" {
+		t.Error("wrong --version output (-want +got)\n", diff)
 	}
 }

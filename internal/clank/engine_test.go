@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/clank/internal/clank"
 )
 
@@ -30,11 +30,11 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 		t.Fatalf("Propose errored: %v", err)
 	}
 
-	if got.Gate.Passed != true || len(got.Proposals) == 0 {
-		t.Errorf("an evidence-backed signal should yield a passed, non-empty ProposalSet: %+v", got)
+	if !got.Gate.Passed || len(got.Proposals) == 0 {
+		t.Fatalf("an evidence-backed signal should yield a passed, non-empty ProposalSet: %+v", got)
 	}
-	if got.Recommended != got.Proposals[0].ID {
-		t.Errorf("recommended must be the rank-1 proposal: rec=%s rank1=%s", got.Recommended, got.Proposals[0].ID)
+	if diff := cmp.Diff(got.Proposals[0].ID, got.Recommended); diff != "" {
+		t.Error("recommended must be the rank-1 proposal (-want +got)\n", diff)
 	}
 }
 
@@ -154,8 +154,6 @@ func (f fakeTool) Spec() clank.ToolSpec {
 	return clank.ToolSpec{Name: f.name, Description: "read-only"}
 }
 
-const rawSentinel = "RAW-PAYLOAD-DO-NOT-BOUNCE"
-
 func specsContain(specs []clank.ToolSpec, name string) bool {
 	for _, s := range specs {
 		if s.Name == name {
@@ -190,8 +188,8 @@ func TestPropose_WhenModelDeclines_YieldsNoAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
 	}
-	if got.Status.Phase != "no_action" {
-		t.Errorf("a declined investigation should be no_action: got %q", got.Status.Phase)
+	if diff := cmp.Diff("no_action", got.Status.Phase); diff != "" {
+		t.Error("a declined investigation should be no_action (-want +got)\n", diff)
 	}
 	if len(sink.delivered) != 0 {
 		t.Errorf("no_action must deliver nothing: delivered %d", len(sink.delivered))
@@ -213,8 +211,8 @@ func TestPropose_StopsAtMaxSteps_YieldsBudgetExhausted(t *testing.T) {
 	if got.Gate.BudgetOK {
 		t.Errorf("exhausting MaxSteps must fail the budget minimum: %+v", got.Gate)
 	}
-	if got.Status.Phase != "budget_exhausted" {
-		t.Errorf("falling out of the loop should be budget_exhausted: got %q", got.Status.Phase)
+	if diff := cmp.Diff("budget_exhausted", got.Status.Phase); diff != "" {
+		t.Error("falling out of the loop should be budget_exhausted (-want +got)\n", diff)
 	}
 	if len(sink.delivered) != 0 {
 		t.Errorf("budget_exhausted delivers nothing %d", len(sink.delivered))
@@ -238,26 +236,43 @@ func TestPropose_HaltsWhenCheckpointFails(t *testing.T) {
 	}
 }
 
-func TestPropose_AppendDigestsNotRawPayloads(t *testing.T) {
+func TestPropose_AppendsTheToolDigestToTheConversation(t *testing.T) {
 	t.Parallel()
-	leaky := fakeTool{name: "logs", digest: "503 rate 12%/min on /checkout", ref: "loki:abc", live: true}
+	const digest = "503 rate 12%/min on /checkout"
+	tool := fakeTool{name: "logs", digest: digest, ref: "loki:abc", live: true}
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"errors"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "insufficient"}}},
 	}}
 	e, _ := newTestEngine(model)
-	e.Tools = map[string]clank.Tool{"logs": leaky}
+	e.Tools = map[string]clank.Tool{"logs": tool}
 
 	if _, err := e.Propose(context.Background(), sigBurnAccel()); err != nil {
 		t.Fatal(err)
 	}
-	for _, msgs := range model.received {
+
+	// Inv. 1 (digests only): a read-only tool's one-line EvidenceRef.Summary is
+	// what enters the conversation — and that's *all* that can, since EvidenceRef
+	// has no Raw field. This asserts the positive: the digest reached the model as
+	// a tool-role message. (The old form scanned for a sentinel no tool ever
+	// emitted, so it could never fail — a vacuous test with no teeth.)
+	if !receivedToolDigest(model.received, digest) {
+		t.Errorf("tool digest %q never reached the conversation:\n%+v", digest, model.received)
+	}
+}
+
+// receivedToolDigest reports whether any message snapshot shown to the model
+// carries the digest as a tool-role message — i.e. the engine forwarded the
+// one-line EvidenceRef.Summary into the conversation.
+func receivedToolDigest(snapshots [][]clank.Message, digest string) bool {
+	for _, msgs := range snapshots {
 		for _, m := range msgs {
-			if strings.Contains(m.Content, rawSentinel) {
-				t.Fatalf("raw payload leaked into a model message: %q", m.Content)
+			if m.Role == "tool" && m.Content == digest {
+				return true
 			}
 		}
 	}
+	return false
 }
 
 func TestPropose_OffersReadOnlyToolsAndControlVerbs(t *testing.T) {
