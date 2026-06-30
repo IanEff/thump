@@ -370,7 +370,14 @@ red→green build.
 ## Definition of done
 
 - `make ci` is green: fmt-check → vet → lint → test (`-race`) → build. Run checks/tests
-  incrementally during edits.
+  incrementally during edits. **The `lint` step (golangci-lint, gosec on) is also the GitHub
+  Actions gate** (`.github/workflows/ci.yml`, runs on every push to `main` + PRs) — a red lint
+  keeps CI red even when every `go test` passes, so **"all tests green" ≠ "CI green"; run the
+  whole `make ci`, not just `make test`.** Known trip: golden-file tests fire gosec G304
+  (variable path) / G306 (file perms) on the `os.ReadFile`/`os.WriteFile` of the golden — the
+  canonical fix is `0o600` perms on the write plus `//nolint:gosec // G304: fixed testdata path,
+  not user input` on the read (see `schema_test.go`). This bit us once: the propose-schema
+  golden (`43779fa`) silently red-lined CI on `main` for days before anyone noticed.
 - Each module is a green claim (Gate, Catalog/autonomy-boundary, Causal scorer, Ranker,
   Ledger + Store, Intake, the reason-loop Engine, Sink), **and** the five belief-formation
   defences are green — if those aren't tested, the confidence machinery is decorative.
