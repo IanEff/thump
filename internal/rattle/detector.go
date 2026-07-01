@@ -11,11 +11,12 @@ type Sample struct {
 }
 
 type SLO struct {
-	ID          string
-	Object      string
-	Tier        string
-	Objective   float64
-	ContractRef string
+	ID           string
+	Object       string
+	Tier         string
+	Objective    float64
+	ContractRef  string
+	Dependencies []Dependency
 }
 
 type Source interface {
