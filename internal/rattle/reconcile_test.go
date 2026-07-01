@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ianeff/clank/internal/rattle"
+	"github.com/ianeff/clank/internal/signal"
 )
 
 func TestReconcile(t *testing.T) {
@@ -180,4 +182,61 @@ type fakeTrafficSource []rattle.TrafficSample
 
 func (f fakeTrafficSource) TrafficSamples(_ context.Context, _ rattle.SLO) ([]rattle.TrafficSample, error) {
 	return f, nil
+}
+
+func TestReconcile_GoldenPath_EmitsOneFullyEnrichedDetection(t *testing.T) {
+	t.Parallel()
+	slo := goldenSLO() // tier-1 ceph-rgw with declared Dependencies, so enrichment has real inputs
+	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 4, 8)})
+	r.Contract = &rattle.SignalContract{FreshnessBound: time.Hour, ConfidenceFloor: 0.1}
+	r.TopologySource = fakeTopologySource{"ceph-osd": "degrade"}
+	r.TrafficSource = fakeTrafficSource(trafficWindow(0.1, 0.2, 0.4))
+
+	got, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal("golden path must not error", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("golden path emits exactly one detection, got %d", len(got))
+	}
+	if diff := cmp.Diff(goldenDetection(), got[0],
+		cmpopts.IgnoreFields(signal.Detection{}, "DetectedAt")); diff != "" {
+		t.Error("enriched detection drifted from the golden fixture", diff)
+	}
+}
+
+func goldenSLO() rattle.SLO {
+	return rattle.SLO{
+		ID:           "ceph-rgw-availability",
+		Object:       "ceph-rgw",
+		Tier:         "tier-1",
+		Objective:    0.999,
+		ContractRef:  "ceph-rgw-availability:v1",
+		Dependencies: []rattle.Dependency{{Name: "ceph-osd", Role: "blocking"}},
+	}
+}
+
+func goldenDetection() signal.Detection {
+	return signal.Detection{
+		Name:          "ceph-rgw-burn-accel",      // SignalFor: env.AffectedObject() + "-burn-accel"
+		Fingerprint:   "slo_burn:ceph-rgw",        // fingerprint(env): Kind() + ":" + Object
+		OriginService: "ceph-rgw",                 // SLO.Object
+		ServiceTier:   "tier-1",                   // SLO.Tier
+		DetectorType:  "burn_rate_acceleration",   // the acceleration branch fired
+		ContractRef:   "ceph-rgw-availability:v1", // SLO.ContractRef
+		Divergence: signal.Divergence{
+			Observed:   1.5,            // Detect(window(1,2,4,8)): mean(2nd diffs) = mean([1,2])
+			Confidence: 1.0,            // Contract.Attenuated(1.0, now): no exclusion window, floor 0.1
+			Trajectory: "accelerating", // SignalFor hardcodes this for the accel detector
+		},
+		Topology: signal.TopologyContext{
+			Upstream: []signal.ObservedNode{{Service: "ceph-osd", State: "degrade"}}, // EnrichTopology
+		},
+		Traffic: signal.TrafficContext{AffectedPct: 0.4}, // EnrichTraffic: last trafficWindow point
+		Impact: signal.Impact{
+			Severity:    signal.Severity{Trajectory: "accelerating"},                    // EnrichSeverity: trajectory of the BURN window
+			BlastRadius: signal.BlastRadius{AffectedPct: 0.4, Velocity: "accelerating"}, // EnrichTraffic: last pct + trajectory of the TRAFFIC window
+		},
+		// DetectedAt would be time.Unix(1000,0) (the frozen clock) — IGNORED via cmpopts, see below.
+	}
 }

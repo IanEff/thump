@@ -20,7 +20,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		return 2
 	}
 	if *printVesion {
-		fmt.Fprintf(stdout, "rattle %s\ncommit: %s\nbuilt: %s\n", version, commit, date)
+		_, _ = fmt.Fprintf(stdout, "rattle %s\ncommit: %s\nbuilt: %s\n", version, commit, date)
 		return 0
 	}
 
@@ -29,7 +29,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 
 	promURL := os.Getenv("PROM_URL")
 	if promURL == "" {
-		fmt.Fprintln(stderr, "set PROM_URL")
+		_, _ = fmt.Fprintln(stderr, "set PROM_URL")
 		return 1
 	}
 
