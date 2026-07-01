@@ -71,6 +71,22 @@ func TestReconcile_EmitsOnCorrelationEvenWithoutAcceleration(t *testing.T) {
 	}
 }
 
+func TestReconcile_EmitsOnEnvelopeBreachEvenWithoutAcceleration(t *testing.T) {
+	t.Parallel()
+	slo := rattle.SLO{ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1"}
+	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 3, 4)})
+	r.Envelope = &rattle.EnvelopeDetector{K: 2}
+	r.BaselineSource = fakeBaselineSource{slo.ID: window(1, 1.1, 0.9, 1.0, 1.05)}
+
+	got, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Error("envelope breach alone should have fired Reconcile", cmp.Diff(1, len(got)))
+	}
+}
+
 func newTestReconciler(slos []rattle.SLO, src rattle.Source) *rattle.Reconciler {
 	frozen := time.Unix(1000, 0)
 	return &rattle.Reconciler{
@@ -91,5 +107,11 @@ func (f fakeSource) BurnSamples(_ context.Context, slo rattle.SLO) ([]rattle.Sam
 type fakeMultiSignalSource map[string]rattle.MultiSignalWindow
 
 func (f fakeMultiSignalSource) MultiSignals(_ context.Context, slo rattle.SLO) (rattle.MultiSignalWindow, error) {
+	return f[slo.ID], nil
+}
+
+type fakeBaselineSource map[string][]rattle.Sample
+
+func (f fakeBaselineSource) BaselineSamples(_ context.Context, slo rattle.SLO) ([]rattle.Sample, error) {
 	return f[slo.ID], nil
 }

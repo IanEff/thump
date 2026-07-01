@@ -14,6 +14,8 @@ type Reconciler struct {
 	Detector          AccelerationDetector
 	Correlation       *CorrelationDetector
 	CorrelationSource MultiSignalSource
+	Envelope          *EnvelopeDetector
+	BaselineSource    BaselineSource
 	Debounce          *Debouncer
 	Now               func() time.Time
 }
@@ -41,6 +43,16 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 				detectorType = "multi_signal_correlation"
 			}
 		}
+		if !fired && r.Envelope != nil && r.BaselineSource != nil {
+			baseline, err := r.BaselineSource.BaselineSamples(ctx, slo)
+			if err != nil {
+				return nil, fmt.Errorf("baseline samples for %s: %w", slo.ID, err)
+			}
+			if fired = r.Envelope.Fires(baseline, window); fired {
+				accel = 0 // EnvelopeDetector has no acceleration figure
+				detectorType = "historical_envelope_breach"
+			}
+		}
 		if !fired {
 			continue
 		}
@@ -59,4 +71,11 @@ func fingerprint(slo SLO) string {
 
 type MultiSignalSource interface {
 	MultiSignals(ctx context.Context, slo SLO) (MultiSignalWindow, error)
+}
+
+// BaselineSource supplies the historical comparison window EnvelopeDetector
+// characterizes as normal — a SEPARATE interface from Source: fetching today's
+// samples and fetching the trailing baseline window are different queries.
+type BaselineSource interface {
+	BaselineSamples(ctx context.Context, slo SLO) ([]Sample, error)
 }
