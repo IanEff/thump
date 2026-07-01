@@ -42,11 +42,12 @@ design rests on; see § The clank ⟷ rattle boundary below.
 Long-running service. Module `github.com/ianeff/clank`, Go 1.26. Structured `slog` logging,
 context-driven graceful shutdown.
 
-> **Repo state (updated 2026-06-30):** clank's Phase 1 binary (W0→W7, the reason-loop
+> **Repo state (updated 2026-07-01):** clank's Phase 1 binary (W0→W7, the reason-loop
 > engine) is **DONE** — `make ci` clean end to end, `Engine.Propose` runs the full bounded
-> loop, `MarkdownSink` renders a `ProposalSet`. Build focus has moved to **rattle** (the
-> Signal Plane, `internal/rattle`) — see § rattle below for where it lives, its own wave
-> plan, and current progress. clank's Phase 2 shape (Kubernetes operator + CRDs vs. a
+> loop, `MarkdownSink` renders a `ProposalSet`. **rattle** (the Signal Plane,
+> `internal/rattle`) is now **also wave-complete** — v1 (W0–W4b) + v2 (W4.5–W9) all landed,
+> both binaries green under one `make ci`; see § rattle below for the detail and what's next.
+> clank's Phase 2 shape (Kubernetes operator + CRDs vs. a
 > pub-sub split into separate repos) is **under active reconsideration, not finalized** —
 > see the vault's `clank-running-notes.md` `2026-06-29 § The design divergence starts here`
 > and `2026-06-30 § DRAL beat names locked` entries before building toward either. **The
@@ -100,7 +101,8 @@ written — Ian's to author). The vault module path is `github.com/ianeff/clank`
 
 ## rattle — where it lives, and current focus
 
-**rattle is being built right now, in this repo.** The locked decision (vault
+**rattle is being built in this repo, and its wave plan is now complete (2026-07-01).** The
+locked decision (vault
 `clank-running-notes.md`, `2026-06-30 § DRAL beat names locked`, "Monorepo for now — and
 rattle goes in *here*, not its own repo") is: rattle lives at `internal/rattle` inside this
 same `clank` module, with its own `cmd/rattle/main.go` entry — **not** the standalone
@@ -118,7 +120,7 @@ discipline as clank's docs, do not mirror into the repo:
 
 - `rattle-readme.md` — anchor / one-page overview.
 - `rattle-implementation-guide.md` — the test-first build walkthrough, THE CAST, and the
-  wave-by-wave claim code (Waves 0–4b = v1, Waves 4.5–9 = v2 — the current work).
+  wave-by-wave claim code (Waves 0–4b = v1, Waves 4.5–9 = v2 — all now landed).
 - `rattle-running-notes.md` — investigation journal.
 - `rattle-todo.md` — the live checklist by wave.
 
@@ -126,13 +128,20 @@ discipline as clank's docs, do not mirror into the repo:
 future standalone repo in places — that's flagged as a backlog item in `rattle-todo.md`
 itself, not an in-progress mistake. Trust the monorepo decision above over those passages.
 
-**Current progress (as of 2026-06-30, branch `feat/rattle-envelope`):** all three of
-rattle's pure detectors are built and wired into `Reconciler.Reconcile` as OR branches —
-burn-rate acceleration (W0), multi-signal correlation (W5), and the historical-envelope
-detector (W6: `EnvelopeDetector` + `BaselineSource`, `detectorType:
-"historical_envelope_breach"`). Next per the guide: W7 the signal contract
-(freshness/confidence-floor/attenuate-don't-suppress), W8 enrichment, W9 the `Envelope`
-interface refactor.
+**Current progress (as of 2026-07-01, merged to `main` via PR #15):** rattle's **entire
+wave plan is landed** — v1 (W0–W4b) *and* v2 (W4.5–W9), `make ci` green end to end. All
+three pure detectors are wired into `Reconciler.Reconcile` as OR branches — burn-rate
+acceleration (W0), multi-signal correlation (W5), and the historical-envelope detector (W6:
+`EnvelopeDetector` + `BaselineSource`, `detectorType: "historical_envelope_breach"`). On top
+of that: the W4.5 `Fires`/`Detect` shim is retired (one `Detect` per window, `(detectorType,
+accel)` threaded into `SignalFor`); the W7 signal contract (`SignalContract` — freshness gate
++ attenuate-don't-suppress) gates the top of `Reconcile`; **W8 enrichment is now wired**
+(`Reconciler.TopologySource`/`TrafficSource` fields → `EnrichSeverity`/`EnrichTopology`/
+`EnrichTraffic` on every fired detection — closing the earlier "built-but-not-called" open
+item); and W9's `Envelope` interface refactor (`envelope.go` `type Envelope interface`;
+`fingerprint` + `SignalFor` now take an `Envelope`, not an `SLO`) is done. Next work is Ian's
+call — the v2 plan is exhausted; likely candidates are wiring real Prometheus/Sloth sources,
+or reconciling the stale readme/todo passages flagged below.
 
 rattle and clank couple through exactly one shared package, **`internal/signal`**
 (`Detection` + the `Severity`/`BlastRadius`/`Divergence` value objects) — `rattle/signal.go`
@@ -424,8 +433,8 @@ which lives in its own leaf package `internal/signal` (`signal.go`: `Detection` 
 `Severity`/`BlastRadius` value objects that ride the boundary). The edge is one-directional
 (`clank`/`rattle` → `signal`, never back), so the seam is compiler-enforced. rattle has
 already joined (`internal/rattle`, its own file-per-detector layout — `detector.go`,
-`debounce.go`, `reconcile.go`, `correlation.go`, `envelope.go`, `source.go`, `signal.go`;
-see § rattle above) and imports `internal/signal` directly — no reshuffle needed, exactly
+`debounce.go`, `reconcile.go`, `correlation.go`, `envelope.go`, `contract.go`, `enrich.go`,
+`source.go`, `signal.go`; see § rattle above) and imports `internal/signal` directly — no reshuffle needed, exactly
 the monorepo path the package doc comment anticipated. The `internal/clank` files:
 `sao.go`, `intake.go`, `model.go` (`Model`,
 `Message`, `Completion`, `ToolCall`, `ToolSpec` — the LLM seam), `tools.go` (`Tool` +
