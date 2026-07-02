@@ -4,23 +4,17 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/ianeff/clank/internal/proposal"
 )
 
 type CausalScorer interface {
 	Score(ChangeSnapshot, TopologySnapshot, CausalWeights) []CausalScore
 }
 
-// CausalScore is one change event's causal likelihood, decomposed and explained.
-// The scorer enforces the belief-formation defences (ch9 §7.7).
-type CausalScore struct {
-	EventID          string
-	Temporal         float64
-	Topological      float64
-	Historical       float64
-	LiveCorroborated bool
-	Likelihood       float64
-	Rationale        []string
-}
+// CausalScore moved to internal/proposal (hiss Wave 1): it rides the
+// ProposalSet across the boundary. The scorer that produces it stays here.
+type CausalScore = proposal.CausalScore
 
 type CausalScorerImpl struct{}
 

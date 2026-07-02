@@ -1,5 +1,11 @@
 package clank
 
+import "github.com/ianeff/clank/internal/proposal"
+
+// GateResult moved to internal/proposal (hiss Wave 1): hiss reads it off the
+// ProposalSet. The gate that produces it stays here — behavior doesn't move.
+type GateResult = proposal.GateResult
+
 type ReadinessGate struct{}
 
 func (g ReadinessGate) Evaluate(ps ProposalSet, openDupes []ProposalSet, _ GatePolicy) GateResult {
@@ -36,13 +42,4 @@ func anyLive(refs []EvidenceRef) bool {
 		}
 	}
 	return false
-}
-
-type GateResult struct {
-	BudgetOK         bool
-	DedupeOK         bool
-	EvidenceOK       bool
-	ThresholdApplied float64
-	Passed           bool
-	Reason           string
 }

@@ -21,24 +21,14 @@ func SchemaOf[T any]() json.RawMessage {
 	return b
 }
 
-// JSONSchemaExtend teaches the reflector the closed FailureClass enum, so the
-// schema stays in lockstep with the constants below it rather than a hand-copied
-// list. Invoked automatically by invopop when it reflects a FailureClass field.
-func (FailureClass) JSONSchemaExtend(s *jsonschema.Schema) {
-	s.Enum = []any{
-		string(ClassDependencySaturation),
-		string(ClassTrafficShift),
-		string(ClassResourceExhaustion),
-		string(ClassUnknown),
-	}
-}
-
 // proposeInput is the wire shape of the model's terminal `propose` tool call:
 // the subset of a ProposalSet the LLM authors (the engine fills the rest). It is
 // the single source for both the tool's input schema and — once the engine is
 // wired — the json.Unmarshal target, so the two can't disagree.
 type proposeInput struct {
-	FailureClass FailureClass       `json:"failureClass" jsonschema:"required"`
+	// The enum mirrors internal/proposal's FailureClass constants; the
+	// propose_schema.json golden pins the emitted shape.
+	FailureClass FailureClass       `json:"failureClass" jsonschema:"required,enum=dependency_saturation,enum=traffic_shift,enum=resource_exhaustion,enum=unknown"`
 	Hypotheses   []Hypothesis       `json:"hypotheses,omitempty"`
 	Proposals    []proposeCandidate `json:"proposals" jsonschema:"required"`
 }
