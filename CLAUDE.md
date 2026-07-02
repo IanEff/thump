@@ -12,7 +12,9 @@ deduplicated, evidence-backed **`ProposalSet`**. It **assembles** a versioned sn
 and **proposes candidate actions with dynamic confidence** — bounded by an authored action
 catalog, grounded by belief-formation guardrails, ranked, and gated on readiness. It does
 **not** detect (that's rattle), does **not** execute against infrastructure, and does
-**not** authorize (that's the Governance Plane, which clank does **not** build).
+**not** authorize (that's the Governance Plane — now **hiss**, also built in this same repo
+as `internal/hiss`, see § hiss below; clank the *package* still doesn't build it, but the
+repo does).
 
 > **The reasoning is the LLM; the catalog is its leash.** clank *is* a free-form reasoner
 > — there **is** an LLM in the runtime (behind a `Model` interface, faked in tests). The
@@ -34,24 +36,29 @@ catalog, grounded by belief-formation guardrails, ranked, and gated on readiness
 
 In the four-plane agentic-reliability architecture, clank is the **Reasoning Plane**: it
 **selects** (reasons over evidence, generates hypotheses, proposes + ranks candidate
-actions) — it does **not permit** (authority/policy is the Governance Plane's job, which
-clank does **not** build) and it does **not detect** (that's the Signal Plane — `rattle`,
+actions) — it does **not permit** (authority/policy is hiss's job, the Governance Plane,
+§ hiss below) and it does **not detect** (that's the Signal Plane — `rattle`,
 whose `SignalDetection` is clank's input). "Selects vs. permits" is the boundary the whole
-design rests on; see § The clank ⟷ rattle boundary below.
+design rests on; see § The clank ⟷ rattle boundary below (the same discipline governs the
+clank ⟷ hiss seam — see § hiss).
 
 Long-running service. Module `github.com/ianeff/clank`, Go 1.26. Structured `slog` logging,
 context-driven graceful shutdown.
 
-> **Repo state (updated 2026-07-01):** clank's Phase 1 binary (W0→W7, the reason-loop
+> **Repo state (updated 2026-07-02):** clank's Phase 1 binary (W0→W7, the reason-loop
 > engine) is **DONE** — `make ci` clean end to end, `Engine.Propose` runs the full bounded
 > loop, `MarkdownSink` renders a `ProposalSet`. **rattle** (the Signal Plane,
 > `internal/rattle`) is now **also wave-complete** — v1 (W0–W4b) + v2 (W4.5–W9) all landed,
 > both binaries green under one `make ci`; see § rattle below for the detail and what's next.
-> clank's Phase 2 shape (Kubernetes operator + CRDs vs. a
-> pub-sub split into separate repos) is **under active reconsideration, not finalized** —
-> see the vault's `clank-running-notes.md` `2026-06-29 § The design divergence starts here`
-> and `2026-06-30 § DRAL beat names locked` entries before building toward either. **The
-> authoritative design is in the vault — build from there.**
+> **hiss** (the Governance Plane, `internal/hiss`) is now **the active front** — Wave 0
+> ratified (**wrap**: clank keeps the gate, the policy migrates), Waves 1–5 landed
+> (`internal/proposal` leaf extraction, `Decision`+`Auditable`, `Authority.Evaluate`,
+> `DecisionLog`, `Transport`+`Main`); Wave 6 (the keyless three-beat seam test) is the
+> last wave — see § hiss below for its current, specific blocker. clank's Phase 2 shape is
+> **no longer an open fork** — the DRAL five-beat monorepo vision has won in practice
+> (hiss's existence is the proof); see § hiss and the Trajectory section below. **The
+> authoritative design is in the vault — build from there** (vault path moved, see
+> § Source of truth below).
 
 ## How we work together (read this)
 
@@ -79,11 +86,23 @@ on Claude heavily as a pairing partner to figure out *how* to implement the code
 
 ## Source of truth: the Obsidian vault
 
-The canonical scope, architecture, and build plan live in the vault at `~/Documents/vault`,
-under `~/Documents/vault/Projects/clank/`. Read the docs **live** — do not mirror them into
-the repo:
+The canonical scope, architecture, and build plan live in the vault at `~/Documents/vault`.
 
-- `clank-readme.md` — anchor / one-page overview. Read first.
+> **Vault reorg (2026-07-01):** the per-beat doc folders got consolidated — clank's,
+> rattle's, and hiss's docs (and the new project-wide anchor docs) all now live together in
+> one folder, **`~/Documents/vault/Projects/thump/`** — *not* separate `Projects/clank/` /
+> `Projects/rattle/` / `Projects/hiss/` folders. `thump` is the umbrella name for the whole
+> five-beat engine (see § hiss and Trajectory below); the folder took that name even though
+> the repo/module haven't been renamed yet (and won't be until the five-beat shape is
+> stable — vault `beat-roadmap.md` §4). If you go looking for `Projects/clank/` and it's not
+> there, this is why — check `Projects/thump/` first. Read every doc below **live** — do not
+> mirror them into the repo:
+
+- `thump-readme.md` — the **new top-level anchor** for the whole five-beat engine
+  (rattle → clank → hiss → thump → click). Read this first, then drill into the beat you're
+  touching. Points at `thump-charter.md` (the adherence contract) and `beat-roadmap.md` (the
+  build sequence, what's open at each step).
+- `clank-readme.md` — clank-specific anchor / one-page overview.
 - `clank-architecture.md` — **architecture of record**: the reason loop, the module seams,
   the boundary objects, the belief-formation defences, the on-disk layout, and the line
   between built-now and deferred. The *what and why*.
@@ -108,15 +127,17 @@ rattle goes in *here*, not its own repo") is: rattle lives at `internal/rattle` 
 same `clank` module, with its own `cmd/rattle/main.go` entry — **not** the standalone
 `~/projects/go/rattle` some vault docs still describe. Rationale: the beats co-evolve
 wave-by-wave and need to be presented as one system; separation of concerns is enforced at
-the **package** boundary, not the repo boundary, until the contracts stabilize. A pub-sub
-split into independent repos/binaries (rattle, clank, and the not-yet-built `hiss`
-(Govern) / `thump` (Act) / `click` (Learn) beats, over a broker — NATS JetStream is the
-leading pick) is the named **Phase-2 target**, not current work.
+the **package** boundary, not the repo boundary, until the contracts stabilize. **hiss**
+(Govern) is no longer "not-yet-built" — it's the active front, built the same way, at
+`internal/hiss`; see § hiss below. `thump` (Act) / `click` (Learn) are still named + zero
+code. A pub-sub split into independent repos/binaries over a broker (NATS JetStream is the
+leading pick) is still the named **Phase-2 target**, not current work — see Trajectory below.
 
 rattle has its **own wave plan, numbered independently of clank's** (W0–W9, vs. clank's
 W0–W7) — don't conflate them when a branch or wave number comes up. Its docs live in the
-vault too, parallel to clank's, at `~/Documents/vault/Projects/rattle/` — read live, same
-discipline as clank's docs, do not mirror into the repo:
+vault too, in the same shared `Projects/thump/` folder as clank's and hiss's (see § Source
+of truth above for the 2026-07-01 reorg) — read live, same discipline as clank's docs, do
+not mirror into the repo:
 
 - `rattle-readme.md` — anchor / one-page overview.
 - `rattle-implementation-guide.md` — the test-first build walkthrough, THE CAST, and the
@@ -151,6 +172,68 @@ codebase it imports this package directly"). The edge stays one-directional
 (`rattle`/`clank` → `signal`, never back). Beyond that seam, `rattle` and `clank` are two
 independent binaries in one module (`cmd/rattle`, `cmd/clank`) — no direct function calls
 between them; see § On-disk layout below.
+
+## hiss — where it lives, and current focus
+
+**hiss is the Governance Plane** — "is the agent allowed to do this, right now?" It reads
+one delivered `ProposalSet` and emits exactly one `Decision` (approved / escalate /
+rejected — rejection is an audit record, never silence). Same monorepo pattern as rattle:
+`internal/hiss` + its own `cmd/hiss/main.go` entry, own wave plan numbered independently
+again (**W0–W6**, vs. clank's W0–W7 and rattle's W0–W9). Docs: `hiss-implementation-guide.md`
+in the shared `Projects/thump/` vault folder (see § Source of truth above).
+
+**Wave 0 is RATIFIED (2026-07-01): wrap, not extraction.** clank **keeps**
+`ReadinessGate` — its evidence leg is belief-formation defence 5 (§ The loop contract
+above), a native-to-the-reasoner check that shouldn't move planes; its budget leg is
+already vestigial (`budgetOK := true` — the real budget check is the engine's `MaxSteps`).
+What **does** move: the *policy* — clank's `GatePolicy.Threshold` (per-tier×class
+confidence floors that clank's own gate never actually read) migrates to
+`hiss.Policy.Floors`, because I-3 (policy lives in one place) says policy data sitting in
+the reasoner with no policy holder is mid-rot, not because the gate itself belongs in
+hiss. `CausalWeights` (scorer tuning, not policy) stays in clank. This is the book's
+grammar: Reasoning *selects*, Governance *permits* — a verdict pass over the winning
+recommendation, not a relocated readiness check.
+
+**Boundary objects:** `ProposalSet` crosses in (clank's, extracted in Wave 1 into a shared
+leaf package `internal/proposal` — `clank.ProposalSet` is now a **type alias** for
+`proposal.Set`, kept for compatibility; hiss imports `internal/proposal` directly, never
+`internal/clank`, so the edge stays one-directional and acyclic). `Decision` crosses out —
+hiss-owned, carries `Verdict`/`Reasons`/`RequestedBand`/`GrantedBand`/`FloorApplied`/
+`PolicyVersion`/`EvaluatedAt`, plus a born-auditable `Auditable() error` invariant method
+every `Evaluate` output is tested against.
+
+**Current progress (as of 2026-07-02):** Waves 1–5 are landed — `internal/proposal` leaf
+extraction (Wave 1, zero behavior diff, aliases in clank), `Decision` + `Auditable` (Wave
+2), `Authority.Evaluate` (Wave 3 — confidence floor, authority ceiling with absence-is-
+lowest + unparseable-escalates, the I-12 irreversibility veto, freeze windows, I-7
+never-mutates/never-re-ranks, ungated-input rejection, and the golden happy path all
+green), `DecisionLog` (Wave 4, append-only, mutex'd, `make race` clean), and
+`Transport`+`Main` (Wave 5 — filesystem-as-fake `Tick(ctx)` poll pass, poison-pill
+quarantine that survives and doesn't delete evidence, the three `Main` branches).
+
+**Wave 6 — the last wave — is in progress, with a specific known blocker.** The claim is
+`TestSeam_ClankDeliveryGovernsToAnApprovedDecision`: a real, scripted `clank.Engine.Propose`
+run delivers a `ProposalSet`, and `hiss.Authority.Evaluate` governs it to `approved`,
+deterministically, keyless (no `ANTHROPIC_API_KEY`), in `make ci`. The guide is explicit
+that this test **must live at `internal/clank/hiss_seam_test.go`, `package clank_test`**
+— not in `cmd/hiss` — because it reuses the unexported test kit (`fakeModel`,
+`proposeArgs`, `newTestEngine`, `captureSink` from `engine_test.go`; `sigBurnAccel()` from
+`intake_test.go`) that only same-package files can see. There's already a precedent for
+this exact shape on disk: `internal/clank/seam_test.go` (the earlier rattle→clank seam,
+W10c) does the identical reuse trick, importing a third internal package (`rattle`) with no
+cycle trouble. As of this writing an early draft of the Wave 6 test exists but is
+misplaced (`cmd/hiss/hiss_seam_test.go`, `package hiss_test` — which doesn't even compile,
+since `cmd/hiss` is `package main`); moving it to the right file + package is the whole
+remaining fix, no logic changes needed. One thing the guide flags as a risk turned out
+**not** to apply here: `engine.go`'s `propose` handler does a plain `json.Unmarshal` into
+the full `ProposalSet` struct (no slimmed-down schema), so `ReversalPath` already
+round-trips through the tool-call JSON — the "reversal-path schema-stripping trap" the
+guide warns about is moot, verified on disk.
+
+**Optional follow-up, not required for Wave 6** (the guide lists it as a separate,
+green-to-green DoD line): drop the dead `_ GatePolicy` param from
+`ReadinessGate.Evaluate` (`gate.go`), delete the never-set `GateResult.ThresholdApplied`,
+rename the residual `GatePolicy` → `ScoringWeights`.
 
 ## Architecture (the one-sentence shape)
 
@@ -299,9 +382,11 @@ LLM-era SLO for this loop. Both are schema-ready, data-pending in a propose-only
 - **The real `Model` client** — one fake `Model` (a scripted sequence of `Completion`s)
   drives every test; the real provider + model-id is a repo-code decision (Ian's), deferred
   behind the `Model` interface. No token streaming, no multi-provider SDK.
-- **A Governance plane / any authority decision** — clank emits a `GovernanceLevel` band
-  *request* and stops; no criticality, error-budget, change-window, or confidence-threshold
-  check anywhere.
+- **A Governance plane / any authority decision, inside `internal/clank`** — clank emits a
+  `GovernanceLevel` band *request* and stops; no criticality, error-budget, change-window,
+  or confidence-threshold check anywhere in this package. (This is scoped to the package,
+  not the repo — hiss, § hiss above, now builds exactly this, in `internal/hiss`. Don't let
+  hiss's existence tempt authority logic back into `internal/clank`.)
 - **The risk *shaper* (CRS)** — the `change-risk-score` scalar, its normalizers, and the
   band map. `GovernanceLevel.Band` exists; its *computation* is parked until a
   Governance/Execution layer. Never fuse the gate (readiness) with the shaper (graded risk).
@@ -346,10 +431,12 @@ conflate them.
 
 ## Trajectory
 
-Two phases were originally scoped for clank alone. **Phase 1 is now done** (2026-06-29,
-W0→W7 green, `make ci` clean end to end) — build focus has moved to rattle (§ rattle
-above). Phase 2's shape is **under active reconsideration, not locked** — read both
-entries below before building toward either description.
+Two phases were originally scoped for clank alone; that framing is now superseded by the
+five-beat **DRAL vision** (rattle → clank → hiss → thump → click), which has moved from
+"a newer, competing description" to **the vision actually being built** — hiss's Wave 0
+ratification and Waves 1–5 landing (§ hiss above) is that decision made real, not just
+proposed. The Kubernetes-operator plan below is **superseded, not merely in doubt** — kept
+as history so the reasoning doesn't get re-derived.
 
 - **Phase 1 — the binary (done, 2026-06-29).** The test-first LLM reason loop:
   `Engine.Propose(ctx, SignalDetection) → ProposalSet`, the pure modules + the loop green,
@@ -358,31 +445,28 @@ entries below before building toward either description.
   faked in tests. The ch6/ch7 core (intake → reason loop → ground → rank → gate → emit) is
   built; the ch8 surface (gate-vs-shaper shaper, CRS, registries, delivery validation) is
   still **named but not built**.
-- **Phase 2 — two competing descriptions, neither finalized.** The original plan below
-  ("the operator") is what `clank-architecture.md` still describes as of writing; a newer,
-  broader vision (vault `clank-running-notes.md`, `2026-06-30 § DRAL beat names locked`)
-  **supersedes its project-layout/import-coupling assumptions** but hasn't been reconciled
-  back into the architecture doc yet. Don't treat either as settled — check
-  `clank-running-notes.md`'s `2026-06-29 § The design divergence starts here` and
-  `2026-06-30` entries for the live state before committing code to either shape:
-  - *The original operator plan:* wrap the engine as a Kubernetes operator
-    (controller-runtime / kubebuilder): a reconciler watches `SignalDetection` CRs (off
-    rattle) and *dispatches* a reason run, tracking a status phase; the resulting
-    `ProposalSet` surfaces as a CR / status / event. **The contracts ARE the CRDs:** the
-    boundary objects graduate to `api/v1alpha1`, engine internals stay in memory, only the
-    terminal `ProposalSet` lands on the CR. Ian's 2026-06-29 call: CRDs/etcd are "no longer
-    a given" — this plan is now in doubt, not confirmed dead.
-  - *The newer DRAL vision:* five named beats — rattle (Detect), clank (Reason), `hiss`
-    (Govern), `thump` (Act), `click` (Learn) — built as one monorepo **for now**
-    (`internal/rattle`, `internal/clank`, …), graduating to independent repos/binaries
-    decoupled by a pub-sub broker (NATS JetStream is the leading pick) once the seam
-    contracts (`signal.Detection`, `ProposalSet`, and the not-yet-built `Decision`/
-    `Outcome`/`Lesson`) stabilize. No CRDs or etcd in this version.
+- **~~Phase 2, original operator plan~~ — superseded.** The one-time idea: wrap the engine
+  as a Kubernetes operator (controller-runtime / kubebuilder), a reconciler watching
+  `SignalDetection` CRs and dispatching reason runs, boundary objects graduating to
+  `api/v1alpha1`. Ian's 2026-06-29 call ("CRDs/etcd are no longer a given") is what opened
+  the door the DRAL vision walked through; this plan is not the live direction. Kept here
+  only so a future session doesn't rediscover and re-propose it as new.
+- **Phase 2, now — the DRAL five-beat engine, monorepo for now.** Five named beats — rattle
+  (Detect, done), clank (Reason, done), **hiss** (Govern, the active front — § hiss above),
+  `thump` (Act, dry-run first, zero code), `click` (Learn, zero code, not a discrete
+  module) — one monorepo (`internal/rattle`, `internal/clank`, `internal/hiss`, …),
+  graduating to independent repos/binaries decoupled by a pub-sub broker (NATS JetStream
+  the leading pick) once the seam contracts (`signal.Detection`, `proposal.Set`, `Decision`,
+  and the not-yet-built `Outcome`/`Lesson`) stabilize. No CRDs or etcd in this version. The
+  project's **eventual** name/module is `thump` (`github.com/ianeff/thump`) — the vault
+  folder already made that move (§ Source of truth above) — but the repo/module rename
+  itself is **deliberately deferred** until the five-beat shape is stable (vault
+  `beat-roadmap.md` §4). Don't rename the module preemptively.
 
-**Either way, phase 2 does not change phase 1's pipeline.** Whatever the delivery/trigger
-surface ends up being, it's a new *caller* of `Engine.Propose`, not a rewrite of the reason
-loop, the pure modules, or their tests. Do not pre-build operator or pub-sub scaffolding —
-that direction isn't picked yet.
+**Phase 2 does not change phase 1's pipeline.** Whatever the eventual pub-sub surface looks
+like, it's a new *caller* of `Engine.Propose`, not a rewrite of the reason loop, the pure
+modules, or their tests. Do not pre-build pub-sub broker scaffolding — that's still ahead of
+hiss/thump/click landing, not current work.
 
 ## Working with the tests (a spine, not a cage)
 
@@ -427,27 +511,44 @@ conventions keep them sharp:
 
 clank is **the `internal/clank` package, one file per seam** — the file boundaries already
 express the module table, while keeping the test-first flow simple (tests in external
-`clank_test`, one vocabulary). The one carve-out is the **rattle⟷clank contract surface**,
-which lives in its own leaf package `internal/signal` (`signal.go`: `Detection` — rattle's
-`SignalDetection`, reproduced locally as `signal.Detection` — plus the shared
-`Severity`/`BlastRadius` value objects that ride the boundary). The edge is one-directional
-(`clank`/`rattle` → `signal`, never back), so the seam is compiler-enforced. rattle has
-already joined (`internal/rattle`, its own file-per-detector layout — `detector.go`,
-`debounce.go`, `reconcile.go`, `correlation.go`, `envelope.go`, `contract.go`, `enrich.go`,
-`source.go`, `signal.go`; see § rattle above) and imports `internal/signal` directly — no reshuffle needed, exactly
-the monorepo path the package doc comment anticipated. The `internal/clank` files:
-`sao.go`, `intake.go`, `model.go` (`Model`,
+`clank_test`, one vocabulary). Two carve-outs are their own leaf packages, both
+compiler-enforced one-directional edges:
+
+- **`internal/signal`** — the rattle⟷clank contract surface (`signal.go`: `Detection` —
+  rattle's `SignalDetection`, reproduced locally as `signal.Detection` — plus the shared
+  `Severity`/`BlastRadius` value objects). Edge: `clank`/`rattle` → `signal`, never back.
+- **`internal/proposal`** — the clank⟷hiss contract surface, extracted from
+  `internal/clank` in hiss's Wave 1 (2026-07-01): `proposal.go` (`Set` — what
+  `clank.ProposalSet` now **type-aliases**, plus `Candidate`, `Hypothesis`, `EvidenceRef`,
+  `GateResult`, `ProposalStatus`, `PredictedImpact`, `ReversalPath`, `GovernanceLevel`,
+  `RankingRationale`, `FailureClass` + consts, `CausalScore`) and `sao.go` (the `SAO`
+  aggregate). A `leaf_test.go` (`package proposal_test`) pins its leafness by parsing
+  imports — a stdlib-only tripwire against a future `internal/clank` import creeping back
+  in. Edge: `clank`/`hiss` → `proposal`, never back. This is the "Sub-package splits...
+  deferred" graduation the line below used to describe as future work — it already
+  happened, for this one seam.
+
+rattle has already joined (`internal/rattle`, its own file-per-detector layout —
+`detector.go`, `debounce.go`, `reconcile.go`, `correlation.go`, `envelope.go`,
+`contract.go`, `enrich.go`, `source.go`, `signal.go`; see § rattle above) and imports
+`internal/signal` directly — no reshuffle needed, exactly the monorepo path the package doc
+comment anticipated. hiss has joined the same way (`internal/hiss`, § hiss above):
+`decision.go` (`Verdict`, `Band`, reason consts, `Decision` + `Auditable`), `policy.go`
+(`Policy`, `Window`), `authority.go` (`Authority.Evaluate` — the whole beat, pure),
+`ledger.go` (`DecisionLog`), `transport.go` (`Transport.Tick` — the poll-pass), `hiss.go`
+(`Main`). Plus `cmd/hiss/main.go` (one-line shim, mirrors `cmd/clank`/`cmd/rattle`). The
+`internal/clank` files: `sao.go`, `intake.go`, `model.go` (`Model`,
 `Message`, `Completion`, `ToolCall`, `ToolSpec` — the LLM seam), `tools.go` (`Tool` +
 read-only telemetry / case-base retrieval), `engine.go` (`Engine.Propose` — the bounded reason
 loop, tool dispatch, set formation), `store.go` (`Store` + `Turn` + in-memory impl),
-`catalog.go`, `causal.go`, `rank.go`, `gate.go`, `proposal.go` (`ProposalSet` +
-`ProposalStatus`, outcome enum incl. `partial_non_converging`), `policy.go`, `sink.go`,
+`catalog.go`, `causal.go`, `rank.go`, `gate.go`, `proposal.go` (now just the **type
+aliases** onto `internal/proposal`, post-Wave-1 — the real definitions moved),
+`policy.go` (shrinking to `CausalWeights`/`ScoringWeights` once the § hiss optional cleanup
+lands — `GatePolicy.Threshold` itself already migrated to `hiss.Policy.Floors`), `sink.go`,
 `ledger.go` (`ProposalLog`). Plus `cmd/clank/main.go` (thin entry: wire deps,
 `signal.NotifyContext`, run) and `cmd/rattle/main.go` (rattle's own thin entry). Note there
 is **no** `classify.go` or `instantiate.go` in `internal/clank` — those were the
-deterministic detour; classification is now the model's output. Sub-package splits for
-compile-time boundary enforcement are a Phase-1.5 graduation — deferred so they don't slow the
-red→green build.
+deterministic detour; classification is now the model's output.
 
 ## Definition of done
 
