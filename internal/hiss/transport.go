@@ -9,7 +9,7 @@ import (
 
 	"github.com/ianeff/clank/internal/decision"
 	"github.com/ianeff/clank/internal/proposal"
-	"go.yaml.in/yaml/v4"
+	"sigs.k8s.io/yaml"
 )
 
 type Transport struct {

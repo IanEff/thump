@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"go.yaml.in/yaml/v4"
+	"sigs.k8s.io/yaml"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {

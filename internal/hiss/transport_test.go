@@ -10,7 +10,7 @@ import (
 	"github.com/ianeff/clank/internal/decision"
 	"github.com/ianeff/clank/internal/hiss"
 	"github.com/ianeff/clank/internal/proposal"
-	"go.yaml.in/yaml/v2"
+	"sigs.k8s.io/yaml"
 )
 
 func TestTick_GoldenRun_OneSetInOneDecisionOut(t *testing.T) {
