@@ -1,12 +1,16 @@
 package thump_test
 
 import (
+	"os"
+	"path/filepath"
+	"testing"
 	"time"
 
 	"github.com/ianeff/clank/internal/contract"
 	"github.com/ianeff/clank/internal/decision"
 	"github.com/ianeff/clank/internal/proposal"
 	"github.com/ianeff/clank/internal/thump"
+	"sigs.k8s.io/yaml"
 )
 
 func goldenOutcome() thump.Outcome {
@@ -104,6 +108,17 @@ func approvedGoverned() decision.Governed {
 	}
 }
 
+// escalatedGoverned is a WELL-FORMED escalation (auditable: it has reasons)
+// — Claim 14's transport input. Not a mutator on the Decision alone: the
+// envelope stays coherent, only the verdict changes.
+func escalatedGoverned() decision.Governed {
+	g := approvedGoverned()
+	g.Decision.Verdict = decision.VerdictEscalate
+	g.Decision.Reasons = []string{decision.ReasonConfidenceFloor}
+	g.Decision.GrantedBand = ""
+	return g
+}
+
 // richCatalog is the catalog a human authored in calm conditions — the
 // throttle contract with every execution-relevant field populated. Catalog
 // is DATA: construct variants inline when a claim needs one.
@@ -149,5 +164,65 @@ func goldenOrder() thump.Order {
 			Window: 10 * time.Minute, AbortConditions: []string{"error_rate > 2%"},
 		},
 		RenderedAt: frozenNow(),
+	}
+}
+
+// writeGovernedYAML / readOneOrder / readOneOutcome — the transport
+// round-trip via sigs.k8s.io/yaml, the codec clank's sink already writes
+// with — the test round-trip is the real round-trip.
+func writeGovernedYAML(t *testing.T, dir, name string, g decision.Governed) {
+	t.Helper()
+	out, err := yaml.Marshal(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readOneOrder(t *testing.T, outbox string) thump.Order {
+	t.Helper()
+	var o thump.Order
+	readOneYAML(t, filepath.Join(outbox, "orders"), &o)
+	return o
+}
+
+func readOneOutcome(t *testing.T, outbox string) thump.Outcome {
+	t.Helper()
+	var o thump.Outcome
+	readOneYAML(t, filepath.Join(outbox, "outcomes"), &o)
+	return o
+}
+
+func readOneYAML(t *testing.T, dir string, out any) {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("%s must hold exactly one file, found %d: %v", dir, len(matches), matches)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(raw, out); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// newTestTransport wires a Transport with the rich catalog, a fresh ledger,
+// the dry-run executor, and the frozen clock — a constructor, so each test
+// owns its state.
+func newTestTransport(inbox, outbox string) *thump.Transport {
+	return &thump.Transport{
+		Inbox:   inbox,
+		Outbox:  outbox,
+		Catalog: richCatalog(),
+		Log:     thump.NewOutcomeLog(),
+		Exec:    thump.DryRun{},
+		Now:     frozenNow,
 	}
 }

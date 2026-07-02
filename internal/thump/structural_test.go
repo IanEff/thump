@@ -16,7 +16,7 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"io"`: true, `"log/slog"`: true, `"os"`: true, `"os/signal"`: true,
 		`"path/filepath"`: true, `"sync"`: true, `"syscall"`: true, `"time"`: true,
 		// the wire codec (hiss writes with it; we read with it)
-		`"go.yaml.in/yaml/v4"`: true,
+		`"sigs.k8s.io/yaml"`: true,
 		// the leaves — vocabulary only, no behavior that touches the world
 		`"github.com/ianeff/clank/internal/decision"`: true,
 		`"github.com/ianeff/clank/internal/proposal"`: true,

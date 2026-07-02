@@ -47,6 +47,7 @@ build:
 	go build $(LDFLAGS) -o bin/clank ./cmd/clank
 	go build $(LDFLAGS) -o bin/rattle ./cmd/rattle
 	go build $(LDFLAGS) -o bin/hiss ./cmd/hiss
+	go build $(LDFLAGS) -o bin/thump ./cmd/thump
 
 run-clank:
 	go run ./cmd/clank
@@ -56,6 +57,9 @@ run-rattle:
 
 run-hiss:
 	go run ./cmd/hiss
+
+run-thump:
+	go run ./cmd/thump
 
 tidy:
 	go mod tidy
