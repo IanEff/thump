@@ -7,14 +7,17 @@ import (
 )
 
 type Window struct {
-	Name       string
-	Start, End time.Time
+	Name  string    `json:"name,omitempty" yaml:"name,omitempty"`
+	Start time.Time `json:"start,omitempty" yaml:"start,omitempty"`
+	End   time.Time `json:"end,omitempty" yaml:"end,omitempty"`
 }
 
+// Policy is loaded straight off a human-authored HISS_POLICY YAML file
+// (see loadPolicy in hiss.go) — the tags below ARE that file's schema.
 type Policy struct {
-	Version         string
-	Floors          map[string]map[proposal.FailureClass]float64
-	MaxBand         map[string]Band
-	FreezeWindows   []Window
-	RequireReversal bool
+	Version         string                                       `json:"version,omitempty" yaml:"version,omitempty"`
+	Floors          map[string]map[proposal.FailureClass]float64 `json:"floors,omitempty" yaml:"floors,omitempty"`
+	MaxBand         map[string]Band                              `json:"maxBand,omitempty" yaml:"maxBand,omitempty"`
+	FreezeWindows   []Window                                     `json:"freezeWindows,omitempty" yaml:"freezeWindows,omitempty"`
+	RequireReversal bool                                         `json:"requireReversal,omitempty" yaml:"requireReversal,omitempty"`
 }

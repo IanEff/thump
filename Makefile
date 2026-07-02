@@ -46,6 +46,7 @@ build:
 	@mkdir -p bin
 	go build $(LDFLAGS) -o bin/clank ./cmd/clank
 	go build $(LDFLAGS) -o bin/rattle ./cmd/rattle
+	go build $(LDFLAGS) -o bin/hiss ./cmd/hiss
 
 run-clank:
 	go run ./cmd/clank
@@ -53,9 +54,11 @@ run-clank:
 run-rattle:
 	go run ./cmd/rattle
 
+run-hiss:
+	go run ./cmd/hiss
+
 tidy:
 	go mod tidy
 
 clean:
 	rm -rf bin/ coverage.out
-
