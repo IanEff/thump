@@ -1,113 +1,22 @@
 package clank
 
-import "time"
+import "github.com/ianeff/clank/internal/contract"
 
-type StaticCatalog struct {
-	contracts []ActionContract
-}
+// The action-contract catalog vocabulary moved to internal/contract (thump
+// Wave 1b) — thump resolves a granted ContractRef from the same catalog
+// without importing clank's internals. Aliases, not new types — every
+// consumer is unchanged; burn these in their own commit.
+type (
+	ActionContract  = contract.ActionContract
+	ActionSpec      = contract.ActionSpec
+	Range           = contract.Range
+	Reversal        = contract.Reversal
+	SuccessCriteria = contract.SuccessCriteria
+	Precondition    = contract.Precondition
+	StaticCatalog   = contract.StaticCatalog
+)
 
-func (s *StaticCatalog) Applicable(class FailureClass, tier string, sao SAO) []ActionContract {
-	var applicableContracts []ActionContract
-	for _, c := range s.contracts {
-		if !classMatches(c, class) {
-			continue
-		}
-		if !tierMatches(c, tier) {
-			continue
-		}
-		if !preconditionsMet(c, sao) {
-			continue
-		}
-		applicableContracts = append(applicableContracts, c)
-	}
-	return applicableContracts
-}
-
-// ApplicableToTier lists the contracts the signal's tier and the SAO's
-// preconditions admit, across all failure classes — the menu the model may
-// propose from before it has committed to a FailureClass. The class filter is
-// applied afterward by the engine's enforceCatalog backstop, once the model has
-// chosen one. Without this menu in the prompt, a real model invents plausible
-// contractRefs that aren't in the catalog.
-func (s *StaticCatalog) ApplicableToTier(tier string, sao SAO) []ActionContract {
-	var out []ActionContract
-	for _, c := range s.contracts {
-		if !tierMatches(c, tier) {
-			continue
-		}
-		if !preconditionsMet(c, sao) {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
-}
-
-func classMatches(c ActionContract, class FailureClass) bool {
-	for _, fc := range c.ApplicableFailureClasses {
-		if fc == class {
-			return true
-		}
-	}
-	return false
-}
-
-func tierMatches(c ActionContract, tier string) bool {
-	for _, t := range c.ApplicableTiers {
-		if t == tier {
-			return true
-		}
-	}
-	return false
-}
-
-func preconditionsMet(c ActionContract, sao SAO) bool {
-	for _, p := range c.Preconditions {
-		if !p.OK(sao) {
-			return false
-		}
-	}
-	return true
-}
-
-func NewStaticCatalog(t []ActionContract) *StaticCatalog {
-	return &StaticCatalog{contracts: t}
-}
-
-type ActionContract struct {
-	Name                     string
-	ApplicableFailureClasses []FailureClass
-	ApplicableTiers          []string
-	Preconditions            []Precondition
-	Action                   ActionSpec
-	Reversal                 Reversal
-	SuccessCriteria          SuccessCriteria
-}
-
-type ActionSpec struct {
-	Description     string
-	ScopeParameters map[string]Range
-}
-
-type Range struct {
-	Min     float64
-	Max     float64
-	Default float64
-}
-
-type Reversal struct {
-	Method   string
-	Fallback string
-}
-
-type SuccessCriteria struct {
-	Metric          string
-	Target          string
-	Window          time.Duration
-	AbortConditions []string
-}
-
-type Precondition struct {
-	Name string
-	OK   func(SAO) bool
-}
+var (
+	NewStaticCatalog  = contract.NewStaticCatalog
+	ErrOutsideCatalog = contract.ErrOutsideCatalog
+)

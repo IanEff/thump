@@ -3,15 +3,12 @@ package clank
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/ianeff/clank/internal/signal"
 )
-
-var ErrOutsideCatalog = errors.New("clank: proposed contract not in catalog")
 
 type Engine struct {
 	Intake       *Intake
