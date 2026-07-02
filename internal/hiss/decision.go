@@ -47,15 +47,3 @@ const (
 	BandActReversible Band = "act_reversible" // rank 1
 	BandActDisruptive Band = "act_disruptive" // rank 2
 )
-
-// func bandRank(b Band) int {
-// 	switch b {
-// 	case BandObserve:
-// 		return 0
-// 	case BandActDisruptive:
-// 		return 2
-// 	case BandActReversible:
-// 		return 1
-// 	}
-// 	return 0
-// }

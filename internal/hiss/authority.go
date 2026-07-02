@@ -1,0 +1,92 @@
+package hiss
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/ianeff/clank/internal/proposal"
+)
+
+type Authority struct{}
+
+func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) Decision {
+	d := Decision{
+		ID:            fmt.Sprintf("dec:%s:%d", ps.SignalRef, now.Unix()),
+		ProposalRef:   ps.Name,
+		SignalRef:     ps.SignalRef,
+		CandidateRef:  ps.Recommended,
+		PolicyVersion: pol.Version,
+		EvaluatedAt:   now,
+	}
+
+	rec, found := recommended(ps)
+	if ps.Gate == nil || !ps.Gate.Passed || !found {
+		d.Verdict = VerdictRejected
+		d.Reasons = []string{ReasonUngatedInput}
+		return d
+	}
+
+	d.RequestedBand = requestedBand(rec)
+	d.FloorApplied = pol.Floors[ps.ServiceTier][ps.FailureClass]
+
+	if rec.Confidence < d.FloorApplied {
+		d.Reasons = append(d.Reasons, ReasonConfidenceFloor)
+	}
+	if bandRank(d.RequestedBand) > bandRank(pol.MaxBand[ps.ServiceTier]) {
+		d.Reasons = append(d.Reasons, ReasonAuthorityCeiling)
+	}
+	if pol.RequireReversal && rec.ReversalPath == nil {
+		d.Reasons = append(d.Reasons, ReasonIrreversible)
+	}
+
+	for _, w := range pol.FreezeWindows {
+		if !now.Before(w.Start) && now.Before(w.End) {
+			d.Reasons = append(d.Reasons, ReasonFreezeWindow+":"+w.Name)
+		}
+	}
+
+	if len(d.Reasons) > 0 {
+		d.Verdict = VerdictEscalate
+		return d
+	}
+	d.Verdict = VerdictApproved
+	d.GrantedBand = d.RequestedBand
+	return d
+}
+
+func bandRank(b Band) int {
+	switch b {
+	case BandObserve:
+		return 0
+	case BandActDisruptive:
+		return 2
+	case BandActReversible:
+		return 1
+	default:
+		return 3
+	}
+}
+
+const (
+	ReasonConfidenceFloor  = "confidence_floor"
+	ReasonAuthorityCeiling = "authority_ceiling"
+	ReasonIrreversible     = "irreversible"
+	ReasonFreezeWindow     = "freeze_window" // ":" + Window.Name appended
+	ReasonUngatedInput     = "ungated_input" // also covers malformed sets — see Claim 8
+)
+
+func recommended(ps proposal.Set) (proposal.Candidate, bool) {
+	for _, c := range ps.Proposals {
+		if c.ID == ps.Recommended {
+			return c, true
+		}
+	}
+	return proposal.Candidate{}, false
+}
+
+func requestedBand(c proposal.Candidate) Band {
+	if c.GovernanceLevel == nil {
+		return BandObserve // absence != privilege
+	}
+	return Band(c.GovernanceLevel.Band)
+}
