@@ -7,17 +7,17 @@ import (
 )
 
 type Decision struct {
-	ID            string
-	ProposalRef   string // ps.Name
-	SignalRef     string
-	CandidateRef  string
-	Verdict       Verdict
-	Reasons       []string
-	RequestedBand Band
-	GrantedBand   Band
-	FloorApplied  float64
-	PolicyVersion string
-	EvaluatedAt   time.Time
+	ID            string    `json:"id,omitempty" yaml:"id,omitempty"`
+	ProposalRef   string    `json:"proposalRef,omitempty" yaml:"proposalRef,omitempty"` // ps.Name
+	SignalRef     string    `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`
+	CandidateRef  string    `json:"candidateRef,omitempty" yaml:"candidateRef,omitempty"`
+	Verdict       Verdict   `json:"verdict,omitempty" yaml:"verdict,omitempty"`
+	Reasons       []string  `json:"reasons,omitempty" yaml:"reasons,omitempty"`
+	RequestedBand Band      `json:"requestedBand,omitempty" yaml:"requestedBand,omitempty"`
+	GrantedBand   Band      `json:"grantedBand,omitempty" yaml:"grantedBand,omitempty"`
+	FloorApplied  float64   `json:"floorApplied,omitempty" yaml:"floorApplied,omitempty"`
+	PolicyVersion string    `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+	EvaluatedAt   time.Time `json:"evaluatedAt,omitempty" yaml:"evaluatedAt,omitempty"`
 }
 
 func (d Decision) Auditable() error {
