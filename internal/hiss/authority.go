@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ianeff/clank/internal/decision"
 	"github.com/ianeff/clank/internal/proposal"
 )
 
@@ -68,11 +69,11 @@ func bandRank(b Band) int {
 }
 
 const (
-	ReasonConfidenceFloor  = "confidence_floor"
-	ReasonAuthorityCeiling = "authority_ceiling"
-	ReasonIrreversible     = "irreversible"
-	ReasonFreezeWindow     = "freeze_window" // ":" + Window.Name appended
-	ReasonUngatedInput     = "ungated_input" // also covers malformed sets — see Claim 8
+	ReasonConfidenceFloor  = decision.ReasonConfidenceFloor
+	ReasonAuthorityCeiling = decision.ReasonAuthorityCeiling
+	ReasonIrreversible     = decision.ReasonIrreversible
+	ReasonFreezeWindow     = decision.ReasonFreezeWindow
+	ReasonUngatedInput     = decision.ReasonUngatedInput
 )
 
 func recommended(ps proposal.Set) (proposal.Candidate, bool) {

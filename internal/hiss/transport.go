@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ianeff/clank/internal/decision"
 	"github.com/ianeff/clank/internal/proposal"
 	"go.yaml.in/yaml/v4"
 )
@@ -51,7 +52,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		d := auth.Evaluate(ps, tr.Policy, now())
 		tr.Log.Record(d)
 
-		out, err := yaml.Marshal(d)
+		out, err := yaml.Marshal(decision.Governed{Decision: d, Set: ps})
 		if err != nil {
 			return fmt.Errorf("hiss: marshal decision for %s: %w", path, err)
 		}

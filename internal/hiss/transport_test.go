@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/clank/internal/decision"
 	"github.com/ianeff/clank/internal/hiss"
 	"github.com/ianeff/clank/internal/proposal"
 	"go.yaml.in/yaml/v2"
@@ -23,10 +24,13 @@ func TestTick_GoldenRun_OneSetInOneDecisionOut(t *testing.T) {
 		t.Fatal("golden run must not error: ", err)
 	}
 
-	got := readOneDecision(t, outbox)
+	got := readOneGoverned(t, outbox)
 
-	if diff := cmp.Diff(goldenDecision(), got); diff != "" {
+	if diff := cmp.Diff(goldenDecision(), got.Decision); diff != "" {
 		t.Error("decision drifted across the wire (-want +got)", diff)
+	}
+	if diff := cmp.Diff(governedSet(), got.Set); diff != "" {
+		t.Error("hiss must seal the set into the envelope verbatim (-want, +got)", diff)
 	}
 	if _, err := os.Stat(filepath.Join(inbox, "processed", "ps-001.yaml")); err != nil {
 		t.Error("processed input must move to processed/, not vanish:", err)
@@ -51,7 +55,7 @@ func TestTick_PoisonPill_QuarantinesAndSurvives(t *testing.T) {
 	}
 
 	// the good file still got decided — the poison didn't block the queue
-	if got := readOneDecision(t, outbox); got.Verdict != hiss.VerdictApproved {
+	if got := readOneGoverned(t, outbox); got.Decision.Verdict != hiss.VerdictApproved {
 		t.Errorf("the healthy set must still be decided: %+v", got)
 	}
 	// the poison is quarantined where a human can find it, not deleted
@@ -75,24 +79,24 @@ func writeSetYAML(t *testing.T, dir, name string, ps proposal.Set) {
 	}
 }
 
-func readOneDecision(t *testing.T, outbox string) hiss.Decision {
+func readOneGoverned(t *testing.T, outbox string) decision.Governed {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(outbox, "*.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(matches) != 1 {
-		t.Fatalf("outbox must hold exactly one decision, found %d: %v", len(matches), matches)
+		t.Fatalf("outbox must hold exactly one envelope, found %d: %v", len(matches), matches)
 	}
 	raw, err := os.ReadFile(matches[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	var d hiss.Decision
-	if err := yaml.Unmarshal(raw, &d); err != nil {
+	var g decision.Governed
+	if err := yaml.Unmarshal(raw, &g); err != nil {
 		t.Fatal(err)
 	}
-	return d
+	return g
 }
 
 func newTestTransport(inbox, outbox string) *hiss.Transport {
