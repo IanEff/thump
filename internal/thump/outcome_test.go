@@ -2,7 +2,6 @@ package thump_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ianeff/clank/internal/thump"
 )
@@ -51,48 +50,3 @@ func TestOutcomeAuditable(t *testing.T) {
 		})
 	}
 }
-
-func withoutDecisionRef(o thump.Outcome) thump.Outcome {
-	o.DecisionRef = ""
-	return o
-}
-
-func withoutExecutedAt(o thump.Outcome) thump.Outcome {
-	o.ExecutedAt = time.Time{}
-	return o
-}
-
-func withoutMode(o thump.Outcome) thump.Outcome {
-	o.Mode = ""
-	return o
-}
-
-func silentFailure(o thump.Outcome) thump.Outcome {
-	o.Result, o.Error = thump.ResultFailure, ""
-	return o
-}
-
-func explainedPartial(o thump.Outcome) thump.Outcome {
-	o.Result, o.Error = thump.ResultPartialNonConverging, "latency recovered; error rate did not"
-	return o
-}
-
-func silentPartial(o thump.Outcome) thump.Outcome {
-	o.Result, o.Error = thump.ResultPartialNonConverging, ""
-	return o
-}
-
-func goldenOutcome() thump.Outcome {
-	return thump.Outcome{
-		ID:          "out:slo_burn:ceph-rgw:1000",
-		DecisionRef: "dec:slo_burn:ceph-rgw:1000",
-		SignalRef:   "slo_burn:ceph-rgw",
-		ContractRef: "throttle-non-critical-paths",
-		Mode:        thump.ModeDryRun,     // the honest half…
-		Result:      thump.ResultRendered, // …of the honest whole: we rehearsed, we did not act
-		Error:       "",
-		ExecutedAt:  frozenNow(),
-	}
-}
-
-func frozenNow() time.Time { return time.Unix(1000, 0) }
