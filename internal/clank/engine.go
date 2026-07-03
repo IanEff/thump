@@ -122,7 +122,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 		return ProposalSet{}, err
 	}
 
-	set.CausalScores = e.Scorer.Score(sao.Change, sao.Topology, e.Policy.CausalWeights)
+	set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Policy.CausalWeights)
 
 	ranked, why := e.Ranker.Rank(set.Proposals, sig.Impact.BlastRadius.Velocity)
 	set.Proposals = ranked

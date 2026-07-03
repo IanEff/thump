@@ -9,23 +9,33 @@ import (
 )
 
 type CausalScorer interface {
-	Score(ChangeSnapshot, TopologySnapshot, CausalWeights) []CausalScore
+	Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights CausalWeights) []CausalScore
+}
+
+// Prior is the scorer's window into the case base — consumer-defined, the
+// Go idiom: the interface lives with the code that needs it, and CaseBase
+// just happens to satisfy it. nil means "no case base yet": the stub
+// constant, exactly as before.
+type Prior interface {
+	Alignment(fingerprint string) (float64, bool)
 }
 
 // CausalScore moved to internal/proposal (hiss Wave 1): it rides the
 // ProposalSet across the boundary. The scorer that produces it stays here.
 type CausalScore = proposal.CausalScore
 
-type CausalScorerImpl struct{}
+type CausalScorerImpl struct {
+	Prior Prior
+}
 
 func NewCausalScorer() *CausalScorerImpl {
 	return &CausalScorerImpl{}
 }
 
-func (s *CausalScorerImpl) Score(change ChangeSnapshot, topo TopologySnapshot, weights CausalWeights) []CausalScore {
+func (s *CausalScorerImpl) Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights CausalWeights) []CausalScore {
 	scores := make([]CausalScore, 0, len(change.Events))
 	for _, e := range change.Events {
-		scores = append(scores, scoreEvent(e, topo, weights))
+		scores = append(scores, scoreEvent(fingerprint, e, topo, weights, s.Prior))
 	}
 	return scores
 }
@@ -36,21 +46,33 @@ const (
 	negativeSignalPenalty = 0.2
 )
 
-func scoreEvent(e ChangeEvent, topo TopologySnapshot, weights CausalWeights) CausalScore {
+func scoreEvent(fingerprint string, e ChangeEvent, topo TopologySnapshot, weights CausalWeights, prior Prior) CausalScore {
 	node, inPath := findNode(topo, e.Target)
 
 	temporal := temporalScore(e.Age)
 	topological := topologicalScore(node, inPath)
-	historical := caseBaseBaseline * freshnessFactor(e.HistoricalStaleness, weights.FreshnessHalfLife)
+
+	base, corroborated := caseBaseBaseline, false // 0.9 — the uncorroborated stub, unchanged
+	if prior != nil {
+		if rate, ok := prior.Alignment(fingerprint); ok {
+			base, corroborated = rate, true
+		}
+	}
+	historical := base * freshnessFactor(e.HistoricalStaleness, weights.FreshnessHalfLife)
 
 	liveCorroborated := inPath && node.State == "degraded"
 
 	likelihood := weights.Temporal*temporal + weights.Topological*topological + weights.Historical*historical
 
+	priorNote := fmt.Sprintf("historical: case-base prior, staleness %s -> %.2f", e.HistoricalStaleness, historical)
+	if corroborated {
+		priorNote = fmt.Sprintf("historical: corroborated case base, observed rate %.2f, staleness %s -> %.2f", base, e.HistoricalStaleness, historical)
+	}
+
 	rationale := []string{
 		fmt.Sprintf("temporal: %s old -> %.2f", e.Age, temporal),
 		fmt.Sprintf("topological: in-path=%t -> %.2f", inPath, topological),
-		fmt.Sprintf("historical: case-base prior, staleness %s -> %.2f", e.HistoricalStaleness, historical),
+		priorNote,
 	}
 
 	if !liveCorroborated {

@@ -1,10 +1,13 @@
 package clank_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/clank/internal/outcome"
 )
 
 func TestCausalScorer_TopologyOutweighsRecency(t *testing.T) {
@@ -17,7 +20,7 @@ func TestCausalScorer_TopologyOutweighsRecency(t *testing.T) {
 		},
 	}
 
-	got := s.Score(change, topoWithDegradedUpstream("payment-gateway"), heavyTopologyWeights())
+	got := s.Score("fp-causal-unit", change, topoWithDegradedUpstream("payment-gateway"), heavyTopologyWeights())
 	if likelihoodOf(got, "old-upstream") <= likelihoodOf(got, "new-unrelated") {
 		t.Errorf("a 23m in-path deploy must outscore a 4m unrelated one\n%+v", got)
 	}
@@ -25,7 +28,7 @@ func TestCausalScorer_TopologyOutweighsRecency(t *testing.T) {
 
 func TestCausalScorer_HistoricalCannotCarryAHypothesisAlone(t *testing.T) {
 	t.Parallel()
-	got := clank.NewCausalScorer().Score(historicalMatchNoLiveSource(), anyTopo(), uniformWeights())
+	got := clank.NewCausalScorer().Score("fp-causal-unit", historicalMatchNoLiveSource(), anyTopo(), uniformWeights())
 	if got[0].Likelihood > 0.5 || got[0].LiveCorroborated {
 		t.Errorf("an uncorroborated case-base match must not raise likelihood alone: %+v", got[0])
 	}
@@ -33,8 +36,8 @@ func TestCausalScorer_HistoricalCannotCarryAHypothesisAlone(t *testing.T) {
 
 func TestCausalScorer_DecaysHistoricalByTopologyStaleness(t *testing.T) {
 	t.Parallel()
-	fresh := clank.NewCausalScorer().Score(histMatch(staleness(0)), topo(), uniformWeights())
-	stale := clank.NewCausalScorer().Score(histMatch(staleness(90*24*time.Hour)), topo(), uniformWeights())
+	fresh := clank.NewCausalScorer().Score("fp-causal-unit", histMatch(staleness(0)), topo(), uniformWeights())
+	stale := clank.NewCausalScorer().Score("fp-causal-unit", histMatch(staleness(90*24*time.Hour)), topo(), uniformWeights())
 
 	if stale[0].Historical >= fresh[0].Historical {
 		t.Errorf("case-base alignment must decay as topology goes stale: fresh=%v stale=%v",
@@ -49,6 +52,79 @@ func TestCausalScorer_AbsentPredictedSignalDecrements(t *testing.T) {
 	if withAbsent.Likelihood >= withPredicted.Likelihood {
 		t.Errorf("a predicted-but-absent indicator must decrement, not be silent: %v vs %v",
 			withAbsent.Likelihood, withPredicted.Likelihood)
+	}
+}
+
+func TestCausalScorer_EmptyCaseBaseScoresLikeTheStub(t *testing.T) {
+	t.Parallel()
+	stub := clank.NewCausalScorer().Score("fp-causal-unit", histMatch(staleness(0)), topo(), uniformWeights())
+	wired := (&clank.CausalScorerImpl{Prior: clank.NewCaseBase()}).
+		Score("fp-causal-unit", histMatch(staleness(0)), topo(), uniformWeights())
+
+	if diff := cmp.Diff(stub, wired); diff != "" {
+		t.Error("an empty case base must be indistinguishable from no case base (-want +got)", diff)
+	}
+}
+
+func TestCausalScorer_CorroboratedHistoryMovesTheHistoricalLeg(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		results []outcome.Result
+		moved   func(neutral, got float64) bool
+	}{
+		// 2/2 live successes → rate 1.0 > the 0.9 stub: the leg rises.
+		"A corroborated success history raises the historical leg": {
+			results: []outcome.Result{outcome.ResultSuccess, outcome.ResultSuccess},
+			moved:   func(neutral, got float64) bool { return got > neutral },
+		},
+		// 0/2 → rate 0.0: the leg collapses. A remembered failure is the
+		// cheapest incident you'll ever not repeat.
+		"A corroborated failure history collapses the historical leg": {
+			results: []outcome.Result{outcome.ResultFailure, outcome.ResultFailure},
+			moved:   func(neutral, got float64) bool { return got < neutral },
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cb := clank.NewCaseBase()
+			for i, r := range tc.results {
+				mustAppend(t, cb, liveCase(r, fmt.Sprintf("out:%d", i)))
+			}
+
+			neutral := clank.NewCausalScorer().
+				Score("slo_burn:ceph-rgw", histMatch(staleness(0)), topo(), uniformWeights())
+			got := (&clank.CausalScorerImpl{Prior: cb}).
+				Score("slo_burn:ceph-rgw", histMatch(staleness(0)), topo(), uniformWeights())
+
+			if !tc.moved(neutral[0].Historical, got[0].Historical) {
+				t.Errorf("historical leg didn't move the right way: neutral %v, with history %v",
+					neutral[0].Historical, got[0].Historical)
+			}
+			// …and ONLY that leg: the case base has no business in the
+			// temporal or topological axes.
+			if got[0].Temporal != neutral[0].Temporal || got[0].Topological != neutral[0].Topological {
+				t.Error("the case base may only move the historical axis")
+			}
+		})
+	}
+}
+
+func TestCausalScorer_TheCaseBaseCannotCarryAHypothesisAlone(t *testing.T) {
+	t.Parallel()
+	cb := clank.NewCaseBase()
+	// a PERFECT history: three live successes, rate 1.0 —
+	for i := range 3 {
+		mustAppend(t, cb, liveCase(outcome.ResultSuccess, fmt.Sprintf("out:%d", i)))
+	}
+
+	// — scored against an event with NO live topological corroboration:
+	got := (&clank.CausalScorerImpl{Prior: cb}).
+		Score("slo_burn:ceph-rgw", historicalMatchNoLiveSource(), anyTopo(), uniformWeights())
+
+	if got[0].Likelihood > 0.5 || got[0].LiveCorroborated {
+		t.Errorf("defence 1 outranks the case base: an uncorroborated event stays capped at 0.5 "+
+			"no matter how good the history is: %+v", got[0])
 	}
 }
 
@@ -175,6 +251,6 @@ func scoreWhereHypothesisPredicts(predicted string, obs string) clank.CausalScor
 			TrafficShare:  1.0,
 		}},
 	}
-	scores := clank.NewCausalScorer().Score(change, t, uniformWeights())
+	scores := clank.NewCausalScorer().Score("fp-causal-unit", change, t, uniformWeights())
 	return scores[0]
 }
