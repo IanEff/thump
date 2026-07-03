@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
@@ -53,22 +54,25 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(inbox, outbox, outcomes string, model Model, intake *Intake, cat *StaticCatalog) *loop {
-	ledger := NewMemProposalLog()
-	cases := NewCaseBase()
+func newLoop(inbox, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *StaticCatalog) *loop {
+	ledger := NewMemProposalLog() // ONE ledger
+	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
-		Intake:   intake,
-		Model:    model,
-		Catalog:  cat,
-		Ranker:   NewRanker(),
-		Store:    NewMemStore(),
-		Ledger:   ledger,
-		Sink:     &DirSink{Dir: outbox},
-		Gate:     ReadinessGate{},
-		MaxSteps: 8,
+		Intake:       intake,
+		Model:        model,
+		Tools:        tools,
+		Catalog:      cat,
+		Ranker:       NewRanker(),
+		Store:        NewMemStore(),
+		Scorer:       &CausalScorerImpl{Prior: cases}, // scorer reads THIS case base
+		DedupeWindow: time.Hour,
+		Ledger:       ledger, // engine records into THIS ledger
+		Sink:         &DirSink{Dir: outbox},
+		Gate:         ReadinessGate{},
+		MaxSteps:     8,
 	}
 	re := &ReturnEdge{
-		Inbox: outbox,
+		Inbox: outcomes, // thump's outbox — NOT outbox, which is hiss's inbox
 		Click: Click{Ledger: ledger, Cases: cases},
 	}
 	return &loop{Engine: eng, ReturnEdge: re, Cases: cases, OutcomeInbox: outcomes}
