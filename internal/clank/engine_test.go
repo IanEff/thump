@@ -120,7 +120,6 @@ func newTestEngine(model clank.Model) (*clank.Engine, *captureSink) {
 		Ledger:       clank.NewMemProposalLog(),
 		Sink:         sink,
 		MaxSteps:     8,
-		Policy:       clank.GatePolicy{},
 	}, sink
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"testing"
 
 	"github.com/ianeff/clank/internal/clank"
 )
@@ -19,6 +21,23 @@ import (
 // 	// ## ProposalSet: dependency_saturation (1 considered)
 // 	// **Recommended:** prop-001 — throttle-non-critical-paths
 // }
+
+func TestDirSink_WritesOneFilePerProposalSet(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sink := &clank.DirSink{Dir: dir}
+
+	if err := sink.Deliver(context.Background(), clank.ProposalSet{
+		Name: "n", SignalRef: "slo_burn:ceph-rgw",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// named by fingerprint so a re-proposal of the same incident overwrites,
+	// never piles up — the file inbox inherits the ledger's dedup intent.
+	if _, err := os.Stat(filepath.Join(dir, "slo_burn:ceph-rgw.yaml")); err != nil {
+		t.Errorf("DirSink must write <fingerprint>.yaml: %v", err)
+	}
+}
 
 func ExampleYAMLSink_Deliver() {
 	sink := &clank.YAMLSink{W: os.Stdout}

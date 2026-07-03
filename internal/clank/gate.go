@@ -8,7 +8,7 @@ type GateResult = proposal.GateResult
 
 type ReadinessGate struct{}
 
-func (g ReadinessGate) Evaluate(ps ProposalSet, openDupes []ProposalSet, _ GatePolicy) GateResult {
+func (g ReadinessGate) Evaluate(ps ProposalSet, openDupes []ProposalSet) GateResult {
 	budgetOK := true
 	dedupeOK := len(openDupes) == 0
 	evidenceOK := anyLive(ps.Evidence)
