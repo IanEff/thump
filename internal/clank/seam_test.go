@@ -169,3 +169,91 @@ func seamCatalog() *contract.StaticCatalog {
 		SuccessCriteria: contract.SuccessCriteria{Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute},
 	}})
 }
+
+func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
+	t.Parallel()
+	// beats one and two: real detection, real engine, scripted model —
+	// both trap dodges (ReversalPath + GovernanceLevel) inherited from the
+	// four-beat seam, which explains them.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
+			FailureClass: clank.ClassDependencySaturation,
+			Hypotheses:   []clank.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
+			Proposals: []clank.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
+				ReversalPath: &clank.ReversalPath{
+					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
+				},
+				GovernanceLevel: &clank.GovernanceLevel{Band: string(hiss.BandActReversible)},
+			}},
+		})}}},
+	}}
+
+	eng, sink := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal("clank leg of the seam errored:", err)
+	}
+	if len(sink.delivered) != 1 {
+		t.Fatalf("seam precondition: want exactly 1 delivered set, got %d", len(sink.delivered))
+	}
+
+	// beat three: govern.
+	var auth hiss.Authority
+	dec := auth.Evaluate(sink.delivered[0], seamPolicy(), time.Unix(1000, 0))
+	if diff := cmp.Diff(hiss.VerdictApproved, dec.Verdict); diff != "" {
+		t.Fatalf("seam precondition: hiss must approve (-want +got)\n%s\nreasons: %v", diff, dec.Reasons)
+	}
+
+	// beat four: render + rehearse.
+	order, err := thump.Actuator{}.Render(
+		decision.Governed{Decision: dec, Set: sink.delivered[0]},
+		seamCatalog(), time.Unix(1000, 0))
+	if err != nil {
+		t.Fatal("thump leg of the seam errored:", err)
+	}
+	out := thump.DryRun{}.Execute(context.Background(), order, time.Unix(1000, 0))
+
+	// beat five: the return edge — into the SAME ledger the engine
+	// recorded its proposal in. This is the sentence the whole phase was
+	// building toward: the loop is one process's state, closed.
+	cb := clank.NewCaseBase()
+	click := clank.Click{Ledger: eng.Ledger, Cases: cb}
+	if err := click.Absorb(context.Background(), out); err != nil {
+		t.Fatal("click leg of the seam errored:", err)
+	}
+
+	fp := sigBurnAccel().Fingerprint
+
+	// the lifecycle leg: the engine's own set is now ACKNOWLEDGED — and
+	// still open, so the incident it never actually fixed keeps deduping.
+	open, err := eng.Ledger.Open(context.Background(), fp, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 1 {
+		t.Fatalf("the rehearsed set must stay open (it keeps deduping), got %d open", len(open))
+	}
+	if diff := cmp.Diff(proposal.PhaseAcknowledge, open[0].Status.Phase); diff != "" {
+		t.Error("a rehearsal acknowledges the set it answers to (-want +got)", diff)
+	}
+
+	// the memory leg: one case banked, fingerprint intact five beats out,
+	// the STATED 0.87 married to its outcome — CE's raw material, banked.
+	cases := cb.Cases(fp)
+	if len(cases) != 1 {
+		t.Fatalf("one outcome must mean one case, got %d", len(cases))
+	}
+	if diff := cmp.Diff(fp, cases[0].Fingerprint); diff != "" {
+		t.Error("fingerprint didn't survive five beats (-want +got)", diff)
+	}
+	if diff := cmp.Diff(0.87, cases[0].Confidence); diff != "" {
+		t.Error("the stated confidence must be banked at absorb time (-want +got)", diff)
+	}
+
+	// and the machine BELIEVES nothing new: a rehearsal is bookkeeping,
+	// not evidence. The prior the next cycle scores with is untouched.
+	if rate, corroborated := cb.Alignment(fp); corroborated {
+		t.Errorf("the loop closed on a rehearsal — nothing may be believed yet (rate %v)", rate)
+	}
+}
