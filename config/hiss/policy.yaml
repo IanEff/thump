@@ -1,0 +1,11 @@
+# hiss refuses to start without this file (hiss.go:83-85, HISS_POLICY env
+# var). Schema is hiss.Policy's YAML tags (policy.go:18) — field values here
+# match the calmPolicy() fixture in internal/hiss/authority_test.go so the
+# live run exercises the same posture the seam tests already prove out.
+version: v1
+floors:
+  tier-1:
+    dependency_saturation: 0.75
+maxBand:
+  tier-1: act_reversible
+requireReversal: true
