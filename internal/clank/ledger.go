@@ -2,6 +2,7 @@ package clank
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 )
@@ -14,6 +15,8 @@ type MemProposalLog struct {
 func NewMemProposalLog() *MemProposalLog {
 	return &MemProposalLog{}
 }
+
+var ErrNoOpenSet = errors.New("click: no open proposal set answers to this outcome")
 
 func (l *MemProposalLog) Record(ctx context.Context, ps ProposalSet) error {
 	if ctx.Err() != nil {
