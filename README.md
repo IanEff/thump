@@ -1,113 +1,84 @@
-# clank
+# thump
 
-> A Go **LLM Reasoning Plane** — a *bounded reason loop* that turns one
-> `SignalDetection` (a detected reliability event from **rattle**, the Signal Plane — built
-> in this same repo as `internal/rattle`) into a ranked, deduplicated, evidence-backed
-> **`ProposalSet`**.
+> A Go **agentic reliability engine** implementing the five-beat DRAL architecture
+> (Detect, Reason, Act, Learn — plus Govern). It turns a raw infrastructure signal 
+> into a confident, reasoned proposal, and ultimately, an executed mitigation.
 
-clank assembles a versioned snapshot of an incident (the **SAO**), then lets an **LLM
-investigate it with read-only tools**, **generate hypotheses**, and **propose candidate
-actions with dynamic, calibration-checkable confidence** — bounded by an authored action
-catalog, grounded by belief-formation guardrails, deterministically ranked, and gated on
-readiness.
-
-clank does **not** detect (that's rattle), does **not** execute against infrastructure,
-and does **not** authorize (that's the Governance Plane, which clank does not build).
+`thump` is the umbrella project for a monorepo containing five cooperating but distinct "beats" (planes):
+1. **rattle** (Signal/Detect): detects reliability divergences, emits a fingerprinted `SignalDetection`.
+2. **clank** (Reason): the LLM reason loop. It assembles a snapshot of the incident (the SAO), investigates with read-only tools, generates hypotheses, and proposes candidate actions with dynamic confidence.
+3. **hiss** (Govern): evaluates clank's `ProposalSet` against policy to emit an allow/deny/escalate `Decision`.
+4. **thump** (Act): executes the approved mitigation.
+5. **click** (Learn): closes the loop (future).
 
 - **Module:** `github.com/ianeff/thump`
 - **Go:** 1.26
-- **Shape:** long-running service; structured `slog` logging; context-driven graceful
-  shutdown.
+- **Shape:** five beats in one monorepo (for now); structured `slog` logging; context-driven graceful shutdown.
 
-> **The reasoning is the LLM; the catalog is its leash.** clank *is* a free-form reasoner —
-> there **is** an LLM in the runtime, behind a `Model` interface and faked in tests. The
-> `ActionContract` catalog is the **autonomy boundary**: the set of actions clank is
-> *allowed* to propose. The LLM does the reasoning; the catalog fences what it may reach
-> for. Both are load-bearing — the safety property is *nothing outside the catalogue can be
-> proposed*.
-
+> **Phase 1 is over, the DRAL vision is reality.** Originally started as just `clank` (the reasoning plane), the repository was renamed to `thump` to reflect the full multi-beat system. `rattle`, `clank`, and `hiss` are all actively built and green in this repository.
 ---
 
 ## Table of contents
 
-- [Where clank fits: the four-plane architecture](#where-clank-fits-the-four-plane-architecture)
-- [The clank ⟷ rattle boundary (do not blur)](#the-clank--rattle-boundary-do-not-blur)
-- [The reason loop](#the-reason-loop)
-- [Module seams](#module-seams-one-file-per-concern)
+- [The five-beat architecture](#the-five-beat-architecture)
+- [The boundaries (do not blur)](#the-boundaries-do-not-blur)
+- [The clank reason loop](#the-clank-reason-loop)
+- [clank module seams](#clank-module-seams-one-file-per-concern)
 - [Loop invariants](#loop-invariants-these-are-the-spec)
 - [The five belief-formation defences](#the-five-belief-formation-defences-why-clank-exists)
 - [Boundary objects & vocabulary](#boundary-objects--vocabulary)
 - [Repository layout & current state](#repository-layout--current-state)
 - [Building & testing](#building--testing)
 - [How we build: test-first, wave by wave](#how-we-build-test-first-wave-by-wave)
-- [Deliberately NOT built](#deliberately-not-built)
-- [Trajectory: Phase 1 → Phase 2](#trajectory-phase-1--phase-2)
+- [Trajectory: Phase 1 is done, Phase 2 is here](#trajectory-phase-1-is-done-phase-2-is-here)
 - [Contributing](#contributing)
 - [Source of truth](#source-of-truth)
 
 ---
 
-## Where clank fits: the four-plane architecture
+## The five-beat architecture
 
-clank is one plane of an *agentic reliability* architecture (from the book *Agentic
-Reliability Engineering*). The design rests on a strict separation of four concerns:
+This project implements an *agentic reliability* architecture (from the book *Agentic
+Reliability Engineering*). The design rests on a strict separation of five beats (planes):
 
-| Plane | Project | Job | Verb |
+| Plane | Project (internal/*) | Job | Verb |
 |---|---|---|---|
-| **Signal** | `rattle` *(this repo, `internal/rattle`)* | detect reliability divergences, emit a fingerprinted `SignalDetection` | *detects* |
-| **Reasoning** | **clank** (this repo) | reason over evidence, generate hypotheses, propose + rank candidate actions | *selects* |
-| **Governance** | *(not built)* | convert a requested governance band into allow/deny | *permits* |
-| **Execution** | *(not built)* | act against infrastructure, observe outcomes | *acts* |
+| **Signal** | `rattle` | detect reliability divergences, emit a fingerprinted `SignalDetection` | *detects* |
+| **Reasoning** | `clank` | reason over evidence, generate hypotheses, propose + rank candidate actions | *selects* |
+| **Governance** | `hiss` | evaluate a `ProposalSet` against policy to emit an allow/deny/escalate `Decision` | *permits* |
+| **Execution** | `thump` | act against infrastructure, observe outcomes | *acts* |
+| **Learning** | `click` | update the case base and adjust confidence based on outcomes | *learns* |
 
-clank is the **Reasoning Plane**: it **selects** (reasons over evidence and proposes a
-ranked set of candidate actions). It does **not permit** — authority/policy is the
-Governance Plane's job — and it does **not detect** — that is rattle's. *"Selects vs.
-permits"* is the boundary the entire design rests on.
+"Selects vs. permits" is the boundary the core design rests on. The Reasoning plane (`clank`) generates hypotheses and recommends actions, but the Governance plane (`hiss`) holds the policy for whether those actions are allowed.
 
 Three hard lines clank never crosses:
 
 1. **It does not detect.** `SignalDetection` is rattle's; clank trusts it.
 2. **It does not execute.** It emits proposals; nothing touches infrastructure.
-3. **It does not authorize.** Each proposal carries a *requested* governance band; a
-   Governance plane converts it to allow/deny.
-
+3. **It does not authorize.** Each proposal carries a *requested* governance band; `hiss` converts it to allow/deny.
 ---
 
-## The clank ⟷ rattle boundary (do not blur)
+## The boundaries (do not blur)
 
-clank consumes rattle's `SignalDetection` read-only. The safety of the whole design rests
-on this seam holding. Three rules:
+The boundaries between planes are strict compiler-enforced seams. The safety of the whole design rests on these holding.
+
+### The rattle ⟷ clank boundary
+clank consumes rattle's `SignalDetection` read-only. Three rules:
 
 1. **The `SignalDetection` is rattle's, not ours.** clank consumes it read-only and
    **trusts it** — it never recomputes the fingerprint (rattle's dedup key), never re-judges
-   signal trustworthiness or significance. **clank imports rattle's type; it never
-   defines it.** (Declaring it as a `+kubebuilder:object` in clank's repo would silently
-   move Signal-Plane ownership into Reasoning — don't. The struct is currently *reproduced
-   for reference* in its own leaf package `internal/signal` — the compiler-enforced contract
-   seam, import-clean for rattle — until it graduates to a real import.)
-
+   signal trustworthiness or significance. clank imports rattle's type via the `internal/signal` package.
 2. **Two confidence numbers, never one field.**
-   - *Signal-strength* confidence ("is this real?") lives on
-     `SignalDetection.Divergence.Confidence` and is **rattle's** — clank reads it, never
-     sets it.
-   - *Hypothesis* confidence ("how sure of this fix?") lives per `Candidate` and is
-     **clank's**, computed by the reason loop.
+   - *Signal-strength* confidence lives on `SignalDetection.Divergence.Confidence` and is **rattle's** — clank reads it, never sets it.
+   - *Hypothesis* confidence lives per `Candidate` and is **clank's**, computed by the reason loop.
+3. **Two-axis impact, never collapsed.** rattle hands clank **severity** (how bad) and **blast radius** (how broadly exposed) as independent axes.
 
-3. **clank selects; it does not permit.** The gate decides whether a `ProposalSet` is worth
-   **emitting**, NOT whether an action is authorized. The gate holds **zero policy** — no
-   criticality tier, no error-budget check, no confidence threshold. Each `Candidate`
-   carries a `GovernanceLevel` band (a *request*); a Governance Plane converts the band to
-   allow/deny. Any `if criticality…`, `if error_budget…`, or `if confidence < threshold`
-   inside clank is the seam that rots first.
-
-**Two-axis impact, never collapsed.** rattle hands clank **severity** (how bad — a metric
-property) *and* **blast radius** (how broadly exposed — a who/what property) as independent
-axes, each with its own velocity. The ranker reads both; it never merges them into one
-"badness" number.
-
+### The clank ⟷ hiss boundary
+1. **clank selects; it does not permit.** The readiness gate in clank decides whether a `ProposalSet` is worth **emitting**, NOT whether an action is authorized. It holds **zero policy**.
+2. **hiss governs.** Each `Candidate` carries a `GovernanceLevel` band (a *request*); `hiss` converts the band to an approved, escalated, or rejected `Decision`.
 ---
 
-## The reason loop
+## The clank reason loop
 
 `Engine.Propose(ctx, SignalDetection) (ProposalSet, error)` runs the loop:
 
@@ -147,7 +118,7 @@ pick."* A human (or a later governance layer) decides whether to act.
 
 ---
 
-## Module seams (one file per concern)
+## clank module seams (one file per concern)
 
 Phase 1 is **one `internal/clank` package, one file per seam**. The file boundaries express
 the module table; the discipline is the **must-not** column — that's where a clean design
@@ -290,67 +261,30 @@ here's the trade-off." It carries the frozen `SAO` snapshot, the `FailureClass`,
 ## Repository layout & current state
 
 ```
-clank/
-├── cmd/clank/main.go        # thin entry: wire deps, signal.NotifyContext, run
-├── cmd/rattle/main.go       # rattle's own thin entry (Signal Plane binary)
-├── internal/signal/
-│   └── signal.go            # the rattle⟷clank contract leaf: Detection (rattle's
-│                            # SignalDetection, reproduced as signal.Detection) +
-│                            # shared value objects (Severity, BlastRadius). Both
-│                            # clank and rattle import it; edge is clank/rattle → signal,
-│                            # never back — a compiler-enforced seam.
-├── internal/rattle/         # the Signal Plane — its own file-per-detector layout:
-│   │                        # detector.go, debounce.go, reconcile.go, correlation.go,
-│   │                        # envelope.go, contract.go, enrich.go, source.go, signal.go.
-│   └── …                    # imports internal/signal directly; no calls to internal/clank.
-├── internal/clank/
-│   ├── sao.go               # SAO + sub-snapshots
-│   ├── intake.go            # ① Intake.Assemble
-│   ├── model.go             # Model, Message, Completion, ToolCall, ToolSpec (the LLM seam)
-│   ├── tools.go             # Tool (read-only telemetry + case-base retrieval) + control specs
-│   ├── engine.go            # ② Engine.Propose — the bounded reason loop
-│   ├── store.go             # Store + Turn + in-memory impl
-│   ├── catalog.go           # ActionContract + Catalog.Applicable (autonomy boundary)
-│   ├── causal.go            # CausalScorer + belief-formation defences
-│   ├── rank.go              # ④ Ranker
-│   ├── gate.go              # ⑤ ReadinessGate
-│   ├── proposal.go          # ProposalSet, Candidate, ProposalStatus
-│   ├── policy.go            # GatePolicy
-│   ├── sink.go              # ⑥ ProposalSink + MarkdownSink
-│   └── ledger.go            # ProposalLog (dedup)
+thump/
+├── cmd/
+│   ├── clank/main.go        # clank thin entry
+│   ├── hiss/main.go         # hiss thin entry
+│   ├── rattle/main.go       # rattle thin entry
+│   └── thump/main.go        # thump thin entry
+├── internal/
+│   ├── signal/              # rattle⟷clank contract (Detection, Severity, BlastRadius)
+│   ├── proposal/            # clank⟷hiss contract (Set, Candidate, Hypothesis)
+│   ├── rattle/              # Signal Plane (detectors, reconcile, enrichment)
+│   ├── clank/               # Reasoning Plane (intake, reason loop, causal scorer, ranker)
+│   ├── hiss/                # Governance Plane (authority, decision log, policy)
+│   └── thump/               # Execution Plane (future)
 ├── Makefile · .golangci.yml
 └── README.md · CLAUDE.md
 ```
 
-> Note there is **no** `classify.go` or `instantiate.go` — classification is the model's
-> output, not a rules table. (See [history](#a-note-on-history) below.)
+**Current state (2026-07-03).**
+- **clank (Reason)**: Phase 1 binary is **done** (W0→W7). The full reason loop, pure modules, belief-formation defences, and autonomy boundary are green.
+- **rattle (Detect)**: **Done** (W0→W9). v1 and v2 are landed. Three detectors (burn-rate, multi-signal, historical-envelope) are wired.
+- **hiss (Govern)**: **Active Front** (W0→W6). W0-W5 landed (`Decision`, `Authority.Evaluate`, `DecisionLog`, `Transport`). Wave 6 (the keyless three-beat seam test) is the current final wave.
+- **thump (Act) & click (Learn)**: Named but not yet built.
 
-**Current state (2026-07-01).** clank's **Phase 1 binary is done** — the full reason loop
-(`Engine.Propose`), the pure modules, the five belief-formation defences, and the autonomy
-boundary are all green, `MarkdownSink` renders a `ProposalSet`, and `make ci` is clean end to
-end. **rattle** (the Signal Plane, `internal/rattle`) has since been built in this same repo
-and is **also wave-complete** — three detectors (burn-rate acceleration, multi-signal
-correlation, historical-envelope) wired into `Reconciler.Reconcile`, plus a freshness signal
-contract, detection enrichment (topology / severity / traffic), and the `Envelope`-interface
-generalization. Two binaries, one module (`cmd/clank`, `cmd/rattle`), coupled only through
-`internal/signal`. Run `gotestdox ./...` to read the whole suite back as a spec.
-
-> **Note:** rattle's build carries its own wave plan (W0–W9), numbered independently of
-> clank's (W0–W7) — don't conflate the two when a wave number comes up.
-
-### A note on history
-
-clank was built as an LLM agent loop (2026-06-21 → 06-25), then briefly **re-cast as a
-deterministic scoring engine** on 2026-06-26 — a reading that traced to an *editorial gloss
-in the harvest notes* ("clank is not a free-form reasoner… no LLM required"), **not** the
-book, whose Reasoning Plane is unambiguously LLM-driven. **That pivot was reversed the same
-day.** If you remember "no LLM," "deterministic scoring engine," a `Classifier` rules table,
-or `classify.go`/`instantiate.go` — that is the **superseded detour**. The current design is
-the LLM reason loop above.
-
-The reversal kept every structural asset the detour produced: the SAO, the
-`ProposalSet`-as-audit-unit, the gate-vs-shaper split, the readiness gate, the dedup ledger,
-and the five belief-formation defences — they sit *more* naturally on the LLM case.
+(Note: Each beat carries its own wave plan numbered independently — e.g., rattle's W0-W9 vs clank's W0-W7 vs hiss's W0-W6.)
 
 ---
 
@@ -399,62 +333,15 @@ Conventions that keep tests sharp:
 
 ---
 
-## Deliberately NOT built
-
-A test for these would invite building them. Do not add one.
-
-- **The real `Model` client** — one fake `Model` drives every test; the real provider +
-  model-id is a repo-code decision, deferred behind the `Model` interface. No token
-  streaming, no multi-provider SDK.
-- **A Governance plane / any authority decision** — clank emits a `GovernanceLevel` band
-  *request* and stops; no criticality, error-budget, change-window, or confidence-threshold
-  check anywhere.
-- **The risk *shaper* (CRS)** — the `change-risk-score` scalar, its normalizers, and the
-  band map. `GovernanceLevel.Band` exists; its *computation* is parked.
-- **Signal validity / significance / fingerprinting / topology+traffic observation** —
-  rattle's job; clank trusts the inbound `SignalDetection`.
-- **The delivery surface** — change-intent, the metric/cohort/timewindow registries, the
-  Test-Agent / `ValidationState` / `Envelope`. Mostly rattle's.
-- **The learning-loop *writes*** — the case base is *read* in v1 (the `casebase` retrieval
-  tool, stubbed source); *writing* it (similarity store, confidence calibration,
-  effectiveness ratings, `GatePolicyPatch`) is deferred. `ProposalSet.Status.Outcome` exists
-  but nothing populates it in v1.
-- **`parallel-decision`** — two independent reasoning chains agreeing before emit; named but
-  deferred.
-- **Real source wiring** (ArgoCD sync events, the declared topology graph, real
-  telemetry/case-base backends) — arrives via interface, faked in tests. **Postgres**
-  `ProposalLog` / `Store` — in-memory only.
 
 ---
 
-## Trajectory: Phase 1 → Phase 2
+## Trajectory: Phase 1 is done, Phase 2 is here
 
-- **Phase 1 — the binary (done, 2026-06-29).** The test-first LLM reason loop:
-  `Engine.Propose(ctx, SignalDetection) → ProposalSet`, the pure modules + the loop green,
-  the five belief-formation defences green, the autonomy boundary enforced behaviourally,
-  `make ci` clean. Transport-agnostic library + a thin `cmd/clank` entry; the LLM behind a
-  `Model` interface, faked in tests. (Since then, **rattle** — the Signal Plane feeding this
-  loop — has been built to completion in the same repo; see [current
-  state](#repository-layout--current-state).)
-- **Phase 2 — two competing descriptions, neither finalized.** How the engine gets triggered
-  and delivered is **under active reconsideration** — check the vault's `clank-running-notes.md`
-  (`2026-06-29 § The design divergence starts here`, `2026-06-30 § DRAL beat names locked`)
-  for the live state before building toward either:
-  - *The original operator plan.* Wrap the engine as a Kubernetes operator (controller-runtime
-    / kubebuilder): a reconciler watches `SignalDetection` CRs and *dispatches* a reason run;
-    the `ProposalSet` surfaces as a CR / status / event. **The contracts ARE the CRDs.** As of
-    2026-06-29 Ian's call is that CRDs/etcd are "no longer a given" — this plan is in doubt.
-  - *The newer DRAL vision.* Five named beats — rattle (Detect), clank (Reason), `hiss`
-    (Govern), `thump` (Act), `click` (Learn) — as one monorepo *for now* (`internal/rattle`,
-    `internal/clank`, …), graduating to independent repos/binaries decoupled by a pub-sub
-    broker (NATS JetStream is the leading pick) once the seam contracts stabilize. No CRDs.
+- **Phase 1 — the binary (done).** The test-first LLM reason loop (`clank`) is complete.
+- **Phase 2 — the DRAL five-beat engine.** We are now building the full five-beat DRAL vision (rattle → clank → hiss → thump → click) as one monorepo, which will eventually graduate to independent repos/binaries decoupled by a pub-sub broker (NATS JetStream). To reflect this, the project and repository have been renamed from `clank` to `thump`.
 
-**Either way, Phase 2 does not change Phase 1.** Whatever the trigger/delivery surface ends up
-being, it's a new *caller* of `Engine.Propose`, not a rewrite of the reason loop, the pure
-modules, or their tests. (The one care: the reason loop is **not** a reconcile — it's a
-long-running LLM conversation — so a reconcile would *dispatch* it, not run it inline.) Do not
-pre-build operator or pub-sub scaffolding — the direction isn't picked yet.
-
+**Phase 2 does not change Phase 1.** Whatever the trigger/delivery surface ends up being, it's a new *caller* of `clank.Engine.Propose`, not a rewrite of the reason loop.
 ---
 
 ## Contributing
@@ -502,7 +389,7 @@ Go), and the working agreement reflects that:
 ## Source of truth
 
 The canonical scope, architecture, and build plan live in the Obsidian vault under
-`~/Documents/vault/Projects/clank/` — read them live, do not mirror them:
+`~/Documents/vault/Projects/thump/` — read them live, do not mirror them:
 
 - `clank-readme.md` — anchor / one-page overview.
 - `clank-architecture.md` — **architecture of record**: the reason loop, the module seams,
