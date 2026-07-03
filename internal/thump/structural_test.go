@@ -21,6 +21,7 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"github.com/ianeff/clank/internal/decision"`: true,
 		`"github.com/ianeff/clank/internal/proposal"`: true,
 		`"github.com/ianeff/clank/internal/contract"`: true,
+		`"github.com/ianeff/clank/internal/outcome"`:  true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {
