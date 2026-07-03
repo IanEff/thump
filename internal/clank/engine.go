@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianeff/clank/internal/proposal"
 	"github.com/ianeff/clank/internal/signal"
 )
 
@@ -101,7 +102,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 
 	if !proposed && !declined {
 		set.Gate = &GateResult{BudgetOK: false, Reason: "budget"}
-		set.Status.Phase = "budget_exhausted"
+		set.Status.Phase = proposal.PhaseBudgetExhausted
 		if err := e.Ledger.Record(ctx, set); err != nil {
 			return ProposalSet{}, fmt.Errorf("record: %w", err)
 		}
@@ -109,7 +110,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 	}
 	if !proposed {
 		if set.Status.Phase == "" {
-			set.Status.Phase = "no_action"
+			set.Status.Phase = proposal.PhaseNoAction
 		}
 		if err := e.Ledger.Record(ctx, set); err != nil {
 			return ProposalSet{}, fmt.Errorf("record: %w", err)
@@ -137,9 +138,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 	gate := e.Gate.Evaluate(set, openDupes, e.Policy)
 	set.Gate = &gate
 	if set.Gate.Passed {
-		set.Status.Phase = "proposed"
+		set.Status.Phase = proposal.PhaseProposed
 	} else {
-		set.Status.Phase = "no_action"
+		set.Status.Phase = proposal.PhaseNoAction
 	}
 
 	if err := e.Ledger.Record(ctx, set); err != nil {

@@ -37,6 +37,16 @@ type Status struct {
 	ObservedAt   time.Time `json:"observedAt,omitempty" yaml:"observedAt,omitempty"`
 }
 
+const (
+	PhaseProposed        = "proposed"
+	PhaseAcknowledge     = "acknowledge"
+	PhaseActed           = "acted"
+	PhaseSuperseded      = "superseded"
+	PhaseClosed          = "closed"
+	PhaseNoAction        = "no_action"
+	PhaseBudgetExhausted = "budget_exhausted" // engine.go:104 writes it; the enum comment never knew
+)
+
 type Hypothesis struct {
 	Name   string  `json:"name" yaml:"name"`
 	Weight float64 `json:"weight" yaml:"weight"`
