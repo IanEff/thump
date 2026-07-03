@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/signal"
 )
 
 type Dependency struct {

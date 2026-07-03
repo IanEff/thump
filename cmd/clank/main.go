@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 var (

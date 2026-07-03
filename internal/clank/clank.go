@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ianeff/clank/internal/contract"
-	"github.com/ianeff/clank/internal/proposal"
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/internal/signal"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {

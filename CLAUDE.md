@@ -42,7 +42,7 @@ whose `SignalDetection` is clank's input). "Selects vs. permits" is the boundary
 design rests on; see § The clank ⟷ rattle boundary below (the same discipline governs the
 clank ⟷ hiss seam — see § hiss).
 
-Long-running service. Module `github.com/ianeff/clank`, Go 1.26. Structured `slog` logging,
+Long-running service. Module `github.com/ianeff/thump`, Go 1.26. Structured `slog` logging,
 context-driven graceful shutdown.
 
 > **Repo state (updated 2026-07-02):** clank's Phase 1 binary (W0→W7, the reason-loop
@@ -115,8 +115,9 @@ The canonical scope, architecture, and build plan live in the vault at `~/Docume
 - `clank-todo.md` — the live checklist (Waves W0→W7, claim by claim).
 
 A canonical scope doc is destined for this repo at `docs/decision-engine-scope.md` (not yet
-written — Ian's to author). The vault module path is `github.com/ianeff/clank` (matches
-`go.mod`); if you spot the stale `github.com/ifurst/clank` anywhere, the real path wins.
+written — Ian's to author). The vault module path is `github.com/ianeff/thump` (matches
+`go.mod`); if you spot a stale `github.com/ianeff/clank` or `github.com/ifurst/clank`
+anywhere, the real path wins.
 
 ## rattle — where it lives, and current focus
 

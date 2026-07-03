@@ -1,6 +1,6 @@
 package thump
 
-import "github.com/ianeff/clank/internal/outcome"
+import "github.com/ianeff/thump/internal/outcome"
 
 // Aliases onto internal/outcome (Wave 1 extraction, fourth leaf) — kept so
 // nothing else in thump has to change. Burn these in their own commit once

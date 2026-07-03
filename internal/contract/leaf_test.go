@@ -17,7 +17,7 @@ func TestContractIsALeafPackage(t *testing.T) {
 	allowed := map[string]bool{
 		`"errors"`: true,
 		`"time"`:   true,
-		`"github.com/ianeff/clank/internal/proposal"`: true,
+		`"github.com/ianeff/thump/internal/proposal"`: true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ianeff/clank/internal/proposal"
+	"github.com/ianeff/thump/internal/proposal"
 )
 
 type Decision struct {

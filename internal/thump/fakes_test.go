@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/clank/internal/contract"
-	"github.com/ianeff/clank/internal/decision"
-	"github.com/ianeff/clank/internal/proposal"
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/decision"
+	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/internal/thump"
 	"sigs.k8s.io/yaml"
 )
 

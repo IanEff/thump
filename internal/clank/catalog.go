@@ -1,6 +1,6 @@
 package clank
 
-import "github.com/ianeff/clank/internal/contract"
+import "github.com/ianeff/thump/internal/contract"
 
 // The action-contract catalog vocabulary moved to internal/contract (thump
 // Wave 1b) — thump resolves a granted ContractRef from the same catalog

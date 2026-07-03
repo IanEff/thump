@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ianeff/clank/internal/proposal"
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/internal/signal"
 )
 
 type Engine struct {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {

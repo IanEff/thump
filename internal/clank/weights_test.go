@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 // TestEngine_CarriesNoFloorPolicy is I-3 as an executable invariant: the

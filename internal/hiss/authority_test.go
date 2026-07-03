@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/hiss"
-	"github.com/ianeff/clank/internal/proposal"
+	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/proposal"
 )
 
 func TestEvaluate_GoldenPath_ApprovesAndStampsEverything(t *testing.T) {

@@ -1,4 +1,4 @@
-module github.com/ianeff/clank
+module github.com/ianeff/thump
 
 go 1.26
 

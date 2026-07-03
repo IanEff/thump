@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 var (

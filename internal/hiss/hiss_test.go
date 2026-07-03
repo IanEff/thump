@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ianeff/clank/internal/hiss"
+	"github.com/ianeff/thump/internal/hiss"
 )
 
 func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {

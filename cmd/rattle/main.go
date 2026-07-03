@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ianeff/clank/internal/rattle"
+	"github.com/ianeff/thump/internal/rattle"
 )
 
 // version information populated by ldflags.

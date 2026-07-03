@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/rattle"
+	"github.com/ianeff/thump/internal/rattle"
 )
 
 func window(rates ...float64) []rattle.Sample {

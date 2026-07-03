@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/clank/internal/clank"
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/signal"
 )
 
 // recordingTool is a read-only telemetry tool that counts its invocations, so a

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 func newModel(t *testing.T) clank.Model {

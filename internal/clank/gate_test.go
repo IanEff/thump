@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 func TestGate(t *testing.T) {

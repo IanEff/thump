@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {

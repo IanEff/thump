@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/clank"
-	"github.com/ianeff/clank/internal/contract"
-	"github.com/ianeff/clank/internal/decision"
-	"github.com/ianeff/clank/internal/hiss"
-	"github.com/ianeff/clank/internal/proposal"
-	"github.com/ianeff/clank/internal/rattle"
-	"github.com/ianeff/clank/internal/signal"
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/decision"
+	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/internal/rattle"
+	"github.com/ianeff/thump/internal/signal"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 // seamSource is a three-line in-process rattle.Source (the rattle test fakes live in

@@ -18,7 +18,7 @@ func TestDecisionIsALeafPackage(t *testing.T) {
 		`"errors"`: true, // Auditable's error values
 		`"fmt"`:    true,
 		`"time"`:   true,
-		`"github.com/ianeff/clank/internal/proposal"`: true, // Governed carries the Set
+		`"github.com/ianeff/thump/internal/proposal"`: true, // Governed carries the Set
 	}
 	entries, err := os.ReadDir(".") // go test runs with the package dir as CWD
 	if err != nil {

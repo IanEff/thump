@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/signal"
 )
 
 type Reconciler struct {

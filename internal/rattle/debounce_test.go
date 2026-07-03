@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/clank/internal/rattle"
+	"github.com/ianeff/thump/internal/rattle"
 )
 
 func TestDebouncer_SuppressesARepeatWithinTheHoldWindow(t *testing.T) {

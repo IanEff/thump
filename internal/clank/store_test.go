@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 func TestStore_PendingReturnsACheckpointedTurn(t *testing.T) {

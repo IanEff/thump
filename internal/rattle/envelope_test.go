@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/rattle"
+	"github.com/ianeff/thump/internal/rattle"
 )
 
 func TestEnvelopeDetector(t *testing.T) {

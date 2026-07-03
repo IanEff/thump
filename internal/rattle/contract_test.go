@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/rattle"
+	"github.com/ianeff/thump/internal/rattle"
 )
 
 func TestSignalContract_Attenuated(t *testing.T) {

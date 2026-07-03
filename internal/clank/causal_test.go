@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/clank"
-	"github.com/ianeff/clank/internal/outcome"
+	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/outcome"
 )
 
 func TestCausalScorer_TopologyOutweighsRecency(t *testing.T) {

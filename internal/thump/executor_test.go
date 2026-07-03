@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 func TestDryRun_StampsAnHonestOutcome(t *testing.T) {

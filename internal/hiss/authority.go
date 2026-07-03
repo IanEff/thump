@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ianeff/clank/internal/decision"
-	"github.com/ianeff/clank/internal/proposal"
+	"github.com/ianeff/thump/internal/decision"
+	"github.com/ianeff/thump/internal/proposal"
 )
 
 type Authority struct{}

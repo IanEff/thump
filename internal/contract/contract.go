@@ -10,7 +10,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ianeff/clank/internal/proposal"
+	"github.com/ianeff/thump/internal/proposal"
 )
 
 // ErrOutsideCatalog is the autonomy boundary's refusal: a ContractRef that

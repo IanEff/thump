@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/decision"
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/decision"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 func TestRender_RefusesEverythingButAnApproval(t *testing.T) {

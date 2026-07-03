@@ -3,7 +3,7 @@ package thump_test
 import (
 	"testing"
 
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 func TestOutcomeAuditable(t *testing.T) {

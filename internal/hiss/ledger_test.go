@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/hiss"
+	"github.com/ianeff/thump/internal/hiss"
 )
 
 func TestDecisionLog_TheNoPileIsQueryable(t *testing.T) {

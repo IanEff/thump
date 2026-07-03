@@ -1,6 +1,6 @@
 package clank
 
-import "github.com/ianeff/clank/internal/proposal"
+import "github.com/ianeff/thump/internal/proposal"
 
 // GateResult moved to internal/proposal (hiss Wave 1): hiss reads it off the
 // ProposalSet. The gate that produces it stays here — behavior doesn't move.

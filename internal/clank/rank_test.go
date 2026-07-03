@@ -3,7 +3,7 @@ package clank_test
 import (
 	"testing"
 
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 func TestRanker_AcceleratingBlastFavorsFastContainment(t *testing.T) {

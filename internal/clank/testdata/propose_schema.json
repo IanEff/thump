@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/ianeff/clank/internal/clank/propose-input",
+  "$id": "https://github.com/ianeff/thump/internal/clank/propose-input",
   "properties": {
     "failureClass": {
       "type": "string",

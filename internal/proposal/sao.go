@@ -3,7 +3,7 @@ package proposal
 import (
 	"time"
 
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/signal"
 )
 
 type SAO struct {

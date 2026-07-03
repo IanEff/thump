@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ianeff/clank/internal/outcome"
-	"github.com/ianeff/clank/internal/proposal"
+	"github.com/ianeff/thump/internal/outcome"
+	"github.com/ianeff/thump/internal/proposal"
 )
 
 type Case struct {

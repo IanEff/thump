@@ -14,7 +14,7 @@ readiness.
 clank does **not** detect (that's rattle), does **not** execute against infrastructure,
 and does **not** authorize (that's the Governance Plane, which clank does not build).
 
-- **Module:** `github.com/ianeff/clank`
+- **Module:** `github.com/ianeff/thump`
 - **Go:** 1.26
 - **Shape:** long-running service; structured `slog` logging; context-driven graceful
   shutdown.

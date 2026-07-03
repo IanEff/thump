@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/ianeff/clank/internal/rattle"
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/rattle"
+	"github.com/ianeff/thump/internal/signal"
 )
 
 func TestSignalFor_StampsTheKindObjectFingerprintAndSeamFields(t *testing.T) {

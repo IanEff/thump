@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/clank/internal/clank"
+	"github.com/ianeff/thump/internal/clank"
 	"sigs.k8s.io/yaml"
 )
 

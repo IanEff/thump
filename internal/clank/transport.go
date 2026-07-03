@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ianeff/clank/internal/signal"
+	"github.com/ianeff/thump/internal/signal"
 	"sigs.k8s.io/yaml"
 )
 

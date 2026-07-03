@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/clank/internal/thump"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 func TestTick_GoldenRun_OneEnvelopeInOrderAndOutcomeOut(t *testing.T) {

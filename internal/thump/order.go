@@ -3,8 +3,8 @@ package thump
 import (
 	"time"
 
-	"github.com/ianeff/clank/internal/contract"
-	"github.com/ianeff/clank/internal/decision"
+	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/decision"
 )
 
 type Order struct {

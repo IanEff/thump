@@ -3,7 +3,7 @@ package hiss
 import (
 	"time"
 
-	"github.com/ianeff/clank/internal/proposal"
+	"github.com/ianeff/thump/internal/proposal"
 )
 
 type Window struct {

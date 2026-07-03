@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/clank/internal/hiss"
+	"github.com/ianeff/thump/internal/hiss"
 )
 
 func TestAuditable(t *testing.T) {
