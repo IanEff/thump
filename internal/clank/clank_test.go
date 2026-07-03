@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,91 @@ func TestMain_VersionFlag(t *testing.T) {
 	want := "clank v1.0.0\ncommit: abcdef\nbuilt: 2026-06-29\n"
 	if diff := cmp.Diff(want, stdout.String()); diff != "" {
 		t.Error("wrong --version output (-want +got)\n", diff)
+	}
+}
+
+func TestMain_MissingInboxReturnsOne(t *testing.T) {
+	t.Setenv("CLANK_INBOX", "") // hermetic — don't inherit the shell's
+	t.Setenv("CLANK_OUTBOX", t.TempDir())
+	t.Setenv("CLANK_OUTCOMES", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	var out, errb bytes.Buffer
+	code := clank.Main(nil, &out, &errb, "dev", "none", "unknown")
+	if code != 1 {
+		t.Errorf("missing CLANK_INBOX should exit 1, got %d", code)
+	}
+	if !strings.Contains(errb.String(), "CLANK_INBOX") {
+		t.Error("stderr should name the missing var:", errb.String())
+	}
+}
+
+func TestMain_MissingOutboxReturnsOne(t *testing.T) {
+	t.Setenv("CLANK_INBOX", t.TempDir())
+	t.Setenv("CLANK_OUTBOX", "")
+	t.Setenv("CLANK_OUTCOMES", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	var out, errb bytes.Buffer
+	code := clank.Main(nil, &out, &errb, "dev", "none", "unknown")
+	if code != 1 {
+		t.Errorf("missing CLANK_OUTBOX should exit 1, got %d", code)
+	}
+	if !strings.Contains(errb.String(), "CLANK_OUTBOX") {
+		t.Error("stderr should name the missing var:", errb.String())
+	}
+}
+
+func TestMain_MissingOutcomesReturnsOne(t *testing.T) {
+	t.Setenv("CLANK_INBOX", t.TempDir())
+	t.Setenv("CLANK_OUTBOX", t.TempDir())
+	t.Setenv("CLANK_OUTCOMES", "")
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	var out, errb bytes.Buffer
+	code := clank.Main(nil, &out, &errb, "dev", "none", "unknown")
+	if code != 1 {
+		t.Errorf("missing CLANK_OUTCOMES should exit 1, got %d", code)
+	}
+	if !strings.Contains(errb.String(), "CLANK_OUTCOMES") {
+		t.Error("stderr should name the missing var:", errb.String())
+	}
+}
+
+func TestMain_MissingAPIKeyReturnsOne(t *testing.T) {
+	t.Setenv("CLANK_INBOX", t.TempDir())
+	t.Setenv("CLANK_OUTBOX", t.TempDir())
+	t.Setenv("CLANK_OUTCOMES", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	var out, errb bytes.Buffer
+	code := clank.Main(nil, &out, &errb, "dev", "none", "unknown")
+	if code != 1 {
+		t.Errorf("missing ANTHROPIC_API_KEY should exit 1, got %d", code)
+	}
+	if !strings.Contains(errb.String(), "ANTHROPIC_API_KEY") {
+		t.Error("stderr should name the missing var:", errb.String())
+	}
+}
+
+func TestRunLoop_ReturnsPromptlyWhenContextIsCancelled(t *testing.T) {
+	t.Parallel()
+	outbox := t.TempDir()
+	tr := &clank.Transport{Inbox: t.TempDir(), Engine: newProposingEngine(t, outbox)}
+	re := &clank.ReturnEdge{
+		Inbox: t.TempDir(),
+		Click: clank.Click{Ledger: clank.NewMemProposalLog(), Cases: clank.NewCaseBase()},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancelled before runLoop even starts — the ticker (5s) must never win this race
+
+	done := make(chan struct{})
+	go func() {
+		clank.RunLoopForTest(ctx, tr, re)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runLoop did not return promptly after its context was cancelled")
 	}
 }
 
