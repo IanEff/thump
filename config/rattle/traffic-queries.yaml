@@ -1,0 +1,15 @@
+# Per-SLO blast-radius queries for Stage 5's HubbleTrafficSource.
+# blast radius = affected ÷ total, clamped to [0,1].
+#
+# `affected` wears `or vector(0)` — absence-of-failures and absence-of-
+# measurement are different facts. A healthy lab must read as 0 ÷ total = 0,
+# not as "no traffic data". `total` is left bare: if it comes back empty,
+# nothing is being measured, and that's the right signal to surface as-is.
+#
+# Only ceph-rgw-availability for now — add the rest once this one proves out
+# in Stage 5. Verified live against http://prometheus.ceph.lab on 2026-07-03.
+version: v1
+slos:
+  - id: ceph-rgw-availability
+    affected: 'sum(rate(hubble_tcp_flags_total{destination_workload=~".*rgw.*",flag="RST"}[5m])) or vector(0)'
+    total:    'sum(rate(hubble_tcp_flags_total{destination_workload=~".*rgw.*"}[5m]))'
