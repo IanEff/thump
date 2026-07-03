@@ -9,7 +9,7 @@ import (
 )
 
 type CausalScorer interface {
-	Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights CausalWeights) []CausalScore
+	Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights ScoringWeights) []CausalScore
 }
 
 // Prior is the scorer's window into the case base — consumer-defined, the
@@ -32,7 +32,7 @@ func NewCausalScorer() *CausalScorerImpl {
 	return &CausalScorerImpl{}
 }
 
-func (s *CausalScorerImpl) Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights CausalWeights) []CausalScore {
+func (s *CausalScorerImpl) Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights ScoringWeights) []CausalScore {
 	scores := make([]CausalScore, 0, len(change.Events))
 	for _, e := range change.Events {
 		scores = append(scores, scoreEvent(fingerprint, e, topo, weights, s.Prior))
@@ -46,7 +46,7 @@ const (
 	negativeSignalPenalty = 0.2
 )
 
-func scoreEvent(fingerprint string, e ChangeEvent, topo TopologySnapshot, weights CausalWeights, prior Prior) CausalScore {
+func scoreEvent(fingerprint string, e ChangeEvent, topo TopologySnapshot, weights ScoringWeights, prior Prior) CausalScore {
 	node, inPath := findNode(topo, e.Target)
 
 	temporal := temporalScore(e.Age)

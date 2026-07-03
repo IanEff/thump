@@ -31,8 +31,8 @@ func TestEvaluate_EscalatesBelowTheConfidenceFloor(t *testing.T) {
 	if diff := cmp.Diff([]string{hiss.ReasonConfidenceFloor}, got.Reasons); diff != "" {
 		t.Error("the escalation must name the floor as its reason (-want +got)", diff)
 	}
-	// the floor LANDS in the decision — the thing GateResult.ThresholdApplied
-	// never did in clank. An auditor reads the number off the record.
+	// the floor LANDS in the decision — clank's gate never recorded one at all.
+	// An auditor reads the number off the record.
 	if diff := cmp.Diff(0.75, got.FloorApplied); diff != "" {
 		t.Error("the applied floor must be recorded on the decision (-want +got)", diff)
 	}

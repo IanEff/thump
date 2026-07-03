@@ -97,12 +97,11 @@ const (
 )
 
 type GateResult struct {
-	BudgetOK         bool    `json:"budgetOK,omitempty" yaml:"budgetOK,omitempty"`
-	DedupeOK         bool    `json:"dedupeOK,omitempty" yaml:"dedupeOK,omitempty"`
-	EvidenceOK       bool    `json:"evidenceOK,omitempty" yaml:"evidenceOK,omitempty"`
-	ThresholdApplied float64 `json:"thresholdApplied,omitempty" yaml:"thresholdApplied,omitempty"`
-	Passed           bool    `json:"passed,omitempty" yaml:"passed,omitempty"`
-	Reason           string  `json:"reason,omitempty" yaml:"reason,omitempty"`
+	BudgetOK   bool   `json:"budgetOK,omitempty" yaml:"budgetOK,omitempty"`
+	DedupeOK   bool   `json:"dedupeOK,omitempty" yaml:"dedupeOK,omitempty"`
+	EvidenceOK bool   `json:"evidenceOK,omitempty" yaml:"evidenceOK,omitempty"`
+	Passed     bool   `json:"passed,omitempty" yaml:"passed,omitempty"`
+	Reason     string `json:"reason,omitempty" yaml:"reason,omitempty"`
 }
 
 // CausalScore is one change event's causal likelihood, decomposed and explained.

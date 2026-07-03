@@ -86,7 +86,6 @@ func newProposingEngine(t *testing.T, outbox string) *clank.Engine {
 		Ledger:       clank.NewMemProposalLog(),
 		Sink:         &clank.DirSink{Dir: outbox},
 		MaxSteps:     8,
-		Policy:       clank.GatePolicy{},
 	}
 }
 

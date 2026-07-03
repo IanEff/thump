@@ -24,7 +24,7 @@ type Engine struct {
 	Ledger       *MemProposalLog
 	Sink         ProposalSink
 	MaxSteps     int
-	Policy       GatePolicy
+	Weights      ScoringWeights
 }
 
 func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet, error) {
@@ -122,7 +122,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 		return ProposalSet{}, err
 	}
 
-	set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Policy.CausalWeights)
+	set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Weights)
 
 	ranked, why := e.Ranker.Rank(set.Proposals, sig.Impact.BlastRadius.Velocity)
 	set.Proposals = ranked
@@ -135,7 +135,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 	if err != nil {
 		return ProposalSet{}, fmt.Errorf("open dupes: %w", err)
 	}
-	gate := e.Gate.Evaluate(set, openDupes, e.Policy)
+	gate := e.Gate.Evaluate(set, openDupes)
 	set.Gate = &gate
 	if set.Gate.Passed {
 		set.Status.Phase = proposal.PhaseProposed

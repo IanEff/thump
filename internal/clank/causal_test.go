@@ -140,8 +140,8 @@ func topoWithDegradedUpstream(name string) clank.TopologySnapshot {
 
 // heavyTopologyWeights returns weights that heavily favor the topological axis
 // so an in-path change outscores a more-recent but unrelated one.
-func heavyTopologyWeights() clank.CausalWeights {
-	return clank.CausalWeights{
+func heavyTopologyWeights() clank.ScoringWeights {
+	return clank.ScoringWeights{
 		Temporal:          0.1,
 		Topological:       0.8,
 		Historical:        0.1,
@@ -151,8 +151,8 @@ func heavyTopologyWeights() clank.CausalWeights {
 
 // uniformWeights returns equal weights across all three axes —
 // no thumb on the scale, useful when the test is about something else.
-func uniformWeights() clank.CausalWeights {
-	return clank.CausalWeights{
+func uniformWeights() clank.ScoringWeights {
+	return clank.ScoringWeights{
 		Temporal:          1.0 / 3,
 		Topological:       1.0 / 3,
 		Historical:        1.0 / 3,

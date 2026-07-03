@@ -46,7 +46,7 @@ func TestGate(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			res := gate.Evaluate(tc.ps, tc.openDupes, testPolicy())
+			res := gate.Evaluate(tc.ps, tc.openDupes)
 			got := verdict{Passed: res.Passed, Reason: res.Reason}
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Error("wrong gate verdict (-want +got)\n", diff)
@@ -65,8 +65,4 @@ func psHistoricalOnly() clank.ProposalSet {
 
 func psWithNoEvidence() clank.ProposalSet {
 	return clank.ProposalSet{Name: "no_evidence"}
-}
-
-func testPolicy() clank.GatePolicy {
-	return clank.GatePolicy{}
 }
