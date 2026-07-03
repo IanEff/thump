@@ -71,11 +71,28 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger) {
 	}
 }
 
-// TODO(ian): STUB — hardcoded watch list. Replace with a real config/CRD source
-// before this goes anywhere near production. See the vault guide's deferred list,
-// "SLO config loading": declared Go value now, swap the source behind it later.
+// TODO(ian): STUB — hardcoded watch list.
 func loadSLOs() []SLO {
 	return []SLO{
-		{ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.999, ContractRef: "ceph-rgw-availability:v1"},
+		{
+			ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.999,
+			ContractRef:  "ceph-rgw-availability:v1",
+			Dependencies: []Dependency{{Name: "cephobjectstore", Role: "blocking"}, {Name: "rook-operator", Role: "blocking"}},
+		},
+		{
+			ID: "ceph-osd-latency", Object: "ceph-osd", Tier: "tier-1", Objective: 0.99,
+			ContractRef:  "ceph-osd-latency:v1",
+			Dependencies: []Dependency{{Name: "cephblockpool", Role: "blocking"}, {Name: "ceph-node-1", Role: "blocking"}, {Name: "ceph-node-2", Role: "blocking"}, {Name: "ceph-node-3", Role: "blocking"}},
+		},
+		{
+			ID: "ceph-health", Object: "ceph-cluster", Tier: "tier-1", Objective: 0.999,
+			ContractRef:  "ceph-health:v1",
+			Dependencies: []Dependency{{Name: "cephcluster", Role: "blocking"}, {Name: "rook-operator", Role: "blocking"}},
+		},
+		{
+			ID: "argocd-sync", Object: "argocd", Tier: "tier-1", Objective: 0.99,
+			ContractRef:  "argocd-sync:v1",
+			Dependencies: []Dependency{{Name: "cilium", Role: "blocking"}, {Name: "rook-operator", Role: "optional"}},
+		},
 	}
 }
