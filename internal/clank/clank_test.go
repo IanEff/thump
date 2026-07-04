@@ -114,6 +114,30 @@ func TestRunLoop_ReturnsPromptlyWhenContextIsCancelled(t *testing.T) {
 	}
 }
 
+func TestNextDelay_GrowsCapsAndResets(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		cur  time.Duration
+		ok   bool
+		want time.Duration
+	}{
+		{"first failure doubles from current", 5 * time.Second, false, 10 * time.Second},
+		{"caps instead of overshooting", 4 * time.Minute, false, 5 * time.Minute},
+		{"already at cap stays at cap", 5 * time.Minute, false, 5 * time.Minute},
+		{"success snaps back to base regardless of cur", 3 * time.Minute, true, 5 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := clank.NextDelayForTest(tt.cur, tt.ok)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Error("nextDelay (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
 func TestMain_TheEngineAndReturnEdgeShareOneLedgerAndCaseBase(t *testing.T) {
 	t.Parallel()
 	// build the loop the way Main does, then prove the two halves are wired to

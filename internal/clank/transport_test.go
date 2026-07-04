@@ -3,6 +3,7 @@ package clank_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -99,4 +100,35 @@ func yamlCount(t *testing.T, dir string) int {
 		t.Fatal(err)
 	}
 	return len(matches)
+}
+
+type erroringModel struct{ err error }
+
+func (m erroringModel) Complete(context.Context, []clank.Message, []clank.ToolSpec) (clank.Completion, error) {
+	return clank.Completion{}, m.err
+}
+
+func TestTransport_GivesUpAfterFiveFailures(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+	det := seamDetection(t)
+	raw, _ := yaml.Marshal(det)
+	_ = os.WriteFile(filepath.Join(inbox, "det.yaml"), raw, 0o600)
+
+	eng := newProposingEngine(t, t.TempDir()) // reuse the fixture from transport_test.go
+	eng.Model = erroringModel{err: errors.New("boom: model unreachable")}
+
+	tr := &clank.Transport{Inbox: inbox, Engine: eng}
+	for i := 0; i < 5; i++ {
+		if err := tr.Tick(context.Background()); err != nil {
+			t.Fatalf("tick %d: transport-level error, want per-file retry: %v", i, err)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(inbox, "stalled", "det.yaml")); err != nil {
+		t.Errorf("want det.yaml in stalled/ after 5 failures: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(inbox, "det.yaml")); !os.IsNotExist(err) {
+		t.Error("want det.yaml gone from the inbox root after stalling")
+	}
 }

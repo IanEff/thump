@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	ossignal "os/signal"
@@ -97,25 +98,45 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	return 0
 }
 
+const (
+	backoffBase = 5 * time.Second
+	backoffCap  = 5 * time.Minute
+)
+
+func nextDelay(cur time.Duration, tickOK bool) time.Duration {
+	if tickOK {
+		return backoffBase
+	}
+	return min(cur*2, backoffCap)
+}
+
 // runLoop is Main's ticker-driven body, pulled into its own function so it
 // takes a context directly — a test can cancel that context and observe a
 // prompt return, with no OS signals involved (Main's ctx comes from
 // NotifyContext; this one doesn't have to).
 func runLoop(ctx context.Context, tr *Transport, re *ReturnEdge) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+	delay := backoffBase
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("shutting down")
 			return
-		case <-ticker.C:
-			if err := tr.Tick(ctx); err != nil {
-				slog.Error("reason tick failed", "err", err)
+		case <-timer.C:
+			tickErr := tr.Tick(ctx)
+			if tickErr != nil {
+				slog.Error("tick failed", "err", tickErr)
 			}
 			if err := re.Tick(ctx); err != nil {
 				slog.Error("learn tick failed", "err", err)
 			}
+			delay = nextDelay(delay, tickErr == nil)
+			if tickErr != nil {
+				delay += rand.N(delay / 4) //nolint:gosec
+			}
+			timer.Reset(delay)
 		}
 	}
 }
