@@ -16,6 +16,7 @@ type Reconciler struct {
 	CorrelationSource MultiSignalSource
 	Envelope          *EnvelopeDetector
 	BaselineSource    BaselineSource
+	Sustained         *SustainedBurnDetector
 	Debounce          *Debouncer
 	Contract          *SignalContract
 	TopologySource    TopologySource
@@ -40,6 +41,14 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 		}
 		fired, accel := r.Detector.Detect(window)
 		detectorType := "burn_rate_acceleration"
+
+		if !fired && r.Sustained != nil {
+			var level float64
+			if fired, level = r.Sustained.Detect(window); fired {
+				accel = level
+				detectorType = "sustained_burn"
+			}
+		}
 		if !fired && r.Correlation != nil && r.CorrelationSource != nil {
 			ms, err := r.CorrelationSource.MultiSignals(ctx, slo)
 			if err != nil {
@@ -66,7 +75,8 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 		if r.Debounce != nil && !r.Debounce.Allow(fingerprint(slo), now) {
 			continue // said it recently — stay quiet
 		}
-		d := SignalFor(slo, detectorType, accel, now, r.Contract)
+		traj := trajectory(burnRates(window))
+		d := SignalFor(slo, detectorType, accel, traj, now, r.Contract)
 		d = EnrichSeverity(d, window, slo)
 		if r.TopologySource != nil {
 			d = EnrichTopology(ctx, d, slo, r.TopologySource)

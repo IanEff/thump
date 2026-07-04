@@ -86,3 +86,21 @@ func mean(xs []float64) float64 {
 	}
 	return sum / float64(len(xs))
 }
+
+type SustainedBurnDetector struct {
+	Threshold  float64
+	MinSamples int
+}
+
+func (d SustainedBurnDetector) Detect(window []Sample) (fired bool, level float64) {
+	if len(window) < d.MinSamples || d.MinSamples == 0 {
+		return false, 0
+	}
+	tail := window[len(window)-d.MinSamples:]
+	for _, s := range tail {
+		if s.BurnRate < d.Threshold {
+			return false, 0
+		}
+	}
+	return true, tail[len(tail)-1].BurnRate
+}

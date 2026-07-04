@@ -48,3 +48,50 @@ func TestAccelerationDetector_IgnoresNoiseAroundAFlatBurn(t *testing.T) {
 		t.Error("detector fired on noise around a flat burn - threshold too low or no smoothing")
 	}
 }
+
+func TestSustainedBurnDetector(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		in        []rattle.Sample
+		threshold float64
+		samples   int
+		wantFired bool
+		wantLevel float64
+	}{
+		"Fires on ceph-health ceiling-pin": {
+			in:        window(1000, 1000, 1000, 1000, 1000),
+			threshold: 1.0,
+			samples:   5,
+			wantFired: true,
+			wantLevel: 1000,
+		},
+		"Stays quiet when plateau sits below threshold": {
+			in:        window(0.588, 0.588, 0.588, 0.588, 0.588, 0.0, 0.726, 0.703, 0.706, 0.702),
+			threshold: 1.0,
+			samples:   5,
+			wantFired: false,
+			wantLevel: 0,
+		},
+		"Stays quiet when window is too short": {
+			in:        window(1.5, 1.6, 1.7),
+			threshold: 1.0,
+			samples:   5,
+			wantFired: false,
+			wantLevel: 0,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			d := rattle.SustainedBurnDetector{Threshold: tc.threshold, MinSamples: tc.samples}
+			fired, level := d.Detect(tc.in)
+			if fired != tc.wantFired {
+				t.Errorf("wrong fired status: want %t, got %t", tc.wantFired, fired)
+			}
+			if level != tc.wantLevel {
+				t.Errorf("wrong level: want %f, got %f", tc.wantLevel, level)
+			}
+		})
+	}
+}
