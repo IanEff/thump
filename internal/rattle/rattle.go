@@ -73,18 +73,29 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		sink = &DirSink{Dir: outbox}
 	}
 
-	r := &Reconciler{
+	r := newReconciler(promURL, topo, traffic)
+	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	runLoop(ctx, r, log, sink)
+	return 0
+}
+
+// newReconciler assembles the Reconciler Main runs. Pulled out of Main so a
+// test can drive it with a fake Source and prove the contract is actually
+// wired — Main itself is only reachable with a live PROM_URL.
+func newReconciler(promURL string, topo TopologySource, traffic TrafficSource) *Reconciler {
+	return &Reconciler{
 		SLOs:           loadSLOs(),
 		Source:         NewPromSource(promURL),
 		Detector:       AccelerationDetector{Threshold: 0.5},
 		Debounce:       NewDebouncer(10 * time.Minute),
 		TopologySource: topo,
 		TrafficSource:  traffic,
+		Contract: &SignalContract{
+			FreshnessBound:  5 * time.Minute, // samples land every 1m; >5m stale = scrape path is broken
+			ConfidenceFloor: 0.5,             // attenuation never drives confidence below "suspect"
+		},
 	}
-	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	runLoop(ctx, r, log, sink)
-	return 0
 }
 
 func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, sink DetectionSink) {

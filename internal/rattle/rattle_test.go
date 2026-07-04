@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/rattle"
@@ -116,6 +117,48 @@ func TestRunLoop_DeliversWhatItLogs(t *testing.T) {
 	if len(rec.delivered) != 1 {
 		t.Fatalf("want 1 delivery, got %d", len(rec.delivered))
 	}
+}
+
+func TestNewReconciler_WiresTheContractSoConfidenceIsLive(t *testing.T) {
+	slo := rattle.SLO{ID: "ceph-rgw-availability"}
+	r := rattle.NewReconcilerForTest("http://unused", nil, nil)
+	r.SLOs = []rattle.SLO{slo}
+	r.Source = fakeSource{slo.ID: freshWindow(1, 2, 4, 8)} // recent timestamps, fires on acceleration
+
+	got, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 detection, got %d", len(got))
+	}
+	if diff := cmp.Diff(1.0, got[0].Divergence.Confidence); diff != "" {
+		t.Error("Main's Reconciler must carry a live Contract — confidence should read 1.0, not the pre-wiring zero-value", diff)
+	}
+}
+
+func TestNewReconciler_WiresTheContractSoStaleWindowsAreSkipped(t *testing.T) {
+	slo := rattle.SLO{ID: "ceph-rgw-availability"}
+	r := rattle.NewReconcilerForTest("http://unused", nil, nil)
+	r.SLOs = []rattle.SLO{slo}
+	r.Source = fakeSource{slo.ID: window(1, 2, 4, 8)} // epoch-anchored — ancient by wall-clock
+
+	got, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Error("Main wires a 5-minute freshness bound — a stale window must not fire, even though the detector would", cmp.Diff(0, len(got)))
+	}
+}
+
+func freshWindow(rates ...float64) []rattle.Sample {
+	out := make([]rattle.Sample, len(rates))
+	base := time.Now().Add(-time.Duration(len(rates)) * time.Minute)
+	for i, r := range rates {
+		out[i] = rattle.Sample{T: base.Add(time.Duration(i) * time.Minute), BurnRate: r}
+	}
+	return out
 }
 
 type recordingSink struct {

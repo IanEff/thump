@@ -14,3 +14,10 @@ func LoadSLOsForTest() []SLO { return loadSLOs() }
 func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, sink DetectionSink) {
 	runLoop(ctx, r, log, sink)
 }
+
+// NewReconcilerForTest exposes Main's real Reconciler assembly so a test can
+// swap in a fake Source and prove Main's wiring, not just Reconciler's
+// behavior when a test hand-sets a field.
+func NewReconcilerForTest(promURL string, topo TopologySource, traffic TrafficSource) *Reconciler {
+	return newReconciler(promURL, topo, traffic)
+}

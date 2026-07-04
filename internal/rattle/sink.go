@@ -38,12 +38,12 @@ func writeAtomic(dir, name string, data []byte) error {
 	}
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name()) //nolint:gosec
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name()) //nolint:gosec
 		return err
 	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, name))
+	return os.Rename(tmp.Name(), filepath.Join(dir, name)) //nolint:gosec
 }

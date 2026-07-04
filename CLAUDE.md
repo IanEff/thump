@@ -562,6 +562,10 @@ deterministic detour; classification is now the model's output.
   canonical fix is `0o600` perms on the write plus `//nolint:gosec // G304: fixed testdata path,
   not user input` on the read (see `schema_test.go`). This bit us once: the propose-schema
   golden (`43779fa`) silently red-lined CI on `main` for days before anyone noticed.
+  Ian's gotcha: adding the trailing `// <reason>` text after `//nolint:gosec` has tripped his
+  local checks before — reach for the bare `//nolint:gosec` (no reason comment) first, matching
+  most existing call sites (`whir.go`, `resolve.go`, `clank/transport.go`, `click.go`,
+  `hiss/transport.go`); only add the reason-comment form if the bare one doesn't clear it.
 - Each module is a green claim (Gate, Catalog/autonomy-boundary, Causal scorer, Ranker,
   Ledger + Store, Intake, the reason-loop Engine, Sink), **and** the five belief-formation
   defences are green — if those aren't tested, the confidence machinery is decorative.
