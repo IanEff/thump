@@ -2,11 +2,17 @@ package rattle_test
 
 import (
 	"bytes"
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/rattle"
+	"github.com/ianeff/thump/internal/signal"
+	"github.com/ianeff/thump/internal/whir"
 )
 
 func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {
@@ -65,5 +71,37 @@ func TestLoadSLOs_EverySLODeclaresDependencies(t *testing.T) {
 		if len(slo.Dependencies) == 0 {
 			t.Errorf("%s declares no dependencies — EnrichTopology will silently no-op for it", slo.ID)
 		}
+	}
+}
+
+func TestWhirTopologySource_EnrichesWithUnknownVisible(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("query") {
+		case "up{job=\"rook-operator\"}":
+			_, _ = fmt.Fprint(w, `{"data":{"result":[{"value":[0,"1"]}]}}`) // healthy
+		default:
+			http.Error(w, "boom", http.StatusInternalServerError) // -> unknown
+		}
+	}))
+	defer srv.Close()
+
+	src := &rattle.WhirTopologySource{Resolver: &whir.Resolver{
+		BaseURL: srv.URL,
+		Queries: map[string]string{"rook-operator": `up{job="rook-operator"}`}, // "cephobjectstore" deliberately absent
+	}}
+
+	slo := rattle.SLO{Dependencies: []rattle.Dependency{
+		{Name: "rook-operator", Role: "blocking"},
+		{Name: "cephobjectstore", Role: "blocking"},
+	}}
+
+	got := rattle.EnrichTopology(context.Background(), signal.Detection{}, slo, src)
+
+	want := []signal.ObservedNode{
+		{Service: "rook-operator", State: "healthy"},
+		{Service: "cephobjectstore", State: "unknown"}, // no Queries entry -> unknown, not dropped
+	}
+	if diff := cmp.Diff(want, got.Topology.Upstream); diff != "" {
+		t.Errorf("Topology.Upstream (-want +got):\n%s", diff)
 	}
 }

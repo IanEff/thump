@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	ossignal "os/signal"
 	"syscall"
 	"time"
+
+	"github.com/ianeff/thump/internal/whir"
 )
 
 func Main(args []string, stdout, stderr io.Writer, version, commit, date string) int {
@@ -33,11 +36,30 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		return 1
 	}
 
+	var topo TopologySource
+	if catPath, sqPath := os.Getenv("WHIR_CATALOG"), os.Getenv("WHIR_STATE_QUERIES"); catPath != "" && sqPath != "" {
+		queries, err := whir.LoadStateQueries(sqPath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "load state queries: %v\n", err)
+			return 1
+		}
+		if _, err := whir.LoadCatalogFile(catPath); err != nil {
+			_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
+			return 1
+		}
+		topo = &WhirTopologySource{Resolver: &whir.Resolver{
+			BaseURL: promURL,
+			Client:  http.DefaultClient,
+			Queries: queries,
+		}}
+	}
+
 	r := &Reconciler{
-		SLOs:     loadSLOs(),
-		Source:   NewPromSource(promURL),
-		Detector: AccelerationDetector{Threshold: 0.5},
-		Debounce: NewDebouncer(10 * time.Minute),
+		SLOs:           loadSLOs(),
+		Source:         NewPromSource(promURL),
+		Detector:       AccelerationDetector{Threshold: 0.5},
+		Debounce:       NewDebouncer(10 * time.Minute),
+		TopologySource: topo,
 	}
 	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
