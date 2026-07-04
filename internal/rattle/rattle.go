@@ -88,6 +88,7 @@ func newReconciler(promURL string, topo TopologySource, traffic TrafficSource) *
 		SLOs:           loadSLOs(),
 		Source:         NewPromSource(promURL),
 		Detector:       AccelerationDetector{Threshold: 0.5},
+		Sustained:      &SustainedBurnDetector{Threshold: 1.0, MinSamples: 5},
 		Debounce:       NewDebouncer(10 * time.Minute),
 		TopologySource: topo,
 		TrafficSource:  traffic,

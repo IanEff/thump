@@ -35,7 +35,7 @@ func TestEnrich_BlastRadiusVelocityIsIndependentOfSeverityTrajectory(t *testing.
 	_, accel := rattle.AccelerationDetector{}.Detect(burn)
 
 	slo := rattle.SLO{Object: "ceph-rgw", Tier: "tier-1"}
-	got := rattle.SignalFor(slo, "burn_rate_acceleration", accel, time.Unix(1000, 0), nil)
+	got := rattle.SignalFor(slo, "burn_rate_acceleration", accel, "accelerating", time.Unix(1000, 0), nil)
 	got = rattle.EnrichSeverity(got, burn, slo)
 	got = rattle.EnrichTraffic(got, traffic)
 

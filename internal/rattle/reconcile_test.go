@@ -243,3 +243,26 @@ func goldenDetection() signal.Detection {
 		// DetectedAt would be time.Unix(1000,0) (the frozen clock) — IGNORED via cmpopts, see below.
 	}
 }
+
+func TestReconcile_EmitsOnSustainedBurnEvenWithoutAcceleration(t *testing.T) {
+	t.Parallel()
+	slo := rattle.SLO{ID: "ceph-health", Object: "ceph-cluster", Tier: "tier-1"}
+
+	// Create a reconciler with Sustained detector configured
+	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1000, 1000, 1000, 1000, 1000)})
+	r.Sustained = &rattle.SustainedBurnDetector{Threshold: 1.0, MinSamples: 5}
+
+	got, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 detection, got %d", len(got))
+	}
+	if got[0].DetectorType != "sustained_burn" {
+		t.Errorf("expected detector type 'sustained_burn', got %q", got[0].DetectorType)
+	}
+	if got[0].Divergence.Trajectory != "stable" {
+		t.Errorf("expected trajectory to be 'stable', got %q", got[0].Divergence.Trajectory)
+	}
+}
