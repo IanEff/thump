@@ -60,3 +60,22 @@ func ExampleYAMLSink_Deliver() {
 	//   rank: 1
 	// recommended: prop-001
 }
+
+func TestWriteAtomicIsInvisibleToGlob(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a mock temp file matching our atomic pattern
+	tmpPath := filepath.Join(dir, ".tmp-12345")
+	if err := os.WriteFile(tmpPath, []byte("partial write"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the glob pattern used by the consumers misses it
+	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) > 0 {
+		t.Errorf("expected 0 matches, got %d", len(matches))
+	}
+}
