@@ -6,10 +6,46 @@
 # not as "no traffic data". `total` is left bare: if it comes back empty,
 # nothing is being measured, and that's the right signal to surface as-is.
 #
-# Only ceph-rgw-availability for now — add the rest once this one proves out
-# in Stage 5. Verified live against http://prometheus.ceph.lab on 2026-07-03.
+# ceph-health and argocd-sync get NO entry, on purpose: neither has a
+# meaningful affected/total traffic pair (cluster health isn't
+# request-shaped; sync status isn't traffic). An SLO with no entry here
+# returns (nil, nil) from TrafficSamples and the detection simply carries no
+# traffic context — that absence is the honest answer, not a gap to fill.
+#
+# Retired 2026-07-04: the original Hubble pair
+# (hubble_tcp_flags_total{flag="RST"}) undercounted badly — boto3 holds
+# connections open, so it counts connection setup/teardown, not requests;
+# ~0.02-0.2/s measured vs ~6.2 ops/s of real RGW traffic. Replaced with the
+# RGW's own request counters below. See [[thump-running-notes]] 2026-07-04.
+#
+# Both pairs below verified live against http://prometheus.ceph.lab on
+# 2026-07-04.
 version: v1
 slos:
   - id: ceph-rgw-availability
-    affected: 'sum(rate(hubble_tcp_flags_total{destination_workload=~".*rgw.*",flag="RST"}[5m])) or vector(0)'
-    total:    'sum(rate(hubble_tcp_flags_total{destination_workload=~".*rgw.*"}[5m]))'
+    # ceph_rgw_req / ceph_rgw_failed_req are Ceph's own RGW op counters
+    # (rook-ceph-exporter) — request-shaped, unlike the retired Hubble pair.
+    # Verified live 2026-07-04: both metrics exist and read plausible
+    # values (req ~0.1-6/s depending on generator load, failed 0 on a
+    # healthy lab).
+    affected: 'sum(rate(ceph_rgw_failed_req[5m])) or vector(0)'
+    total:    'sum(rate(ceph_rgw_req[5m]))'
+
+  - id: ceph-osd-latency
+    # ceph-latency-bridge's own w-latency histogram (`ceph_osd_op_w_latency_*`,
+    # job="ceph-latency-bridge") — NOT the `_seconds` "native" variant (a
+    # different scrape target). le="102.399999" is the p99<100ms bucket on
+    # the bridge's ms-valued ladder (a doubling series starting at
+    # 0.099999); this is the same bucket PR1.6 landed for the Sloth-generated
+    # SLI itself after the ms-vs-s bucket-unit bug (ceph-lab-running-notes
+    # 2026-07-03 "Bug 1"/"Bug 2") — mirroring it here, not re-guessing it.
+    # Filtering both affected and total to job="ceph-latency-bridge" avoids
+    # Bug 2 (the bridge squats the standard metric name, so an unfiltered
+    # _count query triple-counts against rook-ceph-exporter's two other
+    # scrape paths). Verified live 2026-07-04: affected ~0.007/s,
+    # total ~0.63/s (~1.2% degraded) — plausible, and in the same ballpark
+    # as the SLO's own current burn (slo:current_burn_rate:ratio read ~1.13
+    # at verification time; the lab wasn't perfectly quiescent, but the
+    # traffic-query reading and the burn-rate reading agree with each other).
+    affected: 'sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m])) - sum(rate(ceph_osd_op_w_latency_bucket{job="ceph-latency-bridge",le="102.399999"}[5m])) or vector(0)'
+    total:    'sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m]))'
