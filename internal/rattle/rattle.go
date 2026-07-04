@@ -64,6 +64,15 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		traffic = &HubbleTrafficSource{BaseURL: promURL, Client: http.DefaultClient, Queries: queries}
 	}
 
+	var sink DetectionSink
+	if outbox := os.Getenv("RATTLE_OUTBOX"); outbox != "" {
+		if err := os.MkdirAll(outbox, 0o750); err != nil { //nolint:gosec
+			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
+			return 1
+		}
+		sink = &DirSink{Dir: outbox}
+	}
+
 	r := &Reconciler{
 		SLOs:           loadSLOs(),
 		Source:         NewPromSource(promURL),
@@ -74,11 +83,11 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	}
 	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	runLoop(ctx, r, log)
+	runLoop(ctx, r, log, sink)
 	return 0
 }
 
-func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger) {
+func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, sink DetectionSink) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
@@ -93,6 +102,11 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger) {
 					"fingerprint", d.Fingerprint,
 					"detector", d.DetectorType,
 					"accel", d.Divergence.Observed)
+				if sink != nil {
+					if err := sink.Deliver(d); err != nil {
+						log.Error("deliver failed", "fingerprint", d.Fingerprint, "error", err)
+					}
+				}
 			}
 		}
 
