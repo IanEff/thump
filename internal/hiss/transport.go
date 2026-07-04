@@ -56,8 +56,8 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("hiss: marshal decision for %s: %w", path, err)
 		}
-		outPath := filepath.Join(tr.Outbox, filepath.Base(path))
-		if err := os.WriteFile(outPath, out, 0o600); err != nil {
+
+		if err := writeAtomic(tr.Outbox, filepath.Base(path), out); err != nil {
 			return fmt.Errorf("hiss: write decision for %s: %w", path, err)
 		}
 		if err := tr.archive(path); err != nil {
@@ -81,4 +81,22 @@ func (tr *Transport) archive(path string) error {
 		return err
 	}
 	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
+}
+
+// writeAtomic is the simple atomic writer, replicated across all services to PROVE A POINT.
+func writeAtomic(dir, name string, data []byte) error {
+	tmp, err := os.CreateTemp(dir, ".tmp-*") // dot-prefixed, no .yaml suffix
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }
