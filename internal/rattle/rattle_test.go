@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -104,4 +106,33 @@ func TestWhirTopologySource_EnrichesWithUnknownVisible(t *testing.T) {
 	if diff := cmp.Diff(want, got.Topology.Upstream); diff != "" {
 		t.Errorf("Topology.Upstream (-want +got):\n%s", diff)
 	}
+}
+
+func TestRunLoop_DeliversWhatItLogs(t *testing.T) {
+	slo := rattle.SLO{ID: "ceph-osd-latency"}
+	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 4, 8)}) // fires once
+	rec := &recordingSink{}
+	rattle.RunLoopForTest(onceCtx(), r, discardLogger(), rec)
+	if len(rec.delivered) != 1 {
+		t.Fatalf("want 1 delivery, got %d", len(rec.delivered))
+	}
+}
+
+type recordingSink struct {
+	delivered []signal.Detection
+}
+
+func (r *recordingSink) Deliver(d signal.Detection) error {
+	r.delivered = append(r.delivered, d)
+	return nil
+}
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func onceCtx() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
 }
