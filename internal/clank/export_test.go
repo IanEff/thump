@@ -1,6 +1,9 @@
 package clank
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // NewLoopForTest is the one deliberate crack in the package boundary: it lets
 // clank_test build a loop through the exact same newLoop Main uses, without
@@ -16,4 +19,13 @@ func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *Sta
 // itself (which builds its context from OS signals).
 func RunLoopForTest(ctx context.Context, tr *Transport, re *ReturnEdge) {
 	runLoop(ctx, tr, re)
+}
+
+// NextDelayForTest exposes runLoop's backoff-growth decision so a test can
+// pin grow/cap/reset behavior as a pure function, without racing a real
+// timer. Jitter is deliberately NOT part of nextDelay (see clank.go) — it's
+// added in runLoop after this decision, since a random value can't be
+// pinned to a table test's "want".
+func NextDelayForTest(cur time.Duration, tickOK bool) time.Duration {
+	return nextDelay(cur, tickOK)
 }

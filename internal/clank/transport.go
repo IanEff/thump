@@ -3,6 +3,7 @@ package clank
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -11,9 +12,12 @@ import (
 )
 
 type Transport struct {
-	Inbox  string
-	Engine *Engine
+	Inbox    string
+	Engine   *Engine
+	attempts map[string]int
 }
+
+const maxProposeAttempts = 5
 
 func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
@@ -35,12 +39,26 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			}
 			continue // poison doesn't block the queue — the hiss/thump/click rule
 		}
-		if _, err := tr.Engine.Propose(ctx, det); err != nil {
-			// a reasoning error (LLM down, tool failure) is retryable — leave the
-			// file for the next tick, log, and move on. Do NOT quarantine a valid
-			// detection just because the model hiccuped.
-			return fmt.Errorf("clank: propose %s: %w", path, err)
+		set, err := tr.Engine.Propose(ctx, det)
+		if err != nil {
+			if tr.attempts == nil {
+				tr.attempts = make(map[string]int)
+			}
+			tr.attempts[path]++
+			if tr.attempts[path] >= maxProposeAttempts {
+				slog.Error("giving up on detection", "path", path, "attempts", tr.attempts[path], "err", err)
+				delete(tr.attempts, path)
+				if dErr := tr.disposition(path, "stalled"); dErr != nil {
+					return fmt.Errorf("clank: stall %s: %w", path, dErr)
+				}
+				continue
+			}
+			slog.Warn("propose failed, will retry", "path", path, "attempts", tr.attempts[path], "err", err)
+			continue
 		}
+		delete(tr.attempts, path)
+
+		slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase, "proposals", len(set.Proposals))
 		if err := tr.disposition(path, "processed"); err != nil {
 			return fmt.Errorf("clank: archive %s: %w", path, err)
 		}
