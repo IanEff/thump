@@ -47,8 +47,12 @@ func EnrichTopology(ctx context.Context, d signal.Detection, slo SLO, src Topolo
 	return d
 }
 
-func EnrichSeverity(d signal.Detection, burnWindow []Sample) signal.Detection {
-	d.Impact.Severity.Trajectory = trajectory(burnRates(burnWindow))
+func EnrichSeverity(d signal.Detection, burnWindow []Sample, slo SLO) signal.Detection {
+	rates := burnRates(burnWindow)
+	d.Impact.Severity.Trajectory = trajectory(rates)
+	if len(rates) > 0 {
+		d.Impact.Severity.DegradationPct = min(rates[len(rates)-1]*(1-slo.Objective), 1.0)
+	}
 	return d
 }
 

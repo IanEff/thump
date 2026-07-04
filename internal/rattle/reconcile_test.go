@@ -234,7 +234,10 @@ func goldenDetection() signal.Detection {
 		},
 		Traffic: signal.TrafficContext{AffectedPct: 0.4}, // EnrichTraffic: last trafficWindow point
 		Impact: signal.Impact{
-			Severity:    signal.Severity{Trajectory: "accelerating"},                    // EnrichSeverity: trajectory of the BURN window
+			Severity: signal.Severity{
+				Trajectory:     "accelerating",
+				DegradationPct: 0.008000000000000007, // EnrichSeverity: degration pct off last sample,
+			},
 			BlastRadius: signal.BlastRadius{AffectedPct: 0.4, Velocity: "accelerating"}, // EnrichTraffic: last pct + trajectory of the TRAFFIC window
 		},
 		// DetectedAt would be time.Unix(1000,0) (the frozen clock) — IGNORED via cmpopts, see below.
