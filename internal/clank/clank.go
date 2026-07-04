@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	ossignal "os/signal"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/proposal"
 	"github.com/ianeff/thump/internal/signal"
+	"github.com/ianeff/thump/internal/whir"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
@@ -66,6 +68,27 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 	model := NewAnthropicModel(apiKey)
 	intake := NewIntake(noopTopology{}, noopChange{})
+	if catPath, sqPath := os.Getenv("WHIR_CATALOG"), os.Getenv("WHIR_STATE_QUERIES"); catPath != "" && sqPath != "" {
+		promURL := os.Getenv("PROM_URL")
+		if promURL == "" {
+			_, _ = fmt.Fprintln(stderr, "PROM_URL required when WHIR_CATALOG and WHIR_STATE_QUERIES are set")
+			return 1
+		}
+		cat, err := whir.LoadCatalogFile(catPath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
+			return 1
+		}
+		queries, err := whir.LoadStateQueries(sqPath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "load whir state queries: %v\n", err)
+			return 1
+		}
+		intake = NewIntake(WhirTopology{
+			Catalog:  cat,
+			Resolver: &whir.Resolver{BaseURL: promURL, Client: http.DefaultClient, Queries: queries},
+		}, noopChange{})
+	}
 
 	l := newLoop(inbox, outbox, outcomes, model, nil, intake, defaultCatalog())
 	tr := &Transport{Inbox: inbox, Engine: l.Engine}
