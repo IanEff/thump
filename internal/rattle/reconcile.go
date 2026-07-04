@@ -67,7 +67,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 			continue // said it recently — stay quiet
 		}
 		d := SignalFor(slo, detectorType, accel, now, r.Contract)
-		d = EnrichSeverity(d, window)
+		d = EnrichSeverity(d, window, slo)
 		if r.TopologySource != nil {
 			d = EnrichTopology(ctx, d, slo, r.TopologySource)
 		}
