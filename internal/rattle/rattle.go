@@ -54,12 +54,23 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		}}
 	}
 
+	var traffic TrafficSource
+	if tqPath := os.Getenv("RATTLE_TRAFFIC"); tqPath != "" {
+		queries, err := LoadTrafficQueries(tqPath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "load traffic queries: %v\n", err)
+			return 1
+		}
+		traffic = &HubbleTrafficSource{BaseURL: promURL, Client: http.DefaultClient, Queries: queries}
+	}
+
 	r := &Reconciler{
 		SLOs:           loadSLOs(),
 		Source:         NewPromSource(promURL),
 		Detector:       AccelerationDetector{Threshold: 0.5},
 		Debounce:       NewDebouncer(10 * time.Minute),
 		TopologySource: topo,
+		TrafficSource:  traffic,
 	}
 	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
