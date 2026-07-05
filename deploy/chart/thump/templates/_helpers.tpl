@@ -1,0 +1,15 @@
+{{/*
+One release, one pod, one chart — no chart-per-beat ceremony (W0-2). These
+helpers just keep the labels identical across every template that needs them.
+*/}}
+
+{{- define "thump.labels" -}}
+app.kubernetes.io/name: thump
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
+{{- define "thump.selectorLabels" -}}
+app.kubernetes.io/name: thump
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
