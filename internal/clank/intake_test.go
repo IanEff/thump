@@ -30,8 +30,11 @@ func sigBurnAccel() signal.Detection {
 		DetectorType:  "burn_rate_acceleration",
 		Divergence:    signal.Divergence{Metric: "latency_p99", Observed: 850, Baseline: 200, Confidence: 0.9, Trajectory: "accelerating"},
 		Impact: signal.Impact{
-			Severity:    signal.Severity{DegradationPct: 40, Trajectory: "accelerating"},
-			BlastRadius: signal.BlastRadius{AffectedPct: 60, Velocity: "fast", DownstreamConsumers: 3},
+			// DegradationPct/AffectedPct are 0.0–1.0 fractions everywhere rattle
+			// produces them (enrich.go/traffic.go clamp at 1.0); keep the fixture
+			// on that scale so a prompt-content test never reads "severity 4000%".
+			Severity:    signal.Severity{DegradationPct: 0.4, Trajectory: "accelerating"},
+			BlastRadius: signal.BlastRadius{AffectedPct: 0.6, Velocity: "fast", DownstreamConsumers: 3},
 		},
 		DetectedAt: time.Now(),
 	}

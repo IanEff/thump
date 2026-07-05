@@ -1,0 +1,53 @@
+evidence:
+- live: true
+  query: '{"q":"ceph_health"}'
+  ref: metrics://latency_p99
+  summary: latency_p99 elevated 3x over baseline
+  tool: metrics
+failureClass: resource_exhaustion
+gate:
+  budgetOK: true
+  dedupeOK: true
+  evidenceOK: true
+  passed: true
+hypotheses:
+- name: osd_capacity_loss
+  weight: 0.9
+name: ceph-cluster-burn-accel
+proposals:
+- confidence: 0.9
+  contractRef: hold-rebalance
+  governanceLevel:
+    band: act_reversible
+  id: p1
+  rank: 1
+  reversalPath:
+    method: release-rebalance
+    trigger: HEALTH_OK
+    watching: ceph_health
+rankingRationale: {}
+recommended: p1
+saoSnapshot:
+  assembledAt: "0001-01-01T00:00:00Z"
+  change: {}
+  signal:
+    blastRadius:
+      AffectedPct: 0
+      DownstreamConsumers: 0
+      Velocity: ""
+    confidence: 1
+    severity:
+      DegradationPct: 1
+      Trajectory: accelerating
+  topology:
+    upstream:
+    - name: cephcluster
+      state: degraded
+    - name: rook-operator
+      state: healthy
+  version: 1
+serviceTier: tier-1
+signalRef: slo_burn:ceph-cluster
+status:
+  observedAt: "0001-01-01T00:00:00Z"
+  phase: proposed
