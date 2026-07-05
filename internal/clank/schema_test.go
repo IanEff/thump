@@ -51,3 +51,25 @@ func TestProposeToolSpec_PinsTheAutonomyBoundaryToGolden(t *testing.T) {
 		t.Errorf("propose schema drifted from golden (-want +got):\n%s", diff)
 	}
 }
+
+func TestInsufficientToolSpec_PinsItsInputSchemaToGolden(t *testing.T) {
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, clank.InsufficientToolSpec().InputSchema, "", "  "); err != nil {
+		t.Fatalf("insufficient schema is not valid JSON: %v", err)
+	}
+	got := append(indented.Bytes(), '\n')
+
+	golden := filepath.Join("testdata", "insufficient_schema.json")
+	if *update {
+		if err := os.WriteFile(golden, got, 0o600); err != nil {
+			t.Fatalf("update golden: %v", err)
+		}
+	}
+	want, err := os.ReadFile(golden) //nolint:gosec
+	if err != nil {
+		t.Fatalf("read golden (run with -update to create it): %v", err)
+	}
+	if diff := cmp.Diff(string(want), string(got)); diff != "" {
+		t.Errorf("insufficient schema drifted from golden (-want +got):\n%s", diff)
+	}
+}

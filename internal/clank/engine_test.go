@@ -180,7 +180,10 @@ func openProposalFor(fp string) clank.ProposalSet {
 func TestPropose_WhenModelDeclines_YieldsNoAction(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient"}}},
+		{ToolCalls: []clank.ToolCall{{
+			Name: "insufficient",
+			Args: json.RawMessage(`{"reason":"no live corroboration for the topology hypothesis"}`),
+		}}},
 	}}
 	e, sink := newTestEngine(model)
 	got, err := e.Propose(context.Background(), sigBurnAccel())
@@ -189,6 +192,9 @@ func TestPropose_WhenModelDeclines_YieldsNoAction(t *testing.T) {
 	}
 	if diff := cmp.Diff("no_action", got.Status.Phase); diff != "" {
 		t.Error("a declined investigation should be no_action (-want +got)\n", diff)
+	}
+	if diff := cmp.Diff("no live corroboration for the topology hypothesis", got.Status.Reason); diff != "" {
+		t.Error("a reasoned decline must carry its reason (-want +got)\n", diff)
 	}
 	if len(sink.delivered) != 0 {
 		t.Errorf("no_action must deliver nothing: delivered %d", len(sink.delivered))
@@ -241,7 +247,7 @@ func TestPropose_AppendsTheToolDigestToTheConversation(t *testing.T) {
 	tool := fakeTool{name: "logs", digest: digest, ref: "loki:abc", live: true}
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"errors"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient"}}},
+		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
 	}}
 	e, _ := newTestEngine(model)
 	e.Tools = map[string]clank.Tool{"logs": tool}
@@ -257,6 +263,27 @@ func TestPropose_AppendsTheToolDigestToTheConversation(t *testing.T) {
 	// emitted, so it could never fail — a vacuous test with no teeth.)
 	if !receivedToolDigest(model.received, digest) {
 		t.Errorf("tool digest %q never reached the conversation:\n%+v", digest, model.received)
+	}
+}
+
+func TestPropose_WhenModelEndsTurnWithoutATool_YieldsSyntheticReason(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		{Message: clank.Message{Role: "assistant", Content: "I'm not sure what to do here."}},
+	}}
+	e, sink := newTestEngine(model)
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+	if diff := cmp.Diff("no_action", got.Status.Phase); diff != "" {
+		t.Error("an empty-handed turn should still be no_action (-want +got)\n", diff)
+	}
+	if diff := cmp.Diff("model ended turn without a tool call", got.Status.Reason); diff != "" {
+		t.Error("an empty-handed turn needs its own synthetic reason (-want +got)\n", diff)
+	}
+	if len(sink.delivered) != 0 {
+		t.Errorf("no_action must deliver nothing: delivered %d", len(sink.delivered))
 	}
 }
 
@@ -276,7 +303,7 @@ func receivedToolDigest(snapshots [][]clank.Message, digest string) bool {
 
 func TestPropose_OffersReadOnlyToolsAndControlVerbs(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{{ToolCalls: []clank.ToolCall{{Name: "insufficient"}}}}}
+	model := &fakeModel{script: []clank.Completion{{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}}}}
 	e, _ := newTestEngine(model)
 	e.Tools = map[string]clank.Tool{
 		"metrics":  metricsTool{},
