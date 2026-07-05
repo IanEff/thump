@@ -209,8 +209,9 @@ func newTestLoop(t *testing.T) testLoop {
 		ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
 		ApplicableTiers:          []string{"tier-1"},
 	}})
+	store := clank.NewMemStore()
 
-	l := clank.NewLoopForTest(model, tools, intake, cat, t.TempDir(), t.TempDir())
+	l := clank.NewLoopForTest(model, tools, intake, cat, t.TempDir(), t.TempDir(), store)
 	return testLoop{Engine: l.Engine, ReturnEdge: l.ReturnEdge, Cases: l.Cases, OutcomeInbox: l.OutcomeInbox}
 }
 
