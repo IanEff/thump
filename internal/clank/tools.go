@@ -22,6 +22,10 @@ func ProposeToolSpec() ToolSpec {
 	}
 }
 
+type insufficientInput struct {
+	Reason string `json:"reason" jsonschema:"required"`
+}
+
 // InsufficientToolSpec is the model's terminal decline: the evidence supports no
 // catalogued action, so the run ends with no proposal. It is offered alongside
 // ProposeToolSpec because a real model can only emit a tool call for a tool it
@@ -29,7 +33,9 @@ func ProposeToolSpec() ToolSpec {
 // assumed one. No input schema: it takes no arguments the engine reads.
 func InsufficientToolSpec() ToolSpec {
 	return ToolSpec{
-		Name:        "insufficient",
-		Description: "Declare the evidence insufficient to propose any catalogued action; the run ends with no proposal.",
+		Name: "insufficient",
+		Description: "Declare the evidence insufficient to propose any catalogued action," +
+			"and say why - name the missing evidency or why no catalogued action fits.",
+		InputSchema: SchemaOf[insufficientInput](),
 	}
 }

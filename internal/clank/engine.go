@@ -59,6 +59,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 		}
 
 		if len(comp.ToolCalls) == 0 {
+			set.Status.Reason = "model ended turn without a tool call"
 			declined = true
 			break
 		}
@@ -76,6 +77,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 				set.Proposals = p.Proposals
 				proposed, done = true, true
 			case "insufficient":
+				var in insufficientInput
+				if err := json.Unmarshal(call.Args, &in); err != nil {
+					return proposal.Set{}, fmt.Errorf("decode insufficient: %w", err)
+				}
+				set.Status.Reason = in.Reason
+
 				declined, done = true, true
 			default:
 				tool, ok := e.Tools[call.Name]

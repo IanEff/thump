@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ianeff/thump/internal/proposal"
 	"github.com/ianeff/thump/internal/signal"
 	"sigs.k8s.io/yaml"
 )
@@ -58,7 +59,14 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		}
 		delete(tr.attempts, path)
 
-		slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase, "proposals", len(set.Proposals))
+		if set.Status.Phase == proposal.PhaseNoAction {
+			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase,
+				"proposals", len(set.Proposals), "reason", set.Status.Reason)
+		} else {
+			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase,
+				"proposals", len(set.Proposals))
+		}
+
 		if err := tr.disposition(path, "processed"); err != nil {
 			return fmt.Errorf("clank: archive %s: %w", path, err)
 		}

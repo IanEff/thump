@@ -32,6 +32,7 @@ type RankingRationale struct {
 
 type Status struct {
 	Phase        string    `json:"phase,omitempty" yaml:"phase,omitempty"` // proposed | acknowledge | acted | superseded | closed | no_action
+	Reason       string    `json:"reason,omitempty" yaml:"reason,omitempty"`
 	SupersededBy string    `json:"supersededBy,omitempty" yaml:"supersededBy,omitempty"`
 	Outcome      string    `json:"outcome,omitempty" yaml:"outcome,omitempty"` // success | failure | unknown | partial_non_converging
 	ObservedAt   time.Time `json:"observedAt,omitempty" yaml:"observedAt,omitempty"`
