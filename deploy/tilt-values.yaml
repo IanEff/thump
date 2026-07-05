@@ -1,0 +1,16 @@
+# Tilt dev-loop overrides layered on top of deploy/chart/thump/values.yaml
+# (via `helm(..., values=['deploy/tilt-values.yaml'])` in the Tiltfile).
+# Not used by ArgoCD/steady-state — ceph-lab's Application values pin their
+# own image tag per Stage 4, replicas: 0 by chart default.
+
+# W0-4, dev posture: the machine runs while you're watching a `tilt up`
+# session (see the Tiltfile's k8s_resource for how it's held stable
+# between edits via TRIGGER_MODE_MANUAL).
+replicas: 1
+
+image:
+  registry: "192.168.56.1:5005"
+  # Placeholder — Tilt matches on registry+repo (not tag) and rewrites this
+  # to its own content-addressed tag on every build, so the literal value
+  # here never actually reaches the cluster.
+  tag: "dev"
