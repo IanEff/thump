@@ -1,4 +1,7 @@
-PROJECT := clank
+PROJECT := thump
+
+REGISTRY := ghcr.io/ianeff
+BEATS    := clank rattle hiss thump
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -10,11 +13,11 @@ LDFLAGS := -ldflags "-s -w \
   -X main.date=$(DATE)"
 
 
-.PHONY: all ci fmt fmt-check vet lint vulncheck test race coverage build run tidy clean eval capture-detection
+.PHONY: all ci fmt fmt-check vet lint vulncheck test race coverage build images push-images run tidy clean eval capture-detection
 
 all: ci
 
-ci: fmt-check vet lint test build
+ci: fmt-check vet lint vulncheck race build
 
 fmt:
 	go fmt ./...
@@ -63,6 +66,26 @@ build:
 	go build $(LDFLAGS) -o bin/rattle ./cmd/rattle
 	go build $(LDFLAGS) -o bin/hiss ./cmd/hiss
 	go build $(LDFLAGS) -o bin/thump ./cmd/thump
+
+# images builds one container per beat, tagged with the git SHA (never
+# `latest` — mutable tags break GitOps drift detection). Override the
+# destination with `make images REGISTRY=ghcr.io/whoever`.
+images:
+	@for beat in $(BEATS); do \
+		echo "building $(REGISTRY)/thump-$$beat:$(COMMIT)"; \
+		docker build \
+			--build-arg BEAT=$$beat \
+			--build-arg VERSION=$(VERSION) \
+			--build-arg COMMIT=$(COMMIT) \
+			--build-arg DATE=$(DATE) \
+			-t $(REGISTRY)/thump-$$beat:$(COMMIT) \
+			. || exit 1; \
+	done
+
+push-images: images
+	@for beat in $(BEATS); do \
+		docker push $(REGISTRY)/thump-$$beat:$(COMMIT) || exit 1; \
+	done
 
 run-clank:
 	go run ./cmd/clank
