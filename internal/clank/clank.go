@@ -62,6 +62,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
+	transcripts := os.Getenv("CLANK_TRANSCRIPTS") // thump's transcript output dir
+	if transcripts == "" {
+		_, _ = fmt.Fprintln(stderr, "CLANK_TRANSCRIPTS is required")
+	}
+
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		_, _ = fmt.Fprintln(stderr, "ANTHROPIC_API_KEY is required")
@@ -91,7 +96,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}, noopChange{})
 	}
 
-	l := newLoop(inbox, outbox, outcomes, model, nil, intake, defaultCatalog())
+	var store Store = NewMemStore()
+	if transcripts != "" {
+		store = NewDirStore(transcripts)
+	}
+
+	l := newLoop(inbox, outbox, outcomes, model, nil, intake, defaultCatalog(), store)
 	tr := &Transport{Inbox: inbox, Engine: l.Engine}
 
 	runLoop(ctx, tr, l.ReturnEdge)
@@ -183,7 +193,7 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *StaticCatalog) *loop {
+func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *StaticCatalog, store Store) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
@@ -192,7 +202,7 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 		Tools:        tools,
 		Catalog:      cat,
 		Ranker:       NewRanker(),
-		Store:        NewMemStore(),
+		Store:        store,
 		Scorer:       &CausalScorerImpl{Prior: cases}, // scorer reads THIS case base
 		DedupeWindow: time.Hour,
 		Ledger:       ledger, // engine records into THIS ledger

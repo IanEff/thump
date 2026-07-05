@@ -3,6 +3,9 @@ package clank
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -55,6 +58,69 @@ func (s *MemStore) Finish(ctx context.Context, runID string, runErr error) error
 	defer s.mu.Unlock()
 	s.finished[runID] = runErr
 	return nil
+}
+
+type DirStore struct {
+	mu  sync.Mutex
+	Dir string
+}
+
+func NewDirStore(dir string) *DirStore {
+	return &DirStore{Dir: dir}
+}
+
+func (s *DirStore) Checkpoint(ctx context.Context, t Turn) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return s.appendLine(t.RunID, t)
+}
+
+// Pending is unused on this path.
+func (s *DirStore) Pending(ctx context.Context) ([]Turn, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return nil, nil
+}
+
+func (s *DirStore) Finish(ctx context.Context, runID string, runErr error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	rec := terminalRecord{Finished: true}
+	if runErr != nil {
+		rec.Error = runErr.Error()
+	}
+	return s.appendLine(runID, rec)
+}
+
+func (s *DirStore) appendLine(runID string, v any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("dir store: marshal: %w", err)
+	}
+	path := filepath.Join(s.Dir, runID+".jsonl")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("dir store: open %s: %w", path, err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	if _, err := f.Write(append(b, '\n')); err != nil {
+		return fmt.Errorf("dir store: write %s: %w", path, err)
+	}
+	return nil
+}
+
+type terminalRecord struct {
+	Finished bool   `json:"finished"`
+	Error    string `json:"error,omitempty"`
 }
 
 type Turn struct {
