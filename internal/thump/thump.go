@@ -81,15 +81,41 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // thump and clank read the same authored actions; until clank's Main wires
 // an engine, thump is the only binary that needs one at runtime.
 func defaultCatalog() *contract.StaticCatalog {
-	return contract.NewStaticCatalog([]contract.ActionContract{{
-		Name:                     "throttle-non-critical-paths",
-		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
-		ApplicableTiers:          []string{"tier-1"},
-		Action: contract.ActionSpec{
-			Description:     "Throttle non-critical request paths at the ingress",
-			ScopeParameters: map[string]contract.Range{"throttle_pct": {Min: 10, Max: 60, Default: 25}},
+	return contract.NewStaticCatalog([]contract.ActionContract{
+		{
+			Name:                     "throttle-non-critical-paths",
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
+			ApplicableTiers:          []string{"tier-1"},
+			Action: contract.ActionSpec{
+				Description:     "Throttle non-critical request paths at the ingress",
+				ScopeParameters: map[string]contract.Range{"throttle_pct": {Min: 10, Max: 60, Default: 25}},
+			},
+			Reversal:        contract.Reversal{Method: "unthrottle", Fallback: "page-oncall"},
+			SuccessCriteria: contract.SuccessCriteria{Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute},
 		},
-		Reversal:        contract.Reversal{Method: "unthrottle", Fallback: "page-oncall"},
-		SuccessCriteria: contract.SuccessCriteria{Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute},
-	}})
+		{
+			Name: "hold-rebalance",
+			ApplicableFailureClasses: []proposal.FailureClass{
+				proposal.ClassResourceExhaustion,
+				proposal.ClassUnknown,
+			},
+			ApplicableTiers: []string{"tier-1"},
+			Action: contract.ActionSpec{
+				Description: "Hold Ceph recovery/rebalancing (osd set noout) while a " +
+					"node is transiently out, so the cluster doesn't thrash; reversible.",
+				ScopeParameters: map[string]contract.Range{
+					"hold_minutes": {Min: 5, Max: 60, Default: 15},
+				},
+			},
+			Reversal: contract.Reversal{
+				Method:   "release-rebalance",
+				Fallback: "page-oncall",
+			},
+			SuccessCriteria: contract.SuccessCriteria{
+				Metric: "ceph_health",
+				Target: "HEALTH_OK",
+				Window: 10 * time.Minute,
+			},
+		},
+	})
 }
