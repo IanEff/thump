@@ -1,0 +1,32 @@
+ContractRef: argocd-sync:v1
+DetectedAt: "2026-07-04T17:19:26.709844-04:00"
+DetectorType: sustained_burn
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 1.9999999999999982
+  Trajectory: recovering
+Fingerprint: slo_burn:argocd
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.02
+    Trajectory: recovering
+Name: argocd-burn-accel
+OriginService: argocd
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: cilium
+    State: healthy
+  - Service: rook-operator
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""

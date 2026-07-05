@@ -98,6 +98,10 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	var store Store = NewMemStore()
 	if transcripts != "" {
+		if err := os.MkdirAll(transcripts, 0o750); err != nil {
+			_, _ = fmt.Fprintf(stderr, "mkdir transcripts: %w", err)
+			return 1
+		}
 		store = NewDirStore(transcripts)
 	}
 
