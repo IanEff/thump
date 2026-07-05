@@ -43,7 +43,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 	set.Status = &ProposalStatus{}
 
 	actions := e.Catalog.ApplicableToTier(sig.ServiceTier, sao)
-	msgs := []Message{{Role: "user", Content: seedPrompt(sao, actions)}}
+	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, actions)}}
 	var evidence []EvidenceRef
 	proposed, declined := false, false
 
@@ -187,10 +187,24 @@ func (e *Engine) enforceCatalog(set ProposalSet, sao SAO) error {
 	return nil
 }
 
-func seedPrompt(sao SAO, actions []ActionContract) string {
+func seedPrompt(sig signal.Detection, sao SAO, actions []ActionContract) string {
 	var b strings.Builder
+	subject := sig.OriginService
+	if subject == "" {
+		subject = sig.Name
+	}
 	fmt.Fprintf(&b, "signal on %s (severity %.0f%%, blast %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action — or insufficient if the evidence supports no action.\n",
-		sao.Signal.Metric, sao.Signal.Severity.DegradationPct, sao.Signal.BlastRadius.AffectedPct)
+		subject, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+
+	if len(sao.Topology.Upstream) > 0 || len(sao.Topology.Downstream) > 0 {
+		b.WriteString("observed topology:\n")
+		for _, n := range sao.Topology.Upstream {
+			fmt.Fprintf(&b, "- upstream %s: %s\n", n.Name, n.State)
+		}
+		for _, n := range sao.Topology.Downstream {
+			fmt.Fprintf(&b, "- downstream %s: %s\n", n.Name, n.State)
+		}
+	}
 
 	if len(actions) == 0 {
 		b.WriteString("no catalogued action applies to this signal; if the evidence supports acting you must still call insufficient.")

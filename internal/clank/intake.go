@@ -36,6 +36,13 @@ func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (SAO, erro
 	if err != nil {
 		return SAO{}, fmt.Errorf("%w: %w", ErrTopologySource, err)
 	}
+	if len(topo.Upstream) == 0 && len(topo.Downstream) == 0 {
+		// The pluggable TopologySource (WhirTopology, or noop until it's wired)
+		// has nothing to say — fall back to what rattle already observed on
+		// the Detection itself, rather than silently dropping it. This isn't
+		// new source wiring; sig.Topology is data clank already has in hand.
+		topo = topologyFromSignal(sig.Topology)
+	}
 	change, err := in.change.Changes(ctx, sig)
 	if err != nil {
 		return SAO{}, fmt.Errorf("%w: %w", ErrChangeSoure, err)
@@ -53,4 +60,19 @@ func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (SAO, erro
 		Topology: topo,
 		Change:   change,
 	}, nil
+}
+
+// topologyFromSignal adapts rattle's TopologyContext (signal.ObservedNode:
+// Service + State) onto clank's own TopologySnapshot (NodeState) — the two
+// shapes exist independently because clank's NodeState carries fields
+// (DegradedSince, TrafficShare) rattle's ObservedNode doesn't have yet.
+func topologyFromSignal(t signal.TopologyContext) TopologySnapshot {
+	var snap TopologySnapshot
+	for _, n := range t.Upstream {
+		snap.Upstream = append(snap.Upstream, NodeState{Name: n.Service, State: n.State})
+	}
+	for _, n := range t.Downstream {
+		snap.Downstream = append(snap.Downstream, NodeState{Name: n.Service, State: n.State})
+	}
+	return snap
 }
