@@ -148,6 +148,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 		set.Status.Phase = proposal.PhaseProposed
 	} else {
 		set.Status.Phase = proposal.PhaseNoAction
+		set.Status.Reason = gate.Reason
 	}
 
 	if err := e.Ledger.Record(ctx, set); err != nil {

@@ -38,6 +38,46 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 	}
 }
 
+// TestPropose_GateDeclineSurfacesReason pins the other half of the "mute
+// decline" bug: a model that DOES propose (unlike the insufficient-evidence
+// path TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason exercises) but
+// gathers no live evidence first still gets declined by the readiness gate
+// — and that decline must say why (Status.Reason), not just what
+// (Status.Phase).
+func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		// turn 1: propose straight away, no evidence-gathering tool call first
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
+			FailureClass: clank.ClassDependencySaturation,
+			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		})}}},
+	}}
+
+	e, sink := newTestEngine(model)
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+
+	if got.Gate.Passed {
+		t.Fatalf("no live evidence should fail the gate, got Passed=true: %+v", got.Gate)
+	}
+	if len(sink.delivered) != 0 {
+		t.Fatalf("a gate decline delivers nothing; delivered %d", len(sink.delivered))
+	}
+	if got.Status.Phase != "no_action" {
+		t.Errorf("a gate decline is phase=no_action, got %q", got.Status.Phase)
+	}
+	if got.Status.Reason == "" {
+		t.Fatal("gate decline is mute: Status.Reason is empty despite GateResult.Reason being set")
+	}
+	if diff := cmp.Diff(got.Gate.Reason, got.Status.Reason); diff != "" {
+		t.Error("Status.Reason must mirror GateResult.Reason (-want +got)\n", diff)
+	}
+}
+
 type fakeModel struct {
 	script        []clank.Completion
 	i             int

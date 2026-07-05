@@ -33,8 +33,15 @@ local_resource(
 
 DEV_REGISTRY = '192.168.56.1:5005'
 
+# COMMIT is resolved once at Tiltfile load (not per-build), so it reflects
+# the last commit, not uncommitted dirty-tree edits, and only refreshes on
+# Tiltfile reload / the next `tilt up` — an accepted tradeoff for a fast
+# edit loop here. DATE is deliberately left as the Dockerfile's "unknown"
+# default under Tilt — a per-build wall-clock stamp isn't worth the noise.
+COMMIT = str(local('git rev-parse --short --verify HEAD || echo none')).strip()
+
 for beat in ['rattle', 'clank', 'hiss', 'thump']:
-    docker_build(DEV_REGISTRY + '/thump-' + beat, '.', build_args={'BEAT': beat})
+    docker_build(DEV_REGISTRY + '/thump-' + beat, '.', build_args={'BEAT': beat, 'VERSION': 'dev', 'COMMIT': COMMIT})
 
 k8s_yaml(helm('deploy/chart/thump', values=['deploy/tilt-values.yaml']))
 
