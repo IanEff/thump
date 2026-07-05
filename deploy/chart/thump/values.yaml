@@ -1,0 +1,48 @@
+# W0-4 (parked-by-default): the machine ships at replicas: 0. Flip to 1 via
+# `tilt up` (dev) or a values commit + ArgoCD sync (soak) — turning it on
+# stays a deliberate, visible act, never the chart's default.
+replicas: 0
+
+image:
+  registry: ghcr.io/ianeff
+  # tag is deliberately blank: the git SHA is stamped at deploy time
+  # (`make images` / CI), never defaulted to `latest` — see
+  # image-tagging-immutability. `helm template/install --set image.tag=<sha>`.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# VERIFY against the lab: `kubectl -n monitoring get svc` before committing.
+prometheus:
+  url: http://prometheus-server.monitoring.svc
+
+# The key rides a Secret created out-of-band via the lab's existing
+# SOPS-encrypted-secret flow — this chart only references it by name/key,
+# it never contains or generates the plaintext key. `create: true` +
+# `apiKey` is a local/Tilt-dev escape hatch ONLY — never set apiKey in a
+# committed values file.
+anthropic:
+  secretName: thump-anthropic
+  secretKey: api-key
+  create: false
+  apiKey: ""
+
+# Per-beat resources (W0-2: one umbrella chart, per-beat values sections).
+# Stage 0 confirmed real headroom; every beat starts small — the whole
+# machine should cost less than one CSI sidecar.
+beats:
+  rattle:
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}
+  clank:
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 128Mi}
+  hiss:
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}
+  thump:
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}

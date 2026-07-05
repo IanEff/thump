@@ -1,0 +1,11 @@
+# See configmap-whir.yaml for the .Files.Get / symlink note — same pattern.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-rattle
+  namespace: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
+data:
+  traffic-queries.yaml: |
+{{ .Files.Get "config/rattle/traffic-queries.yaml" | indent 4 }}

@@ -1,0 +1,17 @@
+# Generated from the repo's config/ tree (Stage 2 step 2) — never
+# hand-copied — via the `config/` symlink at the chart root
+# (deploy/chart/thump/config -> ../../../config). One source of truth: this
+# is the same catalog-info.yaml / state-queries.yaml the Mac-native
+# four-terminal protocol reads off disk.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-whir
+  namespace: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
+data:
+  catalog-info.yaml: |
+{{ .Files.Get "config/whir/catalog-info.yaml" | indent 4 }}
+  state-queries.yaml: |
+{{ .Files.Get "config/whir/state-queries.yaml" | indent 4 }}

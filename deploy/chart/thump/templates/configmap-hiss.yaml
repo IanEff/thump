@@ -1,0 +1,13 @@
+# See configmap-whir.yaml for the .Files.Get / symlink note — same pattern.
+# This is the ConfigMap the charter §4 smell test cares about (Stage 2 DoD):
+# hiss's policy stays hiss's alone — nothing else in the chart mounts it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-hiss
+  namespace: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
+data:
+  policy.yaml: |
+{{ .Files.Get "config/hiss/policy.yaml" | indent 4 }}

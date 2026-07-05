@@ -1,0 +1,9 @@
+# Stage 2 step 5: the chart owns its own namespace — nothing in the machine
+# needs cluster-scope anything, so this is the only cluster-scoped object it
+# creates.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
