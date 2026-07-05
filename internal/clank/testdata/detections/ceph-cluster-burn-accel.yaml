@@ -1,0 +1,32 @@
+ContractRef: ceph-health:v1
+DetectedAt: "2026-07-04T17:30:26.709057-04:00"
+DetectorType: burn_rate_acceleration
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 14.285714285715859
+  Trajectory: accelerating
+Fingerprint: slo_burn:ceph-cluster
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.20000000000002222
+    Trajectory: accelerating
+Name: ceph-cluster-burn-accel
+OriginService: ceph-cluster
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: cephcluster
+    State: degraded
+  - Service: rook-operator
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""

@@ -14,6 +14,14 @@ func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *Sta
 	return newLoop("", outbox, outcomes, model, tools, intake, cat, store)
 }
 
+// DefaultCatalogForTest exposes the production catalog (the one Main wires)
+// to clank_test, so the golden-path suite proves the loop against the SAME
+// actions clank actually ships — not a bespoke test catalog that begs the
+// question. Test-only, like the rest of this file.
+func DefaultCatalogForTest() *StaticCatalog {
+	return defaultCatalog()
+}
+
 // RunLoopForTest exposes Main's ticker-driven runLoop so a test can cancel a
 // context it controls and assert a prompt return, without touching Main
 // itself (which builds its context from OS signals).

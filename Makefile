@@ -10,7 +10,7 @@ LDFLAGS := -ldflags "-s -w \
   -X main.date=$(DATE)"
 
 
-.PHONY: all ci fmt fmt-check vet lint vulncheck test race coverage build run tidy clean
+.PHONY: all ci fmt fmt-check vet lint vulncheck test race coverage build run tidy clean eval capture-detection
 
 all: ci
 
@@ -41,6 +41,21 @@ race:
 coverage:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -1
+
+# eval is key-gated (ANTHROPIC_API_KEY) and NEVER part of `ci` — a real-model
+# assertion is exactly the flakiness make ci exists to keep out. Missing key =
+# a clean skip, not a failure, so this is always safe to run.
+eval:
+	go test -tags eval ./internal/clank -run TestEval_ReasonerAgainstProductionCatalog -v
+
+# capture-detection farms a live detection into a fixture:
+#   make capture-detection SRC=/tmp/thump/detections/processed/slo_burn:ceph-cluster-....yaml NAME=my-fixture
+capture-detection:
+	@test -n "$(SRC)" && test -n "$(NAME)" || \
+	  (echo "usage: make capture-detection SRC=<path to .yaml> NAME=<fixture-name>"; exit 1)
+	cp "$(SRC)" internal/clank/testdata/detections/$(NAME).yaml
+	@echo "captured internal/clank/testdata/detections/$(NAME).yaml"
+	@echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
 build:
 	@mkdir -p bin
