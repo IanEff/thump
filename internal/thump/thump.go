@@ -19,8 +19,6 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
@@ -65,6 +63,8 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return runBroker(ctx, natsURL, stderr)
 	}
 
+	// offline path: the dir-glob Transport is now the keyless fake the seam
+	// tests exercise — broker mode above is how this actually runs.
 	tr := &Transport{
 		Inbox: inbox,
 		OrderPub: &publish.DirPublisher[Order]{
@@ -100,22 +100,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
 func runBroker(ctx context.Context, natsURL string, stderr io.Writer) int {
-	nc, err := nats.Connect(natsURL)
+	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "connect nats: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
-	defer nc.Close()
-
-	js, err := jetstream.New(nc)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "jetstream: %v\n", err)
-		return 1
-	}
-	if err := broker.EnsureTopology(ctx, js); err != nil {
-		_, _ = fmt.Fprintf(stderr, "ensure topology: %v\n", err)
-		return 1
-	}
+	defer closeNC()
 
 	walDir := os.Getenv("WAL_DIR")
 	if walDir == "" {

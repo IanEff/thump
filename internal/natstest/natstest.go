@@ -17,6 +17,24 @@ import (
 // context. The server and connection are cleaned up via t.Cleanup.
 func New(t *testing.T) jetstream.JetStream {
 	t.Helper()
+	nc, err := nats.Connect(URL(t))
+	if err != nil {
+		t.Fatal("connect:", err)
+	}
+	t.Cleanup(nc.Close)
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatal("jetstream:", err)
+	}
+	return js
+}
+
+// URL starts the same embedded server as New, but returns its client URL
+// instead of an already-connected JetStream context — for tests exercising
+// code that does its own nats.Connect (e.g. broker.Connect).
+func URL(t *testing.T) string {
+	t.Helper()
 	srv, err := natssrv.NewServer(&natssrv.Options{
 		Port:      -1, // random free port
 		JetStream: true,
@@ -32,15 +50,5 @@ func New(t *testing.T) jetstream.JetStream {
 	}
 	t.Cleanup(srv.Shutdown)
 
-	nc, err := nats.Connect(srv.ClientURL())
-	if err != nil {
-		t.Fatal("connect:", err)
-	}
-	t.Cleanup(nc.Close)
-
-	js, err := jetstream.New(nc)
-	if err != nil {
-		t.Fatal("jetstream:", err)
-	}
-	return js
+	return srv.ClientURL()
 }

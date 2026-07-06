@@ -17,8 +17,6 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/whir"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
 )
 
 func Main(args []string, stdout, stderr io.Writer, version, commit, date string) int {
@@ -75,21 +73,12 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 
 	var pub publish.Publisher[signal.Detection]
 	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
-		nc, err := nats.Connect(natsURL)
+		js, closeNC, err := broker.Connect(ctx, natsURL)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "connect nats: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1
 		}
-		defer nc.Close()
-		js, err := jetstream.New(nc)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "jetstream: %v\n", err)
-			return 1
-		}
-		if err := broker.EnsureTopology(ctx, js); err != nil {
-			_, _ = fmt.Fprintf(stderr, "ensure topology: %v", err)
-			return 1
-		}
+		defer closeNC()
 		walDir := os.Getenv("WAL_DIR")
 		if walDir == "" {
 			_, _ = fmt.Fprintln(stderr, "WAL_DIR is required with NATS_URL")
@@ -104,6 +93,8 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			Next: publish.NewJetPublisher[signal.Detection](js),
 		}
 	} else if outbox := os.Getenv("RATTLE_OUTBOX"); outbox != "" {
+		// offline path: the DirPublisher is now the keyless fake the seam
+		// tests exercise — broker mode above is how this actually runs.
 		if err := os.MkdirAll(outbox, 0o750); err != nil { //nolint:gosec
 			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
 			return 1
