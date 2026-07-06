@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
@@ -22,6 +23,7 @@ import (
 	"github.com/ianeff/thump/internal/whir"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"golang.org/x/sync/errgroup"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
@@ -153,6 +155,8 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 
 	ledger := NewMemProposalLog()
 	cases := NewCaseBase()
+	learn := Click{Ledger: ledger, Cases: cases}
+
 	eng := &Engine{
 		Intake:       intake,
 		Model:        model,
@@ -167,12 +171,34 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 		MaxSteps:     8,
 	}
 
-	sub := broker.NewJetSubscriber[signal.Detection](js)
-	err = sub.Run(ctx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
-		_, err := eng.Propose(ctx, det)
-		return err
+	// sub := broker.NewJetSubscriber[signal.Detection](js)
+	// err = sub.Run(ctx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
+	// 	_, err := eng.Propose(ctx, det)
+	// 	return err
+	// })
+	// if err != nil && ctx.Err() == nil {
+	// 	slog.Error("broker run failed", "err", err)
+	// 	return 1
+	// }
+	// return 0
+	g, gctx := errgroup.WithContext(ctx)
+
+	detSub := broker.NewJetSubscriber[signal.Detection](js)
+	g.Go(func() error {
+		return detSub.Run(gctx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
+			_, err := eng.Propose(ctx, det)
+			return err
+		})
 	})
-	if err != nil && ctx.Err() == nil {
+
+	outSub := broker.NewJetSubscriber[outcome.Outcome](js)
+	g.Go(func() error {
+		return outSub.Run(gctx, "thump.outcomes", func(ctx context.Context, o outcome.Outcome) error {
+			return learnHandler(ctx, learn, o) // maps Absorb's errors to Ack/transient — see below
+		})
+	})
+
+	if err := g.Wait(); err != nil && ctx.Err() == nil {
 		slog.Error("broker run failed", "err", err)
 		return 1
 	}
@@ -183,6 +209,19 @@ const (
 	backoffBase = 5 * time.Second
 	backoffCap  = 5 * time.Minute
 )
+
+func learnHandler(ctx context.Context, c Click, o outcome.Outcome) error {
+	switch err := c.Absorb(ctx, o); {
+	case err == nil:
+		return nil // matched + learned → Ack (was: processed/)
+	case errors.Is(err, ErrNoOpenSet):
+		slog.Warn("outcome arrived with no open set", "fingerprint", o.SignalRef)
+		return nil // terminal in dir mode (unmatched/) → Ack, don't retry-forever
+	default: // unauditable / incoherent — deterministic, a real seam bug
+		slog.Error("outcome failed absorb", "fingerprint", o.SignalRef, "err", err)
+		return nil // was: quarantine/ — terminal, so Ack (NOT an error; erroring would DLQ-after-6)
+	}
+}
 
 func nextDelay(cur time.Duration, tickOK bool) time.Duration {
 	if tickOK {
