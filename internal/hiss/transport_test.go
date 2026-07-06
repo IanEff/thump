@@ -10,6 +10,7 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
 
@@ -102,7 +103,7 @@ func readOneGoverned(t *testing.T, outbox string) decision.Governed {
 func newTestTransport(inbox, outbox string) *hiss.Transport {
 	return &hiss.Transport{
 		Inbox:  inbox,
-		Outbox: outbox,
+		Pub:    &publish.DirPublisher[decision.Governed]{Dir: outbox},
 		Policy: calmPolicy(),
 		Log:    hiss.NewDecisionLog(),
 		Now:    frozenNow,

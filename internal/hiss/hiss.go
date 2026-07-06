@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
 
@@ -59,7 +61,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	slog.Info("starting hiss", "version", version, "commit", commit, "date", date)
 
-	tr := &Transport{Inbox: inbox, Outbox: outbox, Policy: pol, Log: NewDecisionLog()}
+	tr := &Transport{
+		Inbox:  inbox,
+		Pub:    &publish.DirPublisher[decision.Governed]{Dir: outbox},
+		Policy: pol,
+		Log:    NewDecisionLog(),
+	}
 	ticker := time.NewTicker(5 * time.Second) // TODO: or whatever
 	defer ticker.Stop()
 	for {

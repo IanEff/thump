@@ -9,12 +9,13 @@ import (
 
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
 
 type Transport struct {
 	Inbox  string
-	Outbox string
+	Pub    publish.Publisher[decision.Governed]
 	Policy Policy
 	Log    *DecisionLog
 	Now    func() time.Time
@@ -52,13 +53,8 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		d := auth.Evaluate(ps, tr.Policy, now())
 		tr.Log.Record(d)
 
-		out, err := yaml.Marshal(decision.Governed{Decision: d, Set: ps})
-		if err != nil {
-			return fmt.Errorf("hiss: marshal decision for %s: %w", path, err)
-		}
-
-		if err := writeAtomic(tr.Outbox, filepath.Base(path), out); err != nil {
-			return fmt.Errorf("hiss: write decision for %s: %w", path, err)
+		if err := tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: ps}); err != nil {
+			return fmt.Errorf("hiss: publish decision for %s: %w", path, err)
 		}
 		if err := tr.archive(path); err != nil {
 			return fmt.Errorf("hiss: archive %s: %w", path, err)
@@ -81,22 +77,4 @@ func (tr *Transport) archive(path string) error {
 		return err
 	}
 	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
-}
-
-// writeAtomic is the simple atomic writer, replicated across all services to PROVE A POINT.
-func writeAtomic(dir, name string, data []byte) error {
-	tmp, err := os.CreateTemp(dir, ".tmp-*") // dot-prefixed, no .yaml suffix
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }
