@@ -15,10 +15,18 @@ import (
 func TestPublishIsALeafPackage(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
+		`"bytes"`:            true,
 		`"context"`:          true,
+		`"errors"`:           true,
+		`"encoding/json"`:    true,
 		`"fmt"`:              true,
+		`"io"`:               true,
+		`"io/fs"`:            true,
 		`"os"`:               true,
 		`"path/filepath"`:    true,
+		`"strconv"`:          true,
+		`"strings"`:          true,
+		`"sync"`:             true,
 		`"time"`:             true,
 		`"sigs.k8s.io/yaml"`: true,
 	}
