@@ -7,10 +7,13 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/nats-io/nats.go/jetstream"
 	"sigs.k8s.io/yaml"
 
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/wire"
 )
 
 // FakePublisher is the in-memory double a beat's own tests reach for.
@@ -112,5 +115,39 @@ func TestDirPublisher_OverwritesOnRepeatedName(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
 	if len(matches) != 1 {
 		t.Errorf("same fingerprint must overwrite, not pile up: got %d files", len(matches))
+	}
+}
+
+func TestJetPublisher_PublishesDecodableBytes(t *testing.T) {
+	t.Parallel()
+	js := natstest.New(t)
+	ctx := context.Background()
+
+	// a stream that captures the subject under test
+	_, err := js.CreateStream(ctx, jetstream.StreamConfig{
+		Name: "THUMP", Subjects: []string{"thump.>"},
+	})
+	if err != nil {
+		t.Fatal("create stream:", err)
+	}
+
+	pub := publish.NewJetPublisher[signal.Detection](js)
+	in := signal.Detection{Fingerprint: "slo_burn:ceph-rgw"}
+	if err := pub.Publish(ctx, "thump.detections", in); err != nil {
+		t.Fatal("publish:", err)
+	}
+
+	// read it straight back off the stream — proves the bytes are on the wire and decode
+	stream, _ := js.Stream(ctx, "THUMP")
+	raw, err := stream.GetLastMsgForSubject(ctx, "thump.detections")
+	if err != nil {
+		t.Fatal("get last msg:", err)
+	}
+	var got signal.Detection
+	if err := wire.Unmarshal(raw.Data, &got); err != nil {
+		t.Fatal("stored bytes didn't decode:", err)
+	}
+	if diff := cmp.Diff(in, got); diff != "" {
+		t.Error("published object didn't survive the wire (-want +got)", diff)
 	}
 }
