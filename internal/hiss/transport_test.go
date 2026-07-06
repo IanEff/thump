@@ -69,6 +69,25 @@ func TestTick_PoisonPill_QuarantinesAndSurvives(t *testing.T) {
 	}
 }
 
+func TestTick_NamesDecisionFileBySignalRef(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	writeSetYAML(t, inbox, "ps-001.yaml", governedSet())
+	tr := newTestTransport(inbox, outbox)
+
+	if err := tr.Tick(context.Background()); err != nil {
+		t.Fatal("golden run must not error:", err)
+	}
+
+	// the fingerprint is the through-line (rattle → clank → hiss); the
+	// decision file must stay keyed by it, not by subject+write-time, so an
+	// operator can find "the decision for slo_burn:ceph-rgw" by name alone.
+	ref := governedSet().SignalRef
+	if _, err := os.Stat(filepath.Join(outbox, ref+".yaml")); err != nil {
+		t.Errorf("decision file must be named <SignalRef>.yaml: %v", err)
+	}
+}
+
 func writeSetYAML(t *testing.T, dir, name string, ps proposal.Set) {
 	t.Helper()
 	out, err := yaml.Marshal(ps)
@@ -102,8 +121,11 @@ func readOneGoverned(t *testing.T, outbox string) decision.Governed {
 
 func newTestTransport(inbox, outbox string) *hiss.Transport {
 	return &hiss.Transport{
-		Inbox:  inbox,
-		Pub:    &publish.DirPublisher[decision.Governed]{Dir: outbox},
+		Inbox: inbox,
+		Pub: &publish.DirPublisher[decision.Governed]{
+			Dir:  outbox,
+			Name: func(g decision.Governed) string { return g.Decision.SignalRef },
+		},
 		Policy: calmPolicy(),
 		Log:    hiss.NewDecisionLog(),
 		Now:    frozenNow,

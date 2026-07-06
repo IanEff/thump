@@ -58,12 +58,18 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	slog.Info("starting thump", "version", version, "commit", commit, "date", date)
 
 	tr := &Transport{
-		Inbox:      inbox,
-		OrderPub:   &publish.DirPublisher[Order]{Dir: filepath.Join(outbox, "orders")},
-		OutcomePub: &publish.DirPublisher[outcome.Outcome]{Dir: filepath.Join(outbox, "outcomes")},
-		Catalog:    defaultCatalog(),
-		Log:        NewOutcomeLog(),
-		Exec:       DryRun{},
+		Inbox: inbox,
+		OrderPub: &publish.DirPublisher[Order]{
+			Dir:  filepath.Join(outbox, "orders"),
+			Name: func(o Order) string { return o.SignalRef },
+		},
+		OutcomePub: &publish.DirPublisher[outcome.Outcome]{
+			Dir:  filepath.Join(outbox, "outcomes"),
+			Name: func(o outcome.Outcome) string { return o.SignalRef },
+		},
+		Catalog: defaultCatalog(),
+		Log:     NewOutcomeLog(),
+		Exec:    DryRun{},
 	}
 	ticker := time.NewTicker(5 * time.Second) // TODO: or whatever
 	defer ticker.Stop()

@@ -1,12 +1,14 @@
 package thump_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
@@ -219,12 +221,35 @@ func readOneYAML(t *testing.T, dir string, out any) {
 // owns its state.
 func newTestTransport(inbox, outbox string) *thump.Transport {
 	return &thump.Transport{
-		Inbox:      inbox,
-		OrderPub:   &publish.DirPublisher[thump.Order]{Dir: filepath.Join(outbox, "orders")},
-		OutcomePub: &publish.DirPublisher[thump.Outcome]{Dir: filepath.Join(outbox, "outcomes")},
-		Catalog:    richCatalog(),
-		Log:        thump.NewOutcomeLog(),
-		Exec:       thump.DryRun{},
-		Now:        frozenNow,
+		Inbox: inbox,
+		OrderPub: &publish.DirPublisher[thump.Order]{
+			Dir:  filepath.Join(outbox, "orders"),
+			Name: func(o thump.Order) string { return o.SignalRef },
+		},
+		OutcomePub: &publish.DirPublisher[thump.Outcome]{
+			Dir:  filepath.Join(outbox, "outcomes"),
+			Name: func(o outcome.Outcome) string { return o.SignalRef },
+		},
+		Catalog: richCatalog(),
+		Log:     thump.NewOutcomeLog(),
+		Exec:    thump.DryRun{},
+		Now:     frozenNow,
+	}
+}
+
+func TestTick_OrderAndOutcomeShareTheSignalRefName(t *testing.T) {
+	inbox, outbox := t.TempDir(), t.TempDir()
+	writeGovernedYAML(t, inbox, "gov-001.yaml", approvedGoverned())
+	tr := newTestTransport(inbox, outbox)
+
+	if err := tr.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ref := approvedGoverned().Decision.SignalRef
+	if _, err := os.Stat(filepath.Join(outbox, "orders", ref+".yaml")); err != nil {
+		t.Errorf("order must be named by SignalRef: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outbox, "outcomes", ref+".yaml")); err != nil {
+		t.Errorf("outcome must be named by SignalRef: %v", err)
 	}
 }

@@ -73,7 +73,10 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
 			return 1
 		}
-		pub = &publish.DirPublisher[signal.Detection]{Dir: outbox}
+		pub = &publish.DirPublisher[signal.Detection]{
+			Dir:  outbox,
+			Name: func(d signal.Detection) string { return d.Fingerprint },
+		}
 	}
 
 	r := newReconciler(promURL, topo, traffic)

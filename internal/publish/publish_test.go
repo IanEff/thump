@@ -83,3 +83,34 @@ func TestWriteAtomicIsInvisibleToGlob(t *testing.T) {
 		t.Errorf("expected 0 matches, got %d", len(matches))
 	}
 }
+
+func TestDirPublisher_NameHookOverridesDefault(t *testing.T) {
+	dir := t.TempDir()
+	pub := &publish.DirPublisher[signal.Detection]{
+		Dir:  dir,
+		Name: func(d signal.Detection) string { return d.Fingerprint },
+	}
+	want := signal.Detection{Fingerprint: "fp-1"}
+
+	if err := pub.Publish(context.Background(), "thump.detections", want); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "fp-1.yaml")); err != nil {
+		t.Errorf("Name hook must control the filename: %v", err)
+	}
+}
+
+func TestDirPublisher_OverwritesOnRepeatedName(t *testing.T) {
+	dir := t.TempDir()
+	pub := &publish.DirPublisher[signal.Detection]{
+		Dir:  dir,
+		Name: func(d signal.Detection) string { return d.Fingerprint },
+	}
+	_ = pub.Publish(context.Background(), "s", signal.Detection{Fingerprint: "fp-1"})
+	_ = pub.Publish(context.Background(), "s", signal.Detection{Fingerprint: "fp-1"})
+
+	matches, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if len(matches) != 1 {
+		t.Errorf("same fingerprint must overwrite, not pile up: got %d files", len(matches))
+	}
+}

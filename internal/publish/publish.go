@@ -18,6 +18,9 @@ type Publisher[T any] interface {
 // DirPublisher is the directory write implementation of Publisher, the port for the Transport.
 type DirPublisher[T any] struct {
 	Dir string
+	// Name derives the on-disk filename, sans extension from the object
+	// being published.
+	Name func(T) string
 }
 
 func (p *DirPublisher[T]) Publish(_ context.Context, subject string, obj T) error {
@@ -29,8 +32,13 @@ func (p *DirPublisher[T]) Publish(_ context.Context, subject string, obj T) erro
 	if err != nil {
 		return fmt.Errorf("dir publisher: marshal %s: %w", subject, err)
 	}
-	name := fmt.Sprintf("%s-%d.yaml", subject, time.Now().UnixNano())
-	return writeAtomic(p.Dir, name, out)
+	key := fmt.Sprintf("%s-%d", subject, time.Now().UnixNano())
+	if p.Name != nil {
+		if n := p.Name(obj); n != "" {
+			key = n
+		}
+	}
+	return writeAtomic(p.Dir, key+".yaml", out)
 }
 
 func writeAtomic(dir, name string, data []byte) error {

@@ -62,8 +62,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	slog.Info("starting hiss", "version", version, "commit", commit, "date", date)
 
 	tr := &Transport{
-		Inbox:  inbox,
-		Pub:    &publish.DirPublisher[decision.Governed]{Dir: outbox},
+		Inbox: inbox,
+		Pub: &publish.DirPublisher[decision.Governed]{
+			Dir:  outbox,
+			Name: func(g decision.Governed) string { return g.Decision.SignalRef },
+		},
 		Policy: pol,
 		Log:    NewDecisionLog(),
 	}

@@ -25,7 +25,7 @@ type Transport struct {
 }
 
 // Tick performs one poll pass: list inbox → unmarshal Governed → render →
-// execute → write orders/<name>.yaml + outcomes/<name>.yaml → archive to
+// execute → publish orders/<SignalRef>.yaml + outcomes/<SignalRef>.yaml → archive to
 // processed/. Only inbox-level I/O failures return an error; a bad envelope
 // is a disposition (quarantine/skipped), never a crash.
 func (tr *Transport) Tick(ctx context.Context) error {
