@@ -85,7 +85,7 @@ func newProposingEngine(t *testing.T, outbox string) *clank.Engine {
 		Scorer:       clank.NewCausalScorer(),
 		DedupeWindow: time.Hour,
 		Ledger:       clank.NewMemProposalLog(),
-		Sink:         &clank.DirSink{Dir: outbox},
+		Pub:          &clank.DirPublisher{Dir: outbox},
 		MaxSteps:     8,
 	}
 }

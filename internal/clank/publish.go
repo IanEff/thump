@@ -10,15 +10,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type ProposalSink interface {
-	Deliver(ctx context.Context, ps ProposalSet) error
-}
-
-type MarkdownSink struct {
+type MarkdownPublisher struct {
 	W io.Writer
 }
 
-func (s *MarkdownSink) Deliver(_ context.Context, ps ProposalSet) error {
+func (s *MarkdownPublisher) Publish(_ context.Context, _ string, ps ProposalSet) error {
 	if _, err := fmt.Fprintf(s.W, "## ProposalSet: %s (%d considered)\n", ps.FailureClass, len(ps.Proposals)); err != nil {
 		return err
 	}
@@ -33,34 +29,34 @@ func (s *MarkdownSink) Deliver(_ context.Context, ps ProposalSet) error {
 	return nil
 }
 
-type YAMLSink struct {
+type YAMLPublisher struct {
 	W io.Writer
 }
 
-func (s *YAMLSink) Deliver(_ context.Context, ps ProposalSet) error {
+func (s *YAMLPublisher) Publish(_ context.Context, _ string, ps ProposalSet) error {
 	out, err := yaml.Marshal(ps)
 	if err != nil {
-		return fmt.Errorf("yaml sink: marshal proposal set: %w", err)
+		return fmt.Errorf("yaml publisher: marshal proposal set: %w", err)
 	}
 	if _, err := s.W.Write(out); err != nil {
-		return fmt.Errorf("yaml sink: write: %w", err)
+		return fmt.Errorf("yaml publisher: write: %w", err)
 	}
 	return nil
 }
 
-type DirSink struct{ Dir string }
+type DirPublisher struct{ Dir string }
 
-func (s *DirSink) Deliver(_ context.Context, ps ProposalSet) error {
+func (s *DirPublisher) Publish(_ context.Context, _ string, ps ProposalSet) error {
 	out, err := yaml.Marshal(ps)
 	if err != nil {
-		return fmt.Errorf("dir sink: marshal proposal set: %w", err)
+		return fmt.Errorf("dir publisher: marshal proposal set: %w", err)
 	}
 	name := ps.SignalRef
 	if name == "" {
 		name = ps.Name // fall back to Name if a set somehow has no fingerprint
 	}
 	if err := writeAtomic(s.Dir, name+".yaml", out); err != nil {
-		return fmt.Errorf("dir sink: write atomic %s: %w", name, err)
+		return fmt.Errorf("dir publisher: write atomic %s: %w", name, err)
 	}
 	return nil
 }
