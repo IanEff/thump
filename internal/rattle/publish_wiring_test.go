@@ -1,22 +1,23 @@
 package rattle_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/rattle"
+	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
 
 func TestDirSink_RoundTripsAFullyEnrichedDetection(t *testing.T) {
 	dir := t.TempDir()
 	want := goldenDetection() // fully enriched: topology + traffic + impact populated
-	sink := &rattle.DirSink{Dir: dir}
+	pub := &publish.DirPublisher[signal.Detection]{Dir: dir}
 
-	if err := sink.Deliver(want); err != nil {
+	if err := pub.Publish(context.Background(), "thump.detections", want); err != nil {
 		t.Fatal(err)
 	}
 
