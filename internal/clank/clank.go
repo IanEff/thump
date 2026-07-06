@@ -16,8 +16,12 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/whir"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
@@ -105,10 +109,73 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		store = NewDirStore(transcripts)
 	}
 
-	l := newLoop(inbox, outbox, outcomes, model, nil, intake, defaultCatalog(), store)
-	tr := &Transport{Inbox: inbox, Engine: l.Engine}
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		l := newLoop(inbox, outbox, outbox, model, nil, intake, defaultCatalog(), store)
+		tr := &Transport{Inbox: inbox, Engine: l.Engine}
+		runLoop(ctx, tr, l.ReturnEdge)
+		return 0
+	}
 
-	runLoop(ctx, tr, l.ReturnEdge)
+	return runBroker(ctx, natsURL, model, intake, store, stderr)
+}
+
+func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, stderr io.Writer) int {
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "connnect nats: %v", err)
+		return 1
+	}
+	defer nc.Close()
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "jetstream: %v\n", err)
+		return 1
+	}
+	if err := broker.EnsureTopology(ctx, js); err != nil {
+		_, _ = fmt.Fprintf(stderr, "ensure topology: %v\n", err)
+		return 1
+	}
+
+	walDir := os.Getenv("WAL_DIR")
+	if walDir == "" {
+		_, _ = fmt.Fprintln(stderr, "WAL_DIR is required")
+		return 1
+	}
+	w := &publish.WAL{Dir: walDir, Beat: "clank", Subject: "thump.proposals"}
+	defer func() { _ = w.Close(ctx) }()
+
+	proposalPub := &publish.WALPublisher[ProposalSet]{
+		WAL:  w,
+		Next: publish.NewJetPublisher[ProposalSet](js),
+	}
+
+	ledger := NewMemProposalLog()
+	cases := NewCaseBase()
+	eng := &Engine{
+		Intake:       intake,
+		Model:        model,
+		Catalog:      defaultCatalog(),
+		Ranker:       NewRanker(),
+		Store:        store,
+		Scorer:       &CausalScorerImpl{Prior: cases},
+		DedupeWindow: time.Hour,
+		Ledger:       ledger,
+		Pub:          proposalPub,
+		Gate:         ReadinessGate{},
+		MaxSteps:     8,
+	}
+
+	sub := broker.NewJetSubscriber[signal.Detection](js)
+	err = sub.Run(ctx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
+		_, err := eng.Propose(ctx, det)
+		return err
+	})
+	if err != nil && ctx.Err() == nil {
+		slog.Error("broker run failed", "err", err)
+		return 1
+	}
 	return 0
 }
 

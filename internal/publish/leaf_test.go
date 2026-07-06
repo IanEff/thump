@@ -29,6 +29,8 @@ func TestPublishIsALeafPackage(t *testing.T) {
 		`"sync"`:             true,
 		`"time"`:             true,
 		`"sigs.k8s.io/yaml"`: true,
+		`"github.com/ianeff/thump/internal/wire"`: true,
+		`"github.com/nats-io/nats.go/jetstream"`:  true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {
