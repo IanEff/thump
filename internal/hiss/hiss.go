@@ -13,7 +13,11 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"sigs.k8s.io/yaml"
 )
 
@@ -61,6 +65,10 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	slog.Info("starting hiss", "version", version, "commit", commit, "date", date)
 
+	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
+		return runBroker(ctx, natsURL, pol, stderr)
+	}
+
 	tr := &Transport{
 		Inbox: inbox,
 		Pub: &publish.DirPublisher[decision.Governed]{
@@ -83,6 +91,49 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			}
 		}
 	}
+}
+
+// runBroker is hiss's NATS branch: consume thump.proposals, evaluate
+// authority, publish thump.decisions — mirrors clank.runBroker's shape
+// (internal/clank/clank.go:123).
+func runBroker(ctx context.Context, natsURL string, pol Policy, stderr io.Writer) int {
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "connect nats: %v\n", err)
+		return 1
+	}
+	defer nc.Close()
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "jetstream: %v\n", err)
+		return 1
+	}
+	if err := broker.EnsureTopology(ctx, js); err != nil {
+		_, _ = fmt.Fprintf(stderr, "ensure topology: %v\n", err)
+		return 1
+	}
+
+	walDir := os.Getenv("WAL_DIR")
+	if walDir == "" {
+		_, _ = fmt.Fprintln(stderr, "WAL_DIR is required with NATS_URL")
+		return 1
+	}
+	w := &publish.WAL{Dir: walDir, Beat: "hiss", Subject: "thump.decisions"}
+	defer func() { _ = w.Close(ctx) }()
+
+	tr := &Transport{
+		Pub:    &publish.WALPublisher[decision.Governed]{WAL: w, Next: publish.NewJetPublisher[decision.Governed](js)},
+		Policy: pol,
+		Log:    NewDecisionLog(),
+	}
+
+	sub := broker.NewJetSubscriber[proposal.Set](js)
+	if err := sub.Run(ctx, "thump.proposals", tr.handle); err != nil && ctx.Err() == nil {
+		slog.Error("broker run failed", "err", err)
+		return 1
+	}
+	return 0
 }
 
 // loadPolicy reads HISS_POLICY as a YAML file and unmarshals it into a

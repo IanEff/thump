@@ -30,12 +30,6 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		return fmt.Errorf("hiss: list inbox: %w", err)
 	}
 
-	var auth Authority
-	now := time.Now
-	if tr.Now != nil {
-		now = tr.Now
-	}
-
 	for _, path := range matches {
 		raw, err := os.ReadFile(path) //nolint:gosec
 		if err != nil {
@@ -50,17 +44,28 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			continue // poison doesn't block the queue
 		}
 
-		d := auth.Evaluate(ps, tr.Policy, now())
-		tr.Log.Record(d)
-
-		if err := tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: ps}); err != nil {
-			return fmt.Errorf("hiss: publish decision for %s: %w", path, err)
+		if err := tr.handle(ctx, ps); err != nil {
+			return fmt.Errorf("hiss: handle %s: %w", path, err)
 		}
 		if err := tr.archive(path); err != nil {
 			return fmt.Errorf("hiss: archive %s: %w", path, err)
 		}
 	}
 	return nil
+}
+
+// handle evaluates one ProposalSet and publishes the Governed decision — the
+// transport-independent core. Tick calls it after decoding a file; the NATS
+// handler calls it after decoding a message. Same brain, two feeders.
+func (tr *Transport) handle(ctx context.Context, ps proposal.Set) error {
+	now := time.Now
+	if tr.Now != nil {
+		now = tr.Now
+	}
+	var auth Authority
+	d := auth.Evaluate(ps, tr.Policy, now())
+	tr.Log.Record(d)
+	return tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: ps})
 }
 
 func (tr *Transport) quarantine(path string) error {
