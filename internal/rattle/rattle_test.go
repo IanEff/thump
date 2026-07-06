@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/rattle"
-	"github.com/ianeff/thump/internal/signal"
 	"github.com/ianeff/thump/internal/whir"
 )
 

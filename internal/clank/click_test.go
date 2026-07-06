@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/outcome"
 	"sigs.k8s.io/yaml"
 )
 

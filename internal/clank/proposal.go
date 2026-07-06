@@ -3,7 +3,7 @@
 // detect, or touch infrastructure.
 package clank
 
-import "github.com/ianeff/thump/internal/proposal"
+import "github.com/ianeff/thump/api/v1/proposal"
 
 // The ProposalSet vocabulary moved to internal/proposal (hiss Wave 1) so the
 // Governance beat can read it without importing the reasoner. Aliases, not

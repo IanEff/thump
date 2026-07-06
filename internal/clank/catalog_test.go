@@ -3,8 +3,8 @@ package clank_test
 import (
 	"testing"
 
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/signal"
 )
 
 func TestCatalog(t *testing.T) {

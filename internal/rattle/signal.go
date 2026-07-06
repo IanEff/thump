@@ -3,7 +3,7 @@ package rattle
 import (
 	"time"
 
-	"github.com/ianeff/thump/internal/signal"
+	"github.com/ianeff/thump/api/v1/signal"
 )
 
 // SignalFor assembles a Detection from evidence the CALLER already computed.

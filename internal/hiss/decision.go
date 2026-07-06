@@ -1,6 +1,6 @@
 package hiss
 
-import "github.com/ianeff/thump/internal/decision"
+import "github.com/ianeff/thump/api/v1/decision"
 
 type (
 	Decision = decision.Decision

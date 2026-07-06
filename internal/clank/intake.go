@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ianeff/thump/internal/signal"
+	"github.com/ianeff/thump/api/v1/signal"
 )
 
 var (

@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/proposal"
 	"github.com/ianeff/thump/internal/whir"
 )
 

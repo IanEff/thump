@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/decision"
 	"github.com/ianeff/thump/internal/hiss"
-	"github.com/ianeff/thump/internal/signal"
 	"github.com/ianeff/thump/internal/thump"
 	"sigs.k8s.io/yaml"
 )

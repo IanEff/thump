@@ -1,3 +1,12 @@
+// Package decision is the boundary vocabulary of the Governance Plane: the
+// Decision that hiss emits after judging one proposal.Set, plus Governed, the
+// envelope that carries a Decision and the Set it judged onward to thump.
+// Every Decision is born-auditable — Auditable() is the invariant every
+// Evaluate output must satisfy: a verdict without a policy version, an
+// evaluation time, or (when not approved) a reason is not a valid Decision.
+//
+// v1 is additive-only: never rename, retype, or repurpose a field here, since
+// other processes (not just other packages) depend on this exact shape.
 package decision
 
 import (
@@ -5,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/api/v1/proposal"
 )
 
 type Decision struct {

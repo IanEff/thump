@@ -18,10 +18,10 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// the wire codec (hiss writes with it; we read with it)
 		`"sigs.k8s.io/yaml"`: true,
 		// the leaves — vocabulary only, no behavior that touches the world
-		`"github.com/ianeff/thump/internal/decision"`: true,
-		`"github.com/ianeff/thump/internal/proposal"`: true,
+		`"github.com/ianeff/thump/api/v1/decision"`:   true,
+		`"github.com/ianeff/thump/api/v1/proposal"`:   true,
 		`"github.com/ianeff/thump/internal/contract"`: true,
-		`"github.com/ianeff/thump/internal/outcome"`:  true,
+		`"github.com/ianeff/thump/api/v1/outcome"`:    true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

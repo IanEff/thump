@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/outcome"
-	"github.com/ianeff/thump/internal/proposal"
 )
 
 func TestProposalLog_OpenRespectsTheDedupeWindow(t *testing.T) {

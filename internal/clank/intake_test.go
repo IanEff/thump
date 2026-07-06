@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/signal"
 )
 
 func TestIntake_AssemblesAVersionedSAO(t *testing.T) {

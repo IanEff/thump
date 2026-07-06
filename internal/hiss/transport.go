@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ianeff/thump/internal/decision"
-	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"sigs.k8s.io/yaml"
 )
 

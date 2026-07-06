@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/contract"
-	"github.com/ianeff/thump/internal/decision"
-	"github.com/ianeff/thump/internal/proposal"
 )
 
 var (

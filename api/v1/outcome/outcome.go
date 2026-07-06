@@ -1,3 +1,12 @@
+// Package outcome is the boundary vocabulary of the Act beat (thump): the
+// Outcome it emits after rendering (dry-run) or executing (live) the
+// Decision it was granted. Every Outcome is born-auditable — Auditable() is
+// the invariant every emitted Outcome must satisfy: no decision ref, no
+// execution time, no mode, no result, or a failure/partial result with no
+// error text are all refused, not silently allowed.
+//
+// v1 is additive-only: never rename, retype, or repurpose a field here, since
+// other processes (not just other packages) depend on this exact shape.
 package outcome
 
 import (

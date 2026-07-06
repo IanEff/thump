@@ -3,8 +3,8 @@ package clank
 import (
 	"context"
 
-	"github.com/ianeff/thump/internal/proposal"
-	"github.com/ianeff/thump/internal/signal"
+	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/whir"
 )
 

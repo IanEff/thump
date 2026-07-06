@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ianeff/thump/internal/outcome"
-	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 )
 
 type MemProposalLog struct {

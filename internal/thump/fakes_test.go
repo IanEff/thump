@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/contract"
-	"github.com/ianeff/thump/internal/decision"
-	"github.com/ianeff/thump/internal/proposal"
 	"github.com/ianeff/thump/internal/thump"
 	"sigs.k8s.io/yaml"
 )

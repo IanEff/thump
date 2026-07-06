@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/thump/internal/decision"
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/hiss"
-	"github.com/ianeff/thump/internal/proposal"
 	"sigs.k8s.io/yaml"
 )
 

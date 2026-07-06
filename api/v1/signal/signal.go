@@ -2,9 +2,10 @@
 // that rattle (the Signal Plane) emits and clank (the Reasoning Plane) consumes
 // read-only, plus the shared value objects (Severity, BlastRadius) that ride the
 // boundary in both directions. It is a leaf package — it imports only the stdlib,
-// and clank depends on it, never the reverse. When rattle joins the codebase it
-// imports this package directly (monorepo) or this package graduates out of
-// internal/ as its own import (workspace).
+// and clank depends on it, never the reverse.
+//
+// v1 is additive-only: never rename, retype, or repurpose a field here, since
+// other processes (not just other packages) depend on this exact shape.
 package signal
 
 import "time"

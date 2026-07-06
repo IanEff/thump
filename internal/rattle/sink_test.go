@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/rattle"
-	"github.com/ianeff/thump/internal/signal"
 	"sigs.k8s.io/yaml"
 )
 

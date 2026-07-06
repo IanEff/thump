@@ -1,6 +1,6 @@
 package clank
 
-import "github.com/ianeff/thump/internal/proposal"
+import "github.com/ianeff/thump/api/v1/proposal"
 
 // The SAO aggregate moved to internal/proposal with the rest of the
 // ProposalSet vocabulary (hiss Wave 1) — ProposalSet.SAOSnapshot carries it

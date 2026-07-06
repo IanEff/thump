@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/rattle"
-	"github.com/ianeff/thump/internal/signal"
 )
 
 func TestEnrichTopology_PopulatesObservedDependencyState(t *testing.T) {

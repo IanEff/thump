@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/ianeff/thump/internal/proposal"
+	"github.com/ianeff/thump/api/v1/proposal"
 )
 
 type CausalScorer interface {

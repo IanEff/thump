@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/thump/internal/decision"
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/internal/thump"
 )
 

@@ -1,8 +1,11 @@
 // Package proposal is the boundary vocabulary of the Reasoning Plane: the
 // ProposalSet and the value objects that ride it, shared by the beat that
 // produces them (clank) and the beat that reads them (hiss). It is a leaf —
-// time and internal/signal only, an invariant pinned by leaf_test.go — so no
-// beat imports another beat's internals to speak the contract.
+// time and signal only, an invariant pinned by leaf_test.go — so no beat
+// imports another beat's internals to speak the contract.
+//
+// v1 is additive-only: never rename, retype, or repurpose a field here, since
+// other processes (not just other packages) depend on this exact shape.
 package proposal
 
 import "time"

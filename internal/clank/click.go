@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ianeff/thump/internal/outcome"
+	"github.com/ianeff/thump/api/v1/outcome"
 	"sigs.k8s.io/yaml"
 )
 

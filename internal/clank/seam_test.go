@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
-	"github.com/ianeff/thump/internal/decision"
 	"github.com/ianeff/thump/internal/hiss"
-	"github.com/ianeff/thump/internal/proposal"
 	"github.com/ianeff/thump/internal/rattle"
-	"github.com/ianeff/thump/internal/signal"
 	"github.com/ianeff/thump/internal/thump"
 )
 

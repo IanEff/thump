@@ -12,7 +12,7 @@ func TestProposalIsALeafPackage(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
 		`"time"`: true,
-		`"github.com/ianeff/thump/internal/signal"`: true,
+		`"github.com/ianeff/thump/api/v1/signal"`: true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {
