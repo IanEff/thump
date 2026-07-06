@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-func TestDirSink_RoundTripsAFullyEnrichedDetection(t *testing.T) {
+func TestDirPublish_RoundTripsAFullyEnrichedDetection(t *testing.T) {
 	dir := t.TempDir()
 	want := goldenDetection() // fully enriched: topology + traffic + impact populated
 	pub := &publish.DirPublisher[signal.Detection]{Dir: dir}

@@ -10,7 +10,7 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 )
 
-func TestDirSink_WritesOneFilePerProposalSet(t *testing.T) {
+func TestDirPublisher_WritesOneFilePerProposalSet(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	pub := &clank.DirPublisher{Dir: dir}
