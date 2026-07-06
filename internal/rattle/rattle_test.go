@@ -112,10 +112,10 @@ func TestWhirTopologySource_EnrichesWithUnknownVisible(t *testing.T) {
 func TestRunLoop_DeliversWhatItLogs(t *testing.T) {
 	slo := rattle.SLO{ID: "ceph-osd-latency"}
 	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 4, 8)}) // fires once
-	rec := &recordingSink{}
-	rattle.RunLoopForTest(onceCtx(), r, discardLogger(), rec)
-	if len(rec.delivered) != 1 {
-		t.Fatalf("want 1 delivery, got %d", len(rec.delivered))
+	pub := &capturePublisher{}
+	rattle.RunLoopForTest(onceCtx(), r, discardLogger(), pub)
+	if len(pub.delivered) != 1 {
+		t.Fatalf("want 1 delivery, got %d", len(pub.delivered))
 	}
 }
 
@@ -161,12 +161,12 @@ func freshWindow(rates ...float64) []rattle.Sample {
 	return out
 }
 
-type recordingSink struct {
+type capturePublisher struct {
 	delivered []signal.Detection
 }
 
-func (r *recordingSink) Deliver(d signal.Detection) error {
-	r.delivered = append(r.delivered, d)
+func (p *capturePublisher) Publish(_ context.Context, _ string, d signal.Detection) error {
+	p.delivered = append(p.delivered, d)
 	return nil
 }
 

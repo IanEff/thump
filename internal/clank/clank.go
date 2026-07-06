@@ -236,7 +236,7 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 		Scorer:       &CausalScorerImpl{Prior: cases}, // scorer reads THIS case base
 		DedupeWindow: time.Hour,
 		Ledger:       ledger, // engine records into THIS ledger
-		Sink:         &DirSink{Dir: outbox},
+		Pub:          &DirPublisher{Dir: outbox},
 		Gate:         ReadinessGate{},
 		MaxSteps:     8,
 	}

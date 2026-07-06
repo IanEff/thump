@@ -22,7 +22,12 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"github.com/ianeff/thump/api/v1/proposal"`:   true,
 		`"github.com/ianeff/thump/internal/contract"`: true,
 		`"github.com/ianeff/thump/api/v1/outcome"`:    true,
+		// the publish port — a local dir-writer today, same risk profile as the
+		// writeAtomic thump used to inline; revisit at Stage 3, when this
+		// package grows a live JetStream implementation.
+		`"github.com/ianeff/thump/internal/publish"`: true,
 	}
+
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)

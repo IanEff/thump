@@ -9,11 +9,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/publish"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
@@ -55,8 +58,15 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	slog.Info("starting thump", "version", version, "commit", commit, "date", date)
 
 	tr := &Transport{
-		Inbox:   inbox,
-		Outbox:  outbox,
+		Inbox: inbox,
+		OrderPub: &publish.DirPublisher[Order]{
+			Dir:  filepath.Join(outbox, "orders"),
+			Name: func(o Order) string { return o.SignalRef },
+		},
+		OutcomePub: &publish.DirPublisher[outcome.Outcome]{
+			Dir:  filepath.Join(outbox, "outcomes"),
+			Name: func(o outcome.Outcome) string { return o.SignalRef },
+		},
 		Catalog: defaultCatalog(),
 		Log:     NewOutcomeLog(),
 		Exec:    DryRun{},

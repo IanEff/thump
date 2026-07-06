@@ -38,17 +38,17 @@ func (s staticChange) Changes(_ context.Context, _ signal.Detection) (clank.Chan
 	return s.snap, nil
 }
 
-type captureSink struct{ delivered []clank.ProposalSet }
+type capturePublisher struct{ delivered []clank.ProposalSet }
 
-func (c *captureSink) Deliver(_ context.Context, ps clank.ProposalSet) error {
+func (c *capturePublisher) Publish(_ context.Context, _ string, ps clank.ProposalSet) error {
 	c.delivered = append(c.delivered, ps)
 	return nil
 }
 
 // newLiveEngine wires the full engine with the REAL model and fake everything else.
-func newLiveEngine(t *testing.T, tool clank.Tool, catalog *clank.StaticCatalog) (*clank.Engine, *captureSink) {
+func newLiveEngine(t *testing.T, tool clank.Tool, catalog *clank.StaticCatalog) (*clank.Engine, *capturePublisher) {
 	t.Helper()
-	sink := &captureSink{}
+	pub := &capturePublisher{}
 	return &clank.Engine{
 		Intake: clank.NewIntake(
 			staticTopo{clank.TopologySnapshot{Downstream: []clank.NodeState{
@@ -67,10 +67,9 @@ func newLiveEngine(t *testing.T, tool clank.Tool, catalog *clank.StaticCatalog) 
 		Scorer:       clank.NewCausalScorer(),
 		DedupeWindow: time.Hour,
 		Ledger:       clank.NewMemProposalLog(),
-		Sink:         sink,
+		Pub:          pub,
 		MaxSteps:     8,
-		Policy:       clank.GatePolicy{},
-	}, sink
+	}, pub
 }
 
 func goldenSignal() signal.Detection {

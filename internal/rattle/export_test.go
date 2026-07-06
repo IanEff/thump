@@ -3,6 +3,9 @@ package rattle
 import (
 	"context"
 	"log/slog"
+
+	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/publish"
 )
 
 // LoadSLOsForTest exposes the compiled-in watch list to rattle_test without
@@ -11,8 +14,8 @@ import (
 // internal/clank/export_test.go.
 func LoadSLOsForTest() []SLO { return loadSLOs() }
 
-func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, sink DetectionSink) {
-	runLoop(ctx, r, log, sink)
+func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection]) {
+	runLoop(ctx, r, log, pub)
 }
 
 // NewReconcilerForTest exposes Main's real Reconciler assembly so a test can

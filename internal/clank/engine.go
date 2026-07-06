@@ -9,6 +9,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/publish"
 )
 
 type Engine struct {
@@ -22,7 +23,7 @@ type Engine struct {
 	Scorer       CausalScorer
 	DedupeWindow time.Duration
 	Ledger       *MemProposalLog
-	Sink         ProposalSink
+	Pub          publish.Publisher[ProposalSet]
 	MaxSteps     int
 	Weights      ScoringWeights
 }
@@ -154,9 +155,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 	if err := e.Ledger.Record(ctx, set); err != nil {
 		return ProposalSet{}, fmt.Errorf("record: %w", err)
 	}
-	if set.Gate.Passed && e.Sink != nil {
-		if err := e.Sink.Deliver(ctx, set); err != nil {
-			return ProposalSet{}, fmt.Errorf("deliver: %w", err)
+	if set.Gate.Passed && e.Pub != nil {
+		if err := e.Pub.Publish(ctx, "thump.proposals", set); err != nil {
+			return ProposalSet{}, fmt.Errorf("publish: %w", err)
 		}
 	}
 

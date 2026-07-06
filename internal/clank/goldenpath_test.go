@@ -216,8 +216,8 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 // this suite). Topology/change sources are empty so intake falls back to the
 // Detection's own observed topology — the realistic path Main takes today
 // with noop sources. A nil model may be set later via eng.Model.
-func goldenEngine(model clank.Model) (*clank.Engine, *captureSink) {
-	sink := &captureSink{}
+func goldenEngine(model clank.Model) (*clank.Engine, *capturePublisher) {
+	pub := &capturePublisher{}
 	return &clank.Engine{
 		Intake:       clank.NewIntake(fakeTopo{}, fakeChange{}),
 		Model:        model,
@@ -229,9 +229,9 @@ func goldenEngine(model clank.Model) (*clank.Engine, *captureSink) {
 		Scorer:       clank.NewCausalScorer(),
 		DedupeWindow: time.Hour,
 		Ledger:       clank.NewMemProposalLog(),
-		Sink:         sink,
+		Pub:          pub,
 		MaxSteps:     8,
-	}, sink
+	}, pub
 }
 
 // goldenPolicy is a hiss policy that approves the node-death path: the

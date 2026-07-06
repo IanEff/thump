@@ -1,3 +1,4 @@
+// Rattle is the Detection layer of Thump's spicy five-layered DRAL dip.
 package rattle
 
 import (
@@ -12,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/whir"
 )
 
@@ -64,19 +67,22 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		traffic = &HubbleTrafficSource{BaseURL: promURL, Client: http.DefaultClient, Queries: queries}
 	}
 
-	var sink DetectionSink
+	var pub publish.Publisher[signal.Detection]
 	if outbox := os.Getenv("RATTLE_OUTBOX"); outbox != "" {
 		if err := os.MkdirAll(outbox, 0o750); err != nil { //nolint:gosec
 			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
 			return 1
 		}
-		sink = &DirSink{Dir: outbox}
+		pub = &publish.DirPublisher[signal.Detection]{
+			Dir:  outbox,
+			Name: func(d signal.Detection) string { return d.Fingerprint },
+		}
 	}
 
 	r := newReconciler(promURL, topo, traffic)
 	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	runLoop(ctx, r, log, sink)
+	runLoop(ctx, r, log, pub)
 	return 0
 }
 
@@ -99,7 +105,7 @@ func newReconciler(promURL string, topo TopologySource, traffic TrafficSource) *
 	}
 }
 
-func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, sink DetectionSink) {
+func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection]) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
@@ -114,9 +120,9 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, sink Detectio
 					"fingerprint", d.Fingerprint,
 					"detector", d.DetectorType,
 					"accel", d.Divergence.Observed)
-				if sink != nil {
-					if err := sink.Deliver(d); err != nil {
-						log.Error("deliver failed", "fingerprint", d.Fingerprint, "error", err)
+				if pub != nil {
+					if err := pub.Publish(ctx, "thump.detections", d); err != nil {
+						log.Error("publish failed", "fingerprint", d.Fingerprint, "error", err)
 					}
 				}
 			}

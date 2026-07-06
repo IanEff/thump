@@ -125,17 +125,17 @@ func (metricsTool) Spec() clank.ToolSpec {
 	return clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query"}
 }
 
-type captureSink struct {
+type capturePublisher struct {
 	delivered []clank.ProposalSet
 }
 
-func (s *captureSink) Deliver(_ context.Context, ps clank.ProposalSet) error {
+func (s *capturePublisher) Publish(_ context.Context, _ string, ps clank.ProposalSet) error {
 	s.delivered = append(s.delivered, ps)
 	return nil
 }
 
-func newTestEngine(model clank.Model) (*clank.Engine, *captureSink) {
-	sink := &captureSink{}
+func newTestEngine(model clank.Model) (*clank.Engine, *capturePublisher) {
+	pub := &capturePublisher{}
 	return &clank.Engine{
 		Intake: clank.NewIntake(
 			fakeTopo{snap: clank.TopologySnapshot{
@@ -158,9 +158,9 @@ func newTestEngine(model clank.Model) (*clank.Engine, *captureSink) {
 		Scorer:       clank.NewCausalScorer(),
 		DedupeWindow: time.Hour,
 		Ledger:       clank.NewMemProposalLog(),
-		Sink:         sink,
+		Pub:          pub,
 		MaxSteps:     8,
-	}, sink
+	}, pub
 }
 
 type failingStore struct {
