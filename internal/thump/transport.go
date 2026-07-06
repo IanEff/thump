@@ -2,6 +2,7 @@ package thump
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,13 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// ErrRenderFailed marks a governed approval thump's Actuator couldn't render
+// — a deterministic seam bug (bad catalog ref, bad params), not a transient
+// failure. Tick quarantines it, same instinct as poison; it's what lets Tick
+// tell "render failed" apart from "publish failed" after both collapse
+// through handle's single error return.
+var ErrRenderFailed = errors.New("thump: render failed")
+
 type Transport struct {
 	Inbox      string
 	OrderPub   publish.Publisher[Order]
@@ -24,10 +32,10 @@ type Transport struct {
 	Now        func() time.Time
 }
 
-// Tick performs one poll pass: list inbox → unmarshal Governed → render →
-// execute → publish orders/<SignalRef>.yaml + outcomes/<SignalRef>.yaml → archive to
-// processed/. Only inbox-level I/O failures return an error; a bad envelope
-// is a disposition (quarantine/skipped), never a crash.
+// Tick performs one poll pass: list inbox → unmarshal Governed → handle
+// (render → execute → publish) → disposition. Only inbox-level I/O failures
+// return an error; a bad envelope or an unrenderable approval is a
+// disposition (quarantine/skipped), never a crash.
 func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -37,12 +45,6 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		return fmt.Errorf("thump: list inbox: %w", err)
 	}
 
-	now := time.Now
-	if tr.Now != nil {
-		now = tr.Now
-	}
-
-	var act Actuator
 	for _, path := range matches {
 		raw, err := os.ReadFile(path) //nolint:gosec // G304: inbox path is operator config, not user input
 		if err != nil {
@@ -57,36 +59,52 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			continue // poison doesn't block the queue
 		}
 
+		if err := tr.handle(ctx, g); err != nil {
+			if errors.Is(err, ErrRenderFailed) {
+				// a governed approval thump can't render is evidence of a seam
+				// bug — same instinct as poison: keep it where a human will look.
+				if qErr := tr.disposition(path, "quarantine"); qErr != nil {
+					return fmt.Errorf("thump: quarantine %s: %w", path, qErr)
+				}
+				continue
+			}
+			return fmt.Errorf("thump: handle %s: %w", path, err) // a publish failure aborts the pass
+		}
+
+		disp := "processed"
 		if g.Decision.Verdict != decision.VerdictApproved {
-			if sErr := tr.disposition(path, "skipped"); sErr != nil {
-				return fmt.Errorf("thump: skip %s: %w", path, sErr)
-			}
-			continue // a valid non-approval, just not ours to act on
+			disp = "skipped" // a valid non-approval, just not ours to act on
 		}
-
-		order, err := act.Render(g, tr.Catalog, now())
-		if err != nil {
-			// a governed approval thump can't render is evidence of a seam
-			// bug — same instinct as poison: keep it where a human will look.
-			if qErr := tr.disposition(path, "quarantine"); qErr != nil {
-				return fmt.Errorf("thump: quarantine %s: %w", path, qErr)
-			}
-			continue
-		}
-		outcome := tr.Exec.Execute(ctx, order, now())
-
-		if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
-			return fmt.Errorf("thump: publish order for %s: %w", path, err)
-		}
-		if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", outcome); err != nil {
-			return fmt.Errorf("thump: publish outcome for %s: %w", path, err)
-		}
-		tr.Log.Record(outcome)
-
-		if err := tr.disposition(path, "processed"); err != nil {
+		if err := tr.disposition(path, disp); err != nil {
 			return fmt.Errorf("thump: archive %s: %w", path, err)
 		}
 	}
+	return nil
+}
+
+// handle renders, dry-run-executes, and publishes one governed approval —
+// the transport-independent core. Tick calls it after decoding a file; the
+// NATS handler calls it after decoding a message. Same brain, two feeders.
+func (tr *Transport) handle(ctx context.Context, g decision.Governed) error {
+	if g.Decision.Verdict != decision.VerdictApproved {
+		return nil // valid non-approval: nothing to act on
+	}
+	now := time.Now
+	if tr.Now != nil {
+		now = tr.Now
+	}
+	order, err := (Actuator{}).Render(g, tr.Catalog, now())
+	if err != nil {
+		return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
+	}
+	oc := tr.Exec.Execute(ctx, order, now())
+	if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
+		return fmt.Errorf("thump: publish order for %s: %w", g.Decision.SignalRef, err)
+	}
+	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", oc); err != nil {
+		return fmt.Errorf("thump: publish outcome for %s: %w", g.Decision.SignalRef, err)
+	}
+	tr.Log.Record(oc)
 	return nil
 }
 
