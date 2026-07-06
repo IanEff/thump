@@ -57,6 +57,14 @@ func (cb *CaseBase) Cases(fingerprint string) []Case {
 	return out
 }
 
+// Len reports how many cases have been learned — a test seam for asserting
+// the Learn edge actually absorbed an outcome, not just that it didn't error.
+func (cb *CaseBase) Len() int {
+	cb.mu.RLock()
+	defer cb.mu.RUnlock()
+	return len(cb.cases)
+}
+
 func (cb *CaseBase) Alignment(fingerprint string) (float64, bool) {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()

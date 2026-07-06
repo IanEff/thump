@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/whir"
 )
@@ -67,8 +68,33 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		traffic = &HubbleTrafficSource{BaseURL: promURL, Client: http.DefaultClient, Queries: queries}
 	}
 
+	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	var pub publish.Publisher[signal.Detection]
-	if outbox := os.Getenv("RATTLE_OUTBOX"); outbox != "" {
+	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
+		js, closeNC, err := broker.Connect(ctx, natsURL)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "%v\n", err)
+			return 1
+		}
+		defer closeNC()
+		walDir := os.Getenv("WAL_DIR")
+		if walDir == "" {
+			_, _ = fmt.Fprintln(stderr, "WAL_DIR is required with NATS_URL")
+			return 1
+		}
+		w := &publish.WAL{Dir: walDir, Beat: "rattle", Subject: "thump.detections"}
+		defer func() {
+			_ = w.Close(ctx)
+		}()
+		pub = &publish.WALPublisher[signal.Detection]{
+			WAL:  w,
+			Next: publish.NewJetPublisher[signal.Detection](js),
+		}
+	} else if outbox := os.Getenv("RATTLE_OUTBOX"); outbox != "" {
+		// offline path: the DirPublisher is now the keyless fake the seam
+		// tests exercise — broker mode above is how this actually runs.
 		if err := os.MkdirAll(outbox, 0o750); err != nil { //nolint:gosec
 			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
 			return 1
@@ -80,8 +106,6 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	}
 
 	r := newReconciler(promURL, topo, traffic)
-	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	runLoop(ctx, r, log, pub)
 	return 0
 }

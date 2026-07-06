@@ -26,6 +26,13 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// writeAtomic thump used to inline; revisit at Stage 3, when this
 		// package grows a live JetStream implementation.
 		`"github.com/ianeff/thump/internal/publish"`: true,
+		// Stage 3b: the live JetStream implementation arrived. NATS is the
+		// beat-to-beat transport (same risk profile as the dir glob it sits
+		// beside), not infrastructure thump acts on — I-10 is about Exec
+		// staying dry-run, not about how a Governed decision reaches thump.
+		`"github.com/ianeff/thump/internal/broker"`: true,
+		`"github.com/nats-io/nats.go"`:              true,
+		`"github.com/nats-io/nats.go/jetstream"`:    true,
 	}
 
 	entries, err := os.ReadDir(".")
