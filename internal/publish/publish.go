@@ -21,6 +21,10 @@ type DirPublisher[T any] struct {
 }
 
 func (p *DirPublisher[T]) Publish(_ context.Context, subject string, obj T) error {
+	if err := os.MkdirAll(p.Dir, 0o750); err != nil {
+		return fmt.Errorf("dir publisher: mkdir %s: %w", p.Dir, err)
+	}
+
 	out, err := yaml.Marshal(obj)
 	if err != nil {
 		return fmt.Errorf("dir publisher: marshal %s: %w", subject, err)

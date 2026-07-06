@@ -8,17 +8,20 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
 
 type Transport struct {
-	Inbox   string
-	Outbox  string
-	Catalog *contract.StaticCatalog
-	Log     *OutcomeLog
-	Exec    Executor
-	Now     func() time.Time
+	Inbox      string
+	OrderPub   publish.Publisher[Order]
+	OutcomePub publish.Publisher[outcome.Outcome]
+	Catalog    *contract.StaticCatalog
+	Log        *OutcomeLog
+	Exec       Executor
+	Now        func() time.Time
 }
 
 // Tick performs one poll pass: list inbox → unmarshal Governed → render →
@@ -72,11 +75,11 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		}
 		outcome := tr.Exec.Execute(ctx, order, now())
 
-		if err := tr.writeYAML(filepath.Join(tr.Outbox, "orders"), path, order); err != nil {
-			return fmt.Errorf("thump: write order for %s: %w", path, err)
+		if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
+			return fmt.Errorf("thump: publish order for %s: %w", path, err)
 		}
-		if err := tr.writeYAML(filepath.Join(tr.Outbox, "outcomes"), path, outcome); err != nil {
-			return fmt.Errorf("thump: write outcome for %s: %w", path, err)
+		if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", outcome); err != nil {
+			return fmt.Errorf("thump: publish outcome for %s: %w", path, err)
 		}
 		tr.Log.Record(outcome)
 
@@ -87,39 +90,10 @@ func (tr *Transport) Tick(ctx context.Context) error {
 	return nil
 }
 
-func (tr *Transport) writeYAML(dir, srcPath string, v any) error {
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	out, err := yaml.Marshal(v)
-	if err != nil {
-		return err
-	}
-	return writeAtomic(dir, filepath.Base(srcPath), out)
-}
-
 func (tr *Transport) disposition(path, sub string) error {
 	dir := filepath.Join(tr.Inbox, sub)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
-}
-
-// writeAtomic is the simple atomic writer, replicated across all services to PROVE A POINT.
-func writeAtomic(dir, name string, data []byte) error {
-	tmp, err := os.CreateTemp(dir, ".tmp-*") // dot-prefixed, no .yaml suffix
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }

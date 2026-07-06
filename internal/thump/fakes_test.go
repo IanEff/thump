@@ -9,6 +9,7 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/thump"
 	"sigs.k8s.io/yaml"
 )
@@ -218,11 +219,12 @@ func readOneYAML(t *testing.T, dir string, out any) {
 // owns its state.
 func newTestTransport(inbox, outbox string) *thump.Transport {
 	return &thump.Transport{
-		Inbox:   inbox,
-		Outbox:  outbox,
-		Catalog: richCatalog(),
-		Log:     thump.NewOutcomeLog(),
-		Exec:    thump.DryRun{},
-		Now:     frozenNow,
+		Inbox:      inbox,
+		OrderPub:   &publish.DirPublisher[thump.Order]{Dir: filepath.Join(outbox, "orders")},
+		OutcomePub: &publish.DirPublisher[thump.Outcome]{Dir: filepath.Join(outbox, "outcomes")},
+		Catalog:    richCatalog(),
+		Log:        thump.NewOutcomeLog(),
+		Exec:       thump.DryRun{},
+		Now:        frozenNow,
 	}
 }
