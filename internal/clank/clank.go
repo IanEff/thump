@@ -50,25 +50,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	slog.Info("starting clank", "version", version, "commit", commit, "date", date)
 
-	inbox := os.Getenv("CLANK_INBOX") // rattle's detection output dir
-	if inbox == "" {
-		_, _ = fmt.Fprintln(stderr, "CLANK_INBOX is required")
-		return 1
-	}
-	outbox := os.Getenv("CLANK_OUTBOX") // hiss's inbox
-	if outbox == "" {
-		_, _ = fmt.Fprintln(stderr, "CLANK_OUTBOX is required")
-		return 1
-	}
-	outcomes := os.Getenv("CLANK_OUTCOMES") // thump's outbox (the return edge's inbox)
-	if outcomes == "" {
-		_, _ = fmt.Fprintln(stderr, "CLANK_OUTCOMES is required")
-		return 1
-	}
-
 	transcripts := os.Getenv("CLANK_TRANSCRIPTS") // thump's transcript output dir
 	if transcripts == "" {
-		_, _ = fmt.Fprintln(stderr, "CLANK_TRANSCRIPTS is required")
+		slog.Info("CLANK_TRANSCRIPTS not set — turns held in memory, not persisted")
 	}
 
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
@@ -110,16 +94,35 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 
 	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		// offline path: the dir-glob Transport is now the keyless fake the
-		// seam tests exercise — broker mode below is how this actually runs.
-		l := newLoop(inbox, outbox, outbox, model, nil, intake, defaultCatalog(), store)
-		tr := &Transport{Inbox: inbox, Engine: l.Engine}
-		runLoop(ctx, tr, l.ReturnEdge)
-		return 0
+	if natsURL != "" {
+		return runBroker(ctx, natsURL, model, intake, store, stderr)
 	}
 
-	return runBroker(ctx, natsURL, model, intake, store, stderr)
+	// offline path: the dir-glob Transport is now the keyless fake the
+	// seam tests exercise — broker mode above is how this actually runs.
+	// CLANK_INBOX/OUTBOX/OUTCOMES are this path's env, not the process's —
+	// checked here, not above, so broker mode never has to satisfy them
+	// (mirrors rattle.go/hiss.go/thump.go's NATS_URL-first branch).
+	inbox := os.Getenv("CLANK_INBOX") // rattle's detection output dir
+	if inbox == "" {
+		_, _ = fmt.Fprintln(stderr, "CLANK_INBOX is required")
+		return 1
+	}
+	outbox := os.Getenv("CLANK_OUTBOX") // hiss's inbox
+	if outbox == "" {
+		_, _ = fmt.Fprintln(stderr, "CLANK_OUTBOX is required")
+		return 1
+	}
+	outcomes := os.Getenv("CLANK_OUTCOMES") // thump's outbox (the return edge's inbox)
+	if outcomes == "" {
+		_, _ = fmt.Fprintln(stderr, "CLANK_OUTCOMES is required")
+		return 1
+	}
+
+	l := newLoop(inbox, outbox, outcomes, model, nil, intake, defaultCatalog(), store)
+	tr := &Transport{Inbox: inbox, Engine: l.Engine}
+	runLoop(ctx, tr, l.ReturnEdge)
+	return 0
 }
 
 func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, stderr io.Writer) int {
@@ -166,8 +169,13 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 	detSub := broker.NewJetSubscriber[signal.Detection](js)
 	g.Go(func() error {
 		return detSub.Run(gctx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
-			_, err := eng.Propose(ctx, det)
-			return err
+			set, err := eng.Propose(ctx, det)
+			if err != nil {
+				return err
+			}
+			gatePassed := set.Gate != nil && set.Gate.Passed
+			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase, "recommended", set.Recommended, "gatePassed", gatePassed)
+			return nil
 		})
 	})
 

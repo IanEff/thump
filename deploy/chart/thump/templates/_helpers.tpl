@@ -13,3 +13,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: thump
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
+
+{{/* beat-scoped selector: pass the beat name as the context's `.component` */}}
+{{- define "thump.beatSelectorLabels" -}}
+{{ include "thump.selectorLabels" . }}
+app.kubernetes.io/component: {{ .component }}
+{{- end -}}

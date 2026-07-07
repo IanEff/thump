@@ -2,6 +2,7 @@ package hiss_test
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,7 +22,12 @@ func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {
 }
 
 func TestMain_MissingInboxReturnsOne(t *testing.T) {
-	t.Setenv("HISS_INBOX", "") // hermetic — don't inherit the shell's
+	policyPath := filepath.Join(t.TempDir(), "policy.yaml")
+	if err := os.WriteFile(policyPath, []byte("version: v1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HISS_POLICY", policyPath) // valid, so the inbox check is what's actually under test
+	t.Setenv("HISS_INBOX", "")          // hermetic — don't inherit the shell's
 	var out, errb bytes.Buffer
 	code := hiss.Main(nil, &out, &errb, "dev", "none", "unknown")
 	if code != 1 {

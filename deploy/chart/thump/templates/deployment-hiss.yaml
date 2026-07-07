@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hiss
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "hiss") .) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "hiss") .) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-hiss.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: hiss
+          image: "{{ .Values.image.registry }}/thump-hiss:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: NATS_URL
+              value: "nats://nats.thump.svc:4222"
+            - name: WAL_DIR
+              value: /var/thump/wal
+            - name: HISS_POLICY
+              value: /etc/thump/hiss/policy.yaml
+          volumeMounts:
+            - name: wal
+              mountPath: /var/thump/wal
+            - name: hiss-config
+              mountPath: /etc/thump/hiss
+          resources: {{- toYaml .Values.beats.hiss.resources | nindent 12 }}
+      volumes:
+        - name: wal
+          emptyDir: {}
+        - name: hiss-config
+          configMap:
+            name: thump-hiss

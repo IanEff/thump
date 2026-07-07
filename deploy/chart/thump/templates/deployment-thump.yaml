@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thump
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "thump") .) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "thump") .) | nindent 8 }}
+    spec:
+      containers:
+        - name: thump
+          image: "{{ .Values.image.registry }}/thump-thump:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: NATS_URL
+              value: "nats://nats.thump.svc:4222"
+            - name: WAL_DIR
+              value: /var/thump/wal
+          volumeMounts:
+            - name: wal
+              mountPath: /var/thump/wal
+          resources: {{- toYaml .Values.beats.thump.resources | nindent 12 }}
+      volumes:
+        - name: wal
+          emptyDir: {}

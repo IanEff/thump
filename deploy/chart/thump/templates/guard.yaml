@@ -1,0 +1,11 @@
+{{/*
+Not a "_" partial on purpose: Helm only executes the top-level content of
+normally-named template files. A "_"-prefixed file (_helpers.tpl, _guard.tpl,
+...) is a partial — Helm compiles its {{ define }} blocks for `include` but
+never executes anything outside one, so a bare {{ fail }} in one is dead code
+that silently no-ops. Confirmed empirically: same guard in _helpers.tpl or
+_guard.tpl exits 0 at replicas=2; here it fails loud.
+*/}}
+{{- if gt (int .Values.replicas) 1 }}
+{{- fail "thump beats are single-replica by invariant (in-memory ledger); see values.yaml" }}
+{{- end }}

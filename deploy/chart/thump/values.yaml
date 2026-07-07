@@ -1,6 +1,10 @@
-# W0-4 (parked-by-default): the machine ships at replicas: 0. Flip to 1 via
-# `tilt up` (dev) or a values commit + ArgoCD sync (soak) — turning it on
-# stays a deliberate, visible act, never the chart's default.
+# replicas is 0/1 ONLY. The beats hold in-memory state (clank's ledger+casebase
+# that the Learn edge shares, hiss/thump/rattle dedup logs). A 2nd replica makes
+# JetStream load-balance the durable consumer across pods, each with its own empty
+# ledger → outcomes land on the pod that never opened their set → learning dies
+# silently (the A3 trap at cluster scale). Horizontal scale needs the state OUT of
+# process first — a much later phase. Do not raise this to scale; it will break the
+# loop, not speed it up.
 replicas: 0
 
 image:
@@ -46,3 +50,30 @@ beats:
     resources:
       requests: {cpu: 25m, memory: 32Mi}
       limits: {cpu: 100m, memory: 64Mi}
+
+# NATS jetstream message broker
+nats:
+  image:
+    tag: "2.14.2-alpine"
+  storageClass: "local-path"
+  storage: 2Gi
+  jetstream:
+    maxMemory: 256Mi
+    maxFile: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  # The rest of this targets the control plane node for my noisy test cluster
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: "true"
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
