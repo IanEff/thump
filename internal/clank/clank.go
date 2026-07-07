@@ -22,6 +22,8 @@ import (
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/whir"
 	"golang.org/x/sync/errgroup"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
@@ -78,6 +80,18 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 				Queries: queries,
 			},
 		}
+	}
+
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		kubeClient, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			tools["kube"] = &KubeTool{Client: kubeClient}
+		} else {
+			slog.Warn("could not build kube client from InClusterConfig", "err", err)
+		}
+	} else {
+		slog.Info("not running in-cluster, skipping kube tool registration")
 	}
 
 	model := NewAnthropicModel(apiKey)
