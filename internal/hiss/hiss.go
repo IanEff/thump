@@ -38,6 +38,26 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 0
 	}
 
+	logger := slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	slog.Info("starting hiss", "version", version, "commit", commit, "date", date)
+
+	pol, err := loadPolicy(os.Getenv("HISS_POLICY"))
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "failed to load policy: %v\n", err)
+		return 1
+	}
+
+	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
+		return runBroker(ctx, natsURL, pol, stderr)
+	}
+
+	// offline path: the dir-glob Transport is now the keyless fake the seam
+	// tests exercise — broker mode above is how this actually runs.
 	inbox := os.Getenv("HISS_INBOX")
 	if inbox == "" {
 		_, _ = fmt.Fprintln(stderr, "HISS_INBOX is required")
@@ -49,26 +69,6 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	pol, err := loadPolicy(os.Getenv("HISS_POLICY"))
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "failed to load policy: %v\n", err)
-		return 1
-	}
-
-	logger := slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	slog.Info("starting hiss", "version", version, "commit", commit, "date", date)
-
-	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
-		return runBroker(ctx, natsURL, pol, stderr)
-	}
-
-	// offline path: the dir-glob Transport is now the keyless fake the seam
-	// tests exercise — broker mode above is how this actually runs.
 	tr := &Transport{
 		Inbox: inbox,
 		Pub: &publish.DirPublisher[decision.Governed]{

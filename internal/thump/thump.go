@@ -40,17 +40,6 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 0
 	}
 
-	inbox := os.Getenv("THUMP_INBOX")
-	if inbox == "" {
-		_, _ = fmt.Fprintln(stderr, "THUMP_INBOX is required")
-		return 1
-	}
-	outbox := os.Getenv("THUMP_OUTBOX")
-	if outbox == "" {
-		_, _ = fmt.Fprintln(stderr, "THUMP_OUTBOX is required")
-		return 1
-	}
-
 	logger := slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
@@ -64,7 +53,21 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
-	// tests exercise — broker mode above is how this actually runs.
+	// tests exercise — broker mode above is how this actually runs. THUMP_INBOX/
+	// OUTBOX are this path's env, not the process's — checked here, not above,
+	// so broker mode never has to satisfy them (mirrors rattle.go's NATS_URL-
+	// first branch).
+	inbox := os.Getenv("THUMP_INBOX")
+	if inbox == "" {
+		_, _ = fmt.Fprintln(stderr, "THUMP_INBOX is required")
+		return 1
+	}
+	outbox := os.Getenv("THUMP_OUTBOX")
+	if outbox == "" {
+		_, _ = fmt.Fprintln(stderr, "THUMP_OUTBOX is required")
+		return 1
+	}
+
 	tr := &Transport{
 		Inbox: inbox,
 		OrderPub: &publish.DirPublisher[Order]{

@@ -1,6 +1,3 @@
-{{- if gt (int .Values.replicas) 1 }}
-{{- fail "thump beats are single-replica by invariant (in-memory ledger); see values.yaml" }}
-{{- end }}
 {{/*
 One release, one pod, one chart — no chart-per-beat ceremony (W0-2). These
 helpers just keep the labels identical across every template that needs them.

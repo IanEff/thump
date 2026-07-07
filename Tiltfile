@@ -31,6 +31,27 @@ local_resource(
     labels=['infra'],
 )
 
+# thump-anthropic-secret: clank's Secret is meant to pre-exist out-of-band
+# (the lab's SOPS flow owns it in prod — see deploy/chart/thump/templates/
+# secret.yaml's comment). Under Tilt there's no SOPS flow, so this is the dev
+# stand-in: read the key from a gitignored .env (ANTHROPIC_API_KEY="...")
+# and apply the Secret directly via kubectl, never through
+# anthropic.create/apiKey in a values file (that stays a `--set`-only
+# escape hatch, per the chart's own warning against committing a plaintext
+# key). --dry-run=client -o yaml | apply, not `create`, so re-running this
+# after rotating the key in .env updates the Secret instead of no-op'ing.
+local_resource(
+    'thump-anthropic-secret',
+    cmd='bash -c \'' +
+        'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected ANTHROPIC_API_KEY=\\"...\\""  >&2; exit 1; }; set +a; ' +
+        '[ -n "$ANTHROPIC_API_KEY" ] || { echo "ANTHROPIC_API_KEY not set in .env" >&2; exit 1; }; ' +
+        'kubectl --context ceph-lab create namespace thump --dry-run=client -o yaml | kubectl --context ceph-lab apply -f - >/dev/null && ' +
+        'kubectl --context ceph-lab -n thump create secret generic thump-anthropic ' +
+        '--from-literal=api-key="$ANTHROPIC_API_KEY" --dry-run=client -o yaml | kubectl --context ceph-lab apply -f -' +
+        '\'',
+    labels=['infra'],
+)
+
 DEV_REGISTRY = '192.168.56.1:5005'
 
 # COMMIT is resolved once at Tiltfile load (not per-build), so it reflects
@@ -49,9 +70,12 @@ k8s_yaml(helm('deploy/chart/thump', values=['deploy/tilt-values.yaml']))
 k8s_resource('nats', labels=['broker'], resource_deps=['thump-registry'])
 
 for beat in ['rattle', 'clank', 'hiss', 'thump']:
+    deps = ['thump-registry', 'nats']   # ← don't start a beat until NATS exists
+    if beat == 'clank':
+        deps.append('thump-anthropic-secret')   # ← or until its Secret does
     k8s_resource(
         beat,
         labels=['machine'],
-        resource_deps=['thump-registry', 'nats'],   # ← don't start a beat until NATS exists
+        resource_deps=deps,
         trigger_mode=TRIGGER_MODE_MANUAL,            # same "you decide when it wakes" posture (W0-4)
     )
