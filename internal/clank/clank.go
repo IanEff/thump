@@ -169,8 +169,13 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 	detSub := broker.NewJetSubscriber[signal.Detection](js)
 	g.Go(func() error {
 		return detSub.Run(gctx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
-			_, err := eng.Propose(ctx, det)
-			return err
+			set, err := eng.Propose(ctx, det)
+			if err != nil {
+				return err
+			}
+			gatePassed := set.Gate != nil && set.Gate.Passed
+			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase, "recommended", set.Recommended, "gatePassed", gatePassed)
+			return nil
 		})
 	})
 
