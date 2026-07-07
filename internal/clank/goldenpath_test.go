@@ -3,6 +3,8 @@ package clank_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,7 +59,17 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 		})}}},
 	}}
 
-	eng, sink := goldenEngine(model)
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
 
 	// ── beat one+two: reason → deliver ──────────────────────────────────
 	set, err := eng.Propose(ctx, det)
@@ -128,7 +140,16 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "node-death.yaml")
 
-	eng, sink := goldenEngine(nil) // model set per-call below
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+		},
+	}
+
+	eng, sink := goldenEngine(nil, tools) // model set per-call below
 
 	// first pass: a full propose, delivered and left OPEN in the ledger.
 	eng.Model = goldenNodeDeathModel(t)
@@ -157,6 +178,79 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	}
 }
 
+// TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor widens the golden
+// path (phase2-close-the-loop-guide.md Appendix A.4) from the single
+// {"q":"ceph_health"} citation to two independent named queries off the
+// real evidence-queries.yaml catalog — osds_down and pgs_backfilling, the
+// two queries that actually inform a hold-rebalance call (Appendix A.3).
+// This is I-6's belief-formation defence 1 (the >=2-source floor) exercised
+// end to end: two Tool calls, two EvidenceRefs, both Live:true.
+func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	det := loadDetectionFixtureExt(t, "node-death.yaml")
+
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
+			FailureClass: clank.ClassResourceExhaustion,
+			Hypotheses:   []clank.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
+			Proposals: []clank.Candidate{{
+				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				ReversalPath: &clank.ReversalPath{
+					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
+				},
+				GovernanceLevel: &clank.GovernanceLevel{Band: string(hiss.BandActReversible)},
+			}},
+		})}}},
+	}}
+
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+
+	// the two named queries a real evidence-queries.yaml resolves these to —
+	// see config/whir/evidence-queries.yaml, group 2.
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{
+				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
+				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
+			},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
+	set, err := eng.Propose(ctx, det)
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+	if set.Gate == nil || !set.Gate.Passed {
+		t.Fatalf("two live citations should clear the gate: gate=%+v", set.Gate)
+	}
+	if len(sink.delivered) != 1 {
+		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.delivered))
+	}
+
+	delivered := sink.delivered[0]
+	if len(delivered.Evidence) != 2 {
+		t.Fatalf("want 2 evidence refs (one per tool call), got %d", len(delivered.Evidence))
+	}
+	live := 0
+	for _, ref := range delivered.Evidence {
+		if ref.Live {
+			live++
+		}
+	}
+	if live < 2 {
+		t.Fatalf("want >=2 live evidence refs (the I-6 two-source floor), got %d of %d", live, len(delivered.Evidence))
+	}
+	if delivered.Evidence[0].Query == delivered.Evidence[1].Query {
+		t.Fatal("the two refs must cite independent queries, not the same one twice")
+	}
+}
+
 // TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason is Stage 1's payoff as
 // a regression pin: a fixture the production catalog genuinely can't serve
 // declines to no_action AND says why. A mute decline (the round-1 pain) fails
@@ -172,7 +266,17 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 			`{"reason":"` + reason + `"}`)}}},
 	}}
 
-	eng, sink := goldenEngine(model)
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
 	set, err := eng.Propose(ctx, det)
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
@@ -216,12 +320,12 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 // this suite). Topology/change sources are empty so intake falls back to the
 // Detection's own observed topology — the realistic path Main takes today
 // with noop sources. A nil model may be set later via eng.Model.
-func goldenEngine(model clank.Model) (*clank.Engine, *capturePublisher) {
+func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine, *capturePublisher) {
 	pub := &capturePublisher{}
 	return &clank.Engine{
 		Intake:       clank.NewIntake(fakeTopo{}, fakeChange{}),
 		Model:        model,
-		Tools:        map[string]clank.Tool{"metrics": metricsTool{}},
+		Tools:        tools,
 		Catalog:      clank.DefaultCatalogForTest(),
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},
@@ -300,4 +404,25 @@ func assertGolden(t *testing.T, name string, v any) {
 	if diff := cmp.Diff(string(want), string(got)); diff != "" {
 		t.Errorf("%s drifted from golden (-want +got):\n%s", name, diff)
 	}
+}
+
+func goldenPrometheusServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Just blindly return HEALTH_OK for any query the golden path makes
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"status": "success",
+			"data": {
+				"resultType": "vector",
+				"result": [
+					{
+						"metric": {"__name__": "ceph_health_status"},
+						"value": [1688745600, "1"]
+					}
+				]
+			}
+		}`))
+	}))
 }

@@ -29,6 +29,8 @@ spec:
               value: /etc/thump/whir/catalog-info.yaml
             - name: WHIR_STATE_QUERIES
               value: /etc/thump/whir/state-queries.yaml
+            - name: EVIDENCE_QUERIES
+              value: /etc/thump/whir/evidence-queries.yaml
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

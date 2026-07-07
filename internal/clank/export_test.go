@@ -3,6 +3,8 @@ package clank
 import (
 	"context"
 	"time"
+
+	"github.com/ianeff/thump/internal/publish"
 )
 
 // NewLoopForTest is the one deliberate crack in the package boundary: it lets
@@ -36,4 +38,29 @@ func RunLoopForTest(ctx context.Context, tr *Transport, re *ReturnEdge) {
 // pinned to a table test's "want".
 func NextDelayForTest(cur time.Duration, tickOK bool) time.Duration {
 	return nextDelay(cur, tickOK)
+}
+
+// NewBrokerEngineForTest exposes the broker-mode Engine construction to tests.
+func NewBrokerEngineForTest(model Model, intake *Intake, store Store, tools map[string]Tool, pub *publish.WALPublisher[ProposalSet], ledger *MemProposalLog, cases *CaseBase) *Engine {
+	return newBrokerEngine(model, intake, store, tools, pub, ledger, cases)
+}
+
+// TODO: These are a gooney workaround and this stuff should probably go elsewhere or be relagated to the dustbin of bad ideas.
+func (l *MemProposalLog) SeedForTest(ps ProposalSet, age time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// Backdate the record to simulate a stale entry
+	l.sets = append(l.sets, recorded{set: ps, at: time.Now().Add(-age)})
+}
+
+func (l *MemProposalLog) LenForTest() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return len(l.sets)
+}
+
+func (cb *CaseBase) SetCasesForTest(cases []Case) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.cases = cases
 }

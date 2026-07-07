@@ -15,3 +15,5 @@ data:
 {{ .Files.Get "config/whir/catalog-info.yaml" | indent 4 }}
   state-queries.yaml: |
 {{ .Files.Get "config/whir/state-queries.yaml" | indent 4 }}
+  evidence-queries.yaml: |
+{{ .Files.Get "config/whir/evidence-queries.yaml" | indent 4 }}

@@ -10,6 +10,8 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
+const maxCases = 10000
+
 type Case struct {
 	Fingerprint  string
 	DecisionRef  string
@@ -41,7 +43,14 @@ func (cb *CaseBase) Append(c Case) error {
 	}
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	cb.cases = append(cb.cases, c)
+
+	if len(cb.cases) >= maxCases {
+		// Shift everything left by 1 to drop index 0
+		copy(cb.cases, cb.cases[1:])
+		cb.cases[len(cb.cases)-1] = c
+	} else {
+		cb.cases = append(cb.cases, c)
+	}
 	return nil
 }
 
