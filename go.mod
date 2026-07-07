@@ -1,6 +1,6 @@
 module github.com/ianeff/thump
 
-go 1.26.0
+go 1.26.4
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.53.0
