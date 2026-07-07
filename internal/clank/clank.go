@@ -63,7 +63,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	var tools map[string]Tool
+	tools := map[string]Tool{}
 	promURL := os.Getenv("PROM_URL")
 
 	if promURL == "" {
@@ -74,18 +74,16 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			_, _ = fmt.Fprintf(stderr, "load evidence queries: %v\n", err)
 			return 1
 		}
-		tools = map[string]Tool{
-			"metrics": &MetricsTool{
-				BaseURL: promURL,
-				Queries: queries,
-			},
+		tools["metrics"] = &MetricsTool{
+			BaseURL: promURL,
+			Queries: queries,
 		}
 	}
 
 	config, err := rest.InClusterConfig()
 	if err == nil {
 		kubeClient, err := kubernetes.NewForConfig(config)
-		if err != nil {
+		if err == nil {
 			tools["kube"] = &KubeTool{Client: kubeClient}
 		} else {
 			slog.Warn("could not build kube client from InClusterConfig", "err", err)
