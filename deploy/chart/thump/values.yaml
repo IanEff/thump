@@ -17,7 +17,7 @@ image:
 
 # VERIFY against the lab: `kubectl -n monitoring get svc` before committing.
 prometheus:
-  url: http://prometheus-server.monitoring.svc
+  url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
 
 # The key rides a Secret created out-of-band via the lab's existing
 # SOPS-encrypted-secret flow — this chart only references it by name/key,
@@ -55,7 +55,7 @@ beats:
 nats:
   image:
     tag: "2.14.2-alpine"
-  storageClass: "local-path"
+  storageClass: "standard"
   storage: 2Gi
   jetstream:
     maxMemory: 256Mi
