@@ -45,16 +45,13 @@ for beat in ['rattle', 'clank', 'hiss', 'thump']:
 
 k8s_yaml(helm('deploy/chart/thump', values=['deploy/tilt-values.yaml']))
 
-# W0-4: the machine stays a deliberate, watched act even in dev.
-# tilt-values.yaml's replicas: 1 brings it up on the first `tilt up`
-# (auto_init defaults true even under manual trigger mode); after that,
-# TRIGGER_MODE_MANUAL means an edit rebuilds the image but doesn't bounce
-# the live pod until you ask for it with the Tilt UI/CLI — same "you decide
-# when it wakes" posture as steady state, just a button push instead of a
-# git commit.
-k8s_resource(
-    'thump',
-    resource_deps=['thump-registry'],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    labels=['machine'],
-)
+# Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
+k8s_resource('nats', labels=['broker'], resource_deps=['thump-registry'])
+
+for beat in ['rattle', 'clank', 'hiss', 'thump']:
+    k8s_resource(
+        beat,
+        labels=['machine'],
+        resource_deps=['thump-registry', 'nats'],   # ← don't start a beat until NATS exists
+        trigger_mode=TRIGGER_MODE_MANUAL,            # same "you decide when it wakes" posture (W0-4)
+    )

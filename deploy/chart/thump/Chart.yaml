@@ -2,8 +2,7 @@ apiVersion: v2
 name: thump
 description: >
   The DRAL five-beat reliability machine (rattle -> clank -> hiss -> thump) as
-  one pod: detect, reason, govern, act (dry-run). Deploy WS2 — see
-  phase2-ws2-deploy-guide.md in the vault.
+  four pods: detect, reason, govern, act (dry-run).
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
