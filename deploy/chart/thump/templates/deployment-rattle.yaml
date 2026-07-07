@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rattle
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "rattle") .) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "rattle") .) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-whir.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-rattle.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: rattle
+          image: "{{ .Values.image.registry }}/thump-rattle:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: NATS_URL
+              value: "nats://nats.thump.svc:4222"
+            - name: WAL_DIR
+              value: /var/thump/wal
+            - name: PROM_URL
+              value: {{ .Values.prometheus.url | quote }}
+            - name: WHIR_CATALOG
+              value: /etc/thump/whir/catalog-info.yaml
+            - name: WHIR_STATE_QUERIES
+              value: /etc/thump/whir/state-queries.yaml
+            - name: RATTLE_TRAFFIC
+              value: /etc/thump/rattle/traffic-queries.yaml
+          volumeMounts:
+            - name: wal
+              mountPath: /var/thump/wal
+            - name: whir-config
+              mountPath: /etc/thump/whir
+            - name: rattle-config
+              mountPath: /etc/thump/rattle
+          resources: {{- toYaml .Values.beats.rattle.resources | nindent 12 }}
+      volumes:
+        - name: wal
+          emptyDir: {}
+        - name: whir-config
+          configMap:
+            name: thump-whir
+        - name: rattle-config
+          configMap:
+            name: thump-rattle

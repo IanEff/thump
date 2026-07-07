@@ -1,4 +1,22 @@
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-nats
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+data:
+  nats.conf: |
+    # single-node lab broker. No auth: it's only reachable inside ns/thump on
+    # the pod network. Monitoring on :8222 for /healthz + port-forward.
+    port: 4222
+    http: 8222
+    jetstream {
+      store_dir: /data
+      max_memory_store: {{ .Values.nats.jetstream.maxMemory | quote }}
+      max_file_store:   {{ .Values.nats.jetstream.maxFile | quote }}
+    }
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: nats
