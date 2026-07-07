@@ -3,6 +3,8 @@ package clank_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,7 +59,17 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 		})}}},
 	}}
 
-	eng, sink := goldenEngine(model)
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
 
 	// ── beat one+two: reason → deliver ──────────────────────────────────
 	set, err := eng.Propose(ctx, det)
@@ -128,7 +140,16 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "node-death.yaml")
 
-	eng, sink := goldenEngine(nil) // model set per-call below
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+		},
+	}
+
+	eng, sink := goldenEngine(nil, tools) // model set per-call below
 
 	// first pass: a full propose, delivered and left OPEN in the ledger.
 	eng.Model = goldenNodeDeathModel(t)
@@ -172,7 +193,17 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 			`{"reason":"` + reason + `"}`)}}},
 	}}
 
-	eng, sink := goldenEngine(model)
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
 	set, err := eng.Propose(ctx, det)
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
@@ -216,12 +247,12 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 // this suite). Topology/change sources are empty so intake falls back to the
 // Detection's own observed topology — the realistic path Main takes today
 // with noop sources. A nil model may be set later via eng.Model.
-func goldenEngine(model clank.Model) (*clank.Engine, *capturePublisher) {
+func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine, *capturePublisher) {
 	pub := &capturePublisher{}
 	return &clank.Engine{
 		Intake:       clank.NewIntake(fakeTopo{}, fakeChange{}),
 		Model:        model,
-		Tools:        map[string]clank.Tool{"metrics": metricsTool{}},
+		Tools:        tools,
 		Catalog:      clank.DefaultCatalogForTest(),
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},
@@ -300,4 +331,25 @@ func assertGolden(t *testing.T, name string, v any) {
 	if diff := cmp.Diff(string(want), string(got)); diff != "" {
 		t.Errorf("%s drifted from golden (-want +got):\n%s", name, diff)
 	}
+}
+
+func goldenPrometheusServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Just blindly return HEALTH_OK for any query the golden path makes
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"status": "success",
+			"data": {
+				"resultType": "vector",
+				"result": [
+					{
+						"metric": {"__name__": "ceph_health_status"},
+						"value": [1688745600, "1"]
+					}
+				]
+			}
+		}`))
+	}))
 }

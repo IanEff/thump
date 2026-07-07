@@ -1,8 +1,8 @@
 evidence:
 - live: true
-  query: '{"q":"ceph_health"}'
-  ref: metrics://latency_p99
-  summary: latency_p99 elevated 3x over baseline
+  query: ceph_health
+  ref: metrics://ceph_health
+  summary: ceph_health = 1
   tool: metrics
 failureClass: resource_exhaustion
 gate:

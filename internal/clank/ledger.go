@@ -11,6 +11,10 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
+var ErrNoOpenSet = errors.New("click: no open proposal set answers to this outcome")
+
+const ledgerRetention = 24 * time.Hour
+
 type MemProposalLog struct {
 	mu   sync.RWMutex
 	sets []recorded
@@ -20,14 +24,27 @@ func NewMemProposalLog() *MemProposalLog {
 	return &MemProposalLog{}
 }
 
-var ErrNoOpenSet = errors.New("click: no open proposal set answers to this outcome")
-
 func (l *MemProposalLog) Record(ctx context.Context, ps ProposalSet) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-ledgerRetention)
+
+	// In-place filter to prune old CLOSED proposal sets
+	var kept int
+	for _, r := range l.sets {
+		isClosed := r.set.Status != nil && !isOpen(r.set.Status.Phase)
+		if r.at.After(cutoff) || !isClosed {
+			l.sets[kept] = r
+			kept++
+		}
+	}
+	l.sets = l.sets[:kept]
+
 	l.sets = append(l.sets, recorded{set: ps, at: time.Now()})
 	return nil
 }

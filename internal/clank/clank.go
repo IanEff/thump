@@ -60,6 +60,26 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		_, _ = fmt.Fprintln(stderr, "ANTHROPIC_API_KEY is required")
 		return 1
 	}
+
+	var tools map[string]Tool
+	promURL := os.Getenv("PROM_URL")
+
+	if promURL == "" {
+		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
+	} else if eqPath := os.Getenv("EVIDENCE_QUERIES"); eqPath != "" {
+		queries, err := LoadEvidenceQueries(eqPath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "load evidence queries: %v\n", err)
+			return 1
+		}
+		tools = map[string]Tool{
+			"metrics": &MetricsTool{
+				BaseURL: promURL,
+				Queries: queries,
+			},
+		}
+	}
+
 	model := NewAnthropicModel(apiKey)
 	intake := NewIntake(noopTopology{}, noopChange{})
 	if catPath, sqPath := os.Getenv("WHIR_CATALOG"), os.Getenv("WHIR_STATE_QUERIES"); catPath != "" && sqPath != "" {
@@ -95,7 +115,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	natsURL := os.Getenv("NATS_URL")
 	if natsURL != "" {
-		return runBroker(ctx, natsURL, model, intake, store, stderr)
+		return runBroker(ctx, natsURL, model, intake, store, tools, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the
@@ -119,13 +139,13 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	l := newLoop(inbox, outbox, outcomes, model, nil, intake, defaultCatalog(), store)
+	l := newLoop(inbox, outbox, outcomes, model, tools, intake, defaultCatalog(), store)
 	tr := &Transport{Inbox: inbox, Engine: l.Engine}
 	runLoop(ctx, tr, l.ReturnEdge)
 	return 0
 }
 
-func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -150,19 +170,7 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 	cases := NewCaseBase()
 	learn := Click{Ledger: ledger, Cases: cases}
 
-	eng := &Engine{
-		Intake:       intake,
-		Model:        model,
-		Catalog:      defaultCatalog(),
-		Ranker:       NewRanker(),
-		Store:        store,
-		Scorer:       &CausalScorerImpl{Prior: cases},
-		DedupeWindow: time.Hour,
-		Ledger:       ledger,
-		Pub:          proposalPub,
-		Gate:         ReadinessGate{},
-		MaxSteps:     8,
-	}
+	eng := newBrokerEngine(model, intake, store, tools, proposalPub, ledger, cases)
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -339,4 +347,22 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 		Click: Click{Ledger: ledger, Cases: cases},
 	}
 	return &loop{Engine: eng, ReturnEdge: re, Cases: cases, OutcomeInbox: outcomes}
+}
+
+// TODO: move this.
+func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, pub *publish.WALPublisher[ProposalSet], ledger *MemProposalLog, cases *CaseBase) *Engine {
+	return &Engine{
+		Intake:       intake,
+		Model:        model,
+		Tools:        tools, // <-- Here's our plug!
+		Catalog:      defaultCatalog(),
+		Ranker:       NewRanker(),
+		Store:        store,
+		Scorer:       &CausalScorerImpl{Prior: cases},
+		DedupeWindow: time.Hour,
+		Ledger:       ledger,
+		Pub:          pub,
+		Gate:         ReadinessGate{},
+		MaxSteps:     8,
+	}
 }
