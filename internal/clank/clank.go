@@ -194,7 +194,7 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 				return err
 			}
 			gatePassed := set.Gate != nil && set.Gate.Passed
-			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase, "recommended", set.Recommended, "gatePassed", gatePassed)
+			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase, "recommended", set.Recommended, "gatePassed", gatePassed, "reason", set.Status.Reason, "evidence", len(set.Evidence))
 			return nil
 		})
 	})

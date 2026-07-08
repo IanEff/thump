@@ -3,6 +3,7 @@ package hiss
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -65,6 +66,7 @@ func (tr *Transport) handle(ctx context.Context, ps proposal.Set) error {
 	var auth Authority
 	d := auth.Evaluate(ps, tr.Policy, now())
 	tr.Log.Record(d)
+	slog.Info("decision", "fingerprint", ps.SignalRef, "verdict", d.Verdict, "reasons", d.Reasons, "requestedBand", d.RequestedBand, "grantedBand", d.GrantedBand)
 	return tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: ps})
 }
 

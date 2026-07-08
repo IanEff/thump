@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -87,6 +88,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 // NATS handler calls it after decoding a message. Same brain, two feeders.
 func (tr *Transport) handle(ctx context.Context, g decision.Governed) error {
 	if g.Decision.Verdict != decision.VerdictApproved {
+		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons, "acted", false)
 		return nil // valid non-approval: nothing to act on
 	}
 	now := time.Now
@@ -105,6 +107,7 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed) error {
 		return fmt.Errorf("thump: publish outcome for %s: %w", g.Decision.SignalRef, err)
 	}
 	tr.Log.Record(oc)
+	slog.Info("outcome", "signalRef", g.Decision.SignalRef, "candidateRef", g.Decision.CandidateRef, "acted", true)
 	return nil
 }
 
