@@ -1,0 +1,31 @@
+# Per-SLO blast-radius queries for Stage 5's HubbleTrafficSource.
+# blast radius = affected ÷ total, clamped to [0,1].
+#
+# `affected` wears `or vector(0)` — absence-of-failures and absence-of-
+# measurement are different facts. A healthy cluster must read as 0 ÷ total = 0,
+# not as "no traffic data". `total` is left bare: if it comes back empty,
+# nothing is being measured, and that's the right signal to surface as-is.
+#
+# ceph-health gets NO entry, on purpose: it has no meaningful affected/total
+# traffic pair (cluster health isn't request-shaped). An SLO with no entry
+# here returns (nil, nil) from TrafficSamples and the detection simply
+# carries no traffic context — that absence is the honest answer, not a gap
+# to fill.
+#
+# ceph-osd-latency also gets no entry: rook-gke has no ceph-latency-bridge
+# (job="ceph-latency-bridge" doesn't exist here), and the SLO itself is
+# parked for v1.1 (see config/rook-gke/whir/catalog-info.yaml). Re-add
+# alongside that SLO landing, not before.
+#
+# There's no second (Hubble) blast-radius axis on rook-gke at all — no
+# Cilium here, so RGW's own request counters are the only traffic source
+# for v1 (phase2-converge-rook-gke-guide.md Stage 4 tail names the non-Hubble
+# second source as a follow-up, not a v1 blocker).
+version: v1
+slos:
+  - id: ceph-rgw-availability
+    # ceph_rgw_req / ceph_rgw_failed_req are Ceph's own RGW op counters
+    # (rook-ceph-mgr exporter) — request-shaped, confirmed live 2026-07-08
+    # (rook-gke Stage 0.4).
+    affected: 'sum(rate(ceph_rgw_failed_req[5m])) or vector(0)'
+    total:    'sum(rate(ceph_rgw_req[5m]))'

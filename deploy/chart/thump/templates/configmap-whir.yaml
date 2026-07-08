@@ -12,8 +12,8 @@ metadata:
     {{- include "thump.labels" . | nindent 4 }}
 data:
   catalog-info.yaml: |
-{{ .Files.Get "config/whir/catalog-info.yaml" | indent 4 }}
+{{ .Files.Get (printf "config/%s/whir/catalog-info.yaml" .Values.configProfile) | indent 4 }}
   state-queries.yaml: |
-{{ .Files.Get "config/whir/state-queries.yaml" | indent 4 }}
+{{ .Files.Get (printf "config/%s/whir/state-queries.yaml" .Values.configProfile) | indent 4 }}
   evidence-queries.yaml: |
-{{ .Files.Get "config/whir/evidence-queries.yaml" | indent 4 }}
+{{ .Files.Get (printf "config/%s/whir/evidence-queries.yaml" .Values.configProfile) | indent 4 }}
