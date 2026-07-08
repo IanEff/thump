@@ -45,3 +45,6 @@ CLAUDE.md
 .claude/
 .gemini/
 .zed/
+
+# test specific
+rook-gke-values.yaml
