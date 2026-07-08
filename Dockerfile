@@ -15,6 +15,7 @@ RUN CGO_ENABLED=0 go build -ldflags "-s -w \
   -X main.date=${DATE}" -o /out/${BEAT} ./cmd/${BEAT}
 
 FROM gcr.io/distroless/static-debian12:nonroot
+LABEL org.opencontainers.image.source="https://github.com/ianeff/thump"
 ARG BEAT
 COPY --from=build /out/${BEAT} /usr/local/bin/beat
 ENTRYPOINT ["/usr/local/bin/beat"]
