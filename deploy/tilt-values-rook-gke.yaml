@@ -1,0 +1,34 @@
+# Tilt dev-loop overrides for the rook-gke cluster — the rook-gke sibling of
+# deploy/tilt-values.yaml (ceph-lab). `tilt up -- --cluster=rook-gke` picks
+# this file (Tiltfile CLUSTERS table). Values carried over from the
+# supervised helm-install convergence run (phase2-converge-rook-gke-guide.md,
+# rook-gke-values.yaml):
+#   - configProfile: rook-gke selects config/rook-gke/ (Stage 1's topology
+#     overlay) — without it clank/rattle reason over ceph-lab's phantom
+#     Cilium/ArgoCD/Lima-node topology and every detection is poisoned.
+#   - prometheus.url points at the real in-cluster kube-prometheus-stack
+#     service, not ceph-lab's.
+#   - nats.storageClass swaps to the off-Ceph GCE PD class; nodeSelector
+#     nulls out the chart's control-plane default (GKE has no control-plane
+#     node to schedule onto — {} alone is a no-op under Helm's map-merge,
+#     only nulling the specific key deletes it) and tolerations clears to
+#     match.
+replicas: 1
+
+image:
+  registry: "ghcr.io/ianeff"
+  # Placeholder — Tilt matches on registry+repo (not tag) and rewrites this
+  # to its own content-addressed tag on every build, so the literal value
+  # here never actually reaches the cluster.
+  tag: "dev"
+
+configProfile: rook-gke
+
+prometheus:
+  url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+
+nats:
+  storageClass: standard-rwo
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: null
+  tolerations: []
