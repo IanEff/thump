@@ -8,4 +8,4 @@ metadata:
     {{- include "thump.labels" . | nindent 4 }}
 data:
   traffic-queries.yaml: |
-{{ .Files.Get "config/rattle/traffic-queries.yaml" | indent 4 }}
+{{ .Files.Get (printf "config/%s/rattle/traffic-queries.yaml" .Values.configProfile) | indent 4 }}

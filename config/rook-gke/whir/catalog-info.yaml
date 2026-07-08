@@ -1,0 +1,146 @@
+# Static topology map for rattle's TopologySource (see design doc:
+# ~/Documents/vault/Projects/thump/rook-gke-telemetry-design.md).
+#
+# This is data only — name/edge, no live state. A future TopologySource
+# resolver (in the separate `clank` repo, out of scope here) does live
+# per-call lookups keyed off these names to answer DependencyState(dep).
+#
+# dependsOn edges are wired to match rook-gke's two v1 Sloth SLOs 1:1
+# (rook-gke k8s/sloth/prometheusservicelevels.yaml):
+#   ceph-rgw-availability -> ceph-rgw component
+#   ceph-health            -> ceph-cluster component
+#
+# ceph-osd / ceph-osd-latency is parked for v1.1 (needs its metrics exporter
+# ported first) — dropped here so catalog<->SLO stays 1:1. Re-add then.
+
+# --- Application components (one per SLO subject, plus their dependencies) ---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-rgw
+  description: RGW — S3-compatible object gateway. Subject of the ceph-rgw-availability SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephobjectstore
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-cluster
+  description: Overall Ceph cluster health. Subject of the ceph-health SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: rook-operator
+  description: Rook operator — manages the CephCluster lifecycle.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+
+# --- Storage resources ---
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephcluster
+  description: The CephCluster CR — the whole Ceph deployment.
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephblockpool
+  description: replicapool — the RBD block pool backing rook-ceph-block (cluster-default StorageClass).
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephobjectstore
+  description: RGW object store backing the ceph-rgw component.
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+
+# --- Compute nodes and disks ---
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gke-node-1
+  description: GKE standard node 1.
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/gke-node-1-disk
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gke-node-2
+  description: GKE standard node 2.
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/gke-node-2-disk
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gke-node-3
+  description: GKE standard node 3.
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/gke-node-3-disk
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gke-node-1-disk
+  description: Raw OSD disk (pd-csi) on gke-node-1.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gke-node-2-disk
+  description: Raw OSD disk (pd-csi) on gke-node-2.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gke-node-3-disk
+  description: Raw OSD disk (pd-csi) on gke-node-3.
+spec:
+  type: disk
+  owner: ceph-lab

@@ -1,0 +1,15 @@
+# state-queries.yaml maps `dependsOn` resource/component names from catalog-info.yaml
+# to the PromQL query that determines their health/up-state.
+# This file is loaded by the whir dependency resolver.
+
+queries:
+  "resource:default/cephobjectstore": "up{job=\"rook-ceph-mgr\"} == 1"
+  "component:default/rook-operator": "up{job=\"rook-ceph-operator\"} == 1"
+  "resource:default/cephblockpool": "ceph_pool_stored > 0"
+  "resource:default/cephcluster": "ceph_health_status == 0"
+  "resource:default/gke-node-1": "kube_node_status_condition{condition=\"Ready\",status=\"true\"} == 1"
+  "resource:default/gke-node-2": "kube_node_status_condition{condition=\"Ready\",status=\"true\"} == 1"
+  "resource:default/gke-node-3": "kube_node_status_condition{condition=\"Ready\",status=\"true\"} == 1"
+  "resource:default/gke-node-1-disk": "kubelet_volume_stats_capacity_bytes > 0"
+  "resource:default/gke-node-2-disk": "kubelet_volume_stats_capacity_bytes > 0"
+  "resource:default/gke-node-3-disk": "kubelet_volume_stats_capacity_bytes > 0"
