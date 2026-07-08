@@ -60,17 +60,20 @@ context-driven graceful shutdown.
 > authoritative design is in the vault — build from there** (vault path moved, see
 > § Source of truth below).
 >
-> **2026-07-08 update — Phase A's payoff run, in progress on rook-gke.** The four-beat
-> machine is deployed and running on a real GKE cluster (`rook-gke`, off `~/projects/ceph/
-> rook-gke`) for the first time, not just ceph-lab. Two repo-visible results of that work:
-> an env-overlay config tree (`config/{ceph-lab,rook-gke}/`, chart `configProfile` values
-> key) so the chart can target either cluster's real topology instead of one hardcoded
-> tree; and a multi-cluster `Tiltfile` (`CLUSTERS` dict — context/platform/registry/values
-> per cluster, picked via `tilt up -- --cluster=rook-gke`), plus its
-> `deploy/tilt-values-rook-gke.yaml` sibling. Full blow-by-blow (the bugs found, the Helm
-> map-merge gotcha, the namespace-ownership snag) is in the vault, not here — see
-> `phase2-converge-rook-gke-guide.md` and `thump-running-notes.md`
-> `2026-07-08 (still later)`.
+> **2026-07-08 — Phase A's payoff, achieved for real, on rook-gke.** The four-beat machine
+> deployed onto a real GKE cluster (`rook-gke`, off `~/projects/ceph/rook-gke`) for the
+> first time (env-overlay `config/{ceph-lab,rook-gke}/` tree + chart `configProfile`; a
+> multi-cluster `Tiltfile` `CLUSTERS` dict, `tilt up -- --cluster=rook-gke`), then closed
+> the loop on a live chaos run: a real `kubectl drain` produced `gatePassed:true` from the
+> real Haiku model, hiss **escalated** on the I-12 irreversibility veto (a correct verdict,
+> not a failure), thump correctly declined to act on it. Along the way: fixed
+> `MetricsTool.Spec()` never telling the model which evidence-query names are valid
+> (`internal/clank/metrics_tool.go`), and closed a zero-success-logging gap in `hiss`/`thump`
+> that made a fully-working pipeline look broken from `kubectl logs` alone. Full detail —
+> the bugs found, the Helm map-merge gotcha, the namespace-ownership snag, the whole
+> ladder — is in the vault, not here: `phase2-converge-rook-gke-guide.md` (now checked off
+> end to end) and `thump-running-notes.md` `2026-07-08 (the payoff)`. **Next named thing:**
+> `click` (Learn) and Phase B (prompt caching, self-observability) — see Trajectory below.
 
 ## How we work together (read this)
 
