@@ -25,6 +25,8 @@ spec:
               value: /var/thump/wal
             - name: PROM_URL
               value: {{ .Values.prometheus.url | quote }}
+            - name: LOKI_URL
+              value: {{ .Values.loki.url | quote }}
             - name: WHIR_CATALOG
               value: /etc/thump/whir/catalog-info.yaml
             - name: WHIR_STATE_QUERIES

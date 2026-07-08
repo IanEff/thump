@@ -80,6 +80,13 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 	}
 
+	lokiURL := os.Getenv("LOKI_URL")
+	if lokiURL == "" {
+		slog.Warn(("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action"))
+	} else {
+		tools["loki"] = &LokiTool{BaseURL: lokiURL}
+	}
+
 	config, err := rest.InClusterConfig()
 	if err == nil {
 		kubeClient, err := kubernetes.NewForConfig(config)
