@@ -72,20 +72,20 @@ build:
 # destination with `make images REGISTRY=ghcr.io/whoever`.
 images:
 	@for beat in $(BEATS); do \
-		echo "building $(REGISTRY)/thump-$$beat:$(COMMIT)"; \
-		docker build \
-			--build-arg BEAT=$$beat \
-			--build-arg VERSION=$(VERSION) \
-			--build-arg COMMIT=$(COMMIT) \
-			--build-arg DATE=$(DATE) \
-			-t $(REGISTRY)/thump-$$beat:$(COMMIT) \
-			. || exit 1; \
+    	echo "building $(REGISTRY)/thump-$$beat:$(COMMIT) (linux/amd64,linux/arm64)"; \
+   		docker buildx build \
+   			--platform linux/amd64,linux/arm64 \
+   			--build-arg BEAT=$$beat \
+   			--build-arg VERSION=$(VERSION) \
+   			--build-arg COMMIT=$(COMMIT) \
+   			--build-arg DATE=$(DATE) \
+   			-t $(REGISTRY)/thump-$$beat:$(COMMIT) \
+   			--push \
+   			. || exit 1; \
 	done
 
 push-images: images
-	@for beat in $(BEATS); do \
-		docker push $(REGISTRY)/thump-$$beat:$(COMMIT) || exit 1; \
-	done
+	@echo "multi-arch manifests already pushed by 'images' (buildx --push) — nothing more to do"
 
 run-clank:
 	go run ./cmd/clank
