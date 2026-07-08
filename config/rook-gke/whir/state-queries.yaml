@@ -6,9 +6,9 @@
 # Each query is an instant PromQL whose result means: value > 0 => healthy,
 # value = 0 => degraded, no result / error => unknown (a state, not an error).
 #
-# Node/disk queries are intentionally NOT node-filtered (gke-node-1/2/3 all
-# share the same query) — the catalog names are placeholders, cosmetic swap
-# parked in Stage 4 (phase2-converge-rook-gke-guide.md).
+# Node/disk queries are intentionally NOT node-filtered (all three GKE nodes
+# share the same query) — real node names, swapped in from the Stage 4 tail
+# (phase2-converge-rook-gke-guide.md).
 version: v1
 queries:
   - dependency: rook-operator
@@ -19,15 +19,15 @@ queries:
     query: 'ceph_pool_stored > 0'
   - dependency: cephcluster
     query: 'ceph_health_status == 0'
-  - dependency: gke-node-1
+  - dependency: gke-rook-ceph-gke-rook-ceph-gke-node--1abe8375-mwcx
     query: 'kube_node_status_condition{condition="Ready",status="true"} == 1'
-  - dependency: gke-node-2
+  - dependency: gke-rook-ceph-gke-rook-ceph-gke-node--400af229-b9qp
     query: 'kube_node_status_condition{condition="Ready",status="true"} == 1'
-  - dependency: gke-node-3
+  - dependency: gke-rook-ceph-gke-rook-ceph-gke-node--c237685c-6h1k
     query: 'kube_node_status_condition{condition="Ready",status="true"} == 1'
-  - dependency: gke-node-1-disk
+  - dependency: gke-rook-ceph-gke-rook-ceph-gke-node--1abe8375-mwcx-disk
     query: 'kubelet_volume_stats_capacity_bytes > 0'
-  - dependency: gke-node-2-disk
+  - dependency: gke-rook-ceph-gke-rook-ceph-gke-node--400af229-b9qp-disk
     query: 'kubelet_volume_stats_capacity_bytes > 0'
-  - dependency: gke-node-3-disk
+  - dependency: gke-rook-ceph-gke-rook-ceph-gke-node--c237685c-6h1k-disk
     query: 'kubelet_volume_stats_capacity_bytes > 0'

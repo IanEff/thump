@@ -88,41 +88,41 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: gke-node-1
+  name: gke-rook-ceph-gke-rook-ceph-gke-node--1abe8375-mwcx
   description: GKE standard node 1.
 spec:
   type: compute-node
   owner: ceph-lab
   dependsOn:
-    - resource:default/gke-node-1-disk
+    - resource:default/gke-rook-ceph-gke-rook-ceph-gke-node--1abe8375-mwcx-disk
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: gke-node-2
+  name: gke-rook-ceph-gke-rook-ceph-gke-node--400af229-b9qp
   description: GKE standard node 2.
 spec:
   type: compute-node
   owner: ceph-lab
   dependsOn:
-    - resource:default/gke-node-2-disk
+    - resource:default/gke-rook-ceph-gke-rook-ceph-gke-node--400af229-b9qp-disk
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: gke-node-3
+  name: gke-rook-ceph-gke-rook-ceph-gke-node--c237685c-6h1k
   description: GKE standard node 3.
 spec:
   type: compute-node
   owner: ceph-lab
   dependsOn:
-    - resource:default/gke-node-3-disk
+    - resource:default/gke-rook-ceph-gke-rook-ceph-gke-node--c237685c-6h1k-disk
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: gke-node-1-disk
-  description: Raw OSD disk (pd-csi) on gke-node-1.
+  name: gke-rook-ceph-gke-rook-ceph-gke-node--1abe8375-mwcx-disk
+  description: Raw OSD disk (pd-csi) on gke-rook-ceph-gke-rook-ceph-gke-node--1abe8375-mwcx.
 spec:
   type: disk
   owner: ceph-lab
@@ -130,8 +130,8 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: gke-node-2-disk
-  description: Raw OSD disk (pd-csi) on gke-node-2.
+  name: gke-rook-ceph-gke-rook-ceph-gke-node--400af229-b9qp-disk
+  description: Raw OSD disk (pd-csi) on gke-rook-ceph-gke-rook-ceph-gke-node--400af229-b9qp.
 spec:
   type: disk
   owner: ceph-lab
@@ -139,8 +139,8 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: gke-node-3-disk
-  description: Raw OSD disk (pd-csi) on gke-node-3.
+  name: gke-rook-ceph-gke-rook-ceph-gke-node--c237685c-6h1k-disk
+  description: Raw OSD disk (pd-csi) on gke-rook-ceph-gke-rook-ceph-gke-node--c237685c-6h1k.
 spec:
   type: disk
   owner: ceph-lab
