@@ -59,6 +59,18 @@ context-driven graceful shutdown.
 > (hiss's existence is the proof); see § hiss and the Trajectory section below. **The
 > authoritative design is in the vault — build from there** (vault path moved, see
 > § Source of truth below).
+>
+> **2026-07-08 update — Phase A's payoff run, in progress on rook-gke.** The four-beat
+> machine is deployed and running on a real GKE cluster (`rook-gke`, off `~/projects/ceph/
+> rook-gke`) for the first time, not just ceph-lab. Two repo-visible results of that work:
+> an env-overlay config tree (`config/{ceph-lab,rook-gke}/`, chart `configProfile` values
+> key) so the chart can target either cluster's real topology instead of one hardcoded
+> tree; and a multi-cluster `Tiltfile` (`CLUSTERS` dict — context/platform/registry/values
+> per cluster, picked via `tilt up -- --cluster=rook-gke`), plus its
+> `deploy/tilt-values-rook-gke.yaml` sibling. Full blow-by-blow (the bugs found, the Helm
+> map-merge gotcha, the namespace-ownership snag) is in the vault, not here — see
+> `phase2-converge-rook-gke-guide.md` and `thump-running-notes.md`
+> `2026-07-08 (still later)`.
 
 ## How we work together (read this)
 
