@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
+	"strings"
 
 	"sigs.k8s.io/yaml"
 )
@@ -32,11 +34,24 @@ type metricsInput struct {
 	Q string `json:"q"`
 }
 
-// Spec returns the schema so the model knows how to call this tool.
+// Spec returns the schema so the model knows how to call this tool. The
+// valid `q` names are only known at runtime (loaded per-cluster from
+// evidence-queries.yaml, ceph-lab and rook-gke declare different sets), so
+// they're listed in the description here rather than a static schema enum —
+// without this the model can only discover valid names by guessing and
+// getting back "no such evidence query", which reads indistinguishably from
+// "no metrics are accessible" (confirmed live 2026-07-08: the model declined
+// a real detection citing no accessible Ceph/OSD/recovery data while every
+// one of those queries was returning live, non-empty results).
 func (m *MetricsTool) Spec() ToolSpec {
+	names := make([]string, 0, len(m.Queries))
+	for name := range m.Queries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	return ToolSpec{
 		Name:        "metrics",
-		Description: "read-only telemetry query",
+		Description: "read-only telemetry query. Valid q values: " + strings.Join(names, ", "),
 		InputSchema: SchemaOf[metricsInput](),
 	}
 }
