@@ -22,6 +22,9 @@ configProfile: ceph-lab
 prometheus:
   url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
 
+loki:
+  url: http://loki-gateway.monitoring.svc.cluster.local
+
 # The key rides a Secret created out-of-band via the lab's existing
 # SOPS-encrypted-secret flow — this chart only references it by name/key,
 # it never contains or generates the plaintext key. `create: true` +
