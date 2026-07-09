@@ -1,46 +1,22 @@
 package thump
 
 import (
-	"sync"
 	"time"
+
+	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/internal/ledger"
 )
 
-// OutcomeLog is thump's append-only ledger.
+// OutcomeLog is thump's append-only ledger of what it rendered — the generic
+// ledger.Log plus one thump-specific query.
 type OutcomeLog struct {
-	mu       sync.RWMutex
-	outcomes []Outcome
+	*ledger.Log[outcome.Outcome]
 }
 
 func NewOutcomeLog() *OutcomeLog {
-	return &OutcomeLog{}
+	return &OutcomeLog{Log: ledger.NewLog(func(o outcome.Outcome) time.Time { return o.ExecutedAt })}
 }
 
-func (l *OutcomeLog) Record(o Outcome) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.outcomes = append(l.outcomes, o)
-}
-
-func (l *OutcomeLog) ByResult(r Result) []Outcome {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	var out []Outcome
-	for _, o := range l.outcomes {
-		if o.Result == r {
-			out = append(out, o)
-		}
-	}
-	return out
-}
-
-func (l *OutcomeLog) Since(cut time.Time) []Outcome {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	var out []Outcome
-	for _, o := range l.outcomes {
-		if o.ExecutedAt.After(cut) {
-			out = append(out, o)
-		}
-	}
-	return out
+func (l *OutcomeLog) ByResult(r outcome.Result) []outcome.Outcome {
+	return l.Filter(func(o outcome.Outcome) bool { return o.Result == r })
 }

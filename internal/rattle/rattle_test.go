@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/publish/publishtest"
 	"github.com/ianeff/thump/internal/rattle"
 	"github.com/ianeff/thump/internal/whir"
 )
@@ -112,10 +113,10 @@ func TestWhirTopologySource_EnrichesWithUnknownVisible(t *testing.T) {
 func TestRunLoop_DeliversWhatItLogs(t *testing.T) {
 	slo := rattle.SLO{ID: "ceph-osd-latency"}
 	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 4, 8)}) // fires once
-	pub := &capturePublisher{}
+	pub := &publishtest.CapturePublisher[signal.Detection]{}
 	rattle.RunLoopForTest(onceCtx(), r, discardLogger(), pub)
-	if len(pub.delivered) != 1 {
-		t.Fatalf("want 1 delivery, got %d", len(pub.delivered))
+	if len(pub.Delivered) != 1 {
+		t.Fatalf("want 1 delivery, got %d", len(pub.Delivered))
 	}
 }
 
@@ -159,15 +160,6 @@ func freshWindow(rates ...float64) []rattle.Sample {
 		out[i] = rattle.Sample{T: base.Add(time.Duration(i) * time.Minute), BurnRate: r}
 	}
 	return out
-}
-
-type capturePublisher struct {
-	delivered []signal.Detection
-}
-
-func (p *capturePublisher) Publish(_ context.Context, _ string, d signal.Detection) error {
-	p.delivered = append(p.delivered, d)
-	return nil
 }
 
 func discardLogger() *slog.Logger {

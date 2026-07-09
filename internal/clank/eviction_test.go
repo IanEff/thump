@@ -11,22 +11,22 @@ import (
 
 func TestMemProposalLog_Eviction(t *testing.T) {
 	tests := map[string]struct {
-		seedStatus   *clank.ProposalStatus
+		seedStatus   *proposal.Status
 		seedAge      time.Duration
 		wantLenAfter int
 	}{
 		"Record given a stale closed set evicts it": {
-			seedStatus:   &clank.ProposalStatus{Phase: proposal.PhaseClosed},
+			seedStatus:   &proposal.Status{Phase: proposal.PhaseClosed},
 			seedAge:      25 * time.Hour,
 			wantLenAfter: 1, // Only the new record survives
 		},
 		"Record given a stale open set keeps it": { // THE A3 GUARD
-			seedStatus:   &clank.ProposalStatus{Phase: proposal.PhaseProposed},
+			seedStatus:   &proposal.Status{Phase: proposal.PhaseProposed},
 			seedAge:      25 * time.Hour,
 			wantLenAfter: 2, // Both the old open set and the new record survive
 		},
 		"Record given a fresh closed set keeps it": {
-			seedStatus:   &clank.ProposalStatus{Phase: proposal.PhaseClosed},
+			seedStatus:   &proposal.Status{Phase: proposal.PhaseClosed},
 			seedAge:      1 * time.Hour,
 			wantLenAfter: 2, // Both survive because it hasn't hit retention
 		},
@@ -37,11 +37,11 @@ func TestMemProposalLog_Eviction(t *testing.T) {
 			l := clank.NewMemProposalLog()
 
 			// 1. Arrange: Seed the stale record
-			ps := clank.ProposalSet{Status: tc.seedStatus}
+			ps := proposal.Set{Status: tc.seedStatus}
 			l.SeedForTest(ps, tc.seedAge)
 
 			// 2. Act: Record a new entry to trigger the pruning
-			err := l.Record(context.Background(), clank.ProposalSet{})
+			err := l.Record(context.Background(), proposal.Set{})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

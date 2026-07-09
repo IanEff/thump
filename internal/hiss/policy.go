@@ -3,6 +3,7 @@ package hiss
 import (
 	"time"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
@@ -17,7 +18,7 @@ type Window struct {
 type Policy struct {
 	Version         string                                       `json:"version,omitempty" yaml:"version,omitempty"`
 	Floors          map[string]map[proposal.FailureClass]float64 `json:"floors,omitempty" yaml:"floors,omitempty"`
-	MaxBand         map[string]Band                              `json:"maxBand,omitempty" yaml:"maxBand,omitempty"`
+	MaxBand         map[string]decision.Band                     `json:"maxBand,omitempty" yaml:"maxBand,omitempty"`
 	FreezeWindows   []Window                                     `json:"freezeWindows,omitempty" yaml:"freezeWindows,omitempty"`
 	RequireReversal bool                                         `json:"requireReversal,omitempty" yaml:"requireReversal,omitempty"`
 }

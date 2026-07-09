@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/thump/internal/thump"
+	"github.com/ianeff/thump/api/v1/outcome"
 )
 
 func TestTick_GoldenRun_OneEnvelopeInOrderAndOutcomeOut(t *testing.T) {
@@ -34,7 +34,7 @@ func TestTick_GoldenRun_OneEnvelopeInOrderAndOutcomeOut(t *testing.T) {
 		t.Error("processed envelope must move to processed/, not vanish:", err)
 	}
 	// one Execute means one ledger record — the wiring half of Claim 11
-	if n := len(tr.Log.ByResult(thump.ResultRendered)); n != 1 {
+	if n := len(tr.Log.ByResult(outcome.ResultRendered)); n != 1 {
 		t.Errorf("one envelope must mean one ledger record, got %d", n)
 	}
 }
@@ -85,7 +85,7 @@ func TestTick_PoisonPill_QuarantinesAndSurvives(t *testing.T) {
 	}
 
 	// the good envelope still got acted on — the poison didn't block the queue
-	if got := readOneOutcome(t, outbox); got.Result != thump.ResultRendered {
+	if got := readOneOutcome(t, outbox); got.Result != outcome.ResultRendered {
 		t.Errorf("the healthy envelope must still be rendered: %+v", got)
 	}
 	// the poison is quarantined where a human can find it, not deleted

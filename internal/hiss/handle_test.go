@@ -35,7 +35,7 @@ func TestHandle_EvaluatesAndPublishesOneDecision(t *testing.T) {
 	if diff := cmp.Diff(goldenDecision(), fake.published[0].Decision); diff != "" {
 		t.Error("decision drifted from the golden fixture (-want +got)", diff)
 	}
-	if got := len(tr.Log.ByVerdict(hiss.VerdictApproved)); got != 1 {
+	if got := len(tr.Log.ByVerdict(decision.VerdictApproved)); got != 1 {
 		t.Errorf("one handle call must mean one ledger record, got %d", got)
 	}
 }

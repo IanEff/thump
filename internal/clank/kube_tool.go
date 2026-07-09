@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -30,10 +31,10 @@ func (k *KubeTool) Spec() ToolSpec {
 	}
 }
 
-func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, error) {
+func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.EvidenceRef, error) {
 	var input kubeInput
 	if err := json.Unmarshal(args, &input); err != nil {
-		return EvidenceRef{}, fmt.Errorf("decode kube args: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("decode kube args: %w", err)
 	}
 
 	var summary string
@@ -42,7 +43,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 	case "pods":
 		list, err := k.Client.CoreV1().Pods(input.Namespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
-			return EvidenceRef{
+			return proposal.EvidenceRef{
 				Tool:    "kube",
 				Query:   string(args),
 				Summary: fmt.Sprintf("failed to list pods: %v", err),
@@ -50,7 +51,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 			}, nil
 		}
 		if len(list.Items) == 0 {
-			return EvidenceRef{
+			return proposal.EvidenceRef{
 				Tool:    "kube",
 				Query:   string(args),
 				Summary: "no pods found",
@@ -63,7 +64,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 		}
 		summary = strings.Join(statuses, ", ")
 	default:
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "kube",
 			Query:   string(args),
 			Summary: fmt.Sprintf("unsupported resource: %s", input.Resource),
@@ -71,7 +72,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 		}, nil
 	}
 
-	return EvidenceRef{
+	return proposal.EvidenceRef{
 		Tool:    "kube",
 		Query:   string(args),
 		Summary: summary,

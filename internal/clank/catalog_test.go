@@ -3,15 +3,16 @@ package clank_test
 import (
 	"testing"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
 )
 
 func TestCatalog(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		sao      clank.SAO
+		sao      proposal.SAO
 		contract string // the contract whose presence we assert on
 		want     bool   // should it be in the applicable set?
 	}{
@@ -30,8 +31,8 @@ func TestCatalog(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			cat := clank.NewStaticCatalog(testContracts())
-			got := cat.Applicable(clank.ClassDependencySaturation, "tier-1", tc.sao)
+			cat := contract.NewStaticCatalog(testContracts())
+			got := cat.Applicable(proposal.ClassDependencySaturation, "tier-1", tc.sao)
 			if has := containsContract(got, tc.contract); has != tc.want {
 				t.Errorf("contract %q applicable=%v, want %v; applicable set: %v",
 					tc.contract, has, tc.want, names(got))
@@ -40,24 +41,24 @@ func TestCatalog(t *testing.T) {
 	}
 }
 
-func testContracts() []clank.ActionContract {
-	return []clank.ActionContract{
+func testContracts() []contract.ActionContract {
+	return []contract.ActionContract{
 		{
 			Name:                     "throttle-non-critical-paths",
-			ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 			ApplicableTiers:          []string{"tier-1", "tier-2"},
-			Preconditions: []clank.Precondition{
-				{Name: "affected_pct_under_50", OK: func(sao clank.SAO) bool {
+			Preconditions: []contract.Precondition{
+				{Name: "affected_pct_under_50", OK: func(sao proposal.SAO) bool {
 					return sao.Signal.BlastRadius.AffectedPct < 50
 				}},
 			},
 		},
 		{
 			Name:                     "scale-out",
-			ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 			ApplicableTiers:          []string{"tier-1"},
-			Preconditions: []clank.Precondition{
-				{Name: "not_shared_pool_bottleneck", OK: func(sao clank.SAO) bool {
+			Preconditions: []contract.Precondition{
+				{Name: "not_shared_pool_bottleneck", OK: func(sao proposal.SAO) bool {
 					for _, n := range sao.Topology.Upstream {
 						if n.State == "shared_connection_pool_bottleneck" {
 							return false
@@ -70,28 +71,28 @@ func testContracts() []clank.ActionContract {
 	}
 }
 
-func saoWithAffectedPct(p float64) clank.SAO {
-	return clank.SAO{
-		Signal: clank.SignalSnapshot{
+func saoWithAffectedPct(p float64) proposal.SAO {
+	return proposal.SAO{
+		Signal: proposal.SignalSnapshot{
 			BlastRadius: signal.BlastRadius{AffectedPct: p},
 		},
 	}
 }
 
-func saoWithSharedPoolBottleneck() clank.SAO {
-	return clank.SAO{
-		Signal: clank.SignalSnapshot{
+func saoWithSharedPoolBottleneck() proposal.SAO {
+	return proposal.SAO{
+		Signal: proposal.SignalSnapshot{
 			BlastRadius: signal.BlastRadius{AffectedPct: 10},
 		},
-		Topology: clank.TopologySnapshot{
-			Upstream: []clank.NodeState{
+		Topology: proposal.TopologySnapshot{
+			Upstream: []proposal.NodeState{
 				{Name: "db-pool", State: "shared_connection_pool_bottleneck"},
 			},
 		},
 	}
 }
 
-func containsContract(cs []clank.ActionContract, name string) bool {
+func containsContract(cs []contract.ActionContract, name string) bool {
 	for _, c := range cs {
 		if c.Name == name {
 			return true
@@ -100,7 +101,7 @@ func containsContract(cs []clank.ActionContract, name string) bool {
 	return false
 }
 
-func names(cs []clank.ActionContract) []string {
+func names(cs []contract.ActionContract) []string {
 	var names []string
 	for _, c := range cs {
 		names = append(names, c.Name)

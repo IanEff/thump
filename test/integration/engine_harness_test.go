@@ -8,53 +8,49 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/publish/publishtest"
 )
 
 // recordingTool is a read-only telemetry tool that counts its invocations, so a
 // test can prove the loop actually investigated before proposing.
 type recordingTool struct {
 	spec  clank.ToolSpec
-	ref   clank.EvidenceRef
+	ref   proposal.EvidenceRef
 	calls int
 }
 
 func (r *recordingTool) Spec() clank.ToolSpec { return r.spec }
-func (r *recordingTool) Run(_ context.Context, _ json.RawMessage) (clank.EvidenceRef, error) {
+func (r *recordingTool) Run(_ context.Context, _ json.RawMessage) (proposal.EvidenceRef, error) {
 	r.calls++
 	return r.ref, nil
 }
 
-type staticTopo struct{ snap clank.TopologySnapshot }
+type staticTopo struct{ snap proposal.TopologySnapshot }
 
-func (s staticTopo) Topology(_ context.Context, _ signal.Detection) (clank.TopologySnapshot, error) {
+func (s staticTopo) Topology(_ context.Context, _ signal.Detection) (proposal.TopologySnapshot, error) {
 	return s.snap, nil
 }
 
-type staticChange struct{ snap clank.ChangeSnapshot }
+type staticChange struct{ snap proposal.ChangeSnapshot }
 
-func (s staticChange) Changes(_ context.Context, _ signal.Detection) (clank.ChangeSnapshot, error) {
+func (s staticChange) Changes(_ context.Context, _ signal.Detection) (proposal.ChangeSnapshot, error) {
 	return s.snap, nil
-}
-
-type capturePublisher struct{ delivered []clank.ProposalSet }
-
-func (c *capturePublisher) Publish(_ context.Context, _ string, ps clank.ProposalSet) error {
-	c.delivered = append(c.delivered, ps)
-	return nil
 }
 
 // newLiveEngine wires the full engine with the REAL model and fake everything else.
-func newLiveEngine(t *testing.T, tool clank.Tool, catalog *clank.StaticCatalog) (*clank.Engine, *capturePublisher) {
+func newLiveEngine(t *testing.T, tool clank.Tool, catalog *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
 	t.Helper()
-	pub := &capturePublisher{}
+	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
 		Intake: clank.NewIntake(
-			staticTopo{clank.TopologySnapshot{Downstream: []clank.NodeState{
+			staticTopo{proposal.TopologySnapshot{Downstream: []proposal.NodeState{
 				{Name: "payments-db", State: "degraded", TrafficShare: 0.7},
 			}}},
-			staticChange{clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+			staticChange{proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
 			}}},
 		),
@@ -89,16 +85,16 @@ func goldenSignal() signal.Detection {
 func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 	metrics := &recordingTool{
 		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
-		ref:  clank.EvidenceRef{Tool: "metrics", Summary: "payments-db CPU pinned at 99%, connection pool exhausted", Ref: "metrics://payments-db/cpu", Live: true},
+		ref:  proposal.EvidenceRef{Tool: "metrics", Summary: "payments-db CPU pinned at 99%, connection pool exhausted", Ref: "metrics://payments-db/cpu", Live: true},
 	}
 	// Broadly applicable on purpose: this test exercises the LOOP, not Haiku's
 	// taste in failure-class labels. Whatever class it picks, the action stays
 	// in-catalog, so the test fails only for real wiring reasons.
-	catalog := clank.NewStaticCatalog([]clank.ActionContract{{
+	catalog := contract.NewStaticCatalog([]contract.ActionContract{{
 		Name: "throttle-non-critical-paths",
-		ApplicableFailureClasses: []clank.FailureClass{
-			clank.ClassDependencySaturation, clank.ClassResourceExhaustion,
-			clank.ClassTrafficShift, clank.ClassUnknown,
+		ApplicableFailureClasses: []proposal.FailureClass{
+			proposal.ClassDependencySaturation, proposal.ClassResourceExhaustion,
+			proposal.ClassTrafficShift, proposal.ClassUnknown,
 		},
 		ApplicableTiers: []string{"tier-1"},
 	}})
@@ -135,19 +131,19 @@ func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 	if set.SAOSnapshot == nil || set.SAOSnapshot.Version == 0 {
 		t.Error("the SAO the loop reasoned over must be frozen onto the set")
 	}
-	if len(sink.delivered) != 1 {
-		t.Errorf("a passed set is delivered exactly once; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Errorf("a passed set is delivered exactly once; delivered %d", len(sink.Delivered))
 	}
 }
 
 func TestEngine_ThinEvidence_YieldsNoActionAndDeliversNothing(t *testing.T) {
 	metrics := &recordingTool{
 		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
-		ref:  clank.EvidenceRef{Tool: "metrics", Summary: "all services nominal; no anomaly on payments-db", Ref: "metrics://payments-db/cpu", Live: true},
+		ref:  proposal.EvidenceRef{Tool: "metrics", Summary: "all services nominal; no anomaly on payments-db", Ref: "metrics://payments-db/cpu", Live: true},
 	}
-	catalog := clank.NewStaticCatalog([]clank.ActionContract{{
+	catalog := contract.NewStaticCatalog([]contract.ActionContract{{
 		Name:                     "throttle-non-critical-paths",
-		ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 		ApplicableTiers:          []string{"tier-1"},
 	}})
 
@@ -159,7 +155,7 @@ func TestEngine_ThinEvidence_YieldsNoActionAndDeliversNothing(t *testing.T) {
 	if set.Status.Phase == "proposed" {
 		t.Errorf("evidence saying \"all nominal\" should not reach a proposal: %+v", set)
 	}
-	if len(sink.delivered) != 0 {
-		t.Errorf("a non-proposed set must deliver nothing; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Errorf("a non-proposed set must deliver nothing; delivered %d", len(sink.Delivered))
 	}
 }

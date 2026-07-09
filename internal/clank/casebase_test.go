@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 )
 
@@ -138,12 +139,12 @@ func TestCaseBase_AlignmentIsTheObservedSuccessRate(t *testing.T) {
 
 func goldenCase() clank.Case {
 	return clank.Case{
-		Fingerprint:  "slo_burn:ceph-rgw",             // Outcome.SignalRef — five beats, one string
-		DecisionRef:  "dec:slo_burn:ceph-rgw:1000",    // Outcome.DecisionRef — the grant
-		OutcomeRef:   "out:slo_burn:ceph-rgw:1000",    // Outcome.ID — the leaf this case summarizes
-		ContractRef:  "throttle-non-critical-paths",   // Outcome.ContractRef
-		FailureClass: clank.ClassDependencySaturation, // set.FailureClass — for smarter retrieval, someday
-		Confidence:   0.87,                            // set's recommended candidate — CE's stated half
+		Fingerprint:  "slo_burn:ceph-rgw",                // Outcome.SignalRef — five beats, one string
+		DecisionRef:  "dec:slo_burn:ceph-rgw:1000",       // Outcome.DecisionRef — the grant
+		OutcomeRef:   "out:slo_burn:ceph-rgw:1000",       // Outcome.ID — the leaf this case summarizes
+		ContractRef:  "throttle-non-critical-paths",      // Outcome.ContractRef
+		FailureClass: proposal.ClassDependencySaturation, // set.FailureClass — for smarter retrieval, someday
+		Confidence:   0.87,                               // set's recommended candidate — CE's stated half
 		Mode:         outcome.ModeLive,
 		Result:       outcome.ResultSuccess,
 		ObservedAt:   time.Unix(1000, 0), // Outcome.ExecutedAt — click has no clock

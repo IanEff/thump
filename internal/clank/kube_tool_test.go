@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,7 +18,7 @@ func TestKubeTool_Run(t *testing.T) {
 	tests := map[string]struct {
 		input   string
 		pods    []*corev1.Pod
-		wantRef clank.EvidenceRef
+		wantRef proposal.EvidenceRef
 	}{
 		"Run given a pod query returns live evidence summary": {
 			input: `{"resource": "pods", "namespace": "rook-ceph"}`,
@@ -31,7 +32,7 @@ func TestKubeTool_Run(t *testing.T) {
 					Status:     corev1.PodStatus{Phase: corev1.PodFailed},
 				},
 			},
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "kube",
 				Query:   `{"resource": "pods", "namespace": "rook-ceph"}`,
 				Summary: "osd-0 (Running), osd-1 (Failed)",
@@ -42,7 +43,7 @@ func TestKubeTool_Run(t *testing.T) {
 		"Run given an empty namespace returns non-live evidence": {
 			input: `{"resource": "pods", "namespace": "empty-ns"}`,
 			pods:  nil,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "kube",
 				Query:   `{"resource": "pods", "namespace": "empty-ns"}`,
 				Summary: "no pods found",
@@ -51,7 +52,7 @@ func TestKubeTool_Run(t *testing.T) {
 		},
 		"Run given an unsupported resource returns non-live evidence": {
 			input: `{"resource": "deployments", "namespace": "default"}`,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "kube",
 				Query:   `{"resource": "deployments", "namespace": "default"}`,
 				Summary: "unsupported resource: deployments",

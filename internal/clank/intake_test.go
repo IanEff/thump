@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
 )
@@ -41,20 +42,20 @@ func sigBurnAccel() signal.Detection {
 }
 
 type fakeTopo struct {
-	snap clank.TopologySnapshot
+	snap proposal.TopologySnapshot
 	err  error
 }
 
-func (f fakeTopo) Topology(_ context.Context, _ signal.Detection) (clank.TopologySnapshot, error) {
+func (f fakeTopo) Topology(_ context.Context, _ signal.Detection) (proposal.TopologySnapshot, error) {
 	return f.snap, f.err
 }
 
 type fakeChange struct {
-	snap clank.ChangeSnapshot
+	snap proposal.ChangeSnapshot
 	err  error
 }
 
-func (f fakeChange) Changes(_ context.Context, _ signal.Detection) (clank.ChangeSnapshot, error) {
+func (f fakeChange) Changes(_ context.Context, _ signal.Detection) (proposal.ChangeSnapshot, error) {
 	return f.snap, f.err
 }
 
@@ -63,7 +64,7 @@ func fakeTopologySource() clank.TopologySource {
 }
 
 func fakeChangeSource() clank.ChangeSource {
-	return fakeChange{snap: clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+	return fakeChange{snap: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 		{ID: "deploy-7f3a", Type: "deploy", Target: "checkout", Age: 12 * time.Minute},
 	}}}
 }

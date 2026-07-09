@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 )
 
@@ -149,7 +150,7 @@ func TestAnthropicModel_EmitsProposeArgsThatDecodeIntoProposalSet(t *testing.T) 
 		t.Fatalf("want tool %q, got %q", "propose", tc.Name)
 	}
 
-	var set clank.ProposalSet
+	var set proposal.Set
 	if err := json.Unmarshal(tc.Args, &set); err != nil {
 		t.Fatalf("propose args do not decode into ProposalSet: %v\nargs: %s", err, tc.Args)
 	}

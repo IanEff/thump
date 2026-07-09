@@ -12,9 +12,13 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/publish/publishtest"
 	"github.com/ianeff/thump/internal/thump"
 	"sigs.k8s.io/yaml"
 )
@@ -46,15 +50,15 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	// grant defaults to observe).
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassResourceExhaustion, // in defaultCatalog's hold-rebalance
-			Hypotheses:   []clank.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
-			Proposals: []clank.Candidate{{
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassResourceExhaustion, // in defaultCatalog's hold-rebalance
+			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-				ReversalPath: &clank.ReversalPath{
+				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
-				GovernanceLevel: &clank.GovernanceLevel{Band: string(hiss.BandActReversible)},
+				GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 			}},
 		})}}},
 	}}
@@ -79,10 +83,10 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	if set.Gate == nil || !set.Gate.Passed {
 		t.Fatalf("the production catalog should serve a node death: gate=%+v", set.Gate)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.Delivered))
 	}
-	delivered := sink.delivered[0]
+	delivered := sink.Delivered[0]
 	if delivered.Recommended != "p1" || delivered.Proposals[0].ContractRef != "hold-rebalance" {
 		t.Fatalf("recommended action should be hold-rebalance, got %q (%s)",
 			delivered.Proposals[0].ContractRef, delivered.Recommended)
@@ -95,7 +99,7 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	if err := dec.Auditable(); err != nil {
 		t.Fatal("decision must be auditable:", err)
 	}
-	if dec.Verdict != hiss.VerdictApproved {
+	if dec.Verdict != decision.VerdictApproved {
 		t.Fatalf("hiss must approve the golden path: %s (reasons: %v)", dec.Verdict, dec.Reasons)
 	}
 	assertGolden(t, "node-death-decision.yaml", dec)
@@ -107,7 +111,7 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 		t.Fatal("thump.Render errored:", err)
 	}
 	out := thump.DryRun{}.Execute(ctx, order, goldenNow)
-	if out.Result != thump.ResultRendered {
+	if out.Result != outcome.ResultRendered {
 		t.Fatalf("a dry-run ends rendered, not executed: %s", out.Result)
 	}
 	assertGolden(t, "node-death-outcome.yaml", out)
@@ -156,8 +160,8 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	if _, err := eng.Propose(ctx, det); err != nil {
 		t.Fatalf("first Propose errored: %v", err)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("first pass should deliver once; got %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("first pass should deliver once; got %d", len(sink.Delivered))
 	}
 
 	// second pass: same fingerprint, same engine (same ledger). The open set
@@ -167,8 +171,8 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Propose errored: %v", err)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("replay must be suppressed, not delivered; delivered %d total", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("replay must be suppressed, not delivered; delivered %d total", len(sink.Delivered))
 	}
 	if set2.Gate == nil || set2.Gate.Passed {
 		t.Errorf("the replay's gate must fail on dedup: %+v", set2.Gate)
@@ -193,15 +197,15 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassResourceExhaustion,
-			Hypotheses:   []clank.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
-			Proposals: []clank.Candidate{{
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassResourceExhaustion,
+			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-				ReversalPath: &clank.ReversalPath{
+				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
-				GovernanceLevel: &clank.GovernanceLevel{Band: string(hiss.BandActReversible)},
+				GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 			}},
 		})}}},
 	}}
@@ -229,11 +233,11 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	if set.Gate == nil || !set.Gate.Passed {
 		t.Fatalf("two live citations should clear the gate: gate=%+v", set.Gate)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.Delivered))
 	}
 
-	delivered := sink.delivered[0]
+	delivered := sink.Delivered[0]
 	if len(delivered.Evidence) != 2 {
 		t.Fatalf("want 2 evidence refs (one per tool call), got %d", len(delivered.Evidence))
 	}
@@ -281,8 +285,8 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
 	}
-	if len(sink.delivered) != 0 {
-		t.Fatalf("a decline delivers nothing; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Fatalf("a decline delivers nothing; delivered %d", len(sink.Delivered))
 	}
 	if set.Status.Phase != "no_action" {
 		t.Errorf("a decline is phase=no_action, got %q", set.Status.Phase)
@@ -301,10 +305,10 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassResourceExhaustion,
-			Hypotheses:   []clank.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
-			Proposals: []clank.Candidate{{
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassResourceExhaustion,
+			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
 				// bare — no ReversalPath, no GovernanceLevel
 			}},
@@ -331,22 +335,22 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	if set.Gate == nil || !set.Gate.Passed {
 		t.Fatalf("a bare-but-catalogued proposal should still clear the gate: gate=%+v", set.Gate)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.Delivered))
 	}
 
-	delivered := sink.delivered[0]
+	delivered := sink.Delivered[0]
 	cand := delivered.Proposals[0]
 	if cand.ReversalPath == nil || cand.ReversalPath.Method != "release-rebalance" {
 		t.Fatalf("A1 must stamp ReversalPath from the catalog even when the model left it nil; got %+v", cand.ReversalPath)
 	}
-	if cand.GovernanceLevel == nil || cand.GovernanceLevel.Band != string(hiss.BandActReversible) {
+	if cand.GovernanceLevel == nil || cand.GovernanceLevel.Band != string(decision.BandActReversible) {
 		t.Fatalf("A1 must stamp the requested band from the catalog's reversibility; got %+v", cand.GovernanceLevel)
 	}
 
 	// beat three: govern — the ENRICHED set, unmodified beyond that.
 	dec := hiss.Authority{}.Evaluate(delivered, goldenPolicy(), goldenNow)
-	if dec.Verdict != hiss.VerdictApproved {
+	if dec.Verdict != decision.VerdictApproved {
 		t.Fatalf("the payoff-run bug: hiss must approve a bare-but-catalogued act now — got %s (reasons: %v)", dec.Verdict, dec.Reasons)
 	}
 
@@ -357,7 +361,7 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 		t.Fatal("thump.Render errored:", err)
 	}
 	out := thump.DryRun{}.Execute(ctx, order, goldenNow)
-	if out.Result != thump.ResultRendered {
+	if out.Result != outcome.ResultRendered {
 		t.Fatalf("a dry-run ends rendered, not executed: %s", out.Result)
 	}
 }
@@ -371,15 +375,15 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 	t.Helper()
 	return &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassResourceExhaustion,
-			Hypotheses:   []clank.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
-			Proposals: []clank.Candidate{{
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassResourceExhaustion,
+			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-				ReversalPath: &clank.ReversalPath{
+				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
-				GovernanceLevel: &clank.GovernanceLevel{Band: string(hiss.BandActReversible)},
+				GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 			}},
 		})}}},
 	}}
@@ -389,8 +393,8 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 // this suite). Topology/change sources are empty so intake falls back to the
 // Detection's own observed topology — the realistic path Main takes today
 // with noop sources. A nil model may be set later via eng.Model.
-func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine, *capturePublisher) {
-	pub := &capturePublisher{}
+func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
 		Intake:       clank.NewIntake(fakeTopo{}, fakeChange{}),
 		Model:        model,
@@ -413,10 +417,10 @@ func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine
 func goldenPolicy() hiss.Policy {
 	return hiss.Policy{
 		Version: "golden-v1",
-		Floors: map[string]map[clank.FailureClass]float64{
-			"tier-1": {clank.ClassResourceExhaustion: 0.75},
+		Floors: map[string]map[proposal.FailureClass]float64{
+			"tier-1": {proposal.ClassResourceExhaustion: 0.75},
 		},
-		MaxBand:         map[string]hiss.Band{"tier-1": hiss.BandActReversible},
+		MaxBand:         map[string]decision.Band{"tier-1": decision.BandActReversible},
 		RequireReversal: true,
 	}
 }
@@ -425,7 +429,7 @@ func goldenPolicy() hiss.Policy {
 // ContractRef from its OWN compiled-in copy, which clank.go:161-164 mandates
 // is byte-identical to clank's — so reusing the production catalog here is
 // exactly what a correct thump would resolve against.
-func goldenCatalog() *clank.StaticCatalog {
+func goldenCatalog() *contract.StaticCatalog {
 	return clank.DefaultCatalogForTest()
 }
 
@@ -445,7 +449,7 @@ func loadDetectionFixtureExt(t *testing.T, name string) signal.Detection {
 // scrubVolatile zeroes the one field the golden clock can't reach: the SAO's
 // AssembledAt, stamped with time.Now() in intake (no clock seam there yet).
 // Everything else on the set is either static or under goldenNow.
-func scrubVolatile(set *clank.ProposalSet) {
+func scrubVolatile(set *proposal.Set) {
 	if set.SAOSnapshot != nil {
 		set.SAOSnapshot.AssembledAt = time.Time{}
 	}

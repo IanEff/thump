@@ -3,36 +3,28 @@ package rattle
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
-	ossignal "os/signal"
-	"syscall"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/whir"
 )
 
 func Main(args []string, stdout, stderr io.Writer, version, commit, date string) int {
-	fs := flag.NewFlagSet("rattle", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	printVesion := fs.Bool("version", false, "print version and exit")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	lc, code, exit := beat.Start("rattle", args, stdout, stderr, beat.Version{Version: version, Commit: commit, Date: date})
+	if exit {
+		return code
 	}
-	if *printVesion {
-		_, _ = fmt.Fprintf(stdout, "rattle %s\ncommit: %s\nbuilt: %s\n", version, commit, date)
-		return 0
-	}
-
-	log := slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	log.Info("starting rattle", "version", version, "commit", commit, "date", date)
+	defer lc.Stop()
+	ctx := lc.Ctx
+	log := slog.Default()
 
 	promURL := os.Getenv("PROM_URL")
 	if promURL == "" {
@@ -68,30 +60,21 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		traffic = &HubbleTrafficSource{BaseURL: promURL, Client: http.DefaultClient, Queries: queries}
 	}
 
-	ctx, stop := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	var pub publish.Publisher[signal.Detection]
-	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
-		js, closeNC, err := broker.Connect(ctx, natsURL)
+	if lc.NATSURL != "" {
+		js, closeNC, err := broker.Connect(ctx, lc.NATSURL)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1
 		}
 		defer closeNC()
-		walDir := os.Getenv("WAL_DIR")
-		if walDir == "" {
-			_, _ = fmt.Fprintln(stderr, "WAL_DIR is required with NATS_URL")
+		p, closeW, err := beat.NewWALPublisher[signal.Detection](js, os.Getenv("WAL_DIR"), "rattle", "thump.detections")
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, err)
 			return 1
 		}
-		w := &publish.WAL{Dir: walDir, Beat: "rattle", Subject: "thump.detections"}
-		defer func() {
-			_ = w.Close(ctx)
-		}()
-		pub = &publish.WALPublisher[signal.Detection]{
-			WAL:  w,
-			Next: publish.NewJetPublisher[signal.Detection](js),
-		}
+		defer func() { _ = closeW(ctx) }()
+		pub = p
 	} else if outbox := os.Getenv("RATTLE_OUTBOX"); outbox != "" {
 		// offline path: the DirPublisher is now the keyless fake the seam
 		// tests exercise — broker mode above is how this actually runs.

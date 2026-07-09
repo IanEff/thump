@@ -55,7 +55,7 @@ func TestHandle_RendersExecutesAndPublishesOneOrderAndOutcome(t *testing.T) {
 	if diff := cmp.Diff(goldenOutcome(), outcomes.published[0]); diff != "" {
 		t.Error("outcome drifted from the golden fixture (-want +got)", diff)
 	}
-	if got := len(tr.Log.ByResult(thump.ResultRendered)); got != 1 {
+	if got := len(tr.Log.ByResult(outcome.ResultRendered)); got != 1 {
 		t.Errorf("one handle call must mean one ledger record, got %d", got)
 	}
 }

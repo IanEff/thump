@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/publish"
 )
@@ -37,26 +39,26 @@ func TestClankLearnEdge_ClosesOverBroker(t *testing.T) {
 		// turn 1: gather live evidence
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
 		// turn 2: propose - hypothesis + a candidate drawn from the catalog
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 	eng := &clank.Engine{
 		Intake: clank.NewIntake(
-			fakeTopo{snap: clank.TopologySnapshot{
-				Downstream: []clank.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+			fakeTopo{snap: proposal.TopologySnapshot{
+				Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
 			}},
-			fakeChange{snap: clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+			fakeChange{snap: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
 			}}},
 		),
 		Model: model,
 		Tools: map[string]clank.Tool{"metrics": metricsTool{}},
-		Catalog: clank.NewStaticCatalog([]clank.ActionContract{{
+		Catalog: contract.NewStaticCatalog([]contract.ActionContract{{
 			Name:                     "throttle-non-critical-paths",
-			ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 			ApplicableTiers:          []string{"tier-1"},
 		}}),
 		Ranker:       clank.NewRanker(),

@@ -16,46 +16,46 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-func goldenOutcome() thump.Outcome {
-	return thump.Outcome{
+func goldenOutcome() outcome.Outcome {
+	return outcome.Outcome{
 		ID:          "out:slo_burn:ceph-rgw:1000",
 		DecisionRef: "dec:slo_burn:ceph-rgw:1000",
 		SignalRef:   "slo_burn:ceph-rgw",
 		ContractRef: "throttle-non-critical-paths",
-		Mode:        thump.ModeDryRun,     // the honest half…
-		Result:      thump.ResultRendered, // …of the honest whole: we rehearsed, we did not act
+		Mode:        outcome.ModeDryRun,     // the honest half…
+		Result:      outcome.ResultRendered, // …of the honest whole: we rehearsed, we did not act
 		Error:       "",
 		ExecutedAt:  frozenNow(),
 	}
 }
 
-func withoutDecisionRef(o thump.Outcome) thump.Outcome {
+func withoutDecisionRef(o outcome.Outcome) outcome.Outcome {
 	o.DecisionRef = ""
 	return o
 }
 
-func withoutExecutedAt(o thump.Outcome) thump.Outcome {
+func withoutExecutedAt(o outcome.Outcome) outcome.Outcome {
 	o.ExecutedAt = time.Time{}
 	return o
 }
 
-func withoutMode(o thump.Outcome) thump.Outcome {
+func withoutMode(o outcome.Outcome) outcome.Outcome {
 	o.Mode = ""
 	return o
 }
 
-func silentFailure(o thump.Outcome) thump.Outcome {
-	o.Result, o.Error = thump.ResultFailure, ""
+func silentFailure(o outcome.Outcome) outcome.Outcome {
+	o.Result, o.Error = outcome.ResultFailure, ""
 	return o
 }
 
-func explainedPartial(o thump.Outcome) thump.Outcome {
-	o.Result, o.Error = thump.ResultPartialNonConverging, "latency recovered; error rate did not"
+func explainedPartial(o outcome.Outcome) outcome.Outcome {
+	o.Result, o.Error = outcome.ResultPartialNonConverging, "latency recovered; error rate did not"
 	return o
 }
 
-func silentPartial(o thump.Outcome) thump.Outcome {
-	o.Result, o.Error = thump.ResultPartialNonConverging, ""
+func silentPartial(o outcome.Outcome) outcome.Outcome {
+	o.Result, o.Error = outcome.ResultPartialNonConverging, ""
 	return o
 }
 
@@ -191,9 +191,9 @@ func readOneOrder(t *testing.T, outbox string) thump.Order {
 	return o
 }
 
-func readOneOutcome(t *testing.T, outbox string) thump.Outcome {
+func readOneOutcome(t *testing.T, outbox string) outcome.Outcome {
 	t.Helper()
-	var o thump.Outcome
+	var o outcome.Outcome
 	readOneYAML(t, filepath.Join(outbox, "outcomes"), &o)
 	return o
 }
@@ -226,7 +226,7 @@ func newTestTransport(inbox, outbox string) *thump.Transport {
 			Dir:  filepath.Join(outbox, "orders"),
 			Name: func(o thump.Order) string { return o.SignalRef },
 		},
-		OutcomePub: &publish.DirPublisher[thump.Outcome]{
+		OutcomePub: &publish.DirPublisher[outcome.Outcome]{
 			Dir:  filepath.Join(outbox, "outcomes"),
 			Name: func(o outcome.Outcome) string { return o.SignalRef },
 		},

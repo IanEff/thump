@@ -7,14 +7,15 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 )
 
 func TestCausalScorer_TopologyOutweighsRecency(t *testing.T) {
 	t.Parallel()
 	s := clank.NewCausalScorer()
-	change := clank.ChangeSnapshot{
-		Events: []clank.ChangeEvent{
+	change := proposal.ChangeSnapshot{
+		Events: []proposal.ChangeEvent{
 			{ID: "old-upstream", Type: "deploy", Target: "payment-gateway", Age: 23 * time.Minute}, // in path
 			{ID: "new-unrelated", Type: "deploy", Target: "search-api", Age: 4 * time.Minute},
 		},
@@ -130,9 +131,9 @@ func TestCausalScorer_TheCaseBaseCannotCarryAHypothesisAlone(t *testing.T) {
 
 // topoWithDegradedUpstream returns a topology where the named node is degraded
 // in the upstream dependency graph — the "in the blast path" signal.
-func topoWithDegradedUpstream(name string) clank.TopologySnapshot {
-	return clank.TopologySnapshot{
-		Upstream: []clank.NodeState{
+func topoWithDegradedUpstream(name string) proposal.TopologySnapshot {
+	return proposal.TopologySnapshot{
+		Upstream: []proposal.NodeState{
 			{Name: name, State: "degraded", DegradedSince: 5 * time.Minute, TrafficShare: 0.8},
 		},
 	}
@@ -175,9 +176,9 @@ func likelihoodOf(scores []clank.CausalScore, id string) float64 {
 // the topology — so the scorer has a case-base match (historical stub) but no
 // live topological corroboration. Defence 1: this alone must not push
 // Likelihood above 0.5.
-func historicalMatchNoLiveSource() clank.ChangeSnapshot {
-	return clank.ChangeSnapshot{
-		Events: []clank.ChangeEvent{{
+func historicalMatchNoLiveSource() proposal.ChangeSnapshot {
+	return proposal.ChangeSnapshot{
+		Events: []proposal.ChangeEvent{{
 			ID:     "hist-only",
 			Type:   "deploy",
 			Target: "orphan-service",
@@ -188,9 +189,9 @@ func historicalMatchNoLiveSource() clank.ChangeSnapshot {
 
 // anyTopo returns a topology whose nodes don't match the "orphan-service"
 // target from historicalMatchNoLiveSource — so there's no live corroboration.
-func anyTopo() clank.TopologySnapshot {
-	return clank.TopologySnapshot{
-		Upstream: []clank.NodeState{
+func anyTopo() proposal.TopologySnapshot {
+	return proposal.TopologySnapshot{
+		Upstream: []proposal.NodeState{
 			{Name: "unrelated-service", State: "healthy", TrafficShare: 0.5},
 		},
 	}
@@ -199,9 +200,9 @@ func anyTopo() clank.TopologySnapshot {
 // histMatch returns a change snapshot with a deploy targeting a node that IS in
 // the topology (payment-gateway), with the given topology staleness on the
 // case-base match. Pair with topo() and uniformWeights().
-func histMatch(stale time.Duration) clank.ChangeSnapshot {
-	return clank.ChangeSnapshot{
-		Events: []clank.ChangeEvent{{
+func histMatch(stale time.Duration) proposal.ChangeSnapshot {
+	return proposal.ChangeSnapshot{
+		Events: []proposal.ChangeEvent{{
 			ID:                  "hist-match",
 			Type:                "deploy",
 			Target:              "payment-gateway",
@@ -217,9 +218,9 @@ func staleness(d time.Duration) time.Duration { return d }
 
 // topo returns a basic topology with payment-gateway degraded upstream — the
 // "live" evidence that pairs with histMatch's target.
-func topo() clank.TopologySnapshot {
-	return clank.TopologySnapshot{
-		Upstream: []clank.NodeState{
+func topo() proposal.TopologySnapshot {
+	return proposal.TopologySnapshot{
+		Upstream: []proposal.NodeState{
 			{Name: "payment-gateway", State: "degraded", DegradedSince: 5 * time.Minute, TrafficShare: 0.8},
 		},
 	}
@@ -234,8 +235,8 @@ func observed(state string) string { return state }
 // scores it and returns the single CausalScore. Defence 3: when observed !=
 // predicted, the scorer must decrement Likelihood (absence is evidence against).
 func scoreWhereHypothesisPredicts(predicted string, obs string) clank.CausalScore {
-	change := clank.ChangeSnapshot{
-		Events: []clank.ChangeEvent{{
+	change := proposal.ChangeSnapshot{
+		Events: []proposal.ChangeEvent{{
 			ID:               "hyp-event",
 			Type:             "deploy",
 			Target:           "db-primary",
@@ -243,8 +244,8 @@ func scoreWhereHypothesisPredicts(predicted string, obs string) clank.CausalScor
 			PredictedSignals: []string{predicted},
 		}},
 	}
-	t := clank.TopologySnapshot{
-		Upstream: []clank.NodeState{{
+	t := proposal.TopologySnapshot{
+		Upstream: []proposal.NodeState{{
 			Name:          "db-primary",
 			State:         obs,
 			DegradedSince: 5 * time.Minute,

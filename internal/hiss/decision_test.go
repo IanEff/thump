@@ -4,13 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/api/v1/decision"
 )
 
 func TestAuditable(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
-		d       hiss.Decision
+		d       decision.Decision
 		wantErr bool
 	}{
 		"Auditable accepts a fully stamped approval": {
@@ -40,16 +40,16 @@ func TestAuditable(t *testing.T) {
 	}
 }
 
-func goldenDecision() hiss.Decision {
-	return hiss.Decision{
+func goldenDecision() decision.Decision {
+	return decision.Decision{
 		ID:            "dec:slo_burn:ceph-rgw:1000",
 		ProposalRef:   "ps-ceph-rgw-001",   // ps.Name
 		SignalRef:     "slo_burn:ceph-rgw", // ps.SignalRef
 		CandidateRef:  "p1",
-		Verdict:       hiss.VerdictApproved,
+		Verdict:       decision.VerdictApproved,
 		Reasons:       nil,
-		RequestedBand: hiss.BandObserve,
-		GrantedBand:   hiss.BandObserve,
+		RequestedBand: decision.BandObserve,
+		GrantedBand:   decision.BandObserve,
 		FloorApplied:  0.75,
 		PolicyVersion: "v1",
 		EvaluatedAt:   frozenNow(),
@@ -60,17 +60,17 @@ func frozenNow() time.Time {
 	return time.Unix(1000, 0)
 }
 
-func withoutPolicyVersion(d hiss.Decision) hiss.Decision {
+func withoutPolicyVersion(d decision.Decision) decision.Decision {
 	d.PolicyVersion = ""
 	return d
 }
 
-func withoutEvaluatedAt(d hiss.Decision) hiss.Decision {
+func withoutEvaluatedAt(d decision.Decision) decision.Decision {
 	d.EvaluatedAt = time.Time{}
 	return d
 }
 
-func reasonlessEscalation(d hiss.Decision) hiss.Decision {
-	d.Verdict, d.Reasons, d.GrantedBand = hiss.VerdictEscalate, nil, ""
+func reasonlessEscalation(d decision.Decision) decision.Decision {
+	d.Verdict, d.Reasons, d.GrantedBand = decision.VerdictEscalate, nil, ""
 	return d
 }

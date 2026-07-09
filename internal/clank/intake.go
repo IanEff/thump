@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 )
 
@@ -15,11 +16,11 @@ var (
 )
 
 type TopologySource interface {
-	Topology(ctx context.Context, sig signal.Detection) (TopologySnapshot, error)
+	Topology(ctx context.Context, sig signal.Detection) (proposal.TopologySnapshot, error)
 }
 
 type ChangeSource interface {
-	Changes(ctx context.Context, sig signal.Detection) (ChangeSnapshot, error)
+	Changes(ctx context.Context, sig signal.Detection) (proposal.ChangeSnapshot, error)
 }
 
 type Intake struct {
@@ -31,10 +32,10 @@ func NewIntake(topo TopologySource, change ChangeSource) *Intake {
 	return &Intake{topo: topo, change: change}
 }
 
-func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (SAO, error) {
+func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (proposal.SAO, error) {
 	topo, err := in.topo.Topology(ctx, sig)
 	if err != nil {
-		return SAO{}, fmt.Errorf("%w: %w", ErrTopologySource, err)
+		return proposal.SAO{}, fmt.Errorf("%w: %w", ErrTopologySource, err)
 	}
 	if len(topo.Upstream) == 0 && len(topo.Downstream) == 0 {
 		// The pluggable TopologySource (WhirTopology, or noop until it's wired)
@@ -45,13 +46,13 @@ func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (SAO, erro
 	}
 	change, err := in.change.Changes(ctx, sig)
 	if err != nil {
-		return SAO{}, fmt.Errorf("%w: %w", ErrChangeSoure, err)
+		return proposal.SAO{}, fmt.Errorf("%w: %w", ErrChangeSoure, err)
 	}
 
-	return SAO{
+	return proposal.SAO{
 		Version:     1,
 		AssembledAt: time.Now(),
-		Signal: SignalSnapshot{
+		Signal: proposal.SignalSnapshot{
 			Confidence:  sig.Divergence.Confidence,
 			Metric:      sig.Divergence.Metric,
 			Severity:    sig.Impact.Severity,
@@ -63,16 +64,16 @@ func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (SAO, erro
 }
 
 // topologyFromSignal adapts rattle's TopologyContext (signal.ObservedNode:
-// Service + State) onto clank's own TopologySnapshot (NodeState) — the two
-// shapes exist independently because clank's NodeState carries fields
+// Service + State) onto clank's own proposal.TopologySnapshot (proposal.NodeState) — the two
+// shapes exist independently because clank's proposal.NodeState carries fields
 // (DegradedSince, TrafficShare) rattle's ObservedNode doesn't have yet.
-func topologyFromSignal(t signal.TopologyContext) TopologySnapshot {
-	var snap TopologySnapshot
+func topologyFromSignal(t signal.TopologyContext) proposal.TopologySnapshot {
+	var snap proposal.TopologySnapshot
 	for _, n := range t.Upstream {
-		snap.Upstream = append(snap.Upstream, NodeState{Name: n.Service, State: n.State})
+		snap.Upstream = append(snap.Upstream, proposal.NodeState{Name: n.Service, State: n.State})
 	}
 	for _, n := range t.Downstream {
-		snap.Downstream = append(snap.Downstream, NodeState{Name: n.Service, State: n.State})
+		snap.Downstream = append(snap.Downstream, proposal.NodeState{Name: n.Service, State: n.State})
 	}
 	return snap
 }

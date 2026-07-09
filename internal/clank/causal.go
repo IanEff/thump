@@ -9,7 +9,7 @@ import (
 )
 
 type CausalScorer interface {
-	Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights ScoringWeights) []CausalScore
+	Score(fingerprint string, change proposal.ChangeSnapshot, topo proposal.TopologySnapshot, weights ScoringWeights) []CausalScore
 }
 
 // Prior is the scorer's window into the case base — consumer-defined, the
@@ -21,7 +21,7 @@ type Prior interface {
 }
 
 // CausalScore moved to internal/proposal (hiss Wave 1): it rides the
-// ProposalSet across the boundary. The scorer that produces it stays here.
+// proposal.Set across the boundary. The scorer that produces it stays here.
 type CausalScore = proposal.CausalScore
 
 type CausalScorerImpl struct {
@@ -32,7 +32,7 @@ func NewCausalScorer() *CausalScorerImpl {
 	return &CausalScorerImpl{}
 }
 
-func (s *CausalScorerImpl) Score(fingerprint string, change ChangeSnapshot, topo TopologySnapshot, weights ScoringWeights) []CausalScore {
+func (s *CausalScorerImpl) Score(fingerprint string, change proposal.ChangeSnapshot, topo proposal.TopologySnapshot, weights ScoringWeights) []CausalScore {
 	scores := make([]CausalScore, 0, len(change.Events))
 	for _, e := range change.Events {
 		scores = append(scores, scoreEvent(fingerprint, e, topo, weights, s.Prior))
@@ -46,7 +46,7 @@ const (
 	negativeSignalPenalty = 0.2
 )
 
-func scoreEvent(fingerprint string, e ChangeEvent, topo TopologySnapshot, weights ScoringWeights, prior Prior) CausalScore {
+func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.TopologySnapshot, weights ScoringWeights, prior Prior) CausalScore {
 	node, inPath := findNode(topo, e.Target)
 
 	temporal := temporalScore(e.Age)
@@ -98,15 +98,15 @@ func scoreEvent(fingerprint string, e ChangeEvent, topo TopologySnapshot, weight
 	}
 }
 
-func findNode(topo TopologySnapshot, name string) (NodeState, bool) {
-	for _, group := range [][]NodeState{topo.Upstream, topo.Downstream} {
+func findNode(topo proposal.TopologySnapshot, name string) (proposal.NodeState, bool) {
+	for _, group := range [][]proposal.NodeState{topo.Upstream, topo.Downstream} {
 		for _, n := range group {
 			if n.Name == name {
 				return n, true
 			}
 		}
 	}
-	return NodeState{}, false
+	return proposal.NodeState{}, false
 }
 
 const temporalHalfLife = 30 * time.Minute
@@ -115,7 +115,7 @@ func temporalScore(age time.Duration) float64 {
 	return math.Exp2(-float64(age) / float64(temporalHalfLife))
 }
 
-func topologicalScore(node NodeState, inPath bool) float64 {
+func topologicalScore(node proposal.NodeState, inPath bool) float64 {
 	if inPath && node.State == "degraded" {
 		return node.TrafficShare
 	}
@@ -129,8 +129,8 @@ func freshnessFactor(staleness, halflife time.Duration) float64 {
 	return math.Exp2(-float64(staleness) / float64(halflife))
 }
 
-func signalObserved(topo TopologySnapshot, signal string) bool {
-	for _, group := range [][]NodeState{topo.Upstream, topo.Downstream} {
+func signalObserved(topo proposal.TopologySnapshot, signal string) bool {
+	for _, group := range [][]proposal.NodeState{topo.Upstream, topo.Downstream} {
 		for _, n := range group {
 			if n.State == signal {
 				return true

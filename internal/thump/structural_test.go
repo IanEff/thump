@@ -33,6 +33,16 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"github.com/ianeff/thump/internal/broker"`: true,
 		`"github.com/nats-io/nats.go"`:              true,
 		`"github.com/nats-io/nats.go/jetstream"`:    true,
+		// the runtime kit: process lifecycle + the same broker/publish
+		// transports already allowed above, nothing more. Its own leaf tripwire
+		// forbids it from importing anything that reaches infrastructure, so it
+		// carries the same risk profile as broker/publish — not a widening of
+		// what thump can touch, just where the plumbing lives.
+		`"github.com/ianeff/thump/internal/beat"`: true,
+		// the in-memory outcome ledger: sync + time only, a data structure that
+		// touches nothing outside the process. Where OutcomeLog's append/query
+		// lives, not a new capability.
+		`"github.com/ianeff/thump/internal/ledger"`: true,
 	}
 
 	entries, err := os.ReadDir(".")

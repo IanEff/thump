@@ -3,6 +3,8 @@ package clank
 import (
 	"cmp"
 	"slices"
+
+	"github.com/ianeff/thump/api/v1/proposal"
 )
 
 type Ranker struct {
@@ -13,14 +15,14 @@ func NewRanker() *Ranker {
 	return &Ranker{}
 }
 
-func (r *Ranker) Rank(cands []Candidate, velocity string) ([]Candidate, RankingRationale) {
+func (r *Ranker) Rank(cands []proposal.Candidate, velocity string) ([]proposal.Candidate, proposal.RankingRationale) {
 	ranked := slices.Clone(cands)
-	var why RankingRationale
+	var why proposal.RankingRationale
 
 	if velocity == "accelerating" {
 		why.DominantAxis = "time_to_effect"
 		why.VelocityWeight = velocity
-		slices.SortStableFunc(ranked, func(a, b Candidate) int {
+		slices.SortStableFunc(ranked, func(a, b proposal.Candidate) int {
 			return cmp.Compare(timeToEffect(a), timeToEffect(b)) // ascending: sooner first
 		})
 	}
@@ -31,7 +33,7 @@ func (r *Ranker) Rank(cands []Candidate, velocity string) ([]Candidate, RankingR
 	return ranked, why
 }
 
-func timeToEffect(c Candidate) int {
+func timeToEffect(c proposal.Candidate) int {
 	if c.PredictedImpact == nil {
 		return 0
 	}
