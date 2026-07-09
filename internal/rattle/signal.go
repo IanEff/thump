@@ -6,11 +6,13 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 )
 
-// SignalFor assembles a Detection from evidence the CALLER already computed.
-// It never runs a detector itself — a second AccelerationDetector{} silently
-// re-deriving accel from the window, in a different file, with a different
-// (zero-value) Threshold than the one Reconcile actually fired on, is the bug
-// Wave 4.5 retired.
+// SignalFor assembles a signal.Detection from evidence the caller already
+// computed — it never runs a detector itself. That's deliberate: a second
+// AccelerationDetector{} silently re-deriving accel from the window, with a
+// different (zero-value) Threshold than the one that actually fired in
+// Reconcile, would report a number nobody chose. SignalFor takes the fired
+// value as an argument instead of recomputing it, so there is exactly one
+// place accel and trajectory get computed.
 func SignalFor(env Envelope, detectorType string, accel float64, traj string, now time.Time, contract *SignalContract) signal.Detection {
 	d := signal.Detection{
 		Name:          env.AffectedObject() + "-burn-accel",

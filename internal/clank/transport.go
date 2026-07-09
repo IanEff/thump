@@ -12,14 +12,24 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// Transport is clank's directory-poll ingestion path: it globs
+// signal.Detection YAML files out of Inbox, runs each through Engine.Propose,
+// and disposes of the file — processed, quarantined (unparseable), or
+// stalled (Propose kept failing). It is the keyless fake transport the seam
+// tests drive; runBroker's NATS path is how a real deployment ingests.
 type Transport struct {
 	Inbox    string
 	Engine   *Engine
 	attempts map[string]int
 }
 
-const maxProposeAttempts = 5
+const maxProposeAttempts = 5 // a detection whose Propose call fails this many times is filed stalled, not retried forever
 
+// Tick processes every detection file currently in Inbox once. A file that
+// fails to unmarshal is quarantined immediately — poison doesn't block the
+// queue. A file whose Propose call errors is left for the next Tick to
+// retry, up to maxProposeAttempts, then filed stalled. A file that reasons
+// successfully — gated or not — is filed processed.
 func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()

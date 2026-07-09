@@ -28,8 +28,8 @@ const (
 	defaultSyncInterval = 5 * time.Second
 )
 
-// ErrWALNotImplemented marks a seam Stage 2's red phase declared but hasn't
-// filled in yet.
+// ErrWALNotImplemented is returned by a WAL codepath that has no
+// implementation yet.
 var ErrWALNotImplemented = errors.New("wal: not implemented")
 
 // activeFile is the WAL's seam onto its active segment's handle. *os.File
@@ -47,10 +47,22 @@ type activeFile interface {
 // crash can lose at most the unsynced tail of the active segment; it can
 // never corrupt a sealed one.
 type WAL struct {
+	// Dir, Beat, and Subject together locate this WAL's segment directory
+	// (Dir/Beat/Subject) — one WAL per beat per subject, so two beats or
+	// two subjects never share a segment sequence.
 	Dir, Beat, Subject string
-	MaxBytes           int64
-	MaxAge             time.Duration
-	SyncInterval       time.Duration
+	// MaxBytes seals the active segment once it reaches this size.
+	// Defaults to defaultMaxBytes (64MiB) when <= 0.
+	MaxBytes int64
+	// MaxAge seals the active segment once it's been open this long, even
+	// if MaxBytes hasn't been reached — bounds how much a slow-writing beat
+	// can lose to an unsynced tail. Defaults to defaultMaxAge (10m) when
+	// <= 0.
+	MaxAge time.Duration
+	// SyncInterval is the background fsync cadence for the active segment,
+	// independent of Append. Defaults to defaultSyncInterval (5s) when
+	// <= 0.
+	SyncInterval time.Duration
 
 	// openActive is the file-open seam; nil means "use the real filesystem."
 	// Only a white-box (package publish) test can set it.
@@ -325,10 +337,18 @@ func encodeLine(obj any) ([]byte, error) {
 // WALPublisher wraps another Publisher, journaling every object to the WAL
 // before handing it to Next — the record must exist before the fact travels.
 type WALPublisher[T any] struct {
-	WAL  *WAL
+	// WAL is journaled first — if Append fails, Next is never called, so
+	// the WAL and the delivered stream never disagree about what was
+	// journaled.
+	WAL *WAL
+	// Next is the Publisher the object reaches once the WAL append
+	// succeeds — JetPublisher in production, a fake in tests.
 	Next Publisher[T]
 }
 
+// Publish appends obj to WAL, then delegates to Next — in that order,
+// so a crash between the two loses at most a delivery already durable on
+// disk, never a delivery with no record of it at all.
 func (p *WALPublisher[T]) Publish(ctx context.Context, subject string, obj T) error {
 	if err := p.WAL.Append(ctx, obj); err != nil {
 		return fmt.Errorf("wal publisher: append: %w", err)

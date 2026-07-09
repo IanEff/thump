@@ -8,8 +8,37 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
+// Authority is hiss's stateless governor — Evaluate is a pure function of
+// its three arguments, so the same (Set, Policy, now) always earns the same
+// verdict and there is nothing here that needs to persist between calls.
 type Authority struct{}
 
+// Evaluate governs one proposal.Set to exactly one decision.Decision. It
+// never mutates or re-ranks the Set — clank's ranking stands; the only
+// question Evaluate answers is whether the Recommended Candidate may
+// proceed, and at what Band.
+//
+// A Set whose Gate didn't pass, or whose Recommended ID doesn't resolve to a
+// Candidate in Proposals, is rejected outright with ReasonUngatedInput — an
+// evidence gap upstream, not something hiss has standing to weigh in on.
+// Otherwise the Candidate's requested Band is checked against four
+// independent vetoes, any of which escalates rather than approves:
+//
+//   - ReasonConfidenceFloor — Confidence is below pol.Floors for the Set's
+//     ServiceTier and FailureClass.
+//   - ReasonAuthorityCeiling — the requested Band outranks pol.MaxBand for
+//     the tier. A Candidate with no GovernanceLevel at all requests
+//     BandObserve, the lowest rank — absence is never read as privilege. A
+//     Band value bandRank doesn't recognize ranks above every real band, so
+//     an unparseable one fails the ceiling too, rather than passing by
+//     default.
+//   - ReasonIrreversible — pol.RequireReversal is set and the Candidate
+//     carries no ReversalPath. An action nobody can undo needs a human, not
+//     a policy match.
+//   - ReasonFreezeWindow — now falls inside one of pol.FreezeWindows.
+//
+// Zero reasons is required to approve; any reason present escalates rather
+// than rejects — hiss is asking for a human, not overruling clank.
 func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.Decision {
 	d := decision.Decision{
 		ID:            fmt.Sprintf("dec:%s:%d", ps.SignalRef, now.Unix()),
@@ -68,6 +97,9 @@ func bandRank(b decision.Band) int {
 	}
 }
 
+// Reason* re-export decision's reason vocabulary so callers reading hiss's
+// verdicts don't need a second import to recognize them — see the
+// decision.Reason* constants for what each one means.
 const (
 	ReasonConfidenceFloor  = decision.ReasonConfidenceFloor
 	ReasonAuthorityCeiling = decision.ReasonAuthorityCeiling

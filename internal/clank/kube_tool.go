@@ -16,6 +16,10 @@ type kubeInput struct {
 	Namespace string `json:"namespace"`
 }
 
+// KubeTool is the production implementation of the "kube" tool: read-only
+// cluster queries (currently just listing pods in a namespace), so the model
+// can corroborate a signal against live cluster state without clank ever
+// holding a client that can mutate anything.
 type KubeTool struct {
 	Client kubernetes.Interface
 }
@@ -23,6 +27,7 @@ type KubeTool struct {
 // Implement the Tool interface.
 var _ Tool = (*KubeTool)(nil)
 
+// Spec advertises the "kube" tool — resource currently supports only "pods".
 func (k *KubeTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "kube",
@@ -31,6 +36,9 @@ func (k *KubeTool) Spec() ToolSpec {
 	}
 }
 
+// Run lists the requested resource and folds it into a one-line summary —
+// pod name and phase, joined — never the raw object list. Live is true only
+// when the query returns at least one item.
 func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.EvidenceRef, error) {
 	var input kubeInput
 	if err := json.Unmarshal(args, &input); err != nil {

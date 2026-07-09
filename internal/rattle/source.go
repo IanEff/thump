@@ -10,13 +10,18 @@ import (
 	"time"
 )
 
+// PromSource fetches burn-rate windows from a Sloth-instrumented
+// Prometheus — rattle's only Source implementation reading a live backend
+// rather than a test fake.
 type PromSource struct {
 	BaseURL string
 	Client  *http.Client
-	Step    time.Duration
-	Window  time.Duration
+	Step    time.Duration // sample spacing; BurnSamples defaults to 1m when zero
+	Window  time.Duration // how far back to query; BurnSamples defaults to 15m when zero
 }
 
+// NewPromSource returns a PromSource with the default 1-minute step, 15-minute
+// window, and http.DefaultClient.
 func NewPromSource(baseURL string) *PromSource {
 	return &PromSource{BaseURL: baseURL, Client: http.DefaultClient, Step: time.Minute, Window: 15 * time.Minute}
 }
@@ -32,6 +37,10 @@ type promRangeResponse struct {
 	} `json:"data"`
 }
 
+// BurnSamples queries Sloth's slo:current_burn_rate:ratio series directly —
+// no manual errorRatio/(1-objective) conversion, since Sloth already records
+// the burn rate as a ratio. A result set with no matching series is a valid
+// empty window, not an error: Prometheus simply has nothing for this SLO yet.
 func (p *PromSource) BurnSamples(ctx context.Context, slo SLO) ([]Sample, error) {
 	step := p.Step
 	if step == 0 {

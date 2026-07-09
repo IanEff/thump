@@ -17,11 +17,22 @@ var (
 	ErrIncoherentOutcome  = errors.New("click: outcome mode and result disagree")
 )
 
+// Click is the Learn edge: it absorbs one outcome.Outcome, closes the
+// proposal.Set it answers to, and appends what happened as a Case so future
+// scoring can read it back through Prior. Absorb only records what already
+// happened — it forms no new belief on its own; CaseBase.Alignment is what
+// turns repeated corroboration into a raised prior.
 type Click struct {
 	Ledger *MemProposalLog
 	Cases  *CaseBase
 }
 
+// Absorb closes the loop for one outcome. It rejects o outright if it fails
+// its own Auditable invariant, or if its Mode and Result disagree (a dry-run
+// outcome must render; every other mode must not), then hands it to the
+// ledger's Observe and appends the result as a Case. ErrNoOpenSet — o arrived
+// with nothing open to answer to — is an expected outcome of the return
+// edge, not a defect; the caller decides whether that's terminal.
 func (c *Click) Absorb(ctx context.Context, o outcome.Outcome) error {
 	if err := o.Auditable(); err != nil {
 		return fmt.Errorf("%w: %w", ErrUnauditableOutcome, err)
@@ -63,11 +74,20 @@ func newCase(set proposal.Set, o outcome.Outcome) Case {
 	}
 }
 
+// ReturnEdge is click's transport: a directory poll that reads outcome YAML
+// files out of Inbox and hands each to Click.Absorb. It mirrors Transport's
+// forward-path shape — glob, dispose, never let one bad file block the rest
+// of the queue.
 type ReturnEdge struct {
 	Inbox string
 	Click Click
 }
 
+// Tick processes every outcome file currently in Inbox once: a file that
+// fails to unmarshal is quarantined; one Absorb accepts is filed processed;
+// one with no open set to answer to (ErrNoOpenSet) is filed unmatched, not
+// an error — the set may have already closed for another reason; anything
+// else Absorb rejects is quarantined.
 func (re *ReturnEdge) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()

@@ -15,17 +15,24 @@ import (
 	"time"
 )
 
+// Outcome is thump's record of what actually happened rendering (dry-run) or
+// executing (live) one Decision — never a prediction. PredictedImpact
+// (api/v1/proposal) is the forecast; Outcome is the measurement.
 type Outcome struct {
 	ID          string    `json:"id,omitempty" yaml:"id,omitempty"`                   // deterministic: "out:" + SignalRef + ":" + unix(now)
 	DecisionRef string    `json:"decisionRef,omitempty" yaml:"decisionRef,omitempty"` // Decision.ID — the grant this outcome answers to
 	SignalRef   string    `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`     // the fingerprint, threaded through untouched (4th beat, same thread)
 	ContractRef string    `json:"contractRef,omitempty" yaml:"contractRef,omitempty"` // what was (would have been) executed
-	Mode        Mode      `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Mode        Mode      `json:"mode,omitempty" yaml:"mode,omitempty"`               // dry_run or live — rehearsal and reality must be distinguishable, never inferred from Result alone
 	Result      Result    `json:"result,omitempty" yaml:"result,omitempty"`
-	Error       string    `json:"error,omitempty" yaml:"error,omitempty"` // required company for failure / partial_non_converging
+	Error       string    `json:"error,omitempty" yaml:"error,omitempty"` // required company for failure / partial_non_converging — a failure with no error text is silence, not accountability
 	ExecutedAt  time.Time `json:"executedAt,omitempty" yaml:"executedAt,omitempty"`
 }
 
+// Auditable is the invariant every emitted Outcome must satisfy: no
+// DecisionRef, no ExecutedAt, no Mode, no Result, or a failure/
+// partial_non_converging Result with no Error text are all refused outright,
+// not silently allowed through.
 func (o Outcome) Auditable() error {
 	switch {
 	case o.DecisionRef == "":
@@ -42,6 +49,9 @@ func (o Outcome) Auditable() error {
 	return nil
 }
 
+// Mode says whether the Decision was rendered without touching anything or
+// actually executed — the distinction Outcome.Auditable refuses to leave
+// unstated.
 type Mode string
 
 const (
@@ -49,6 +59,9 @@ const (
 	ModeLive   Mode = "live"
 )
 
+// Result is the terminal state an Outcome reached — a closed enum wide
+// enough to say "half-worked and isn't settling" instead of rounding every
+// outcome to success or failure.
 type Result string
 
 const (

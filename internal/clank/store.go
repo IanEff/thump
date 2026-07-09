@@ -9,12 +9,21 @@ import (
 	"sync"
 )
 
+// Store is the reason loop's checkpoint memory — one Turn per model
+// completion, not the proposal ledger (MemProposalLog): a different lifetime
+// and a different granularity. Checkpoint must succeed before the loop takes
+// its next turn; a checkpoint error halts the run rather than risk a turn
+// nothing remembers. Because Propose never mutates infrastructure,
+// re-running a halted signal from scratch is always safe.
 type Store interface {
 	Checkpoint(context.Context, Turn) error
 	Pending(context.Context) ([]Turn, error)
 	Finish(context.Context, string, error) error
 }
 
+// MemStore is an in-memory Store: every checkpoint lives only for the life
+// of the process. It backs tests and any deployment run without a
+// transcripts directory configured.
 type MemStore struct {
 	mu       sync.RWMutex
 	pending  []Turn
@@ -25,6 +34,7 @@ func NewMemStore() *MemStore {
 	return &MemStore{finished: make(map[string]error)}
 }
 
+// Checkpoint appends t to the pending list.
 func (s *MemStore) Checkpoint(ctx context.Context, t Turn) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -35,6 +45,8 @@ func (s *MemStore) Checkpoint(ctx context.Context, t Turn) error {
 	return nil
 }
 
+// Pending returns every checkpointed turn whose run has not been Finish-ed —
+// the unresumed state of a crashed run.
 func (s *MemStore) Pending(ctx context.Context) ([]Turn, error) {
 	if ctx.Err() != nil {
 		return []Turn{}, ctx.Err()
@@ -50,6 +62,9 @@ func (s *MemStore) Pending(ctx context.Context) ([]Turn, error) {
 	return pending, nil
 }
 
+// Finish marks runID done, so it drops out of Pending. runErr is recorded but
+// doesn't change that: a finished run stops being pending whether it
+// succeeded or failed.
 func (s *MemStore) Finish(ctx context.Context, runID string, runErr error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -60,6 +75,10 @@ func (s *MemStore) Finish(ctx context.Context, runID string, runErr error) error
 	return nil
 }
 
+// DirStore is a Store that appends each Turn as a JSON line to
+// <Dir>/<RunID>.jsonl — one file per signal fingerprint, durable across a
+// restart. It has no crash-recovery path: Pending always returns nil here,
+// unlike MemStore.
 type DirStore struct {
 	mu  sync.Mutex
 	Dir string
@@ -69,6 +88,7 @@ func NewDirStore(dir string) *DirStore {
 	return &DirStore{Dir: dir}
 }
 
+// Checkpoint appends t as one JSON line to the run's transcript file.
 func (s *DirStore) Checkpoint(ctx context.Context, t Turn) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -84,6 +104,8 @@ func (s *DirStore) Pending(ctx context.Context) ([]Turn, error) {
 	return nil, nil
 }
 
+// Finish appends a terminal record to the run's transcript file noting
+// whether it errored.
 func (s *DirStore) Finish(ctx context.Context, runID string, runErr error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -123,22 +145,32 @@ type terminalRecord struct {
 	Error    string `json:"error,omitempty"`
 }
 
+// Turn is one checkpointed reason-loop step: the run it belongs to, its step
+// index, and the full message history up to and including that step.
 type Turn struct {
 	RunID string
 	Step  int
 	Msgs  []Message
 }
 
+// Message is one turn of the conversation fed to Model.Complete — a role
+// (user, assistant, or tool) and its content. There is no structured content
+// field: a tool result is folded into Content as a one-line digest, never a
+// raw payload.
 type Message struct {
 	Role    string
 	Content string
 }
 
+// Completion is one Model.Complete response: the assistant's Message plus
+// any tool calls it made in the same turn.
 type Completion struct {
 	Message   Message
 	ToolCalls []ToolCall
 }
 
+// ToolCall is one tool invocation the model requested — the tool's name and
+// its raw JSON args, decoded by whichever engine branch dispatches that name.
 type ToolCall struct {
 	Name string
 	Args json.RawMessage

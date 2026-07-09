@@ -1,3 +1,11 @@
+// Package thump is the Act beat: it renders (and, later, executes) a
+// governed decision.Decision. Actuator.Render turns one approval into an
+// Order, invented from nothing more than the Decision, the Set's recommended
+// Candidate, and the ActionContract catalog; Executor then performs it. v1
+// is structurally dry-run — DryRun is the only Executor, and an
+// import-allowlist test on this package proves no code path here can reach
+// os/exec, net, or a Kubernetes client, rather than merely trusting a flag
+// to keep it that way.
 package thump
 
 import (
@@ -16,6 +24,12 @@ import (
 	"github.com/ianeff/thump/internal/publish"
 )
 
+// Main is thump's process entry point: run either the NATS branch (consume
+// thump.decisions, render + dry-run-execute, publish thump.orders and
+// thump.outcomes) or the directory-poll fallback (THUMP_INBOX/THUMP_OUTBOX)
+// depending on whether a NATS URL is configured. It returns a process exit
+// code rather than calling os.Exit, so the whole startup path stays
+// testable.
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
 	lc, code, exit := beat.Start("thump", args, stdout, stderr, beat.Version{Version: version, Commit: commit, Date: date})
 	if exit {

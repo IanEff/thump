@@ -9,16 +9,26 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
+// AnthropicModel is the production Model: Claude Haiku behind the Messages
+// API, the cheapest model on record for this loop. It's the adaptor Main
+// wires in — GeminiModel exists as a second Model implementation but Main
+// doesn't select it yet.
 type AnthropicModel struct {
 	client anthropic.Client
 }
 
+// NewAnthropicModel builds an AnthropicModel authenticated with apiKey.
 func NewAnthropicModel(apiKey string) *AnthropicModel {
 	return &AnthropicModel{
 		client: anthropic.NewClient(option.WithAPIKey(apiKey)),
 	}
 }
 
+// Complete sends msgs and tools to Claude Haiku and folds the response into
+// a Completion: text blocks concatenate into the assistant Message, and each
+// ToolUseBlock becomes a ToolCall. A tool the model wasn't offered in tools
+// can never come back here — the SDK only echoes tool calls for tools it was
+// given a spec for.
 func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []ToolSpec) (Completion, error) {
 	resp, err := m.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeHaiku4_5_20251001, // cheapest model on record

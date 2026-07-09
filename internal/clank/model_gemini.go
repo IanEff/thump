@@ -8,10 +8,16 @@ import (
 	"google.golang.org/genai"
 )
 
+// GeminiModel is a second Model adaptor: Gemini 2.5 Flash Lite behind the
+// genai SDK, the cheapest Gemini model on record. It satisfies the same
+// Model interface as AnthropicModel, so the reason loop cannot tell which
+// provider it's talking to.
 type GeminiModel struct {
 	client *genai.Client
 }
 
+// NewGeminiModel builds a GeminiModel authenticated with apiKey against the
+// Gemini API backend.
 func NewGeminiModel(ctx context.Context, apiKey string) (*GeminiModel, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
@@ -24,6 +30,10 @@ func NewGeminiModel(ctx context.Context, apiKey string) (*GeminiModel, error) {
 	return &GeminiModel{client: client}, nil
 }
 
+// Complete sends msgs and tools to Gemini and folds the response into a
+// Completion: resp.Text becomes the assistant Message, and each FunctionCall
+// becomes a ToolCall with its args re-marshaled to JSON, so both Model
+// implementations hand the engine the same ToolCall shape.
 func (m *GeminiModel) Complete(ctx context.Context, msgs []Message, tools []ToolSpec) (Completion, error) {
 	resp, err := m.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", // cheapest Gemini model on record
 		toGeminiContents(msgs),

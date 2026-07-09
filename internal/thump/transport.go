@@ -23,14 +23,19 @@ import (
 // through handle's single error return.
 var ErrRenderFailed = errors.New("thump: render failed")
 
+// Transport is thump's directory-poll seam: it watches Inbox for
+// decision.Governed files, renders and dry-run-executes each approval, and
+// publishes the resulting Order and outcome.Outcome. It's the keyless fake
+// the seam tests drive without a broker; thump.go's Main runs the NATS
+// branch instead in production.
 type Transport struct {
-	Inbox      string
-	OrderPub   publish.Publisher[Order]
-	OutcomePub publish.Publisher[outcome.Outcome]
-	Catalog    *contract.StaticCatalog
-	Log        *OutcomeLog
-	Exec       Executor
-	Now        func() time.Time
+	Inbox      string                             // directory globbed for *.yaml decision.Governed files
+	OrderPub   publish.Publisher[Order]           // destination for rendered Orders — thump.orders in production
+	OutcomePub publish.Publisher[outcome.Outcome] // destination for executed Outcomes — thump.outcomes in production
+	Catalog    *contract.StaticCatalog            // the authored actions Render may resolve a granted Candidate against
+	Log        *OutcomeLog                        // every Outcome produced, queryable by ByResult
+	Exec       Executor                           // how an Order is carried out — DryRun in v1
+	Now        func() time.Time                   // overridable clock for deterministic tests; nil means time.Now
 }
 
 // Tick performs one poll pass: list inbox → unmarshal Governed → handle

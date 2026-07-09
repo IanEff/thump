@@ -9,6 +9,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// MarkdownPublisher renders a proposal.Set as a short human-readable
+// summary — the failure class, how many candidates were considered, and
+// which one is Recommended. It's a rendering aid, not the audit trail: the
+// full set, including candidates it didn't recommend, is what
+// MemProposalLog.Record keeps.
 type MarkdownPublisher struct {
 	W io.Writer
 }
@@ -28,6 +33,10 @@ func (s *MarkdownPublisher) Publish(_ context.Context, _ string, ps proposal.Set
 	return nil
 }
 
+// YAMLPublisher writes a proposal.Set to W as YAML in full — every candidate,
+// hypothesis, and evidence ref, not just the recommendation. This is the
+// shape the dir-poll transport drops into its outbox, for hiss to read the
+// whole set back in.
 type YAMLPublisher struct {
 	W io.Writer
 }

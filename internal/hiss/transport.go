@@ -14,14 +14,23 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// Transport is hiss's directory-poll seam: it watches Inbox for proposal.Set
+// files, governs each one through Authority.Evaluate, and publishes the
+// resulting decision.Governed envelope. It's the keyless fake the seam
+// tests drive without a broker; hiss.go's Main runs the NATS branch instead
+// in production.
 type Transport struct {
-	Inbox  string
-	Pub    publish.Publisher[decision.Governed]
-	Policy Policy
-	Log    *DecisionLog
-	Now    func() time.Time
+	Inbox  string                               // directory globbed for *.yaml proposal.Set files
+	Pub    publish.Publisher[decision.Governed] // destination for governed decisions — thump.decisions in production
+	Policy Policy                               // the floors, ceilings, and freeze windows Authority.Evaluate governs against
+	Log    *DecisionLog                         // every Decision reached, queryable by ByVerdict
+	Now    func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
 }
 
+// Tick performs one poll pass: list Inbox, decode each file, evaluate it
+// through handle, and archive or quarantine the result. A file that fails to
+// unmarshal is quarantined, not deleted, and does not block the rest of the
+// pass — one poison proposal.Set can't stall every other one behind it.
 func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
