@@ -1,4 +1,3 @@
-// Rattle is the Detection layer of Thump's spicy five-layered DRAL dip.
 package rattle
 
 import (
@@ -17,6 +16,12 @@ import (
 	"github.com/ianeff/thump/internal/whir"
 )
 
+// Main is rattle's process entry point: parse flags and environment via
+// beat.Start, wire a PromSource plus whatever topology/traffic sources
+// PROM_URL and the WHIR_*/RATTLE_TRAFFIC env vars enable, and run the
+// reconcile loop until the context is cancelled. It returns a process exit
+// code rather than calling os.Exit, so beat.Start's flag/version handling
+// stays testable.
 func Main(args []string, stdout, stderr io.Writer, version, commit, date string) int {
 	lc, code, exit := beat.Start("rattle", args, stdout, stderr, beat.Version{Version: version, Commit: commit, Date: date})
 	if exit {
@@ -93,9 +98,9 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	return 0
 }
 
-// newReconciler assembles the Reconciler Main runs. Pulled out of Main so a
-// test can drive it with a fake Source and prove the contract is actually
-// wired — Main itself is only reachable with a live PROM_URL.
+// newReconciler assembles the Reconciler Main runs — pulled out of Main so a
+// test can drive it with a fake Source and prove the wiring is correct; Main
+// itself is only reachable with a live PROM_URL.
 func newReconciler(promURL string, topo TopologySource, traffic TrafficSource) *Reconciler {
 	return &Reconciler{
 		SLOs:           loadSLOs(),
@@ -112,6 +117,10 @@ func newReconciler(promURL string, topo TopologySource, traffic TrafficSource) *
 	}
 }
 
+// runLoop reconciles once a minute until ctx is cancelled, logging and
+// publishing every detection. A Reconcile error is logged and the tick
+// skipped, never fatal — the next tick tries again rather than exiting the
+// process over one failed scrape.
 func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection]) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()

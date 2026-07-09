@@ -13,11 +13,16 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// TrafficQueries is one SLO's pair of Hubble PromQL queries — Affected
+// (numerator) and Total (denominator) — combined to compute an
+// affected-traffic percentage.
 type TrafficQueries struct {
 	Affected string
 	Total    string
 }
 
+// LoadTrafficQueries reads a YAML file of per-SLO Hubble query pairs, keyed
+// by SLO ID.
 func LoadTrafficQueries(path string) (map[string]TrafficQueries, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // fixed config path, not user input
 	if err != nil {
@@ -40,12 +45,19 @@ func LoadTrafficQueries(path string) (map[string]TrafficQueries, error) {
 	return out, nil
 }
 
+// HubbleTrafficSource queries Cilium Hubble, via its Prometheus exporter, for
+// the affected/total traffic ratio behind TrafficSamples — rattle's only
+// TrafficSource implementation reading a live backend rather than a test fake.
 type HubbleTrafficSource struct {
 	BaseURL string
 	Client  *http.Client
 	Queries map[string]TrafficQueries
 }
 
+// TrafficSamples returns one sample: the current affected/total ratio,
+// clamped to 1.0 if affected somehow exceeds total. No Queries entry for
+// slo.ID, or no series from either query, is a quiet empty result — not an
+// error, matching PromSource.BurnSamples' empty-window convention.
 func (h *HubbleTrafficSource) TrafficSamples(ctx context.Context, slo SLO) ([]TrafficSample, error) {
 	q, ok := h.Queries[slo.ID]
 	if !ok {

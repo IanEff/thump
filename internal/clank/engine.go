@@ -14,22 +14,50 @@ import (
 	"github.com/ianeff/thump/internal/publish"
 )
 
+// Engine runs the bounded reason loop — one signal.Detection in, one
+// proposal.Set out. It owns every seam the loop composes: the LLM, the
+// read-only tools, the action catalog, the ranker, the readiness gate, the
+// checkpoint Store, and the ledger. Nothing here reaches infrastructure;
+// Propose only ever reads evidence and writes to the Store, the Ledger, and
+// Pub.
 type Engine struct {
-	Intake       *Intake
-	Model        Model
-	Tools        map[string]Tool
-	Catalog      *contract.StaticCatalog
-	Ranker       *Ranker
-	Gate         ReadinessGate
-	Store        Store
-	Scorer       CausalScorer
-	DedupeWindow time.Duration
-	Ledger       *MemProposalLog
-	Pub          publish.Publisher[proposal.Set]
-	MaxSteps     int
+	Intake       *Intake                         // assembles the versioned SAO the loop reasons over
+	Model        Model                           // the LLM seam, faked in tests
+	Tools        map[string]Tool                 // read-only evidence tools, keyed by the name the model calls
+	Catalog      *contract.StaticCatalog         // the autonomy boundary: enforceCatalog rejects any proposed ContractRef this doesn't list
+	Ranker       *Ranker                         // orders the formed candidates once, after the loop exits
+	Gate         ReadinessGate                   // budget ∧ dedup ∧ evidence, evaluated once on the formed set
+	Store        Store                           // loop memory: one checkpoint per turn, a different lifetime from Ledger
+	Scorer       CausalScorer                    // rates each change event's likelihood of causing the signal
+	DedupeWindow time.Duration                   // how far back Ledger.Open looks for a live set on the same fingerprint
+	Ledger       *MemProposalLog                 // every Propose run is recorded here, gated or not — the audit trail
+	Pub          publish.Publisher[proposal.Set] // delivery — only called when the gate passes
+	MaxSteps     int                             // hard bound on reason-loop turns; exhausting it without a propose/insufficient call ends the run budget-exhausted
 	Weights      ScoringWeights
 }
 
+// Propose turns one signal.Detection into a proposal.Set. It assembles the
+// SAO via Intake, then drives the model for at most MaxSteps turns: each turn
+// dispatches the model's tool calls (a read-only evidence tool loops back a
+// one-line digest, never raw data; "propose" or "insufficient" ends the run)
+// and checkpoints the turn to Store before the next one runs — a checkpoint
+// error halts the run rather than risk an unrecorded turn, and re-running is
+// always safe because nothing in the loop mutates infrastructure.
+//
+// A run that exhausts MaxSteps without ever calling propose or insufficient
+// is recorded as budget-exhausted, not returned as an error. Every candidate
+// action the model does propose must resolve to a ContractRef the Catalog
+// lists for this signal's failure class, tier, and SAO — an out-of-catalog
+// ref fails the run outright; the autonomy boundary is enforced here, not
+// hoped for.
+//
+// Once the loop exits with a proposal, ranking and the gate run exactly once
+// on the formed set: the Ranker orders candidates velocity-weighted off the
+// signal's blast radius, and the Gate — a conjunction of budget, dedup, and
+// evidence minimums, never an average — decides whether the set is worth
+// emitting. The set is Recorded to the Ledger either way; it is only
+// published through Pub when the gate passes, and an open set for the same
+// fingerprint suppresses (but still records) a new one.
 func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Set, error) {
 	sao, err := e.Intake.Assemble(ctx, sig)
 	if err != nil {

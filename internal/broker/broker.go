@@ -1,3 +1,11 @@
+// Package broker is the NATS JetStream plumbing a beat's Transport runs
+// over: one shared stream, the fixed subject-to-consumer wiring, and
+// (subscriber.go) a subscriber that sorts every delivery failure into
+// exactly one of two doors — dead-letter now (the message will never
+// decode) or retry with backoff up to the consumer's redelivery budget
+// (the handler failed but might succeed next time). It moves bytes; it
+// never inspects the JSON payload beyond decoding it (internal/wire) — a
+// beat's own Handler gives the bytes meaning.
 package broker
 
 import (
@@ -8,6 +16,9 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
+// StreamName is the one JetStream stream every subject lives on — beats
+// share it rather than each owning its own, so EnsureTopology reconciles a
+// single stream, not one per beat.
 const StreamName = "THUMP"
 
 // maxDeliver is the retry budget: how many times the server will deliver a
@@ -16,8 +27,15 @@ const StreamName = "THUMP"
 // consumer with it, Run compares against it.
 const maxDeliver = 6
 
+// Subjects is the fixed list of subjects EnsureTopology provisions a
+// durable consumer for — the four boundary-object edges the beats hand
+// off across (rattle→clank, clank→hiss, hiss→thump, thump→clank).
 var Subjects = []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes"}
 
+// DurableFor names the durable consumer that owns subject, one name per
+// beat so each beat's read position survives its own restarts without
+// racing another beat's cursor. Returns "" for a subject with no
+// registered reader.
 func DurableFor(subject string) string {
 	switch subject {
 	case "thump.detections":
@@ -32,6 +50,11 @@ func DurableFor(subject string) string {
 	return ""
 }
 
+// EnsureTopology creates or updates the shared stream and one durable,
+// explicit-ack consumer per Subjects entry — idempotent, safe to call on
+// every beat startup. MaxAge caps the stream at 48 hours; past that a
+// beat's own WAL (internal/publish), not JetStream retention, is the
+// durability leg.
 func EnsureTopology(ctx context.Context, js jetstream.JetStream) error {
 	// one stream, 48hr age cap
 	if _, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{

@@ -172,7 +172,8 @@ acceleration (W0), multi-signal correlation (W5), and the historical-envelope de
 `EnvelopeDetector` + `BaselineSource`, `detectorType: "historical_envelope_breach"`). On top
 of that: the W4.5 `Fires`/`Detect` shim is retired (one `Detect` per window, `(detectorType,
 accel)` threaded into `SignalFor`); the W7 signal contract (`SignalContract` — freshness gate
-+ attenuate-don't-suppress) gates the top of `Reconcile`; **W8 enrichment is now wired**
+
+- attenuate-don't-suppress) gates the top of `Reconcile`; **W8 enrichment is now wired**
 (`Reconciler.TopologySource`/`TrafficSource` fields → `EnrichSeverity`/`EnrichTopology`/
 `EnrichTraffic` on every fired detection — closing the earlier "built-but-not-called" open
 item); and W9's `Envelope` interface refactor (`envelope.go` `type Envelope interface`;
@@ -525,6 +526,14 @@ conventions keep them sharp:
 
 ## On-disk layout (one file per seam)
 
+> **Stale as of the 2026-07-09 PR #63 reorg** — kept for history, don't trust it for current
+> paths. `internal/signal`/`internal/proposal` below are now `api/v1/signal`/`api/v1/proposal`
+> (joined by `api/v1/decision`, `api/v1/outcome`); a new shared-platform layer exists
+> (`internal/{beat,ledger,leaftest,broker,publish,wire,contract,whir}`); every beat's `Main`
+> composes the `internal/beat` kit and per-beat alias shims are gone — call sites name wire
+> types (`proposal.Set`, `decision.Verdict`, …) directly. See § Godoc pass below for the
+> current package map, or just read the directory tree — don't re-derive it from this section.
+
 clank is **the `internal/clank` package, one file per seam** — the file boundaries already
 express the module table, while keeping the test-first flow simple (tests in external
 `clank_test`, one vocabulary). Two carve-outs are their own leaf packages, both
@@ -565,6 +574,131 @@ lands — `GatePolicy.Threshold` itself already migrated to `hiss.Policy.Floors`
 `signal.NotifyContext`, run) and `cmd/rattle/main.go` (rattle's own thin entry). Note there
 is **no** `classify.go` or `instantiate.go` in `internal/clank` — those were the
 deterministic detour; classification is now the model's output.
+
+## Godoc pass — what doc-writing subagents need (2026-07-09)
+
+The repo has almost no godoc comments (vault `thump-loose-ends.md` §1). This section is the
+condensed brief for a subagent asked to write them — enough to work from without re-reading
+the vault. Write comments that would read as true and complete to someone who has never
+opened the vault: state the invariant plainly, in your own words. No workstream/wave/stage
+names ("Wave 3", "WS1.6", "straggler B") and no vault jargon leaking into shipped code —
+explain the *why* (the guarantee, the trap it avoids), not a restated *what*.
+
+**Priority order** (public surface first — what a repo-split reader and `pkg.go.dev` see):
+
+1. **`api/v1/{signal,proposal,decision,outcome}`** — the wire contracts. Package doc + every
+   exported type/field. Each package doc must state the compatibility rule: *within v1,
+   additive optional fields only — never rename, retype, or repurpose.* These four already
+   have package docs (good models to match in tone) — check exported fields are covered too.
+2. **Shared platform** — `internal/{beat,ledger,leaftest,broker,publish,wire,contract,whir}`.
+   `beat`/`ledger`/`leaftest`/`publishtest` already have package docs (PR #63) — spot-check,
+   don't rewrite. `broker`/`publish`/`wire`/`whir` have none yet.
+3. **Beat packages** — `internal/{clank,rattle,hiss,thump}`. `clank` has a package doc
+   already; `rattle`/`hiss`/`thump` don't. Focus on the exported seams other beats/tests
+   actually consume (`Engine`, `Model`/`Tool`, `Authority`, `Actuator`, `Transport`, each
+   beat's `Main`) — not every unexported helper.
+
+**One-line purpose per package** — the reasoning behind it, to seed (not replace) the actual
+doc comment:
+
+- `api/v1/signal` — rattle→clank: one detected reliability event. clank trusts it read-only,
+  never recomputes the fingerprint or re-judges signal strength.
+- `api/v1/proposal` — clank→hiss: the ranked, evidence-backed candidate-action set. The
+  *set*, not the top pick, is the audit unit — "why X?" answers as a trade-off, not a choice.
+- `api/v1/decision` — hiss→thump: the governed verdict on a `proposal.Set`. Born-auditable —
+  a verdict missing its policy version or (when not approved) a reason is invalid, not
+  merely incomplete.
+- `api/v1/outcome` — thump→clank (the click return edge): what actually happened rendering
+  or executing a `Decision`. Also born-auditable; can represent "partially fixed, still
+  diverging" from birth instead of forcing a binary success/failure.
+- `internal/beat` — the runtime kit every beat's `Main` composes (flags, logging, graceful
+  shutdown, the NATS + directory-poll transports). Knows nothing about any plane's domain
+  types, so it can't become the place the planes leak into each other.
+- `internal/ledger` — the generic append-only, concurrency-safe event log; hiss and thump
+  each wrap it in a named type for their own typed query (Decisions, Outcomes).
+- `internal/leaftest` — the shared assertion every leaf package (the `api/v1` wire contracts,
+  the catalog, the shared ports) uses to pin its own allowed-imports list, so a stray import
+  can't quietly punch a hole in a plane boundary.
+- `internal/broker` — NATS JetStream connect/publish/subscribe plumbing a beat's transport
+  runs over.
+- `internal/publish` — the `Publisher` interface plus its JetStream and WAL implementations;
+  the WAL half is the durability leg (blocks shipped toward the audit trail).
+- `internal/wire` — the JSON codec the boundary objects marshal through on the wire.
+- `internal/contract` — the authored `ActionContract` catalog vocabulary: the fixed,
+  human-authored action set clank may propose from and thump may execute from. The autonomy
+  boundary lives here, not in the model's judgment.
+- `internal/whir` — the topology resolver (static `catalog-info.yaml` + live dependency
+  state) rattle and thump read to know what's downstream of what.
+- `internal/clank` — the Reasoning Plane: the bounded LLM loop, SAO assembly, ranking, the
+  readiness gate. Has a package doc already; remaining comments should carry the *why* (e.g.
+  why `EvidenceRef` has no `Raw` field, why the gate is a conjunction of minimums, never an
+  average).
+- `internal/rattle` — the Signal Plane: pure detectors OR'd together, gated by a
+  freshness/attenuation contract, enriched with severity/topology/traffic before handoff.
+- `internal/hiss` — the Governance Plane: one authority pass over a delivered `proposal.Set`
+  (confidence floor, authority ceiling, irreversibility veto, freeze windows) — never mutates
+  or re-ranks what clank proposed.
+- `internal/thump` — the Act beat: renders (and, later, executes) a governed `Decision`. v1
+  is structurally dry-run — no `os/exec`, no `net`, no k8s client — proven by an
+  import-allowlist test, not just a flag.
+
+### Voice — house style for doc comments
+
+The rest of this file is already written in the target register — that's not an accident,
+match it, don't invent a new one. A doc comment should read like it was written by someone
+who has to stand behind the design later, not by someone summarizing a ticket.
+
+1. **Lead with the invariant, not the mechanism.** State what must always be true, not what
+   the code happens to do this week.
+   - Bad: `EvidenceRef holds a digest string and a backend reference.`
+   - Good: `EvidenceRef carries a digest and a backend ref — never a Raw field, and never
+     will; raw payloads cannot enter the conversation history.`
+2. **The boundary is as much the doc as the thing.** If a type's job is defined partly by
+   what it refuses to do, say so — same rule-of-three the top of this file uses for clank
+   ("does not detect… does not execute… does not authorize"). A reader should be able to
+   tell what would be a violation, not just what's a feature.
+3. **Em-dash the reasoning onto the fact; don't subordinate-clause it.** One declarative
+   sentence, then the "why" appended after a dash, not folded into a dependent clause.
+   - Bad: `GateResult represents the readiness state produced when a set of minimums are
+     evaluated as a conjunction rather than averaged together.`
+   - Good: `GateResult is a conjunction of minimums, never an average — one failing
+     dimension fails the whole gate.`
+4. **No hedging, no marketing adjectives.** Banned on sight: robust, powerful, elegant,
+   seamless, simply, flexible. If something is a trade-off, name what was given up instead
+   of softening it — "fail the sync rather than poll forever," not "gracefully handles
+   timeout scenarios."
+5. **Numbers over qualifiers.** If a const exists, cite it. `MaxSteps bounds the loop at 12
+   turns` beats `the loop is bounded to prevent runaway execution` every time — the number
+   is the doc.
+6. **Struct fields get `value — reason`, not restated names.** `Threshold float64 // the
+   per-tier confidence floor; read by hiss's Authority.Evaluate, never by clank's own gate`
+   — not `Threshold is the threshold value`.
+7. **Skip the throat-clearing.** Don't open with "Engine is a struct that implements the
+   engine for…" — start at the invariant. Go convention wants the comment to begin with the
+   identifier name (`// Engine runs …`); satisfy that mechanically, then get out of the way.
+8. **No workstream jargon, but keep the fixed nouns.** Same rule already stated above for
+   the whole godoc pass, worth restating because it's the one voice violation that's easy to
+   miss: no "Wave 3" or "WS1.6" in shipped comments, but `SAO`, `ProposalSet`,
+   `GovernanceLevel`, etc. stay — those are vocabulary, not process debris.
+9. **Litmus test.** If the sentence could appear verbatim in a generic SaaS onboarding doc,
+   it's not done — keep rewriting until it could only be true of this codebase.
+
+**Worked example** (compressing the existing "What clank is" prose at the top of this file
+down to godoc scale — this is the calibration target, not a hypothetical):
+
+```go
+// Bad — generic, could be any project:
+// Package clank implements the reasoning engine for the thump system. It
+// provides a flexible and powerful framework for processing signals and
+// generating proposals using an LLM-based approach.
+
+// Good — matches house voice:
+// Package clank is the Reasoning Plane: a bounded LLM loop that turns one
+// rattle SignalDetection into a ranked, evidence-backed ProposalSet. It
+// selects; it never permits — authority lives in hiss, not here. The
+// ActionContract catalog is the autonomy boundary: nothing outside it can
+// be proposed or executed.
+```
 
 ## Definition of done
 

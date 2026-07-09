@@ -15,23 +15,40 @@ var (
 	ErrChangeSoure    = errors.New("intake: change source")
 )
 
+// TopologySource resolves the upstream/downstream node state around a
+// signal, for Assemble to snapshot into the SAO.
 type TopologySource interface {
 	Topology(ctx context.Context, sig signal.Detection) (proposal.TopologySnapshot, error)
 }
 
+// ChangeSource resolves recent change events near a signal — deploys, config
+// changes — for Assemble to snapshot into the SAO. CausalScorerImpl.Score
+// reads the result to weigh whether an event caused the signal.
 type ChangeSource interface {
 	Changes(ctx context.Context, sig signal.Detection) (proposal.ChangeSnapshot, error)
 }
 
+// Intake assembles the versioned SAO the reason loop investigates — Option
+// B in the design: clank does its own reading rather than waiting on a
+// pre-built snapshot. The signal.Detection it reads is trusted read-only
+// input; Intake never recomputes anything rattle already decided.
 type Intake struct {
 	topo   TopologySource
 	change ChangeSource
 }
 
+// NewIntake builds an Intake over the given TopologySource and ChangeSource.
 func NewIntake(topo TopologySource, change ChangeSource) *Intake {
 	return &Intake{topo: topo, change: change}
 }
 
+// Assemble builds one SAO (Version 1) for sig: topology from TopologySource,
+// falling back to what rattle already observed on the Detection itself if
+// the source has nothing to say (not new source wiring — just not dropping
+// data clank already has in hand), and change events from ChangeSource. The
+// SAO Assemble returns is what Propose later freezes into the emitted
+// proposal.Set, so the audit trail can always be replayed against exactly
+// what the loop saw.
 func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (proposal.SAO, error) {
 	topo, err := in.topo.Topology(ctx, sig)
 	if err != nil {

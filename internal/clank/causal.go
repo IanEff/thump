@@ -8,30 +8,47 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
+// CausalScorer computes, per change event, a Likelihood that the event
+// caused the signal — the belief-formation math the reason loop's confidence
+// rides on. It never sees the model or the conversation; given the same
+// fingerprint, change, topology, and weights it returns the same scores, so
+// it's table-tested without a fake Model.
 type CausalScorer interface {
 	Score(fingerprint string, change proposal.ChangeSnapshot, topo proposal.TopologySnapshot, weights ScoringWeights) []CausalScore
 }
 
 // Prior is the scorer's window into the case base — consumer-defined, the
-// Go idiom: the interface lives with the code that needs it, and CaseBase
-// just happens to satisfy it. nil means "no case base yet": the stub
-// constant, exactly as before.
+// Go idiom: the interface lives with the code that needs it (Score), and
+// CaseBase just happens to satisfy it. A nil Prior means no case base is
+// wired yet; Score falls back to the uncorroborated baseline rather than
+// panicking.
 type Prior interface {
 	Alignment(fingerprint string) (float64, bool)
 }
 
-// CausalScore moved to internal/proposal (hiss Wave 1): it rides the
-// proposal.Set across the boundary. The scorer that produces it stays here.
+// CausalScore lives in api/v1/proposal (hiss's boundary extraction): it
+// rides the proposal.Set across to hiss. The scorer that produces it stays
+// here.
 type CausalScore = proposal.CausalScore
 
+// CausalScorerImpl is the production CausalScorer. Its zero value has a nil
+// Prior — belief-formation defence 1 still holds even then, because an
+// uncorroborated historical score is capped at historicalAloneCap regardless
+// of whether a case base exists to corroborate it.
 type CausalScorerImpl struct {
 	Prior Prior
 }
 
+// NewCausalScorer returns a CausalScorerImpl with no Prior wired; the caller
+// sets Prior once a case base exists.
 func NewCausalScorer() *CausalScorerImpl {
 	return &CausalScorerImpl{}
 }
 
+// Score rates every entry in change.Events independently against fingerprint
+// and topo — the events are not compared against each other, so a topology
+// with two plausible causes returns two scores. Deciding which one wins is
+// the Ranker's job, not this one's.
 func (s *CausalScorerImpl) Score(fingerprint string, change proposal.ChangeSnapshot, topo proposal.TopologySnapshot, weights ScoringWeights) []CausalScore {
 	scores := make([]CausalScore, 0, len(change.Events))
 	for _, e := range change.Events {
@@ -41,9 +58,9 @@ func (s *CausalScorerImpl) Score(fingerprint string, change proposal.ChangeSnaps
 }
 
 const (
-	caseBaseBaseline      = 0.9
-	historicalAloneCap    = 0.5
-	negativeSignalPenalty = 0.2
+	caseBaseBaseline      = 0.9 // uncorroborated historical baseline, before freshness decay
+	historicalAloneCap    = 0.5 // defence 1: historical alignment alone can never clear this likelihood
+	negativeSignalPenalty = 0.2 // defence 3: each predicted-but-absent signal costs this much likelihood
 )
 
 func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.TopologySnapshot, weights ScoringWeights, prior Prior) CausalScore {

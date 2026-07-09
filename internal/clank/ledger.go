@@ -13,8 +13,12 @@ import (
 
 var ErrNoOpenSet = errors.New("click: no open proposal set answers to this outcome")
 
-const ledgerRetention = 24 * time.Hour
+const ledgerRetention = 24 * time.Hour // closed sets older than this are pruned on the next Record; open sets are never pruned, however old
 
+// MemProposalLog is the in-memory ProposalLog and outcome ledger: every
+// proposal.Set Propose forms is Record-ed here, gated or not — the set is
+// the audit unit, not just the recommendation — and Observe closes the loop
+// when an outcome arrives on the click return edge.
 type MemProposalLog struct {
 	mu   sync.RWMutex
 	sets []recorded
@@ -24,6 +28,11 @@ func NewMemProposalLog() *MemProposalLog {
 	return &MemProposalLog{}
 }
 
+// Record appends ps to the ledger regardless of whether its gate passed.
+// Before appending, it prunes any closed set older than ledgerRetention (24h)
+// so the ledger doesn't grow without bound across a long-running process —
+// open sets are exempt, however old, because an open set still answers dedup
+// queries.
 func (l *MemProposalLog) Record(ctx context.Context, ps proposal.Set) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -49,6 +58,11 @@ func (l *MemProposalLog) Record(ctx context.Context, ps proposal.Set) error {
 	return nil
 }
 
+// Open returns every recorded set for fingerprint that is still in an open
+// phase (proposed, acknowledged, or acted) and was recorded after since —
+// the dedup query: a non-empty result means a live set already answers to
+// this signal, so Propose suppresses (but still records) a new one rather
+// than delivering it.
 func (l *MemProposalLog) Open(ctx context.Context, fingerprint string, since time.Time) ([]proposal.Set, error) {
 	if ctx.Err() != nil {
 		return []proposal.Set{}, ctx.Err()
@@ -64,6 +78,10 @@ func (l *MemProposalLog) Open(ctx context.Context, fingerprint string, since tim
 	return open, nil
 }
 
+// Observe applies o to the most recently recorded open set for the same
+// signal, transitioning its Status.Phase, and returns the updated set.
+// ErrNoOpenSet means o arrived with nothing open to answer to — an expected
+// outcome of the click return edge, not a defect in this ledger.
 func (l *MemProposalLog) Observe(ctx context.Context, o outcome.Outcome) (proposal.Set, error) {
 	if ctx.Err() != nil {
 		return proposal.Set{}, ctx.Err()

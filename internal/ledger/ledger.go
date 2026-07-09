@@ -24,6 +24,7 @@ func NewLog[T any](ts func(T) time.Time) *Log[T] {
 	return &Log[T]{ts: ts}
 }
 
+// Record appends v to the log.
 func (l *Log[T]) Record(v T) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

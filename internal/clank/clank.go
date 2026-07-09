@@ -16,6 +16,13 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// Main is clank's process entry. It wires the Model (Anthropic, keyed by
+// ANTHROPIC_API_KEY — Main refuses to start without it), the read-only tools
+// (metrics, loki, kube — each registered only if its backend is configured,
+// so a partial deployment loses tools, not the process), the intake sources,
+// and the Store, then runs either the NATS broker path or the directory-poll
+// path depending on whether the beat kit resolved a NATS URL. It returns a
+// process exit code rather than calling os.Exit, so tests can drive it.
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
 	lc, code, exit := beat.Start("clank", args, stdout, stderr, beat.Version{Version: version, Commit: commit, Date: date})
 	if exit {

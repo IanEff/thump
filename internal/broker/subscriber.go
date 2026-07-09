@@ -15,12 +15,25 @@ import (
 // its own delay and calls NakWithDelay instead.
 var defaultBackoff = []time.Duration{time.Second, 5 * time.Second, 15 * time.Second}
 
+// Handler processes one decoded message. Returning an error tells the
+// Subscriber the delivery failed and should be retried or dead-lettered —
+// it never sees an undecodable message, since that failure is caught
+// before Handler runs.
 type Handler[T any] func(ctx context.Context, obj T) error
 
+// Subscriber runs h against every message on subject until ctx is
+// cancelled — the inbound half of a beat's Transport, mirroring Publisher
+// on the outbound side.
 type Subscriber[T any] interface {
 	Run(ctx context.Context, subject string, h Handler[T]) error
 }
 
+// JetSubscriber is the JetStream Subscriber. It decodes each message with
+// internal/wire and dispatches it to h, then routes any failure through
+// one of two doors: DOOR 1 poison — undecodable, dead-lettered on the spot,
+// no retry; DOOR 2 transient — h returned an error, nak'd with Backoff's
+// delay and retried until the consumer's MaxDeliver budget is spent, then
+// dead-lettered too.
 type JetSubscriber[T any] struct {
 	js jetstream.JetStream
 	// Backoff is the redelivery delay schedule, indexed by NumDelivered-1
@@ -30,6 +43,8 @@ type JetSubscriber[T any] struct {
 	Backoff []time.Duration
 }
 
+// NewJetSubscriber builds a JetSubscriber with the default backoff
+// schedule (1s, 5s, 15s) already set on Backoff.
 func NewJetSubscriber[T any](js jetstream.JetStream) *JetSubscriber[T] {
 	return &JetSubscriber[T]{js: js, Backoff: defaultBackoff}
 }
@@ -52,6 +67,12 @@ func (s *JetSubscriber[T]) backoffFor(numDelivered uint64) time.Duration {
 	return schedule[idx]
 }
 
+// Run subscribes subject and dispatches every message to h until ctx is
+// cancelled. A message that fails to decode is dead-lettered immediately
+// (DOOR 1, no retry); one that decodes but fails h is nak'd with
+// backoffFor's delay and retried until NumDelivered reaches maxDeliver,
+// then dead-lettered (DOOR 2). Everything else is acked. Returns
+// ctx.Err() once cancelled.
 func (s *JetSubscriber[T]) Run(ctx context.Context, subject string, h Handler[T]) error {
 	cons, err := s.js.Consumer(ctx, StreamName, DurableFor(subject))
 	if err != nil {

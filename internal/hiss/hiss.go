@@ -1,3 +1,10 @@
+// Package hiss is the Governance Plane: one authority pass over a delivered
+// proposal.Set, checking a confidence floor, an authority ceiling, an
+// irreversibility veto, and freeze windows before clank's recommended
+// Candidate may proceed. It never mutates or re-ranks the Set it reads —
+// Authority.Evaluate turns each Set into exactly one decision.Decision:
+// approved, escalate, or rejected. Rejection is an audit record, never
+// silence.
 package hiss
 
 import (
@@ -16,6 +23,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// Main is hiss's process entry point: load Policy from HISS_POLICY, then run
+// either the NATS branch (consume thump.proposals, evaluate, publish
+// thump.decisions) or the directory-poll fallback (HISS_INBOX/HISS_OUTBOX)
+// depending on whether a NATS URL is configured. It returns a process exit
+// code rather than calling os.Exit, so the whole startup path stays testable.
 func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
 	lc, code, exit := beat.Start("hiss", args, stdout, stderr, beat.Version{Version: version, Commit: commit, Date: date})
 	if exit {
