@@ -1,12 +1,15 @@
 package hiss_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/hiss"
+	"sigs.k8s.io/yaml"
 )
 
 func TestEvaluate_GoldenPath_ApprovesAndStampsEverything(t *testing.T) {
@@ -187,6 +190,41 @@ func TestEvaluate_RejectsInputThatIsNotFitToGovern(t *testing.T) {
 				t.Error("the rejection must be on the record (-want +got)", diff)
 			}
 		})
+	}
+}
+
+func TestAuthority_LivePolicyApprovesAStampedReversibleAct(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "config", "hiss", "policy.yaml")) //nolint:gosec
+	if err != nil {
+		t.Fatalf("read live policy: %v", err)
+	}
+	var pol hiss.Policy
+	if err := yaml.Unmarshal(raw, &pol); err != nil {
+		t.Fatalf("unmarshal live policy: %v", err)
+	}
+
+	ps := proposal.Set{
+		Name: "ps-node-death-001", SignalRef: "slo_burn:ceph-cluster",
+		FailureClass: proposal.ClassResourceExhaustion, ServiceTier: "tier-1",
+		Evidence: []proposal.EvidenceRef{{Tool: "metrics", Query: "ceph_health", Live: true}},
+		Gate:     &proposal.GateResult{BudgetOK: true, DedupeOK: true, EvidenceOK: true, Passed: true},
+		Proposals: []proposal.Candidate{{
+			ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+			ReversalPath:    &proposal.ReversalPath{Method: "release-rebalance"},
+			GovernanceLevel: &proposal.GovernanceLevel{Band: string(hiss.BandActReversible)},
+		}},
+		Recommended: "p1", Status: &proposal.Status{Phase: "proposed"},
+	}
+
+	var auth hiss.Authority
+	dec := auth.Evaluate(ps, pol, time.Now())
+
+	if diff := cmp.Diff(hiss.VerdictApproved, dec.Verdict); diff != "" {
+		t.Fatalf("live policy must admit a stamped reversible hold-rebalance (-want +got)\n%s\nreasons: %v", diff, dec.Reasons)
+	}
+	if diff := cmp.Diff(hiss.BandActReversible, dec.GrantedBand); diff != "" {
+		t.Error("granted band should mirror the requested act_reversible band (-want +got)", diff)
 	}
 }
 

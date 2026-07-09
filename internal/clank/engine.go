@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/publish"
@@ -130,6 +131,8 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 		return ProposalSet{}, err
 	}
 
+	enrichFromCatalog(e.Catalog, set.Proposals)
+
 	set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Weights)
 
 	ranked, why := e.Ranker.Rank(set.Proposals, sig.Impact.BlastRadius.Velocity)
@@ -226,4 +229,23 @@ func seedPrompt(sig signal.Detection, sao SAO, actions []ActionContract) string 
 		}
 	}
 	return b.String()
+}
+
+func enrichFromCatalog(cat *StaticCatalog, proposals []Candidate) {
+	for i := range proposals {
+		c, ok := cat.ByName(proposals[i].ContractRef)
+		if !ok {
+			continue
+		}
+		if c.Reversal.Method != "" {
+			proposals[i].ReversalPath = &proposal.ReversalPath{
+				Method:   c.Reversal.Method,
+				Watching: c.SuccessCriteria.Metric,
+				Trigger:  c.SuccessCriteria.Target,
+			}
+			proposals[i].GovernanceLevel = &proposal.GovernanceLevel{Band: string(decision.BandActReversible)}
+		} else {
+			proposals[i].GovernanceLevel = &proposal.GovernanceLevel{Band: string(decision.BandActDisruptive)}
+		}
+	}
 }

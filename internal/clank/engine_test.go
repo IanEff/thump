@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/hiss"
 )
 
 func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
@@ -75,6 +76,76 @@ func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	}
 	if diff := cmp.Diff(got.Gate.Reason, got.Status.Reason); diff != "" {
 		t.Error("Status.Reason must mirror GateResult.Reason (-want +got)\n", diff)
+	}
+}
+
+func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
+			FailureClass: clank.ClassDependencySaturation,
+			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			// bare — no ReversalPath, no GovernanceLevel, exactly what production omits
+			Proposals: []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		})}}},
+	}}
+
+	e, _ := newTestEngine(model)
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+
+	cand := got.Proposals[0]
+	if cand.ReversalPath == nil {
+		t.Fatal("a catalogued, reversible action must have ReversalPath stamped, got nil")
+	}
+	if diff := cmp.Diff("unthrottle", cand.ReversalPath.Method); diff != "" {
+		t.Error("ReversalPath.Method must come from the contract's Reversal.Method (-want +got)", diff)
+	}
+	if cand.GovernanceLevel == nil {
+		t.Fatal("a reversible action must have GovernanceLevel stamped, got nil")
+	}
+	if diff := cmp.Diff(string(hiss.BandActReversible), cand.GovernanceLevel.Band); diff != "" {
+		t.Error("a reversible contract requests act_reversible (-want +got)", diff)
+	}
+}
+
+// TestPropose_IrreversibleContractLeavesReversalNil is the honesty rider:
+// stamping must never INVENT a reversal an action doesn't have — that would
+// defeat hiss's I-12 irreversibility veto. An authored action with an empty
+// Reversal must come out of Propose with ReversalPath still nil.
+func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
+	t.Parallel()
+	cat := clank.NewStaticCatalog([]clank.ActionContract{{
+		Name:                     "cordon-node",
+		ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+		ApplicableTiers:          []string{"tier-1"},
+		// Reversal deliberately zero-value — this action genuinely can't be undone
+	}})
+
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
+			FailureClass: clank.ClassDependencySaturation,
+			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
+		})}}},
+	}}
+
+	e, _ := newTestEngineWithCatalog(model, cat)
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+
+	cand := got.Proposals[0]
+	if cand.ReversalPath != nil {
+		t.Errorf("an action with no authored Reversal must not get a fabricated ReversalPath, got %+v", cand.ReversalPath)
+	}
+	if cand.GovernanceLevel == nil || cand.GovernanceLevel.Band != string(hiss.BandActDisruptive) {
+		t.Errorf("an irreversible action's requested band must be act_disruptive, got %+v", cand.GovernanceLevel)
 	}
 }
 
@@ -151,7 +222,33 @@ func newTestEngine(model clank.Model) (*clank.Engine, *capturePublisher) {
 			Name:                     "throttle-non-critical-paths",
 			ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
 			ApplicableTiers:          []string{"tier-1"},
+			Reversal:                 clank.Reversal{Method: "unthrottle", Fallback: "page-oncall"},
 		}}),
+		Ranker:       clank.NewRanker(),
+		Gate:         clank.ReadinessGate{},
+		Store:        clank.NewMemStore(),
+		Scorer:       clank.NewCausalScorer(),
+		DedupeWindow: time.Hour,
+		Ledger:       clank.NewMemProposalLog(),
+		Pub:          pub,
+		MaxSteps:     8,
+	}, pub
+}
+
+func newTestEngineWithCatalog(model clank.Model, cat *clank.StaticCatalog) (*clank.Engine, *capturePublisher) {
+	pub := &capturePublisher{}
+	return &clank.Engine{
+		Intake: clank.NewIntake(
+			fakeTopo{snap: clank.TopologySnapshot{
+				Downstream: []clank.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+			}},
+			fakeChange{snap: clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+				{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
+			}}},
+		),
+		Model:        model,
+		Tools:        map[string]clank.Tool{"metrics": metricsTool{}},
+		Catalog:      cat,
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},
 		Store:        clank.NewMemStore(),
