@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w \
     -X main.commit=${COMMIT} \
     -X main.date=${DATE}" -o /out/${BEAT} ./cmd/${BEAT}
 
-FROM --platform=$TARGETPLATFORM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot
 LABEL org.opencontainers.image.source="https://github.com/ianeff/thump"
 ARG BEAT
 COPY --from=build /out/${BEAT} /usr/local/bin/beat
