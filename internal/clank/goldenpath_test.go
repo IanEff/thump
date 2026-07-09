@@ -293,6 +293,75 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 	assertGolden(t, "argocd-sync-status.yaml", set.Status)
 }
 
+func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	det := loadDetectionFixtureExt(t, "node-death.yaml")
+
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
+			FailureClass: clank.ClassResourceExhaustion,
+			Hypotheses:   []clank.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
+			Proposals: []clank.Candidate{{
+				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				// bare — no ReversalPath, no GovernanceLevel
+			}},
+		})}}},
+	}}
+
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{
+				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
+				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
+			},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
+	set, err := eng.Propose(ctx, det)
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+	if set.Gate == nil || !set.Gate.Passed {
+		t.Fatalf("a bare-but-catalogued proposal should still clear the gate: gate=%+v", set.Gate)
+	}
+	if len(sink.delivered) != 1 {
+		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.delivered))
+	}
+
+	delivered := sink.delivered[0]
+	cand := delivered.Proposals[0]
+	if cand.ReversalPath == nil || cand.ReversalPath.Method != "release-rebalance" {
+		t.Fatalf("A1 must stamp ReversalPath from the catalog even when the model left it nil; got %+v", cand.ReversalPath)
+	}
+	if cand.GovernanceLevel == nil || cand.GovernanceLevel.Band != string(hiss.BandActReversible) {
+		t.Fatalf("A1 must stamp the requested band from the catalog's reversibility; got %+v", cand.GovernanceLevel)
+	}
+
+	// beat three: govern — the ENRICHED set, unmodified beyond that.
+	dec := hiss.Authority{}.Evaluate(delivered, goldenPolicy(), goldenNow)
+	if dec.Verdict != hiss.VerdictApproved {
+		t.Fatalf("the payoff-run bug: hiss must approve a bare-but-catalogued act now — got %s (reasons: %v)", dec.Verdict, dec.Reasons)
+	}
+
+	// beat four: render + rehearse.
+	order, err := thump.Actuator{}.Render(
+		decision.Governed{Decision: dec, Set: delivered}, goldenCatalog(), goldenNow)
+	if err != nil {
+		t.Fatal("thump.Render errored:", err)
+	}
+	out := thump.DryRun{}.Execute(ctx, order, goldenNow)
+	if out.Result != thump.ResultRendered {
+		t.Fatalf("a dry-run ends rendered, not executed: %s", out.Result)
+	}
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────
 
 // goldenNodeDeathModel is the node-death propose script, minted fresh per
