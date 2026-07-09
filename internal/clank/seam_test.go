@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
@@ -64,10 +65,10 @@ func TestSeam_RattleDetectionDrivesClankToADeliveredProposal(t *testing.T) {
 	// step 2 propose a CATALOGUED action for the detection's class + tier.
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation, // must be in newTestEngine's catalog
-			Hypotheses:   []clank.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation, // must be in newTestEngine's catalog
+			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 
@@ -84,10 +85,10 @@ func TestSeam_RattleDetectionDrivesClankToADeliveredProposal(t *testing.T) {
 	if diff := cmp.Diff("proposed", set.Status.Phase); diff != "" {
 		t.Error("delivered proposal should be phase=proposed (-want +got)", diff)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.Delivered))
 	}
-	if diff := cmp.Diff("slo_burn:ceph-rgw", sink.delivered[0].SignalRef); diff != "" {
+	if diff := cmp.Diff("slo_burn:ceph-rgw", sink.Delivered[0].SignalRef); diff != "" {
 		t.Error("fingerprint didn't survive the seam (ProposalSet.SignalRef) (-want +got)", diff)
 	}
 }
@@ -99,16 +100,16 @@ func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 	// (both trap dodges — see the banner above).
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation, // in newTestEngine's catalog
-			Hypotheses:   []clank.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
-			Proposals: []clank.Candidate{{
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation, // in newTestEngine's catalog
+			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				ReversalPath: &clank.ReversalPath{ // trap 1: without this, hiss's I-12 veto fires
+				ReversalPath: &proposal.ReversalPath{ // trap 1: without this, hiss's I-12 veto fires
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},
-				GovernanceLevel: &clank.GovernanceLevel{ // trap 2: without this, the grant is observe (D-3)
-					Band: string(hiss.BandActReversible),
+				GovernanceLevel: &proposal.GovernanceLevel{ // trap 2: without this, the grant is observe (D-3)
+					Band: string(decision.BandActReversible),
 				},
 			}},
 		})}}},
@@ -118,15 +119,15 @@ func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
 		t.Fatal("clank leg of the seam errored:", err)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("seam precondition: want exactly 1 delivered set, got %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("seam precondition: want exactly 1 delivered set, got %d", len(sink.Delivered))
 	}
 
 	// beat three: govern (seamPolicy() reused from hiss_seam_test.go —
 	// MaxBand["tier-1"] = act_reversible, so the requested band clears it).
 	var auth hiss.Authority
-	dec := auth.Evaluate(sink.delivered[0], seamPolicy(), time.Unix(1000, 0))
-	if diff := cmp.Diff(hiss.VerdictApproved, dec.Verdict); diff != "" {
+	dec := auth.Evaluate(sink.Delivered[0], seamPolicy(), time.Unix(1000, 0))
+	if diff := cmp.Diff(decision.VerdictApproved, dec.Verdict); diff != "" {
 		t.Fatalf("seam precondition: hiss must approve (-want +got)\n%s\nreasons: %v", diff, dec.Reasons)
 	}
 
@@ -134,12 +135,12 @@ func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 	// transport would have sealed; here we seal it by hand (no filesystem
 	// in this test — the seam is the types, not the transport).
 	order, err := thump.Actuator{}.Render(
-		decision.Governed{Decision: dec, Set: sink.delivered[0]},
+		decision.Governed{Decision: dec, Set: sink.Delivered[0]},
 		seamCatalog(), time.Unix(1000, 0))
 	if err != nil {
 		t.Fatal("thump leg of the seam errored:", err)
 	}
-	if diff := cmp.Diff(hiss.BandActReversible, order.GrantedBand); diff != "" {
+	if diff := cmp.Diff(decision.BandActReversible, order.GrantedBand); diff != "" {
 		t.Error("the granted band didn't survive the seam — see the trap banner (-want +got)", diff)
 	}
 
@@ -147,7 +148,7 @@ func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 	if err := out.Auditable(); err != nil {
 		t.Error("every outcome crossing the seam must be auditable:", err)
 	}
-	if diff := cmp.Diff(thump.ResultRendered, out.Result); diff != "" {
+	if diff := cmp.Diff(outcome.ResultRendered, out.Result); diff != "" {
 		t.Error("the four-beat happy line ends in a rehearsal, not an act (-want +got)", diff)
 	}
 	// the fingerprint survived detection → proposal → decision → OUTCOME:
@@ -177,15 +178,15 @@ func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
 	// four-beat seam, which explains them.
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
-			Proposals: []clank.Candidate{{
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				ReversalPath: &clank.ReversalPath{
+				ReversalPath: &proposal.ReversalPath{
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},
-				GovernanceLevel: &clank.GovernanceLevel{Band: string(hiss.BandActReversible)},
+				GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 			}},
 		})}}},
 	}}
@@ -194,20 +195,20 @@ func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
 	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
 		t.Fatal("clank leg of the seam errored:", err)
 	}
-	if len(sink.delivered) != 1 {
-		t.Fatalf("seam precondition: want exactly 1 delivered set, got %d", len(sink.delivered))
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("seam precondition: want exactly 1 delivered set, got %d", len(sink.Delivered))
 	}
 
 	// beat three: govern.
 	var auth hiss.Authority
-	dec := auth.Evaluate(sink.delivered[0], seamPolicy(), time.Unix(1000, 0))
-	if diff := cmp.Diff(hiss.VerdictApproved, dec.Verdict); diff != "" {
+	dec := auth.Evaluate(sink.Delivered[0], seamPolicy(), time.Unix(1000, 0))
+	if diff := cmp.Diff(decision.VerdictApproved, dec.Verdict); diff != "" {
 		t.Fatalf("seam precondition: hiss must approve (-want +got)\n%s\nreasons: %v", diff, dec.Reasons)
 	}
 
 	// beat four: render + rehearse.
 	order, err := thump.Actuator{}.Render(
-		decision.Governed{Decision: dec, Set: sink.delivered[0]},
+		decision.Governed{Decision: dec, Set: sink.Delivered[0]},
 		seamCatalog(), time.Unix(1000, 0))
 	if err != nil {
 		t.Fatal("thump leg of the seam errored:", err)

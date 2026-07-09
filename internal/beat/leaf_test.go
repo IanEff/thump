@@ -1,0 +1,56 @@
+package beat_test
+
+import (
+	"go/parser"
+	"go/token"
+	"os"
+	"strings"
+	"testing"
+)
+
+// TestBeatImportsNoBeat pins the kit's load-bearing invariant: internal/beat
+// may import stdlib and the shared transport infrastructure (broker, publish,
+// and the jetstream types they surface) — but NEVER a beat package. A clank,
+// rattle, hiss, or thump import appearing here means the runtime kit has become
+// a place where the planes mash together; this test is that regression's
+// tripwire.
+func TestBeatImportsNoBeat(t *testing.T) {
+	t.Parallel()
+	allowed := map[string]bool{
+		`"github.com/ianeff/thump/internal/broker"`:  true,
+		`"github.com/ianeff/thump/internal/publish"`: true,
+		`"github.com/nats-io/nats.go/jetstream"`:     true,
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, imp := range f.Imports {
+			path := imp.Path.Value
+			if isStdlib(path) || allowed[path] {
+				continue
+			}
+			t.Errorf("%s imports %s — internal/beat must stay transport-only (stdlib + broker/publish/jetstream)",
+				name, path)
+		}
+	}
+}
+
+// isStdlib reports whether a quoted import path is a standard-library package:
+// stdlib paths have no dot in their first segment (no domain), where third-party
+// paths look like "github.com/...".
+func isStdlib(quoted string) bool {
+	p := strings.Trim(quoted, `"`)
+	first, _, _ := strings.Cut(p, "/")
+	return !strings.Contains(first, ".")
+}

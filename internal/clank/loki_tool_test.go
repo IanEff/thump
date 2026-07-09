@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 )
 
@@ -17,7 +18,7 @@ func TestLokiTool_Run(t *testing.T) {
 		lokiResponse   string
 		lokiStatusCode int
 		wantQuery      string
-		wantRef        clank.EvidenceRef
+		wantRef        proposal.EvidenceRef
 	}{
 		"Run given matching streams returns live evidence": {
 			input:          `{"namespace": "rook-ceph", "labels": {"ceph_daemon_type": "mon"}}`,
@@ -33,7 +34,7 @@ func TestLokiTool_Run(t *testing.T) {
 				}
 			}`,
 			wantQuery: `{namespace="rook-ceph", ceph_daemon_type="mon"}`,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "loki",
 				Query:   `{namespace="rook-ceph", ceph_daemon_type="mon"}`,
 				Summary: "1 log line(s); last: mon is slow to respond",
@@ -48,7 +49,7 @@ func TestLokiTool_Run(t *testing.T) {
 				"status": "success",
 				"data": {"resultType": "streams", "result": []}
 			}`,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "loki",
 				Query:   `{namespace="rook-ceph"}`,
 				Summary: "no matching log lines",
@@ -58,7 +59,7 @@ func TestLokiTool_Run(t *testing.T) {
 		"Run given a server error returns non-live evidence": {
 			input:          `{"namespace": "rook-ceph"}`,
 			lokiStatusCode: http.StatusInternalServerError,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "loki",
 				Query:   `{namespace="rook-ceph"}`,
 				Summary: "loki returned status: 500 Internal Server Error",
@@ -69,7 +70,7 @@ func TestLokiTool_Run(t *testing.T) {
 			input:          `{"namespace": "rook-ceph", "query": "\"} or {namespace=~\".*\""}`,
 			lokiStatusCode: http.StatusOK,
 			lokiResponse:   `{"status": "success", "data": {"resultType": "streams", "result": []}}`,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "loki",
 				Query:   `{namespace="rook-ceph"} |= "\"} or {namespace=~\".*\""`,
 				Summary: "no matching log lines",

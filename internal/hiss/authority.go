@@ -10,8 +10,8 @@ import (
 
 type Authority struct{}
 
-func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) Decision {
-	d := Decision{
+func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.Decision {
+	d := decision.Decision{
 		ID:            fmt.Sprintf("dec:%s:%d", ps.SignalRef, now.Unix()),
 		ProposalRef:   ps.Name,
 		SignalRef:     ps.SignalRef,
@@ -22,7 +22,7 @@ func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) Decision {
 
 	rec, found := recommended(ps)
 	if ps.Gate == nil || !ps.Gate.Passed || !found {
-		d.Verdict = VerdictRejected
+		d.Verdict = decision.VerdictRejected
 		d.Reasons = []string{ReasonUngatedInput}
 		return d
 	}
@@ -47,21 +47,21 @@ func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) Decision {
 	}
 
 	if len(d.Reasons) > 0 {
-		d.Verdict = VerdictEscalate
+		d.Verdict = decision.VerdictEscalate
 		return d
 	}
-	d.Verdict = VerdictApproved
+	d.Verdict = decision.VerdictApproved
 	d.GrantedBand = d.RequestedBand
 	return d
 }
 
-func bandRank(b Band) int {
+func bandRank(b decision.Band) int {
 	switch b {
-	case BandObserve:
+	case decision.BandObserve:
 		return 0
-	case BandActDisruptive:
+	case decision.BandActDisruptive:
 		return 2
-	case BandActReversible:
+	case decision.BandActReversible:
 		return 1
 	default:
 		return 3
@@ -85,9 +85,9 @@ func recommended(ps proposal.Set) (proposal.Candidate, bool) {
 	return proposal.Candidate{}, false
 }
 
-func requestedBand(c proposal.Candidate) Band {
+func requestedBand(c proposal.Candidate) decision.Band {
 	if c.GovernanceLevel == nil {
-		return BandObserve // absence != privilege
+		return decision.BandObserve // absence != privilege
 	}
-	return Band(c.GovernanceLevel.Band)
+	return decision.Band(c.GovernanceLevel.Band)
 }

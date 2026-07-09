@@ -10,6 +10,7 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 )
 
@@ -17,47 +18,47 @@ type Engine struct {
 	Intake       *Intake
 	Model        Model
 	Tools        map[string]Tool
-	Catalog      *StaticCatalog
+	Catalog      *contract.StaticCatalog
 	Ranker       *Ranker
 	Gate         ReadinessGate
 	Store        Store
 	Scorer       CausalScorer
 	DedupeWindow time.Duration
 	Ledger       *MemProposalLog
-	Pub          publish.Publisher[ProposalSet]
+	Pub          publish.Publisher[proposal.Set]
 	MaxSteps     int
 	Weights      ScoringWeights
 }
 
-func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet, error) {
+func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Set, error) {
 	sao, err := e.Intake.Assemble(ctx, sig)
 	if err != nil {
-		return ProposalSet{}, fmt.Errorf("intake: %w", err)
+		return proposal.Set{}, fmt.Errorf("intake: %w", err)
 	}
 
-	set := ProposalSet{
+	set := proposal.Set{
 		Name:        sig.Name,
 		SignalRef:   sig.Fingerprint,
 		SAOSnapshot: &sao,
 		ServiceTier: sig.ServiceTier,
 	}
 
-	set.Status = &ProposalStatus{}
+	set.Status = &proposal.Status{}
 
 	actions := e.Catalog.ApplicableToTier(sig.ServiceTier, sao)
 	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, actions)}}
-	var evidence []EvidenceRef
+	var evidence []proposal.EvidenceRef
 	proposed, declined := false, false
 
 	for step := 0; step < e.MaxSteps; step++ {
 		comp, err := e.Model.Complete(ctx, msgs, e.toolSpecs())
 		if err != nil {
-			return ProposalSet{}, fmt.Errorf("model complete (step %d): %w", step, err)
+			return proposal.Set{}, fmt.Errorf("model complete (step %d): %w", step, err)
 		}
 		msgs = append(msgs, comp.Message)
 
 		if err := e.Store.Checkpoint(ctx, Turn{RunID: sig.Fingerprint, Step: step, Msgs: msgs}); err != nil {
-			return ProposalSet{}, fmt.Errorf("checkpoint (step %d): %w", step, err)
+			return proposal.Set{}, fmt.Errorf("checkpoint (step %d): %w", step, err)
 		}
 
 		if len(comp.ToolCalls) == 0 {
@@ -70,9 +71,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 		for _, call := range comp.ToolCalls {
 			switch call.Name {
 			case "propose":
-				var p ProposalSet
+				var p proposal.Set
 				if err := json.Unmarshal(call.Args, &p); err != nil {
-					return ProposalSet{}, fmt.Errorf("decode propose: %w", err)
+					return proposal.Set{}, fmt.Errorf("decode propose: %w", err)
 				}
 				set.FailureClass = p.FailureClass
 				set.Hypotheses = p.Hypotheses
@@ -94,7 +95,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 				}
 				ref, err := tool.Run(ctx, call.Args)
 				if err != nil {
-					return ProposalSet{}, fmt.Errorf("tool %q: %w", call.Name, err)
+					return proposal.Set{}, fmt.Errorf("tool %q: %w", call.Name, err)
 				}
 				evidence = append(evidence, ref)
 				msgs = append(msgs, Message{Role: "tool", Content: ref.Summary})
@@ -113,7 +114,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 		set.Gate = &GateResult{BudgetOK: false, Reason: "budget"}
 		set.Status.Phase = proposal.PhaseBudgetExhausted
 		if err := e.Ledger.Record(ctx, set); err != nil {
-			return ProposalSet{}, fmt.Errorf("record: %w", err)
+			return proposal.Set{}, fmt.Errorf("record: %w", err)
 		}
 		return set, nil
 	}
@@ -122,13 +123,13 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 			set.Status.Phase = proposal.PhaseNoAction
 		}
 		if err := e.Ledger.Record(ctx, set); err != nil {
-			return ProposalSet{}, fmt.Errorf("record: %w", err)
+			return proposal.Set{}, fmt.Errorf("record: %w", err)
 		}
 		return set, nil
 	}
 
 	if err := e.enforceCatalog(set, sao); err != nil {
-		return ProposalSet{}, err
+		return proposal.Set{}, err
 	}
 
 	enrichFromCatalog(e.Catalog, set.Proposals)
@@ -144,7 +145,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 
 	openDupes, err := e.Ledger.Open(ctx, sig.Fingerprint, time.Now().Add(-e.DedupeWindow))
 	if err != nil {
-		return ProposalSet{}, fmt.Errorf("open dupes: %w", err)
+		return proposal.Set{}, fmt.Errorf("open dupes: %w", err)
 	}
 	gate := e.Gate.Evaluate(set, openDupes)
 	set.Gate = &gate
@@ -156,11 +157,11 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (ProposalSet
 	}
 
 	if err := e.Ledger.Record(ctx, set); err != nil {
-		return ProposalSet{}, fmt.Errorf("record: %w", err)
+		return proposal.Set{}, fmt.Errorf("record: %w", err)
 	}
 	if set.Gate.Passed && e.Pub != nil {
 		if err := e.Pub.Publish(ctx, "thump.proposals", set); err != nil {
-			return ProposalSet{}, fmt.Errorf("publish: %w", err)
+			return proposal.Set{}, fmt.Errorf("publish: %w", err)
 		}
 	}
 
@@ -179,20 +180,20 @@ func (e *Engine) toolSpecs() []ToolSpec {
 	return append(specs, ProposeToolSpec(), InsufficientToolSpec())
 }
 
-func (e *Engine) enforceCatalog(set ProposalSet, sao SAO) error {
+func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 	allowed := make(map[string]bool)
 	for _, c := range e.Catalog.Applicable(set.FailureClass, set.ServiceTier, sao) {
 		allowed[c.Name] = true
 	}
 	for _, cand := range set.Proposals {
 		if !allowed[cand.ContractRef] {
-			return fmt.Errorf("%w: %q", ErrOutsideCatalog, cand.ContractRef)
+			return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
 		}
 	}
 	return nil
 }
 
-func seedPrompt(sig signal.Detection, sao SAO, actions []ActionContract) string {
+func seedPrompt(sig signal.Detection, sao proposal.SAO, actions []contract.ActionContract) string {
 	var b strings.Builder
 	subject := sig.OriginService
 	if subject == "" {
@@ -231,7 +232,7 @@ func seedPrompt(sig signal.Detection, sao SAO, actions []ActionContract) string 
 	return b.String()
 }
 
-func enrichFromCatalog(cat *StaticCatalog, proposals []Candidate) {
+func enrichFromCatalog(cat *contract.StaticCatalog, proposals []proposal.Candidate) {
 	for i := range proposals {
 		c, ok := cat.ByName(proposals[i].ContractRef)
 		if !ok {

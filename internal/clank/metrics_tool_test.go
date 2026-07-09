@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 )
 
@@ -16,7 +17,7 @@ func TestMetricsTool_Run(t *testing.T) {
 		input          string
 		promResponse   string
 		promStatusCode int
-		wantRef        clank.EvidenceRef
+		wantRef        proposal.EvidenceRef
 		wantErr        bool
 	}{
 		"Run given a valid query returns live evidence": {
@@ -34,7 +35,7 @@ func TestMetricsTool_Run(t *testing.T) {
 					]
 				}
 			}`,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "ceph_health",
 				Summary: "ceph_health = 1",
@@ -53,7 +54,7 @@ func TestMetricsTool_Run(t *testing.T) {
 					"result": []
 				}
 			}`,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "ceph_health",
 				Summary: "query returned no data",
@@ -64,7 +65,7 @@ func TestMetricsTool_Run(t *testing.T) {
 			// Tests the map lookup failure
 			input:          `{"q": "made_up_metric"}`,
 			promStatusCode: http.StatusOK, // Server shouldn't even be hit, but safe to set
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "made_up_metric",
 				Summary: "no such evidence query: made_up_metric",
@@ -75,7 +76,7 @@ func TestMetricsTool_Run(t *testing.T) {
 			// Tests that network/HTTP errors fail gracefully (Live: false) rather than crashing
 			input:          `{"q": "ceph_health"}`,
 			promStatusCode: http.StatusInternalServerError,
-			wantRef: clank.EvidenceRef{
+			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "ceph_health",
 				Summary: "prometheus returned status: 500 Internal Server Error",

@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"sigs.k8s.io/yaml"
 )
 
@@ -14,7 +13,7 @@ type MarkdownPublisher struct {
 	W io.Writer
 }
 
-func (s *MarkdownPublisher) Publish(_ context.Context, _ string, ps ProposalSet) error {
+func (s *MarkdownPublisher) Publish(_ context.Context, _ string, ps proposal.Set) error {
 	if _, err := fmt.Fprintf(s.W, "## ProposalSet: %s (%d considered)\n", ps.FailureClass, len(ps.Proposals)); err != nil {
 		return err
 	}
@@ -33,7 +32,7 @@ type YAMLPublisher struct {
 	W io.Writer
 }
 
-func (s *YAMLPublisher) Publish(_ context.Context, _ string, ps ProposalSet) error {
+func (s *YAMLPublisher) Publish(_ context.Context, _ string, ps proposal.Set) error {
 	out, err := yaml.Marshal(ps)
 	if err != nil {
 		return fmt.Errorf("yaml publisher: marshal proposal set: %w", err)
@@ -44,37 +43,12 @@ func (s *YAMLPublisher) Publish(_ context.Context, _ string, ps ProposalSet) err
 	return nil
 }
 
-type DirPublisher struct{ Dir string }
-
-func (s *DirPublisher) Publish(_ context.Context, _ string, ps ProposalSet) error {
-	out, err := yaml.Marshal(ps)
-	if err != nil {
-		return fmt.Errorf("dir publisher: marshal proposal set: %w", err)
+// proposalFilename names an emitted ProposalSet on disk by its fingerprint, so
+// a re-proposal of the same incident overwrites rather than piling up. It falls
+// back to the set's Name if a set somehow has no fingerprint.
+func proposalFilename(ps proposal.Set) string {
+	if ps.SignalRef != "" {
+		return ps.SignalRef
 	}
-	name := ps.SignalRef
-	if name == "" {
-		name = ps.Name // fall back to Name if a set somehow has no fingerprint
-	}
-	if err := writeAtomic(s.Dir, name+".yaml", out); err != nil {
-		return fmt.Errorf("dir publisher: write atomic %s: %w", name, err)
-	}
-	return nil
-}
-
-// writeAtomic is the simple atomic writer, replicated across all services to PROVE A POINT.
-func writeAtomic(dir, name string, data []byte) error {
-	tmp, err := os.CreateTemp(dir, ".tmp-*") // dot-prefixed, no .yaml suffix
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, name))
+	return ps.Name
 }

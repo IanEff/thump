@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/clank"
@@ -38,10 +39,10 @@ func TestRedelivery_IsAFingerprintNoOp(t *testing.T) {
 
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 	eng, _ := newTestEngine(model)

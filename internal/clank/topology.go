@@ -13,8 +13,8 @@ type WhirTopology struct {
 	Resolver *whir.Resolver
 }
 
-func (w WhirTopology) Topology(ctx context.Context, sig signal.Detection) (TopologySnapshot, error) {
-	var snap TopologySnapshot
+func (w WhirTopology) Topology(ctx context.Context, sig signal.Detection) (proposal.TopologySnapshot, error) {
+	var snap proposal.TopologySnapshot
 	for _, dep := range w.Catalog.Edges(sig.OriginService) {
 		snap.Upstream = append(snap.Upstream, proposal.NodeState{
 			Name:  dep,

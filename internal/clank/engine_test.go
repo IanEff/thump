@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/publish/publishtest"
 )
 
 func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
@@ -18,10 +21,10 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 		// turn 1: gather live evidence
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
 		// turn 2: propose - hypothesis + a candidate drawn from the catalog
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 
@@ -49,10 +52,10 @@ func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []clank.Completion{
 		// turn 1: propose straight away, no evidence-gathering tool call first
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 
@@ -65,8 +68,8 @@ func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	if got.Gate.Passed {
 		t.Fatalf("no live evidence should fail the gate, got Passed=true: %+v", got.Gate)
 	}
-	if len(sink.delivered) != 0 {
-		t.Fatalf("a gate decline delivers nothing; delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Fatalf("a gate decline delivers nothing; delivered %d", len(sink.Delivered))
 	}
 	if got.Status.Phase != "no_action" {
 		t.Errorf("a gate decline is phase=no_action, got %q", got.Status.Phase)
@@ -83,11 +86,11 @@ func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			// bare — no ReversalPath, no GovernanceLevel, exactly what production omits
-			Proposals: []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 
@@ -107,7 +110,7 @@ func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 	if cand.GovernanceLevel == nil {
 		t.Fatal("a reversible action must have GovernanceLevel stamped, got nil")
 	}
-	if diff := cmp.Diff(string(hiss.BandActReversible), cand.GovernanceLevel.Band); diff != "" {
+	if diff := cmp.Diff(string(decision.BandActReversible), cand.GovernanceLevel.Band); diff != "" {
 		t.Error("a reversible contract requests act_reversible (-want +got)", diff)
 	}
 }
@@ -118,19 +121,19 @@ func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 // Reversal must come out of Propose with ReversalPath still nil.
 func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 	t.Parallel()
-	cat := clank.NewStaticCatalog([]clank.ActionContract{{
+	cat := contract.NewStaticCatalog([]contract.ActionContract{{
 		Name:                     "cordon-node",
-		ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 		ApplicableTiers:          []string{"tier-1"},
 		// Reversal deliberately zero-value — this action genuinely can't be undone
 	}})
 
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
 		})}}},
 	}}
 
@@ -144,7 +147,7 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 	if cand.ReversalPath != nil {
 		t.Errorf("an action with no authored Reversal must not get a fabricated ReversalPath, got %+v", cand.ReversalPath)
 	}
-	if cand.GovernanceLevel == nil || cand.GovernanceLevel.Band != string(hiss.BandActDisruptive) {
+	if cand.GovernanceLevel == nil || cand.GovernanceLevel.Band != string(decision.BandActDisruptive) {
 		t.Errorf("an irreversible action's requested band must be act_disruptive, got %+v", cand.GovernanceLevel)
 	}
 }
@@ -171,7 +174,7 @@ func (m *fakeModel) Complete(_ context.Context, msgs []clank.Message, tools []cl
 	return c, nil
 }
 
-func proposeArgs(t *testing.T, ps clank.ProposalSet) json.RawMessage {
+func proposeArgs(t *testing.T, ps proposal.Set) json.RawMessage {
 	t.Helper()
 	b, err := json.Marshal(ps)
 	if err != nil {
@@ -182,8 +185,8 @@ func proposeArgs(t *testing.T, ps clank.ProposalSet) json.RawMessage {
 
 type metricsTool struct{}
 
-func (metricsTool) Run(_ context.Context, args json.RawMessage) (clank.EvidenceRef, error) {
-	return clank.EvidenceRef{
+func (metricsTool) Run(_ context.Context, args json.RawMessage) (proposal.EvidenceRef, error) {
+	return proposal.EvidenceRef{
 		Tool:    "metrics",
 		Query:   string(args),
 		Summary: "latency_p99 elevated 3x over baseline",
@@ -196,33 +199,24 @@ func (metricsTool) Spec() clank.ToolSpec {
 	return clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query"}
 }
 
-type capturePublisher struct {
-	delivered []clank.ProposalSet
-}
-
-func (s *capturePublisher) Publish(_ context.Context, _ string, ps clank.ProposalSet) error {
-	s.delivered = append(s.delivered, ps)
-	return nil
-}
-
-func newTestEngine(model clank.Model) (*clank.Engine, *capturePublisher) {
-	pub := &capturePublisher{}
+func newTestEngine(model clank.Model) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
 		Intake: clank.NewIntake(
-			fakeTopo{snap: clank.TopologySnapshot{
-				Downstream: []clank.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+			fakeTopo{snap: proposal.TopologySnapshot{
+				Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
 			}},
-			fakeChange{snap: clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+			fakeChange{snap: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
 			}}},
 		),
 		Model: model,
 		Tools: map[string]clank.Tool{"metrics": metricsTool{}},
-		Catalog: clank.NewStaticCatalog([]clank.ActionContract{{
+		Catalog: contract.NewStaticCatalog([]contract.ActionContract{{
 			Name:                     "throttle-non-critical-paths",
-			ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 			ApplicableTiers:          []string{"tier-1"},
-			Reversal:                 clank.Reversal{Method: "unthrottle", Fallback: "page-oncall"},
+			Reversal:                 contract.Reversal{Method: "unthrottle", Fallback: "page-oncall"},
 		}}),
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},
@@ -235,14 +229,14 @@ func newTestEngine(model clank.Model) (*clank.Engine, *capturePublisher) {
 	}, pub
 }
 
-func newTestEngineWithCatalog(model clank.Model, cat *clank.StaticCatalog) (*clank.Engine, *capturePublisher) {
-	pub := &capturePublisher{}
+func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
 		Intake: clank.NewIntake(
-			fakeTopo{snap: clank.TopologySnapshot{
-				Downstream: []clank.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+			fakeTopo{snap: proposal.TopologySnapshot{
+				Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
 			}},
-			fakeChange{snap: clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+			fakeChange{snap: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
 			}}},
 		),
@@ -282,8 +276,8 @@ type fakeTool struct {
 	live   bool
 }
 
-func (f fakeTool) Run(_ context.Context, _ json.RawMessage) (clank.EvidenceRef, error) {
-	return clank.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live}, nil
+func (f fakeTool) Run(_ context.Context, _ json.RawMessage) (proposal.EvidenceRef, error) {
+	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live}, nil
 }
 
 func (f fakeTool) Spec() clank.ToolSpec {
@@ -307,10 +301,10 @@ func specNames(specs []clank.ToolSpec) []string {
 	return names
 }
 
-func openProposalFor(fp string) clank.ProposalSet {
-	return clank.ProposalSet{
+func openProposalFor(fp string) proposal.Set {
+	return proposal.Set{
 		SignalRef: fp,
-		Status:    &clank.ProposalStatus{Phase: "proposed"},
+		Status:    &proposal.Status{Phase: "proposed"},
 	}
 }
 
@@ -333,8 +327,8 @@ func TestPropose_WhenModelDeclines_YieldsNoAction(t *testing.T) {
 	if diff := cmp.Diff("no live corroboration for the topology hypothesis", got.Status.Reason); diff != "" {
 		t.Error("a reasoned decline must carry its reason (-want +got)\n", diff)
 	}
-	if len(sink.delivered) != 0 {
-		t.Errorf("no_action must deliver nothing: delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Errorf("no_action must deliver nothing: delivered %d", len(sink.Delivered))
 	}
 }
 
@@ -356,8 +350,8 @@ func TestPropose_StopsAtMaxSteps_YieldsBudgetExhausted(t *testing.T) {
 	if diff := cmp.Diff("budget_exhausted", got.Status.Phase); diff != "" {
 		t.Error("falling out of the loop should be budget_exhausted (-want +got)\n", diff)
 	}
-	if len(sink.delivered) != 0 {
-		t.Errorf("budget_exhausted delivers nothing %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Errorf("budget_exhausted delivers nothing %d", len(sink.Delivered))
 	}
 }
 
@@ -419,8 +413,8 @@ func TestPropose_WhenModelEndsTurnWithoutATool_YieldsSyntheticReason(t *testing.
 	if diff := cmp.Diff("model ended turn without a tool call", got.Status.Reason); diff != "" {
 		t.Error("an empty-handed turn needs its own synthetic reason (-want +got)\n", diff)
 	}
-	if len(sink.delivered) != 0 {
-		t.Errorf("no_action must deliver nothing: delivered %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Errorf("no_action must deliver nothing: delivered %d", len(sink.Delivered))
 	}
 }
 
@@ -476,19 +470,19 @@ func TestPropose_RejectsACandidateOutsideTheCatalog(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Proposals:    []clank.Candidate{{ID: "neerdowell", ContractRef: "rm -rf"}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Proposals:    []proposal.Candidate{{ID: "neerdowell", ContractRef: "rm -rf"}},
 		})}}},
 	}}
 
 	e, sink := newTestEngine(model)
 	_, err := e.Propose(context.Background(), sigBurnAccel())
-	if !errors.Is(err, clank.ErrOutsideCatalog) {
+	if !errors.Is(err, contract.ErrOutsideCatalog) {
 		t.Fatalf("a contract the catalog doesn't list must be rejected: got %v", err)
 	}
-	if len(sink.delivered) != 0 {
-		t.Errorf("a rejected set must never be delivered: %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Errorf("a rejected set must never be delivered: %d", len(sink.Delivered))
 	}
 }
 
@@ -498,9 +492,9 @@ func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	sig := sigBurnAccel()
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89}},
 		})}}},
 	}}
 	e, sink := newTestEngine(model)
@@ -515,8 +509,8 @@ func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	if got.Gate.DedupeOK {
 		t.Errorf("an open proposal on the same fingerprint must fail dedupe: %+v", got.Gate)
 	}
-	if len(sink.delivered) != 0 {
-		t.Errorf("a suppressed set is recorded, not delivered: %d", len(sink.delivered))
+	if len(sink.Delivered) != 0 {
+		t.Errorf("a suppressed set is recorded, not delivered: %d", len(sink.Delivered))
 	}
 }
 
@@ -524,9 +518,9 @@ func TestPropose_FreezesTheSAOIntoTheSet(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
 		})}}},
 	}}
 	e, _ := newTestEngine(model)
@@ -544,9 +538,9 @@ func TestPropose_AttachesCausalScoresToTheSet(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
 		})}}},
 	}}
 	e, _ := newTestEngine(model)

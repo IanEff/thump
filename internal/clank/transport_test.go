@@ -9,7 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
 
@@ -56,27 +59,27 @@ func newProposingEngine(t *testing.T, outbox string) *clank.Engine {
 		// turn 1: gather live evidence — required for the gate's evidence floor.
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
 		// turn 2: propose a catalogued action.
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 
 	return &clank.Engine{
 		Intake: clank.NewIntake(
-			fakeTopo{snap: clank.TopologySnapshot{
-				Downstream: []clank.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+			fakeTopo{snap: proposal.TopologySnapshot{
+				Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
 			}},
-			fakeChange{snap: clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+			fakeChange{snap: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
 			}}},
 		),
 		Model: model,
 		Tools: map[string]clank.Tool{"metrics": metricsTool{}},
-		Catalog: clank.NewStaticCatalog([]clank.ActionContract{{
+		Catalog: contract.NewStaticCatalog([]contract.ActionContract{{
 			Name:                     "throttle-non-critical-paths",
-			ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 			ApplicableTiers:          []string{"tier-1"},
 		}}),
 		Ranker:       clank.NewRanker(),
@@ -85,7 +88,7 @@ func newProposingEngine(t *testing.T, outbox string) *clank.Engine {
 		Scorer:       clank.NewCausalScorer(),
 		DedupeWindow: time.Hour,
 		Ledger:       clank.NewMemProposalLog(),
-		Pub:          &clank.DirPublisher{Dir: outbox},
+		Pub:          &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: func(ps proposal.Set) string { return ps.SignalRef }},
 		MaxSteps:     8,
 	}
 }

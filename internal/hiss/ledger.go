@@ -1,46 +1,22 @@
 package hiss
 
 import (
-	"sync"
 	"time"
+
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/internal/ledger"
 )
 
-// DecisionLog is hiss' append-only ledger.
+// DecisionLog is hiss' append-only ledger of the verdicts it reached — the
+// generic ledger.Log plus one hiss-specific query.
 type DecisionLog struct {
-	mu        sync.RWMutex
-	decisions []Decision
+	*ledger.Log[decision.Decision]
 }
 
 func NewDecisionLog() *DecisionLog {
-	return &DecisionLog{}
+	return &DecisionLog{Log: ledger.NewLog(func(d decision.Decision) time.Time { return d.EvaluatedAt })}
 }
 
-func (l *DecisionLog) Record(d Decision) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.decisions = append(l.decisions, d)
-}
-
-func (l *DecisionLog) ByVerdict(v Verdict) []Decision {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	var out []Decision
-	for _, d := range l.decisions {
-		if d.Verdict == v {
-			out = append(out, d)
-		}
-	}
-	return out
-}
-
-func (l *DecisionLog) Since(cut time.Time) []Decision {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	var out []Decision
-	for _, d := range l.decisions {
-		if d.EvaluatedAt.After(cut) {
-			out = append(out, d)
-		}
-	}
-	return out
+func (l *DecisionLog) ByVerdict(v decision.Verdict) []decision.Decision {
+	return l.Filter(func(d decision.Decision) bool { return d.Verdict == v })
 }

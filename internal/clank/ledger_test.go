@@ -17,7 +17,7 @@ func TestProposalLog_OpenRespectsTheDedupeWindow(t *testing.T) {
 	ctx := context.Background()
 	log := clank.NewMemProposalLog()
 	at := time.Now()
-	if err := log.Record(ctx, clank.ProposalSet{SignalRef: "fp-1", Status: &clank.ProposalStatus{Phase: "proposed"}}); err != nil {
+	if err := log.Record(ctx, proposal.Set{SignalRef: "fp-1", Status: &proposal.Status{Phase: "proposed"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -41,9 +41,9 @@ func TestProposalLog_OpenIgnoresClosedSets(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	log := clank.NewMemProposalLog()
-	if err := log.Record(ctx, clank.ProposalSet{
+	if err := log.Record(ctx, proposal.Set{
 		SignalRef: "fp-1",
-		Status:    &clank.ProposalStatus{Phase: "closed"},
+		Status:    &proposal.Status{Phase: "closed"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestObserve_TouchesStatusAndNothingElse(t *testing.T) {
 
 	// everything except Status crossed the transition untouched:
 	want := clickSet()
-	want.Status = &clank.ProposalStatus{
+	want.Status = &proposal.Status{
 		Phase:      proposal.PhaseClosed,
 		Outcome:    "success",
 		ObservedAt: liveSuccess().ExecutedAt,
@@ -200,21 +200,21 @@ func seededLedger(t *testing.T) *clank.MemProposalLog {
 	return l
 }
 
-func clickSet() clank.ProposalSet {
-	return clank.ProposalSet{
+func clickSet() proposal.Set {
+	return proposal.Set{
 		Name:         "ps-ceph-rgw-001",
 		SignalRef:    "slo_burn:ceph-rgw", // rattle's fingerprint — the case base's key
-		FailureClass: clank.ClassDependencySaturation,
+		FailureClass: proposal.ClassDependencySaturation,
 		ServiceTier:  "tier-1",
 		Gate: &clank.GateResult{ // recorded sets that produced outcomes were gated — the fixture models reality
 			BudgetOK: true, DedupeOK: true, EvidenceOK: true, Passed: true,
 		},
-		Proposals: []clank.Candidate{{
+		Proposals: []proposal.Candidate{{
 			ID: "p1", ContractRef: "throttle-non-critical-paths",
 			Confidence: 0.87, // → Case.Confidence — the STATED half of CE's pair
 			Rank:       1,
 		}},
 		Recommended: "p1",
-		Status:      &clank.ProposalStatus{Phase: proposal.PhaseProposed}, // engine.go:42,140
+		Status:      &proposal.Status{Phase: proposal.PhaseProposed}, // engine.go:42,140
 	}
 }

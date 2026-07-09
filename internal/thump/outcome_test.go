@@ -3,13 +3,13 @@ package thump_test
 import (
 	"testing"
 
-	"github.com/ianeff/thump/internal/thump"
+	"github.com/ianeff/thump/api/v1/outcome"
 )
 
 func TestOutcomeAuditable(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
-		o       thump.Outcome
+		o       outcome.Outcome
 		wantErr bool
 	}{
 		"Auditable accepts a fully stamped dry-run outcome": {

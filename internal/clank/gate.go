@@ -3,12 +3,12 @@ package clank
 import "github.com/ianeff/thump/api/v1/proposal"
 
 // GateResult moved to internal/proposal (hiss Wave 1): hiss reads it off the
-// ProposalSet. The gate that produces it stays here — behavior doesn't move.
+// proposal.Set. The gate that produces it stays here — behavior doesn't move.
 type GateResult = proposal.GateResult
 
 type ReadinessGate struct{}
 
-func (g ReadinessGate) Evaluate(ps ProposalSet, openDupes []ProposalSet) GateResult {
+func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateResult {
 	budgetOK := true
 	dedupeOK := len(openDupes) == 0
 	evidenceOK := anyLive(ps.Evidence)
@@ -35,7 +35,7 @@ func (g ReadinessGate) Evaluate(ps ProposalSet, openDupes []ProposalSet) GateRes
 	}
 }
 
-func anyLive(refs []EvidenceRef) bool {
+func anyLive(refs []proposal.EvidenceRef) bool {
 	for _, ref := range refs {
 		if ref.Live {
 			return true

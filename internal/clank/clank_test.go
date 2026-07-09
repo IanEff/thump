@@ -11,7 +11,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
 )
 
 func TestMain_VersionFlag(t *testing.T) {
@@ -89,55 +91,6 @@ func TestMain_MissingAPIKeyReturnsOne(t *testing.T) {
 	}
 }
 
-func TestRunLoop_ReturnsPromptlyWhenContextIsCancelled(t *testing.T) {
-	t.Parallel()
-	outbox := t.TempDir()
-	tr := &clank.Transport{Inbox: t.TempDir(), Engine: newProposingEngine(t, outbox)}
-	re := &clank.ReturnEdge{
-		Inbox: t.TempDir(),
-		Click: clank.Click{Ledger: clank.NewMemProposalLog(), Cases: clank.NewCaseBase()},
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancelled before runLoop even starts — the ticker (5s) must never win this race
-
-	done := make(chan struct{})
-	go func() {
-		clank.RunLoopForTest(ctx, tr, re)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("runLoop did not return promptly after its context was cancelled")
-	}
-}
-
-func TestNextDelay_GrowsCapsAndResets(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name string
-		cur  time.Duration
-		ok   bool
-		want time.Duration
-	}{
-		{"first failure doubles from current", 5 * time.Second, false, 10 * time.Second},
-		{"caps instead of overshooting", 4 * time.Minute, false, 5 * time.Minute},
-		{"already at cap stays at cap", 5 * time.Minute, false, 5 * time.Minute},
-		{"success snaps back to base regardless of cur", 3 * time.Minute, true, 5 * time.Second},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := clank.NextDelayForTest(tt.cur, tt.ok)
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Error("nextDelay (-want +got)\n", diff)
-			}
-		})
-	}
-}
-
 func TestMain_TheEngineAndReturnEdgeShareOneLedgerAndCaseBase(t *testing.T) {
 	t.Parallel()
 	// build the loop the way Main does, then prove the two halves are wired to
@@ -189,24 +142,24 @@ func newTestLoop(t *testing.T) testLoop {
 		// turn 1: gather live evidence — required for the gate's evidence floor.
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
 		// turn 2: propose a catalogued action.
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, clank.ProposalSet{
-			FailureClass: clank.ClassDependencySaturation,
-			Hypotheses:   []clank.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
-			Proposals:    []clank.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 		})}}},
 	}}
 	tools := map[string]clank.Tool{"metrics": metricsTool{}}
 	intake := clank.NewIntake(
-		fakeTopo{snap: clank.TopologySnapshot{
-			Downstream: []clank.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+		fakeTopo{snap: proposal.TopologySnapshot{
+			Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
 		}},
-		fakeChange{snap: clank.ChangeSnapshot{Events: []clank.ChangeEvent{
+		fakeChange{snap: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 			{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
 		}}},
 	)
-	cat := clank.NewStaticCatalog([]clank.ActionContract{{
+	cat := contract.NewStaticCatalog([]contract.ActionContract{{
 		Name:                     "throttle-non-critical-paths",
-		ApplicableFailureClasses: []clank.FailureClass{clank.ClassDependencySaturation},
+		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 		ApplicableTiers:          []string{"tier-1"},
 	}})
 	store := clank.NewMemStore()
@@ -218,7 +171,7 @@ func newTestLoop(t *testing.T) testLoop {
 // writeOutcomeFor drops a live-success Outcome answering the given set into
 // dir, threading the SignalRef and a candidate's ContractRef through — the
 // fields ReturnEdge.Tick / MemProposalLog.Observe actually match on.
-func writeOutcomeFor(t *testing.T, dir string, set clank.ProposalSet) {
+func writeOutcomeFor(t *testing.T, dir string, set proposal.Set) {
 	t.Helper()
 	o := outcome.Outcome{
 		ID:          "out:" + set.SignalRef + ":1000",

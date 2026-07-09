@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/hiss"
 	"sigs.k8s.io/yaml"
@@ -28,7 +29,7 @@ func TestEvaluate_EscalatesBelowTheConfidenceFloor(t *testing.T) {
 
 	got := decide(t, ps, calmPolicy())
 
-	if diff := cmp.Diff(hiss.VerdictEscalate, got.Verdict); diff != "" {
+	if diff := cmp.Diff(decision.VerdictEscalate, got.Verdict); diff != "" {
 		t.Error("sub-floor confidence must escalate, not approve (-want +got)", diff)
 	}
 	if diff := cmp.Diff([]string{hiss.ReasonConfidenceFloor}, got.Reasons); diff != "" {
@@ -49,25 +50,25 @@ func TestEvaluate_HoldsTheAuthorityCeiling(t *testing.T) {
 	// calmPolicy: MaxBand["tier-1"] = act_reversible.
 	cases := map[string]struct {
 		gov         *proposal.GovernanceLevel
-		wantVerdict hiss.Verdict
+		wantVerdict decision.Verdict
 		wantReasons []string
 	}{
 		"Evaluate escalates a request above the tier ceiling": {
-			gov:         &proposal.GovernanceLevel{Band: string(hiss.BandActDisruptive)},
-			wantVerdict: hiss.VerdictEscalate,
+			gov:         &proposal.GovernanceLevel{Band: string(decision.BandActDisruptive)},
+			wantVerdict: decision.VerdictEscalate,
 			wantReasons: []string{hiss.ReasonAuthorityCeiling},
 		},
 		"Evaluate approves a request exactly at the tier ceiling": {
-			gov:         &proposal.GovernanceLevel{Band: string(hiss.BandActReversible)},
-			wantVerdict: hiss.VerdictApproved,
+			gov:         &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
+			wantVerdict: decision.VerdictApproved,
 		},
 		"Evaluate treats an absent band as the lowest request, never elevated": {
 			gov:         nil, // clank doesn't populate GovernanceLevel yet (D-3)
-			wantVerdict: hiss.VerdictApproved,
+			wantVerdict: decision.VerdictApproved,
 		},
 		"Evaluate escalates a band it cannot parse": {
 			gov:         &proposal.GovernanceLevel{Band: "sudo_everything"},
-			wantVerdict: hiss.VerdictEscalate, // can't grant what you can't parse
+			wantVerdict: decision.VerdictEscalate, // can't grant what you can't parse
 			wantReasons: []string{hiss.ReasonAuthorityCeiling},
 		},
 	}
@@ -96,7 +97,7 @@ func TestEvaluate_VetoesACandidateWithNoReversalPath(t *testing.T) {
 
 	got := decide(t, ps, calmPolicy())
 
-	if diff := cmp.Diff(hiss.VerdictEscalate, got.Verdict); diff != "" {
+	if diff := cmp.Diff(decision.VerdictEscalate, got.Verdict); diff != "" {
 		t.Error("an irreversible candidate can NEVER be auto-approved (-want +got)", diff)
 	}
 	if diff := cmp.Diff([]string{hiss.ReasonIrreversible}, got.Reasons); diff != "" {
@@ -114,17 +115,17 @@ func TestEvaluate_EscalatesInsideAFreezeWindowOnly(t *testing.T) {
 	}
 	cases := map[string]struct {
 		freezes     []hiss.Window
-		wantVerdict hiss.Verdict
+		wantVerdict decision.Verdict
 		wantReasons []string
 	}{
 		"Evaluate escalates while a freeze window is open": {
 			freezes:     window(-time.Hour, time.Hour), // now is inside
-			wantVerdict: hiss.VerdictEscalate,
+			wantVerdict: decision.VerdictEscalate,
 			wantReasons: []string{hiss.ReasonFreezeWindow + ":q3-change-freeze"}, // the WINDOW'S NAME rides in the reason
 		},
 		"Evaluate approves once the freeze window has closed": {
 			freezes:     window(-3*time.Hour, -time.Hour), // now is after
-			wantVerdict: hiss.VerdictApproved,
+			wantVerdict: decision.VerdictApproved,
 		},
 	}
 	for name, tc := range cases {
@@ -183,7 +184,7 @@ func TestEvaluate_RejectsInputThatIsNotFitToGovern(t *testing.T) {
 
 			got := decide(t, ps, calmPolicy())
 
-			if diff := cmp.Diff(hiss.VerdictRejected, got.Verdict); diff != "" {
+			if diff := cmp.Diff(decision.VerdictRejected, got.Verdict); diff != "" {
 				t.Error("input unfit to govern must be REJECTED, not escalated (-want +got)", diff)
 			}
 			if diff := cmp.Diff([]string{hiss.ReasonUngatedInput}, got.Reasons); diff != "" {
@@ -212,7 +213,7 @@ func TestAuthority_LivePolicyApprovesAStampedReversibleAct(t *testing.T) {
 		Proposals: []proposal.Candidate{{
 			ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
 			ReversalPath:    &proposal.ReversalPath{Method: "release-rebalance"},
-			GovernanceLevel: &proposal.GovernanceLevel{Band: string(hiss.BandActReversible)},
+			GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 		}},
 		Recommended: "p1", Status: &proposal.Status{Phase: "proposed"},
 	}
@@ -220,15 +221,15 @@ func TestAuthority_LivePolicyApprovesAStampedReversibleAct(t *testing.T) {
 	var auth hiss.Authority
 	dec := auth.Evaluate(ps, pol, time.Now())
 
-	if diff := cmp.Diff(hiss.VerdictApproved, dec.Verdict); diff != "" {
+	if diff := cmp.Diff(decision.VerdictApproved, dec.Verdict); diff != "" {
 		t.Fatalf("live policy must admit a stamped reversible hold-rebalance (-want +got)\n%s\nreasons: %v", diff, dec.Reasons)
 	}
-	if diff := cmp.Diff(hiss.BandActReversible, dec.GrantedBand); diff != "" {
+	if diff := cmp.Diff(decision.BandActReversible, dec.GrantedBand); diff != "" {
 		t.Error("granted band should mirror the requested act_reversible band (-want +got)", diff)
 	}
 }
 
-func decide(t *testing.T, ps proposal.Set, pol hiss.Policy) hiss.Decision {
+func decide(t *testing.T, ps proposal.Set, pol hiss.Policy) decision.Decision {
 	t.Helper()
 	var auth hiss.Authority
 	got := auth.Evaluate(ps, pol, frozenNow())
@@ -279,7 +280,7 @@ func calmPolicy() hiss.Policy {
 		Floors: map[string]map[proposal.FailureClass]float64{
 			"tier-1": {proposal.ClassDependencySaturation: 0.75},
 		},
-		MaxBand:         map[string]hiss.Band{"tier-1": hiss.BandActReversible},
+		MaxBand:         map[string]decision.Band{"tier-1": decision.BandActReversible},
 		FreezeWindows:   nil,  // Claim 6 adds one
 		RequireReversal: true, // prod posture, always (I-12)
 	}

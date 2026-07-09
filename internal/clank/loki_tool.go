@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ianeff/thump/api/v1/proposal"
 )
 
 type lokiInput struct {
@@ -43,10 +45,10 @@ func (l *LokiTool) Spec() ToolSpec {
 
 // Run executes the query_range request. It returns Live:true only if the
 // response contains at least one log line.
-func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, error) {
+func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.EvidenceRef, error) {
 	var input lokiInput
 	if err := json.Unmarshal(args, &input); err != nil {
-		return EvidenceRef{}, fmt.Errorf("decode loki args: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("decode loki args: %w", err)
 	}
 
 	logQL := buildLogQL(input.Namespace, input.Labels, input.Query)
@@ -57,7 +59,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 	}
 	lb, err := time.ParseDuration(lookback)
 	if err != nil {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "loki",
 			Query:   logQL,
 			Summary: fmt.Sprintf("invalid lookback: %v", err),
@@ -75,7 +77,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 
 	u, err := url.Parse(l.BaseURL + "/loki/api/v1/query_range")
 	if err != nil {
-		return EvidenceRef{}, fmt.Errorf("parse url: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("parse url: %w", err)
 	}
 	u.RawQuery = url.Values{
 		"query": {logQL},
@@ -86,7 +88,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return EvidenceRef{}, fmt.Errorf("new request: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("new request: %w", err)
 	}
 
 	client := l.Client
@@ -96,7 +98,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "loki",
 			Query:   logQL,
 			Summary: fmt.Sprintf("loki request failed: %v", err),
@@ -108,7 +110,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "loki",
 			Query:   logQL,
 			Summary: fmt.Sprintf("loki returned status: %s", resp.Status),
@@ -125,7 +127,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "loki",
 			Query:   logQL,
 			Summary: fmt.Sprintf("decode loki response: %v", err),
@@ -143,7 +145,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 	}
 
 	if total == 0 {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "loki",
 			Query:   logQL,
 			Summary: "no matching log lines",
@@ -156,7 +158,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, 
 		summary += "; last: " + truncateLine(lastLine, 200)
 	}
 
-	return EvidenceRef{
+	return proposal.EvidenceRef{
 		Tool:    "loki",
 		Query:   logQL,
 		Summary: summary,

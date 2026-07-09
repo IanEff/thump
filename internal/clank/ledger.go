@@ -24,7 +24,7 @@ func NewMemProposalLog() *MemProposalLog {
 	return &MemProposalLog{}
 }
 
-func (l *MemProposalLog) Record(ctx context.Context, ps ProposalSet) error {
+func (l *MemProposalLog) Record(ctx context.Context, ps proposal.Set) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -49,13 +49,13 @@ func (l *MemProposalLog) Record(ctx context.Context, ps ProposalSet) error {
 	return nil
 }
 
-func (l *MemProposalLog) Open(ctx context.Context, fingerprint string, since time.Time) ([]ProposalSet, error) {
+func (l *MemProposalLog) Open(ctx context.Context, fingerprint string, since time.Time) ([]proposal.Set, error) {
 	if ctx.Err() != nil {
-		return []ProposalSet{}, ctx.Err()
+		return []proposal.Set{}, ctx.Err()
 	}
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	var open []ProposalSet
+	var open []proposal.Set
 	for _, r := range l.sets {
 		if r.set.SignalRef == fingerprint && r.at.After(since) && isOpen(r.set.Status.Phase) {
 			open = append(open, r.set)
@@ -64,9 +64,9 @@ func (l *MemProposalLog) Open(ctx context.Context, fingerprint string, since tim
 	return open, nil
 }
 
-func (l *MemProposalLog) Observe(ctx context.Context, o outcome.Outcome) (ProposalSet, error) {
+func (l *MemProposalLog) Observe(ctx context.Context, o outcome.Outcome) (proposal.Set, error) {
 	if ctx.Err() != nil {
-		return ProposalSet{}, ctx.Err()
+		return proposal.Set{}, ctx.Err()
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -79,10 +79,10 @@ func (l *MemProposalLog) Observe(ctx context.Context, o outcome.Outcome) (Propos
 		r.set.Status = &st
 		return r.set, nil
 	}
-	return ProposalSet{}, fmt.Errorf("%w: %s", ErrNoOpenSet, o.SignalRef)
+	return proposal.Set{}, fmt.Errorf("%w: %s", ErrNoOpenSet, o.SignalRef)
 }
 
-func transition(st ProposalStatus, o outcome.Outcome) ProposalStatus {
+func transition(st proposal.Status, o outcome.Outcome) proposal.Status {
 	st.ObservedAt = o.ExecutedAt
 	switch o.Result {
 	case outcome.ResultRendered:
@@ -105,6 +105,6 @@ func isOpen(phase string) bool {
 }
 
 type recorded struct {
-	set ProposalSet
+	set proposal.Set
 	at  time.Time
 }

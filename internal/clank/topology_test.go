@@ -58,7 +58,7 @@ spec:
 		t.Fatalf("Topology: %v", err)
 	}
 
-	want := clank.TopologySnapshot{
+	want := proposal.TopologySnapshot{
 		Upstream: []proposal.NodeState{
 			{Name: "cephobjectstore", State: whir.StateHealthy},
 			{Name: "rook-operator", State: whir.StateDegraded},

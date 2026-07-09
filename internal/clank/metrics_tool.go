@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"sigs.k8s.io/yaml"
 )
 
@@ -57,15 +58,15 @@ func (m *MetricsTool) Spec() ToolSpec {
 }
 
 // Run executes the query.  It returns Live:true only if it gets a fresh, non-error, non-empty result.
-func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRef, error) {
+func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.EvidenceRef, error) {
 	var input metricsInput
 	if err := json.Unmarshal(args, &input); err != nil {
-		return EvidenceRef{}, fmt.Errorf("decode args: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("decode args: %w", err)
 	}
 
 	promQL, ok := m.Queries[input.Q]
 	if !ok {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
 			Summary: fmt.Sprintf("no such evidence query: %s", input.Q),
@@ -75,13 +76,13 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRe
 
 	u, err := url.Parse(m.BaseURL + "/api/v1/query")
 	if err != nil {
-		return EvidenceRef{}, fmt.Errorf("parse url: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("parse url: %w", err)
 	}
 	u.RawQuery = url.Values{"query": {promQL}}.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return EvidenceRef{}, fmt.Errorf("new request: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("new request: %w", err)
 	}
 
 	client := m.Client
@@ -91,7 +92,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRe
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
 			Summary: fmt.Sprintf("prometheus request failed: %v", err),
@@ -103,7 +104,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRe
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
 			Summary: fmt.Sprintf("prometheus returned status: %s", resp.Status),
@@ -120,11 +121,11 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRe
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return EvidenceRef{}, nil
+		return proposal.EvidenceRef{}, nil
 	}
 
 	if len(body.Data.Result) == 0 {
-		return EvidenceRef{
+		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
 			Summary: "query returned no data",
@@ -134,10 +135,10 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (EvidenceRe
 
 	var v string
 	if err := json.Unmarshal(body.Data.Result[0].Value[1], &v); err != nil {
-		return EvidenceRef{}, fmt.Errorf("decode value string: %w", err)
+		return proposal.EvidenceRef{}, fmt.Errorf("decode value string: %w", err)
 	}
 
-	return EvidenceRef{
+	return proposal.EvidenceRef{
 		Tool:    "metrics",
 		Query:   input.Q,
 		Summary: fmt.Sprintf("%s = %s", input.Q, v),

@@ -36,7 +36,7 @@ func TestTick_GoldenRun_OneSetInOneDecisionOut(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(inbox, "processed", "ps-001.yaml")); err != nil {
 		t.Error("processed input must move to processed/, not vanish:", err)
 	}
-	if n := len(tr.Log.ByVerdict(hiss.VerdictApproved)); n != 1 {
+	if n := len(tr.Log.ByVerdict(decision.VerdictApproved)); n != 1 {
 		t.Errorf("one Evaluate must mean one ledger record, got %d", n)
 	}
 }
@@ -56,7 +56,7 @@ func TestTick_PoisonPill_QuarantinesAndSurvives(t *testing.T) {
 	}
 
 	// the good file still got decided — the poison didn't block the queue
-	if got := readOneGoverned(t, outbox); got.Decision.Verdict != hiss.VerdictApproved {
+	if got := readOneGoverned(t, outbox); got.Decision.Verdict != decision.VerdictApproved {
 		t.Errorf("the healthy set must still be decided: %+v", got)
 	}
 	// the poison is quarantined where a human can find it, not deleted
@@ -129,24 +129,5 @@ func newTestTransport(inbox, outbox string) *hiss.Transport {
 		Policy: calmPolicy(),
 		Log:    hiss.NewDecisionLog(),
 		Now:    frozenNow,
-	}
-}
-
-func TestWriteAtomicIsInvisibleToGlob(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create a mock temp file matching our atomic pattern
-	tmpPath := filepath.Join(dir, ".tmp-12345")
-	if err := os.WriteFile(tmpPath, []byte("partial write"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify the glob pattern used by the consumers misses it
-	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) > 0 {
-		t.Errorf("expected 0 matches, got %d", len(matches))
 	}
 }

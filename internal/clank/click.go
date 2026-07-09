@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"sigs.k8s.io/yaml"
 )
 
@@ -42,7 +43,7 @@ func coherent(o outcome.Outcome) bool {
 	return o.Result != outcome.ResultRendered
 }
 
-func newCase(set ProposalSet, o outcome.Outcome) Case {
+func newCase(set proposal.Set, o outcome.Outcome) Case {
 	var conf float64
 	for _, cand := range set.Proposals {
 		if cand.ID == set.Recommended {

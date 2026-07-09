@@ -3,15 +3,17 @@ package clank
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/ianeff/thump/api/v1/proposal"
 )
 
 type Tool interface {
 	Spec() ToolSpec
-	Run(ctx context.Context, args json.RawMessage) (EvidenceRef, error)
+	Run(ctx context.Context, args json.RawMessage) (proposal.EvidenceRef, error)
 }
 
 // ProposeToolSpec is the model's terminal `propose` tool: the leading
-// FailureClass, the competing hypotheses, and the candidate actions (each drawn
+// proposal.FailureClass, the competing hypotheses, and the candidate actions (each drawn
 // from the catalog). Its input schema is generated from proposeInput, so the
 // shape the model is held to is the shape the engine decodes.
 func ProposeToolSpec() ToolSpec {

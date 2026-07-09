@@ -7,15 +7,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/publish"
 )
 
 func TestDirPublisher_WritesOneFilePerProposalSet(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	pub := &clank.DirPublisher{Dir: dir}
+	pub := &publish.DirPublisher[proposal.Set]{Dir: dir, Name: func(ps proposal.Set) string { return ps.SignalRef }}
 
-	if err := pub.Publish(context.Background(), "thump.propsals", clank.ProposalSet{
+	if err := pub.Publish(context.Background(), "thump.propsals", proposal.Set{
 		Name: "n", SignalRef: "slo_burn:ceph-rgw",
 	}); err != nil {
 		t.Fatal(err)
@@ -27,31 +29,12 @@ func TestDirPublisher_WritesOneFilePerProposalSet(t *testing.T) {
 	}
 }
 
-func TestWriteAtomicIsInvisibleToGlob(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create a mock temp file matching our atomic pattern
-	tmpPath := filepath.Join(dir, ".tmp-12345")
-	if err := os.WriteFile(tmpPath, []byte("partial write"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify the glob pattern used by the consumers misses it
-	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) > 0 {
-		t.Errorf("expected 0 matches, got %d", len(matches))
-	}
-}
-
 func ExampleYAMLPublisher_Publish() {
 	pub := &clank.YAMLPublisher{W: os.Stdout}
-	if err := pub.Publish(context.Background(), "thump.proposals", clank.ProposalSet{
-		FailureClass: clank.ClassDependencySaturation,
+	if err := pub.Publish(context.Background(), "thump.proposals", proposal.Set{
+		FailureClass: proposal.ClassDependencySaturation,
 		Recommended:  "prop-001",
-		Proposals: []clank.Candidate{
+		Proposals: []proposal.Candidate{
 			{ID: "prop-001", ContractRef: "throttle-non-critical-paths", Rank: 1},
 		},
 	}); err != nil {

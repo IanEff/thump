@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 )
 
@@ -19,8 +20,8 @@ func TestGate(t *testing.T) {
 	}
 
 	cases := map[string]struct {
-		ps        clank.ProposalSet
-		openDupes []clank.ProposalSet
+		ps        proposal.Set
+		openDupes []proposal.Set
 		want      verdict
 	}{
 		"Gate rejects a set citing no live evidence": {
@@ -33,7 +34,7 @@ func TestGate(t *testing.T) {
 		},
 		"Gate suppresses a set with an open duplicate": {
 			ps:        psWithLiveEvidence(),
-			openDupes: []clank.ProposalSet{{}},
+			openDupes: []proposal.Set{{}},
 			want:      verdict{Passed: false, Reason: "dedupe"},
 		},
 		"Gate admits a set with live evidence and no dupe": {
@@ -55,14 +56,14 @@ func TestGate(t *testing.T) {
 	}
 }
 
-func psWithLiveEvidence() clank.ProposalSet {
-	return clank.ProposalSet{Name: "live_evidence", Evidence: []clank.EvidenceRef{{Live: true}}}
+func psWithLiveEvidence() proposal.Set {
+	return proposal.Set{Name: "live_evidence", Evidence: []proposal.EvidenceRef{{Live: true}}}
 }
 
-func psHistoricalOnly() clank.ProposalSet {
-	return clank.ProposalSet{Name: "historical_evidence", Evidence: []clank.EvidenceRef{{Live: false}}}
+func psHistoricalOnly() proposal.Set {
+	return proposal.Set{Name: "historical_evidence", Evidence: []proposal.EvidenceRef{{Live: false}}}
 }
 
-func psWithNoEvidence() clank.ProposalSet {
-	return clank.ProposalSet{Name: "no_evidence"}
+func psWithNoEvidence() proposal.Set {
+	return proposal.Set{Name: "no_evidence"}
 }
