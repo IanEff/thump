@@ -8,8 +8,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
@@ -25,6 +29,19 @@ type Transport struct {
 	Policy Policy                               // the floors, ceilings, and freeze windows Authority.Evaluate governs against
 	Log    *DecisionLog                         // every Decision reached, queryable by ByVerdict
 	Now    func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
+	Tracer trace.Tracer                         // spans "govern" under whatever trace ctx already carries; nil-safe via tracer()
+	Stages *beat.StageRecorder                  // RED metrics for "govern" — nil-safe, same discipline as Tracer
+}
+
+// tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
+// and every existing test keeps compiling untouched. handle never mints a
+// root or forces a TraceID: in production that context already arrived on
+// ctx, propagated from clank's publish over JetStream headers.
+func (tr *Transport) tracer() trace.Tracer {
+	if tr.Tracer == nil {
+		return noop.Tracer{}
+	}
+	return tr.Tracer
 }
 
 // Tick performs one poll pass: list Inbox, decode each file, evaluate it
@@ -72,8 +89,12 @@ func (tr *Transport) handle(ctx context.Context, ps proposal.Set) error {
 	if tr.Now != nil {
 		now = tr.Now
 	}
-	var auth Authority
-	d := auth.Evaluate(ps, tr.Policy, now())
+	var d decision.Decision
+	_ = beat.Stage(ctx, tr.tracer(), tr.Stages, "govern", func(context.Context) error {
+		var auth Authority
+		d = auth.Evaluate(ps, tr.Policy, now())
+		return nil
+	})
 	tr.Log.Record(d)
 	slog.Info("decision", "fingerprint", ps.SignalRef, "verdict", d.Verdict, "reasons", d.Reasons, "requestedBand", d.RequestedBand, "grantedBand", d.GrantedBand)
 	return tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: ps})

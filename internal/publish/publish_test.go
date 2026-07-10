@@ -8,11 +8,14 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"sigs.k8s.io/yaml"
 
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/tracing"
 	"github.com/ianeff/thump/internal/wire"
 )
 
@@ -149,5 +152,47 @@ func TestJetPublisher_PublishesDecodableBytes(t *testing.T) {
 	}
 	if diff := cmp.Diff(in, got); diff != "" {
 		t.Error("published object didn't survive the wire (-want +got)", diff)
+	}
+}
+
+// TestJetPublisher_InjectsTheActiveTraceIntoMessageHeaders pins B1's wire
+// mechanics: Publish must propagate whatever span is already active on ctx
+// into the outgoing NATS message headers, so a downstream beat's Subscriber
+// can reconstruct the same trace — no api/v1 schema change, the boundary
+// object's bytes are untouched.
+func TestJetPublisher_InjectsTheActiveTraceIntoMessageHeaders(t *testing.T) {
+	t.Parallel()
+	js := natstest.New(t)
+	ctx := context.Background()
+
+	if _, err := js.CreateStream(ctx, jetstream.StreamConfig{
+		Name: "THUMP", Subjects: []string{"thump.>"},
+	}); err != nil {
+		t.Fatal("create stream:", err)
+	}
+
+	fp := "slo_burn:ceph-rgw"
+	want := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tracing.TraceIDFromFingerprint(fp),
+		SpanID:     trace.SpanID{1},
+		TraceFlags: trace.FlagsSampled,
+	})
+	ctx = trace.ContextWithSpanContext(ctx, want)
+
+	pub := publish.NewJetPublisher[signal.Detection](js)
+	if err := pub.Publish(ctx, "thump.detections", signal.Detection{Fingerprint: fp}); err != nil {
+		t.Fatal("publish:", err)
+	}
+
+	stream, _ := js.Stream(ctx, "THUMP")
+	raw, err := stream.GetLastMsgForSubject(ctx, "thump.detections")
+	if err != nil {
+		t.Fatal("get last msg:", err)
+	}
+
+	extracted := propagation.TraceContext{}.Extract(context.Background(), propagation.HeaderCarrier(raw.Header))
+	got := trace.SpanContextFromContext(extracted).TraceID()
+	if got != want.TraceID() {
+		t.Errorf("published message headers carry trace_id %s, want %s — Publish must inject the ctx's active span context into the NATS message headers", got, want.TraceID())
 	}
 }

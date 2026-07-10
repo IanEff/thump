@@ -12,10 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/publish/publishtest"
 	"github.com/ianeff/thump/internal/rattle"
+	"github.com/ianeff/thump/internal/tracing"
 	"github.com/ianeff/thump/internal/whir"
 )
 
@@ -117,6 +120,44 @@ func TestRunLoop_DeliversWhatItLogs(t *testing.T) {
 	rattle.RunLoopForTest(onceCtx(), r, discardLogger(), pub)
 	if len(pub.Delivered) != 1 {
 		t.Fatalf("want 1 delivery, got %d", len(pub.Delivered))
+	}
+}
+
+// traceCapturePublisher records the ctx a Publish call arrived with, not just
+// the object — publishtest.CapturePublisher only keeps the latter, and B1
+// needs the former: proof that runLoop minted the incident's root span
+// before ever calling Publish, not after.
+type traceCapturePublisher struct {
+	ctx       context.Context
+	delivered signal.Detection
+}
+
+func (c *traceCapturePublisher) Publish(ctx context.Context, _ string, d signal.Detection) error {
+	c.ctx = ctx
+	c.delivered = d
+	return nil
+}
+
+// TestRunLoop_PublishesWithTraceContextKeyedByFingerprint pins the one
+// bespoke line B1 needs from rattle: it's the only beat that mints a trace's
+// root — every downstream beat just extracts what's already on the wire (see
+// internal/broker/subscriber_test.go). The expected trace_id is derived from
+// whatever fingerprint the detection actually got, not a hardcoded literal,
+// so this test can't accidentally pass by coincidence.
+func TestRunLoop_PublishesWithTraceContextKeyedByFingerprint(t *testing.T) {
+	slo := rattle.SLO{ID: "ceph-osd-latency"}
+	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 4, 8)}) // fires once
+	pub := &traceCapturePublisher{}
+	rattle.RunLoopForTest(onceCtx(), r, discardLogger(), pub)
+
+	if pub.ctx == nil {
+		t.Fatal("Publish was never called")
+	}
+	want := tracing.TraceIDFromFingerprint(pub.delivered.Fingerprint)
+	got := trace.SpanContextFromContext(pub.ctx).TraceID()
+	if got != want {
+		t.Errorf("Publish's ctx carries trace_id %s, want %s (tracing.TraceIDFromFingerprint(%q)) — runLoop must mint the root span from the detection's fingerprint before publishing",
+			got, want, pub.delivered.Fingerprint)
 	}
 }
 

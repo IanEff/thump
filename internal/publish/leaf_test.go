@@ -16,6 +16,8 @@ func TestPublishIsALeafPackage(t *testing.T) {
 		"os", "path/filepath", "strconv", "strings", "sync", "time",
 		"sigs.k8s.io/yaml",
 		"github.com/ianeff/thump/internal/wire",
+		"github.com/nats-io/nats.go",
 		"github.com/nats-io/nats.go/jetstream",
+		"go.opentelemetry.io/otel/propagation",
 	)
 }

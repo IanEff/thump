@@ -15,6 +15,8 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
@@ -42,8 +44,19 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "hiss")
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "tracer setup: %v", err)
+		return 1
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
+
+	reg, shutdownMetrics := beat.Metrics("hiss")
+	defer func() { _ = shutdownMetrics(ctx) }()
+	stages := beat.NewStageRecorder(reg)
+
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, pol, stderr)
+		return runBroker(ctx, lc.NATSURL, pol, tracer, stages, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
@@ -67,6 +80,8 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		},
 		Policy: pol,
 		Log:    NewDecisionLog(),
+		Tracer: tracer,
+		Stages: stages,
 	}
 	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, tr.Tick)
 	return 0
@@ -74,7 +89,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 // runBroker is hiss's NATS branch: consume thump.proposals, evaluate
 // authority, publish thump.decisions.
-func runBroker(ctx context.Context, natsURL string, pol Policy, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -89,7 +104,7 @@ func runBroker(ctx context.Context, natsURL string, pol Policy, stderr io.Writer
 	}
 	defer func() { _ = closeW(ctx) }()
 
-	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog()}
+	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Tracer: tracer, Stages: stages}
 
 	return beat.ExitOnError(ctx, beat.RunConsumer[proposal.Set](ctx, js, "thump.proposals", tr.handle))
 }

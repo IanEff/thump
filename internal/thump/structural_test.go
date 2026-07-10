@@ -43,6 +43,13 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// touches nothing outside the process. Where OutcomeLog's append/query
 		// lives, not a new capability.
 		`"github.com/ianeff/thump/internal/ledger"`: true,
+		// B1: the bare OTel trace API — Tracer/Span interfaces and value types
+		// only (TraceID, SpanID). `go list -deps` shows zero net anywhere under
+		// it; the actual network-reaching half, the SDK's exporters, is never
+		// imported here — Main constructs and injects the real Tracer, same
+		// pattern as every other seam on Transport.
+		`"go.opentelemetry.io/otel/trace"`:      true,
+		`"go.opentelemetry.io/otel/trace/noop"`: true,
 	}
 
 	entries, err := os.ReadDir(".")

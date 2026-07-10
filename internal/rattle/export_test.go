@@ -6,6 +6,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/publish"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // LoadSLOsForTest exposes the compiled-in watch list to rattle_test without
@@ -15,7 +16,7 @@ import (
 func LoadSLOsForTest() []SLO { return loadSLOs() }
 
 func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection]) {
-	runLoop(ctx, r, log, pub)
+	runLoop(ctx, r, log, pub, noop.Tracer{})
 }
 
 // NewReconcilerForTest exposes Main's real Reconciler assembly so a test can

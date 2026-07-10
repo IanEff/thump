@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/contract"
 	"sigs.k8s.io/yaml"
@@ -69,7 +71,8 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 				NewAnthropicModel(apiKey), nil,
 				NewIntake(noopTopology{}, noopChange{}),
 				contract.Default(),
-				NewDirStore(transcripts))
+				NewDirStore(transcripts),
+				noop.Tracer{})
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()

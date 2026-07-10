@@ -23,8 +23,9 @@ var (
 // happened — it forms no new belief on its own; CaseBase.Alignment is what
 // turns repeated corroboration into a raised prior.
 type Click struct {
-	Ledger *MemProposalLog
-	Cases  *CaseBase
+	Ledger   *MemProposalLog
+	Cases    *CaseBase
+	Recorder *Recorder
 }
 
 // Absorb closes the loop for one outcome. It rejects o outright if it fails
@@ -43,6 +44,10 @@ func (c *Click) Absorb(ctx context.Context, o outcome.Outcome) error {
 	set, err := c.Ledger.Observe(ctx, o)
 	if err != nil {
 		return err
+	}
+	if c.Recorder != nil {
+		c.Recorder.recordResolution(set, o)
+		c.Recorder.recordCalibration(set, o)
 	}
 	return c.Cases.Append(newCase(set, o))
 }

@@ -9,8 +9,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
@@ -36,6 +40,19 @@ type Transport struct {
 	Log        *OutcomeLog                        // every Outcome produced, queryable by ByResult
 	Exec       Executor                           // how an Order is carried out — DryRun in v1
 	Now        func() time.Time                   // overridable clock for deterministic tests; nil means time.Now
+	Tracer     trace.Tracer                       // spans "render" under whatever trace ctx already carries; nil-safe via tracer()
+	Stages     *beat.StageRecorder                // RED metrics for "render" — nil-safe, same discipline as Tracer
+}
+
+// tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
+// and every existing test keeps compiling untouched. handle never mints a
+// root or forces a TraceID: in production that context already arrived on
+// ctx, propagated from hiss's publish over JetStream headers.
+func (tr *Transport) tracer() trace.Tracer {
+	if tr.Tracer == nil {
+		return noop.Tracer{}
+	}
+	return tr.Tracer
 }
 
 // Tick performs one poll pass: list inbox → unmarshal Governed → handle
@@ -100,8 +117,12 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed) error {
 	if tr.Now != nil {
 		now = tr.Now
 	}
-	order, err := (Actuator{}).Render(g, tr.Catalog, now())
-	if err != nil {
+	var order Order
+	if err := beat.Stage(ctx, tr.tracer(), tr.Stages, "render", func(context.Context) error {
+		var err error
+		order, err = (Actuator{}).Render(g, tr.Catalog, now())
+		return err
+	}); err != nil {
 		return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
 	}
 	oc := tr.Exec.Execute(ctx, order, now())

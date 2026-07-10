@@ -7,6 +7,7 @@ import (
 
 	"github.com/ianeff/thump/internal/wire"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // defaultBackoff mirrors EnsureTopology's ConsumerConfig.BackOff. Plain
@@ -88,7 +89,12 @@ func (s *JetSubscriber[T]) Run(ctx context.Context, subject string, h Handler[T]
 			return
 		}
 
-		if err := h(ctx, obj); err != nil {
+		// Rebuild whatever trace was active when this message was published,
+		// from its headers. A no-op if there's no header — msgCtx just comes
+		// back equal to ctx.
+		msgCtx := propagation.TraceContext{}.Extract(ctx, propagation.HeaderCarrier(msg.Headers()))
+
+		if err := h(msgCtx, obj); err != nil {
 			// DOOR 2 — transient: handler failed. Retry with backoff until
 			// the budget (maxDeliver) is spent, then dead-letter.
 			md, _ := msg.Metadata()
