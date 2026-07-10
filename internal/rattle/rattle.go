@@ -9,10 +9,13 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/tracing"
 	"github.com/ianeff/thump/internal/whir"
 )
 
@@ -137,7 +140,17 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.P
 					"detector", d.DetectorType,
 					"accel", d.Divergence.Observed)
 				if pub != nil {
-					if err := pub.Publish(ctx, "thump.detections", d); err != nil {
+					// rattle mints the incident's root: every downstream beat
+					// only ever extracts a trace, it never mints one (see
+					// internal/broker's Subscriber). One fingerprint, one
+					// trace, for the detection's whole life across the wire.
+					sc := trace.NewSpanContext(trace.SpanContextConfig{
+						TraceID:    tracing.TraceIDFromFingerprint(d.Fingerprint),
+						SpanID:     trace.SpanID{1},
+						TraceFlags: trace.FlagsSampled,
+					})
+					detCtx := trace.ContextWithSpanContext(ctx, sc)
+					if err := pub.Publish(detCtx, "thump.detections", d); err != nil {
 						log.Error("publish failed", "fingerprint", d.Fingerprint, "error", err)
 					}
 				}

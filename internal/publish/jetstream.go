@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/ianeff/thump/internal/wire"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // JetPublisher is the JetStream Publisher: it marshals obj through
@@ -27,7 +29,13 @@ func (p *JetPublisher[T]) Publish(ctx context.Context, subject string, obj T) er
 	if err != nil {
 		return fmt.Errorf("jet publisher: marshal %s: %w", subject, err)
 	}
-	if _, err := p.js.Publish(ctx, subject, data); err != nil {
+
+	header := make(nats.Header)
+	propagation.TraceContext{}.Inject(ctx, propagation.HeaderCarrier(header))
+
+	msg := &nats.Msg{Subject: subject, Data: data, Header: header}
+
+	if _, err := p.js.PublishMsg(ctx, msg); err != nil {
 		return fmt.Errorf("jet publisher: publish %s: %w", subject, err)
 	}
 	return nil
