@@ -292,12 +292,15 @@ thump/
 
 | Command | What it does |
 |---|---|
-| `make run` | run the service (`go run ./cmd/clank`) |
-| `make build` | build to `bin/clank` (injects version/commit/date ldflags) |
+| `make run-clank` / `run-rattle` / `run-hiss` / `run-thump` | run one beat (`go run ./cmd/<beat>`) |
+| `make build` | build all four beats to `bin/` (injects version/commit/date ldflags, `-trimpath`) |
 | `make ci` | full local CI: fmt-check → vet → lint → test → build |
 | `make test` / `make race` | tests, with `-race` |
 | `make coverage` | coverage profile + total |
 | `make vulncheck` | govulncheck over deps (separate security gate, not part of `make ci`) |
+| `make images` | multi-arch (`linux/amd64,linux/arm64`) container per beat, pushed to `$(REGISTRY)`, SBOM + SLSA provenance attached to the manifest |
+| `make sign-images` | keyless (Sigstore/Fulcio) cosign signature over each image `images` just pushed |
+| `make sbom-binaries` / `sign-binaries` | SBOM + keyless blob-signature for the `bin/` outputs (no release channel consumes these yet) |
 | `go test ./internal/clank -run TestGate -v` | run a single test |
 | `gotestdox ./...` | read test names back as a spec sentence list |
 

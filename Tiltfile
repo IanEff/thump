@@ -101,7 +101,7 @@ DEV_REGISTRY = cluster['registry']
 # Tiltfile reload / the next `tilt up` — an accepted tradeoff for a fast
 # edit loop here. DATE is deliberately left as the Dockerfile's "unknown"
 # default under Tilt — a per-build wall-clock stamp isn't worth the noise.
-COMMIT = str(local('git rev-parse --short --verify HEAD || echo none')).strip()
+COMMIT = str(local('git rev-parse --verify HEAD || echo none')).strip()
 
 for beat in ['rattle', 'clank', 'hiss', 'thump']:
     # docker_build's platform= must be a string or omitted entirely — unlike
