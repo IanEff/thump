@@ -10,18 +10,21 @@ import (
 
 // TestBeatImportsNoBeat pins the kit's load-bearing invariant: internal/beat
 // may import stdlib, the shared transport infrastructure (broker, publish,
-// and the jetstream types they surface), and the OTel tracing SDK (trace.go's
-// Tracer, which every beat's Main calls to build its span provider) — but
-// NEVER a beat package. A clank, rattle, hiss, or thump import appearing here
-// means the runtime kit has become a place where the planes mash together;
-// this test is that regression's tripwire. Widen the otel allowlist below
-// when tracing grows a new dependency; never widen it with a beat import.
+// and the jetstream types they surface), the OTel tracing SDK (trace.go's
+// Tracer, which every beat's Main calls to build its span provider), and the
+// Prometheus client (metrics.go's Metrics, same shape as Tracer) — but NEVER
+// a beat package. A clank, rattle, hiss, or thump import appearing here means
+// the runtime kit has become a place where the planes mash together; this
+// test is that regression's tripwire. Widen the allowlist below when tracing
+// or metrics grows a new dependency; never widen it with a beat import.
 func TestBeatImportsNoBeat(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
 		`"github.com/ianeff/thump/internal/broker"`:                         true,
 		`"github.com/ianeff/thump/internal/publish"`:                        true,
 		`"github.com/nats-io/nats.go/jetstream"`:                            true,
+		`"github.com/prometheus/client_golang/prometheus"`:                  true,
+		`"github.com/prometheus/client_golang/prometheus/promhttp"`:         true,
 		`"go.opentelemetry.io/otel"`:                                        true,
 		`"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"`: true,
 		`"go.opentelemetry.io/otel/sdk/trace"`:                              true,
