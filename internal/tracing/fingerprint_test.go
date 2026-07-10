@@ -1,7 +1,11 @@
 package tracing_test
 
 import (
+	"context"
 	"testing"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/ianeff/thump/internal/tracing"
 )
@@ -55,5 +59,36 @@ func TestTraceIDFromFingerprint_DiffersByFingerprint(t *testing.T) {
 	b := tracing.TraceIDFromFingerprint("checkout-svc/dependency_saturation/2026-07-09T00:05:00Z")
 	if a == b {
 		t.Errorf("TraceIDFromFingerprint returned %v for two distinct fingerprints, want distinct IDs", a)
+	}
+}
+
+// TestRootContext_MintsASpanSharingTheFingerprintsTraceID pins the property
+// rattle's runLoop actually depends on: a tracer.Start on RootContext's
+// returned context produces a span carrying
+// TraceIDFromFingerprint(fingerprint) — proven through a real SDK tracer
+// rather than by inspecting the seeded SpanContext's fields directly, since
+// what matters is what Start does with the seed, not the seed's shape alone.
+func TestRootContext_MintsASpanSharingTheFingerprintsTraceID(t *testing.T) {
+	t.Parallel()
+	const fp = "checkout-svc/dependency_saturation/2026-07-09T00:00:00Z"
+	want := tracing.TraceIDFromFingerprint(fp)
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	})
+
+	_, span := tp.Tracer("test").Start(tracing.RootContext(context.Background(), fp), "detect")
+	span.End()
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("got %d recorded spans, want 1", len(spans))
+	}
+	if got := spans[0].SpanContext.TraceID(); got != want {
+		t.Errorf("span trace_id = %s, want %s (tracing.TraceIDFromFingerprint(%q))", got, want, fp)
 	}
 }

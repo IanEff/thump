@@ -22,6 +22,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Main is thump's process entry point: run either the NATS branch (consume
@@ -38,8 +39,15 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	defer lc.Stop()
 	ctx := lc.Ctx
 
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump")
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
+		return 1
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
+
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, stderr)
+		return runBroker(ctx, lc.NATSURL, tracer, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
@@ -71,6 +79,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Catalog: contract.Default(),
 		Log:     NewOutcomeLog(),
 		Exec:    DryRun{},
+		Tracer:  tracer,
 	}
 	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, tr.Tick)
 	return 0
@@ -80,7 +89,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL string, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, tracer trace.Tracer, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -108,6 +117,7 @@ func runBroker(ctx context.Context, natsURL string, stderr io.Writer) int {
 		Catalog:    contract.Default(),
 		Log:        NewOutcomeLog(),
 		Exec:       DryRun{},
+		Tracer:     tracer,
 	}
 
 	return beat.ExitOnError(ctx, beat.RunConsumer[decision.Governed](ctx, js, "thump.decisions", tr.handle))

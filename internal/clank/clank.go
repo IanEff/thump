@@ -111,8 +111,15 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		store = NewDirStore(transcripts)
 	}
 
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "clank")
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
+		return 1
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
+
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, stderr)
+		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, tracer, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the
@@ -136,7 +143,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	l := newLoop(inbox, outbox, outcomes, model, tools, intake, contract.Default(), store)
+	l := newLoop(inbox, outbox, outcomes, model, tools, intake, contract.Default(), store, tracer)
 	tr := &Transport{Inbox: inbox, Engine: l.Engine}
 	re := l.ReturnEdge
 

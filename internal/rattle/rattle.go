@@ -96,8 +96,15 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		}
 	}
 
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle")
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
+		return 1
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
+
 	r := newReconciler(promURL, topo, traffic)
-	runLoop(ctx, r, log, pub)
+	runLoop(ctx, r, log, pub, tracer)
 	return 0
 }
 
@@ -124,7 +131,7 @@ func newReconciler(promURL string, topo TopologySource, traffic TrafficSource) *
 // publishing every detection. A Reconcile error is logged and the tick
 // skipped, never fatal — the next tick tries again rather than exiting the
 // process over one failed scrape.
-func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection]) {
+func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection], tracer trace.Tracer) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
@@ -140,19 +147,15 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.P
 					"detector", d.DetectorType,
 					"accel", d.Divergence.Observed)
 				if pub != nil {
-					// rattle mints the incident's root: every downstream beat
+					// rattle mints the incident's root — every downstream beat
 					// only ever extracts a trace, it never mints one (see
 					// internal/broker's Subscriber). One fingerprint, one
 					// trace, for the detection's whole life across the wire.
-					sc := trace.NewSpanContext(trace.SpanContextConfig{
-						TraceID:    tracing.TraceIDFromFingerprint(d.Fingerprint),
-						SpanID:     trace.SpanID{1},
-						TraceFlags: trace.FlagsSampled,
-					})
-					detCtx := trace.ContextWithSpanContext(ctx, sc)
+					detCtx, span := tracer.Start(tracing.RootContext(ctx, d.Fingerprint), "detect")
 					if err := pub.Publish(detCtx, "thump.detections", d); err != nil {
 						log.Error("publish failed", "fingerprint", d.Fingerprint, "error", err)
 					}
+					span.End()
 				}
 			}
 		}

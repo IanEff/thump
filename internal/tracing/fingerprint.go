@@ -5,6 +5,7 @@
 package tracing
 
 import (
+	"context"
 	"crypto/sha256"
 
 	"go.opentelemetry.io/otel/trace"
@@ -23,4 +24,22 @@ func TraceIDFromFingerprint(fingerprint string) trace.TraceID {
 	var id trace.TraceID
 	copy(id[:], sum[:16])
 	return id
+}
+
+// RootContext seeds ctx with a remote SpanContext carrying
+// TraceIDFromFingerprint(fingerprint) — the one line every incident-minting
+// call site needs, so rattle's runLoop (the only production caller) doesn't
+// hand-roll the SpanContext/Remote/ContextWithRemoteSpanContext trio itself.
+// Marking the seed Remote is what tells the SDK "inherit this trace ID, don't
+// treat SpanID{1} as a real span": a tracer.Start on the returned context
+// mints a genuine, exportable child span rather than reusing that fabricated
+// SpanID as if it were already live.
+func RootContext(ctx context.Context, fingerprint string) context.Context {
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    TraceIDFromFingerprint(fingerprint),
+		SpanID:     trace.SpanID{1},
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
+	return trace.ContextWithRemoteSpanContext(ctx, sc)
 }
