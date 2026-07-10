@@ -13,6 +13,7 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 )
@@ -37,7 +38,8 @@ type Engine struct {
 	Pub          publish.Publisher[proposal.Set] // delivery — only called when the gate passes
 	MaxSteps     int                             // hard bound on reason-loop turns; exhausting it without a propose/insufficient call ends the run budget-exhausted
 	Weights      ScoringWeights
-	Tracer       trace.Tracer // spans the reason-loop stages under whatever trace ctx already carries; nil-safe via tracer() so existing callers need not set it
+	Tracer       trace.Tracer        // spans the reason-loop stages under whatever trace ctx already carries; nil-safe via tracer() so existing callers need not set it
+	Stages       *beat.StageRecorder // RED metrics per stage — nil-safe, same discipline as Tracer; every Propose call still logs and spans without one
 }
 
 // tracer returns Tracer, or a no-op if unset — Propose never has to nil-check,
@@ -76,10 +78,12 @@ func (e *Engine) tracer() trace.Tracer {
 // published through Pub when the gate passes, and an open set for the same
 // fingerprint suppresses (but still records) a new one.
 func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Set, error) {
-	sctx, saoSpan := e.tracer().Start(ctx, "assemble_sao")
-	sao, err := e.Intake.Assemble(sctx, sig)
-	saoSpan.End()
-	if err != nil {
+	var sao proposal.SAO
+	if err := beat.Stage(ctx, e.tracer(), e.Stages, "assemble_sao", func(sctx context.Context) error {
+		var err error
+		sao, err = e.Intake.Assemble(sctx, sig)
+		return err
+	}); err != nil {
 		return proposal.Set{}, fmt.Errorf("intake: %w", err)
 	}
 
@@ -98,10 +102,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Se
 	proposed, declined := false, false
 
 	for step := 0; step < e.MaxSteps; step++ {
-		sctx, llmSpan := e.tracer().Start(ctx, "llm_complete")
-		comp, err := e.Model.Complete(sctx, msgs, e.toolSpecs())
-		llmSpan.End()
-		if err != nil {
+		var comp Completion
+		if err := beat.Stage(ctx, e.tracer(), e.Stages, "llm_complete", func(sctx context.Context) error {
+			var err error
+			comp, err = e.Model.Complete(sctx, msgs, e.toolSpecs())
+			return err
+		}); err != nil {
 			return proposal.Set{}, fmt.Errorf("model complete (step %d): %w", step, err)
 		}
 		msgs = append(msgs, comp.Message)
@@ -183,9 +189,10 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Se
 
 	enrichFromCatalog(e.Catalog, set.Proposals)
 
-	_, scoreSpan := e.tracer().Start(ctx, "causal_score")
-	set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Weights)
-	scoreSpan.End()
+	_ = beat.Stage(ctx, e.tracer(), e.Stages, "causal_score", func(context.Context) error {
+		set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Weights)
+		return nil
+	})
 
 	ranked, why := e.Ranker.Rank(set.Proposals, sig.Impact.BlastRadius.Velocity)
 	set.Proposals = ranked
@@ -198,9 +205,11 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Se
 	if err != nil {
 		return proposal.Set{}, fmt.Errorf("open dupes: %w", err)
 	}
-	_, gateSpan := e.tracer().Start(ctx, "gate_eval")
-	gate := e.Gate.Evaluate(set, openDupes)
-	gateSpan.End()
+	var gate GateResult
+	_ = beat.Stage(ctx, e.tracer(), e.Stages, "gate_eval", func(context.Context) error {
+		gate = e.Gate.Evaluate(set, openDupes)
+		return nil
+	})
 	set.Gate = &gate
 	if set.Gate.Passed {
 		set.Status.Phase = proposal.PhaseProposed

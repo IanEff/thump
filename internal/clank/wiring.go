@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 )
@@ -20,7 +21,7 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, store Store, tracer trace.Tracer) *loop {
+func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, store Store, tracer trace.Tracer, stages *beat.StageRecorder) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
@@ -37,6 +38,7 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 		Gate:         ReadinessGate{},
 		MaxSteps:     8,
 		Tracer:       tracer,
+		Stages:       stages,
 	}
 	re := &ReturnEdge{
 		Inbox: outcomes, // thump's outbox — NOT outbox, which is hiss's inbox
@@ -48,7 +50,7 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, tracer trace.Tracer) *Engine {
+func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, tracer trace.Tracer, stages *beat.StageRecorder) *Engine {
 	return &Engine{
 		Intake:       intake,
 		Model:        model,
@@ -63,5 +65,6 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 		Gate:         ReadinessGate{},
 		MaxSteps:     8,
 		Tracer:       tracer,
+		Stages:       stages,
 	}
 }

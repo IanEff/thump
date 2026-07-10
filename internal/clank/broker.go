@@ -23,7 +23,7 @@ import (
 // errgroup, publishing thump.proposals. The two-subscriber shape is clank's
 // own; the beat kit supplies the consumer/publisher primitives but leaves this
 // composition here.
-func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, tracer trace.Tracer, recorder *Recorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -42,7 +42,7 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 	cases := NewCaseBase()
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}
 
-	eng := newBrokerEngine(model, intake, store, tools, proposalPub, ledger, cases, tracer)
+	eng := newBrokerEngine(model, intake, store, tools, proposalPub, ledger, cases, tracer, stages)
 
 	g, gctx := errgroup.WithContext(ctx)
 

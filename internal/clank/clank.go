@@ -121,9 +121,10 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	reg, shutdownMetrics := beat.Metrics("clank")
 	defer func() { _ = shutdownMetrics(ctx) }()
 	recorder := NewRecorder(reg)
+	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, tracer, recorder, stderr)
+		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, tracer, recorder, stages, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the
@@ -147,7 +148,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	l := newLoop(inbox, outbox, outcomes, model, tools, intake, contract.Default(), store, tracer)
+	l := newLoop(inbox, outbox, outcomes, model, tools, intake, contract.Default(), store, tracer, stages)
 	tr := &Transport{Inbox: inbox, Engine: l.Engine}
 	re := l.ReturnEdge
 
