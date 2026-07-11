@@ -31,6 +31,8 @@ spec:
               value: /etc/thump/whir/state-queries.yaml
             - name: RATTLE_TRAFFIC
               value: /etc/thump/rattle/traffic-queries.yaml
+            - name: RATTLE_WATCH
+              value: /etc/thump/rattle/watch.yaml
           volumeMounts:
             - name: wal
               mountPath: /var/thump/wal

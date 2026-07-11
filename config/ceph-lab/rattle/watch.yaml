@@ -1,0 +1,54 @@
+# ceph-lab's watch list — the four SLOs rattle polls, and the dependency
+# graph EnrichTopology walks for each. This is a straight transcription of
+# the loadSLOs() literal that used to be compiled into the rattle binary
+# (rattle.go, pre-C2); dependency names must match metadata.name entries in
+# config/ceph-lab/whir/catalog-info.yaml exactly (whir strips the
+# resource:/component: prefix before comparing).
+slos:
+  - id: ceph-rgw-availability
+    object: ceph-rgw
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-rgw-availability:v1
+    dependencies:
+      - name: cephobjectstore
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: ceph-osd-latency
+    object: ceph-osd
+    tier: tier-1
+    objective: 0.99
+    contractRef: ceph-osd-latency:v1
+    dependencies:
+      - name: cephblockpool
+        role: blocking
+      - name: ceph-node-1
+        role: blocking
+      - name: ceph-node-2
+        role: blocking
+      - name: ceph-node-3
+        role: blocking
+
+  - id: ceph-health
+    object: ceph-cluster
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-health:v1
+    dependencies:
+      - name: cephcluster
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: argocd-sync
+    object: argocd
+    tier: tier-1
+    objective: 0.99
+    contractRef: argocd-sync:v1
+    dependencies:
+      - name: cilium
+        role: blocking
+      - name: rook-operator
+        role: optional

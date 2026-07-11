@@ -41,6 +41,12 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		return 1
 	}
 
+	slos, err := LoadWatch(cfg.WatchPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load watch list: %v\n", err)
+		return 1
+	}
+
 	var topo TopologySource
 	if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
 		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
@@ -104,7 +110,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	r := newReconciler(cfg.PromURL, topo, traffic)
+	r := newReconciler(cfg.PromURL, slos, topo, traffic)
 	runLoop(ctx, r, log, pub, tracer)
 	return 0
 }
@@ -112,9 +118,9 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 // newReconciler assembles the Reconciler Main runs — pulled out of Main so a
 // test can drive it with a fake Source and prove the wiring is correct; Main
 // itself is only reachable with a live PROM_URL.
-func newReconciler(promURL string, topo TopologySource, traffic TrafficSource) *Reconciler {
+func newReconciler(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource) *Reconciler {
 	return &Reconciler{
-		SLOs:           loadSLOs(),
+		SLOs:           slos,
 		Source:         NewPromSource(promURL),
 		Detector:       AccelerationDetector{Threshold: 0.5},
 		Sustained:      &SustainedBurnDetector{Threshold: 1.0, MinSamples: 5},
@@ -166,31 +172,5 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.P
 			return
 		case <-ticker.C:
 		}
-	}
-}
-
-// TODO(ian): STUB — hardcoded watch list.
-func loadSLOs() []SLO {
-	return []SLO{
-		{
-			ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.999,
-			ContractRef:  "ceph-rgw-availability:v1",
-			Dependencies: []Dependency{{Name: "cephobjectstore", Role: "blocking"}, {Name: "rook-operator", Role: "blocking"}},
-		},
-		{
-			ID: "ceph-osd-latency", Object: "ceph-osd", Tier: "tier-1", Objective: 0.99,
-			ContractRef:  "ceph-osd-latency:v1",
-			Dependencies: []Dependency{{Name: "cephblockpool", Role: "blocking"}, {Name: "ceph-node-1", Role: "blocking"}, {Name: "ceph-node-2", Role: "blocking"}, {Name: "ceph-node-3", Role: "blocking"}},
-		},
-		{
-			ID: "ceph-health", Object: "ceph-cluster", Tier: "tier-1", Objective: 0.999,
-			ContractRef:  "ceph-health:v1",
-			Dependencies: []Dependency{{Name: "cephcluster", Role: "blocking"}, {Name: "rook-operator", Role: "blocking"}},
-		},
-		{
-			ID: "argocd-sync", Object: "argocd", Tier: "tier-1", Objective: 0.99,
-			ContractRef:  "argocd-sync:v1",
-			Dependencies: []Dependency{{Name: "cilium", Role: "blocking"}, {Name: "rook-operator", Role: "optional"}},
-		},
 	}
 }

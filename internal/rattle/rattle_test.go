@@ -45,7 +45,16 @@ func TestMain_MissingPromURLReturnsOne(t *testing.T) {
 	}
 }
 
-func TestLoadSLOs_DeclaresTheLabContract(t *testing.T) {
+// TestCephLabWatch_MatchesTheLabContract is C2's drift guard, the same
+// shape as C3's planned "shipped catalog matches Default()" golden test:
+// the checked-in config/ceph-lab/rattle/watch.yaml — not a compiled-in
+// literal anymore — must still declare exactly the lab's SLO contract. If
+// this goes red after hand-editing the YAML, that's the guard working.
+func TestCephLabWatch_MatchesTheLabContract(t *testing.T) {
+	got, err := rattle.LoadWatch("../../config/ceph-lab/rattle/watch.yaml")
+	if err != nil {
+		t.Fatalf("LoadWatch: %v", err)
+	}
 	want := []rattle.SLO{
 		{
 			ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.999,
@@ -68,13 +77,17 @@ func TestLoadSLOs_DeclaresTheLabContract(t *testing.T) {
 			Dependencies: []rattle.Dependency{{Name: "cilium", Role: "blocking"}, {Name: "rook-operator", Role: "optional"}},
 		},
 	}
-	if diff := cmp.Diff(want, rattle.LoadSLOsForTest()); diff != "" {
-		t.Errorf("watch list drifted from the lab contract (-want +got):\n%s", diff)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("config/ceph-lab/rattle/watch.yaml drifted from the lab contract (-want +got):\n%s", diff)
 	}
 }
 
-func TestLoadSLOs_EverySLODeclaresDependencies(t *testing.T) {
-	for _, slo := range rattle.LoadSLOsForTest() {
+func TestCephLabWatch_EverySLODeclaresDependencies(t *testing.T) {
+	got, err := rattle.LoadWatch("../../config/ceph-lab/rattle/watch.yaml")
+	if err != nil {
+		t.Fatalf("LoadWatch: %v", err)
+	}
+	for _, slo := range got {
 		if len(slo.Dependencies) == 0 {
 			t.Errorf("%s declares no dependencies — EnrichTopology will silently no-op for it", slo.ID)
 		}
@@ -163,7 +176,7 @@ func TestRunLoop_PublishesWithTraceContextKeyedByFingerprint(t *testing.T) {
 
 func TestNewReconciler_WiresTheContractSoConfidenceIsLive(t *testing.T) {
 	slo := rattle.SLO{ID: "ceph-rgw-availability"}
-	r := rattle.NewReconcilerForTest("http://unused", nil, nil)
+	r := rattle.NewReconcilerForTest("http://unused", nil, nil, nil)
 	r.SLOs = []rattle.SLO{slo}
 	r.Source = fakeSource{slo.ID: freshWindow(1, 2, 4, 8)} // recent timestamps, fires on acceleration
 
@@ -181,7 +194,7 @@ func TestNewReconciler_WiresTheContractSoConfidenceIsLive(t *testing.T) {
 
 func TestNewReconciler_WiresTheContractSoStaleWindowsAreSkipped(t *testing.T) {
 	slo := rattle.SLO{ID: "ceph-rgw-availability"}
-	r := rattle.NewReconcilerForTest("http://unused", nil, nil)
+	r := rattle.NewReconcilerForTest("http://unused", nil, nil, nil)
 	r.SLOs = []rattle.SLO{slo}
 	r.Source = fakeSource{slo.ID: window(1, 2, 4, 8)} // epoch-anchored — ancient by wall-clock
 

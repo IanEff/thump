@@ -1,0 +1,30 @@
+# rook-gke's watch list — only two v1 Sloth SLOs here (ceph-osd-latency is
+# parked for v1.1, no argocd-sync/cilium entity exists in this lab's
+# catalog — see config/rook-gke/whir/catalog-info.yaml's header comment).
+# Dependency names matched against that file's metadata.name entries.
+#
+# NOT covered by a golden test (only ceph-lab's watch.yaml is pinned in
+# rattle_test.go) — sanity-check this against the live rook-gke cluster
+# before trusting it the way ceph-lab's is trusted.
+slos:
+  - id: ceph-rgw-availability
+    object: ceph-rgw
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-rgw-availability:v1
+    dependencies:
+      - name: cephobjectstore
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: ceph-health
+    object: ceph-cluster
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-health:v1
+    dependencies:
+      - name: cephcluster
+        role: blocking
+      - name: rook-operator
+        role: blocking
