@@ -14,6 +14,7 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/tracing"
 	"github.com/ianeff/thump/internal/whir"
@@ -34,38 +35,38 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	ctx := lc.Ctx
 	log := slog.Default()
 
-	promURL := os.Getenv("PROM_URL")
-	if promURL == "" {
-		_, _ = fmt.Fprintln(stderr, "set PROM_URL")
+	cfg, err := config.LoadRattle(lc.NATSURL != "")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 
 	var topo TopologySource
-	if catPath, sqPath := os.Getenv("WHIR_CATALOG"), os.Getenv("WHIR_STATE_QUERIES"); catPath != "" && sqPath != "" {
-		queries, err := whir.LoadStateQueries(sqPath)
+	if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
+		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load state queries: %v\n", err)
 			return 1
 		}
-		if _, err := whir.LoadCatalogFile(catPath); err != nil {
+		if _, err := whir.LoadCatalogFile(cfg.WhirCatalog); err != nil {
 			_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
 			return 1
 		}
 		topo = &WhirTopologySource{Resolver: &whir.Resolver{
-			BaseURL: promURL,
+			BaseURL: cfg.PromURL,
 			Client:  http.DefaultClient,
 			Queries: queries,
 		}}
 	}
 
 	var traffic TrafficSource
-	if tqPath := os.Getenv("RATTLE_TRAFFIC"); tqPath != "" {
-		queries, err := LoadTrafficQueries(tqPath)
+	if cfg.Traffic != "" {
+		queries, err := LoadTrafficQueries(cfg.Traffic)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load traffic queries: %v\n", err)
 			return 1
 		}
-		traffic = &HubbleTrafficSource{BaseURL: promURL, Client: http.DefaultClient, Queries: queries}
+		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: http.DefaultClient, Queries: queries}
 	}
 
 	var pub publish.Publisher[signal.Detection]
@@ -76,22 +77,22 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			return 1
 		}
 		defer closeNC()
-		p, closeW, err := beat.NewWALPublisher[signal.Detection](js, os.Getenv("WAL_DIR"), "rattle", "thump.detections")
+		p, closeW, err := beat.NewWALPublisher[signal.Detection](js, cfg.WALDir, "rattle", "thump.detections")
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, err)
 			return 1
 		}
 		defer func() { _ = closeW(ctx) }()
 		pub = p
-	} else if outbox := os.Getenv("RATTLE_OUTBOX"); outbox != "" {
+	} else if cfg.Outbox != "" {
 		// offline path: the DirPublisher is now the keyless fake the seam
 		// tests exercise — broker mode above is how this actually runs.
-		if err := os.MkdirAll(outbox, 0o750); err != nil { //nolint:gosec
+		if err := os.MkdirAll(cfg.Outbox, 0o750); err != nil { //nolint:gosec
 			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
 			return 1
 		}
 		pub = &publish.DirPublisher[signal.Detection]{
-			Dir:  outbox,
+			Dir:  cfg.Outbox,
 			Name: func(d signal.Detection) string { return d.Fingerprint },
 		}
 	}
@@ -103,7 +104,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	r := newReconciler(promURL, topo, traffic)
+	r := newReconciler(cfg.PromURL, topo, traffic)
 	runLoop(ctx, r, log, pub, tracer)
 	return 0
 }

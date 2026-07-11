@@ -12,7 +12,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 	"go.opentelemetry.io/otel/trace"
@@ -39,6 +39,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	defer lc.Stop()
 	ctx := lc.Ctx
 
+	cfg, err := config.LoadThump(lc.NATSURL != "")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+
 	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump")
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
@@ -51,7 +57,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, tracer, stages, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg.WALDir, tracer, stages, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
@@ -59,25 +65,14 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// OUTBOX are this path's env, not the process's — checked here, not above,
 	// so broker mode never has to satisfy them (mirrors rattle.go's NATS_URL-
 	// first branch).
-	inbox := os.Getenv("THUMP_INBOX")
-	if inbox == "" {
-		_, _ = fmt.Fprintln(stderr, "THUMP_INBOX is required")
-		return 1
-	}
-	outbox := os.Getenv("THUMP_OUTBOX")
-	if outbox == "" {
-		_, _ = fmt.Fprintln(stderr, "THUMP_OUTBOX is required")
-		return 1
-	}
-
 	tr := &Transport{
-		Inbox: inbox,
+		Inbox: cfg.Inbox,
 		OrderPub: &publish.DirPublisher[Order]{
-			Dir:  filepath.Join(outbox, "orders"),
+			Dir:  filepath.Join(cfg.Outbox, "orders"),
 			Name: func(o Order) string { return o.SignalRef },
 		},
 		OutcomePub: &publish.DirPublisher[outcome.Outcome]{
-			Dir:  filepath.Join(outbox, "outcomes"),
+			Dir:  filepath.Join(cfg.Outbox, "outcomes"),
 			Name: func(o outcome.Outcome) string { return o.SignalRef },
 		},
 		Catalog: contract.Default(),
@@ -94,7 +89,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL string, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL, walDir string, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -102,7 +97,6 @@ func runBroker(ctx context.Context, natsURL string, tracer trace.Tracer, stages 
 	}
 	defer closeNC()
 
-	walDir := os.Getenv("WAL_DIR")
 	orderPub, closeOrders, err := beat.NewWALPublisher[Order](js, walDir, "thump", "thump.orders")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)

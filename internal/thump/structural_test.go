@@ -21,7 +21,11 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"github.com/ianeff/thump/api/v1/decision"`:   true,
 		`"github.com/ianeff/thump/api/v1/proposal"`:   true,
 		`"github.com/ianeff/thump/internal/contract"`: true,
-		`"github.com/ianeff/thump/api/v1/outcome"`:    true,
+		// C1: typed env loading. Its own leaftest pins it to errors/fmt/os
+		// only — reads and validates strings, touches nothing outside the
+		// process. Same risk profile as contract above, not a widening.
+		`"github.com/ianeff/thump/internal/config"`: true,
+		`"github.com/ianeff/thump/api/v1/outcome"`:  true,
 		// the publish port — a local dir-writer today, same risk profile as the
 		// writeAtomic thump used to inline; revisit at Stage 3, when this
 		// package grows a live JetStream implementation.

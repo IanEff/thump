@@ -1,0 +1,118 @@
+package config_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/internal/config"
+	"github.com/ianeff/thump/internal/leaftest"
+)
+
+// setClankEnv sets every var LoadClank reads, restored by t.Setenv's own
+// cleanup — a common baseline the missing/valid/optional cases each mutate.
+func setClankEnv(t *testing.T) {
+	t.Helper()
+	for name, val := range map[string]string{
+		"ANTHROPIC_API_KEY":  "test-key",
+		"PROM_URL":           "http://prom:9090",
+		"EVIDENCE_QUERIES":   "/etc/evidence-queries.yaml",
+		"LOKI_URL":           "http://loki:3100",
+		"WHIR_CATALOG":       "/etc/catalog-info.yaml",
+		"WHIR_STATE_QUERIES": "/etc/state-queries.yaml",
+		"CLANK_TRANSCRIPTS":  "/var/run/transcripts",
+		"CLANK_INBOX":        "/var/run/inbox",
+		"CLANK_OUTBOX":       "/var/run/outbox",
+		"CLANK_OUTCOMES":     "/var/run/outcomes",
+	} {
+		t.Setenv(name, val)
+	}
+}
+
+func TestLoadClank_MissingRequired_ReportsAllAtOnce(t *testing.T) {
+	setClankEnv(t)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLANK_INBOX", "") // offline-mode-required, and offline is the case under test
+
+	_, err := config.LoadClank(false /* broker */)
+	if err == nil {
+		t.Fatal("LoadClank: want an error, got nil")
+	}
+	for _, want := range []string{"ANTHROPIC_API_KEY", "CLANK_INBOX"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadClank error %q does not mention %s — missing vars must be reported together, not one redeploy at a time", err, want)
+		}
+	}
+}
+
+func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
+	setClankEnv(t)
+
+	got, err := config.LoadClank(false /* broker */)
+	if err != nil {
+		t.Fatalf("LoadClank: %v", err)
+	}
+	want := config.Clank{
+		AnthropicAPIKey:  "test-key",
+		PromURL:          "http://prom:9090",
+		EvidenceQueries:  "/etc/evidence-queries.yaml",
+		LokiURL:          "http://loki:3100",
+		WhirCatalog:      "/etc/catalog-info.yaml",
+		WhirStateQueries: "/etc/state-queries.yaml",
+		Transcripts:      "/var/run/transcripts",
+		Inbox:            "/var/run/inbox",
+		Outbox:           "/var/run/outbox",
+		Outcomes:         "/var/run/outcomes",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("LoadClank (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadClank_OptionalDefaults(t *testing.T) {
+	// Only what's unconditionally required: the API key, plus the offline
+	// trio since broker=false makes those required too.
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("CLANK_INBOX", "/var/run/inbox")
+	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
+	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
+	for _, name := range []string{"PROM_URL", "EVIDENCE_QUERIES", "LOKI_URL", "WHIR_CATALOG", "WHIR_STATE_QUERIES", "CLANK_TRANSCRIPTS"} {
+		t.Setenv(name, "")
+	}
+
+	got, err := config.LoadClank(false /* broker */)
+	if err != nil {
+		t.Fatalf("LoadClank: %v", err)
+	}
+	want := config.Clank{
+		AnthropicAPIKey: "test-key",
+		Inbox:           "/var/run/inbox",
+		Outbox:          "/var/run/outbox",
+		Outcomes:        "/var/run/outcomes",
+		// PromURL, EvidenceQueries, LokiURL, WhirCatalog, WhirStateQueries,
+		// Transcripts all default to "" — genuinely optional, documented by
+		// their zero value rather than a scattered `if x == ""` at call sites.
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("LoadClank (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
+	// broker=true is clank's NATS path (lc.NATSURL != "") — CLANK_INBOX/
+	// OUTBOX/OUTCOMES are the offline dir-poll fallback's vars and must not
+	// be demanded when the broker path is what's actually going to run.
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES"} {
+		t.Setenv(name, "")
+	}
+
+	if _, err := config.LoadClank(true /* broker */); err != nil {
+		t.Errorf("LoadClank(broker=true): want no error with the offline trio unset, got %v", err)
+	}
+}
+
+func TestConfigIsALeafPackage(t *testing.T) {
+	t.Parallel()
+	leaftest.AssertLeaf(t, "errors", "fmt", "os")
+}
