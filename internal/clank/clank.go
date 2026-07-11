@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/whir"
 	"k8s.io/client-go/kubernetes"
@@ -31,44 +32,39 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	defer lc.Stop()
 	ctx := lc.Ctx
 
-	transcripts := os.Getenv("CLANK_TRANSCRIPTS") // thump's transcript output dir
-	if transcripts == "" {
+	cfg, err := config.LoadClank(lc.NATSURL != "")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if cfg.Transcripts == "" {
 		slog.Info("CLANK_TRANSCRIPTS not set — turns held in memory, not persisted")
 	}
 
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		_, _ = fmt.Fprintln(stderr, "ANTHROPIC_API_KEY is required")
-		return 1
-	}
-
 	tools := map[string]Tool{}
-	promURL := os.Getenv("PROM_URL")
-
-	if promURL == "" {
+	if cfg.PromURL == "" {
 		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
-	} else if eqPath := os.Getenv("EVIDENCE_QUERIES"); eqPath != "" {
-		queries, err := LoadEvidenceQueries(eqPath)
+	} else if cfg.EvidenceQueries != "" {
+		queries, err := LoadEvidenceQueries(cfg.EvidenceQueries)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load evidence queries: %v\n", err)
 			return 1
 		}
 		tools["metrics"] = &MetricsTool{
-			BaseURL: promURL,
+			BaseURL: cfg.PromURL,
 			Queries: queries,
 		}
 	}
 
-	lokiURL := os.Getenv("LOKI_URL")
-	if lokiURL == "" {
-		slog.Warn(("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action"))
+	if cfg.LokiURL == "" {
+		slog.Warn("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action")
 	} else {
-		tools["loki"] = &LokiTool{BaseURL: lokiURL}
+		tools["loki"] = &LokiTool{BaseURL: cfg.LokiURL}
 	}
 
-	config, err := rest.InClusterConfig()
+	restConfig, err := rest.InClusterConfig()
 	if err == nil {
-		kubeClient, err := kubernetes.NewForConfig(config)
+		kubeClient, err := kubernetes.NewForConfig(restConfig)
 		if err == nil {
 			tools["kube"] = &KubeTool{Client: kubeClient}
 		} else {
@@ -78,37 +74,36 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		slog.Info("not running in-cluster, skipping kube tool registration")
 	}
 
-	model := NewAnthropicModel(apiKey)
+	model := NewAnthropicModel(cfg.AnthropicAPIKey)
 	intake := NewIntake(noopTopology{}, noopChange{})
-	if catPath, sqPath := os.Getenv("WHIR_CATALOG"), os.Getenv("WHIR_STATE_QUERIES"); catPath != "" && sqPath != "" {
-		promURL := os.Getenv("PROM_URL")
-		if promURL == "" {
+	if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
+		if cfg.PromURL == "" {
 			_, _ = fmt.Fprintln(stderr, "PROM_URL required when WHIR_CATALOG and WHIR_STATE_QUERIES are set")
 			return 1
 		}
-		cat, err := whir.LoadCatalogFile(catPath)
+		cat, err := whir.LoadCatalogFile(cfg.WhirCatalog)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
 			return 1
 		}
-		queries, err := whir.LoadStateQueries(sqPath)
+		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load whir state queries: %v\n", err)
 			return 1
 		}
 		intake = NewIntake(WhirTopology{
 			Catalog:  cat,
-			Resolver: &whir.Resolver{BaseURL: promURL, Client: http.DefaultClient, Queries: queries},
+			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: http.DefaultClient, Queries: queries},
 		}, noopChange{})
 	}
 
 	var store Store = NewMemStore()
-	if transcripts != "" {
-		if err := os.MkdirAll(transcripts, 0o750); err != nil { //nolint:gosec
+	if cfg.Transcripts != "" {
+		if err := os.MkdirAll(cfg.Transcripts, 0o750); err != nil { //nolint:gosec
 			_, _ = fmt.Fprintf(stderr, "mkdir transcripts: %v", err)
 			return 1
 		}
-		store = NewDirStore(transcripts)
+		store = NewDirStore(cfg.Transcripts)
 	}
 
 	tracer, shutdownTracer, err := beat.Tracer(ctx, "clank")
@@ -129,27 +124,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	// offline path: the dir-glob Transport is now the keyless fake the
 	// seam tests exercise — broker mode above is how this actually runs.
-	// CLANK_INBOX/OUTBOX/OUTCOMES are this path's env, not the process's —
-	// checked here, not above, so broker mode never has to satisfy them
-	// (mirrors rattle.go/hiss.go/thump.go's NATS_URL-first branch).
-	inbox := os.Getenv("CLANK_INBOX") // rattle's detection output dir
-	if inbox == "" {
-		_, _ = fmt.Fprintln(stderr, "CLANK_INBOX is required")
-		return 1
-	}
-	outbox := os.Getenv("CLANK_OUTBOX") // hiss's inbox
-	if outbox == "" {
-		_, _ = fmt.Fprintln(stderr, "CLANK_OUTBOX is required")
-		return 1
-	}
-	outcomes := os.Getenv("CLANK_OUTCOMES") // thump's outbox (the return edge's inbox)
-	if outcomes == "" {
-		_, _ = fmt.Fprintln(stderr, "CLANK_OUTCOMES is required")
-		return 1
-	}
-
-	l := newLoop(inbox, outbox, outcomes, model, tools, intake, contract.Default(), store, tracer, stages)
-	tr := &Transport{Inbox: inbox, Engine: l.Engine}
+	// cfg.Inbox/Outbox/Outcomes are this path's env, not the process's —
+	// config.LoadClank only requires them when broker is false (mirrors
+	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
+	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, model, tools, intake, contract.Default(), store, tracer, stages)
+	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine}
 	re := l.ReturnEdge
 
 	// One dir-poll cycle drives both the forward transport (a detection is

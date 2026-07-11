@@ -21,6 +21,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
@@ -38,7 +39,13 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	defer lc.Stop()
 	ctx := lc.Ctx
 
-	pol, err := loadPolicy(os.Getenv("HISS_POLICY"))
+	cfg, err := config.LoadHiss(lc.NATSURL != "")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	pol, err := loadPolicy(cfg.Policy)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "failed to load policy: %v\n", err)
 		return 1
@@ -56,26 +63,18 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, pol, tracer, stages, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg.WALDir, pol, tracer, stages, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
 	// tests exercise — broker mode above is how this actually runs.
-	inbox := os.Getenv("HISS_INBOX")
-	if inbox == "" {
-		_, _ = fmt.Fprintln(stderr, "HISS_INBOX is required")
-		return 1
-	}
-	outbox := os.Getenv("HISS_OUTBOX")
-	if outbox == "" {
-		_, _ = fmt.Fprintln(stderr, "HISS_OUTBOX is required")
-		return 1
-	}
-
+	// cfg.Inbox/Outbox are this path's env, not the process's — config.LoadHiss
+	// only requires them when broker is false (mirrors clank.go/rattle.go/
+	// thump.go's NATS_URL-first branch).
 	tr := &Transport{
-		Inbox: inbox,
+		Inbox: cfg.Inbox,
 		Pub: &publish.DirPublisher[decision.Governed]{
-			Dir:  outbox,
+			Dir:  cfg.Outbox,
 			Name: func(g decision.Governed) string { return g.Decision.SignalRef },
 		},
 		Policy: pol,
@@ -89,7 +88,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 // runBroker is hiss's NATS branch: consume thump.proposals, evaluate
 // authority, publish thump.decisions.
-func runBroker(ctx context.Context, natsURL string, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL, walDir string, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -97,7 +96,7 @@ func runBroker(ctx context.Context, natsURL string, pol Policy, tracer trace.Tra
 	}
 	defer closeNC()
 
-	pub, closeW, err := beat.NewWALPublisher[decision.Governed](js, os.Getenv("WAL_DIR"), "hiss", "thump.decisions")
+	pub, closeW, err := beat.NewWALPublisher[decision.Governed](js, walDir, "hiss", "thump.decisions")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
