@@ -34,7 +34,11 @@ func AwaitConsumers(ctx context.Context, js jetstream.JetStream, ready *Health, 
 // edge uses (the fact is written to the local WAL before it travels), plus its
 // close func. A beat with two output subjects (thump: orders + outcomes) calls
 // this twice. An empty walDir is rejected here so the caller reports it once.
-func NewWALPublisher[Out any](js jetstream.JetStream, walDir, beatName, subject string) (publish.Publisher[Out], func(context.Context) error, error) {
+// Returns the concrete *publish.WALPublisher, not the Publisher[Out]
+// interface, so a caller can reach .WAL directly to hand it to
+// beat.RunShipper — it still satisfies Publisher[Out] everywhere that's
+// what's wanted, so no other call site changes shape.
+func NewWALPublisher[Out any](js jetstream.JetStream, walDir, beatName, subject string) (*publish.WALPublisher[Out], func(context.Context) error, error) {
 	if walDir == "" {
 		return nil, nil, errors.New("WAL_DIR is required")
 	}

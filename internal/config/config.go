@@ -129,6 +129,10 @@ type Thump struct {
 	Inbox         string // THUMP_INBOX — required only in the offline (non-broker) path
 	Outbox        string // THUMP_OUTBOX — required only in the offline path
 	WALDir        string // WAL_DIR — required only in the broker path
+	S3Endpoint    string // S3_ENDPOINT — required only in the broker path
+	S3Bucket      string // S3_BUCKET — required only in the broker path
+	S3AccessKey   string // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey   string // S3_SECRET_KEY — required only in the broker path
 }
 
 // LoadThump reads thump's environment once. broker is whether Main resolved
@@ -143,6 +147,10 @@ func LoadThump(broker bool) (Thump, error) {
 		t.Inbox = l.Optional("THUMP_INBOX")
 		t.Outbox = l.Optional("THUMP_OUTBOX")
 		t.WALDir = l.Require("WAL_DIR")
+		t.S3Endpoint = l.Require("S3_ENDPOINT")
+		t.S3Bucket = l.Require("S3_BUCKET")
+		t.S3AccessKey = l.Require("S3_ACCESS_KEY")
+		t.S3SecretKey = l.Require("S3_SECRET_KEY")
 	} else {
 		t.Inbox = l.Require("THUMP_INBOX")
 		t.Outbox = l.Require("THUMP_OUTBOX")

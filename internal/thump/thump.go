@@ -23,6 +23,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 )
 
 // Main is thump's process entry point: run either the NATS branch (consume
@@ -63,7 +64,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg.WALDir, cat, tracer, stages, health, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg, cat, tracer, stages, health, stderr)
 	}
 	health.SetReady(true)
 
@@ -96,7 +97,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL, walDir string, cat *contract.StaticCatalog, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -109,18 +110,24 @@ func runBroker(ctx context.Context, natsURL, walDir string, cat *contract.Static
 		return 1
 	}
 
-	orderPub, closeOrders, err := beat.NewWALPublisher[Order](js, walDir, "thump", "thump.orders")
+	orderPub, closeOrders, err := beat.NewWALPublisher[Order](js, cfg.WALDir, "thump", "thump.orders")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	defer func() { _ = closeOrders(ctx) }()
-	outcomePub, closeOutcomes, err := beat.NewWALPublisher[outcome.Outcome](js, walDir, "thump", "thump.outcomes")
+	outcomePub, closeOutcomes, err := beat.NewWALPublisher[outcome.Outcome](js, cfg.WALDir, "thump", "thump.outcomes")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	defer func() { _ = closeOutcomes(ctx) }()
+
+	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
 
 	tr := &Transport{
 		OrderPub:   orderPub,
@@ -132,5 +139,18 @@ func runBroker(ctx context.Context, natsURL, walDir string, cat *contract.Static
 		Stages:     stages,
 	}
 
-	return beat.ExitOnError(ctx, beat.RunConsumer[decision.Governed](ctx, js, "thump.decisions", tr.handle))
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		beat.RunShipper(gctx, orderPub.WAL, sink)
+		return nil
+	})
+	g.Go(func() error {
+		beat.RunShipper(gctx, outcomePub.WAL, sink)
+		return nil
+	})
+	g.Go(func() error {
+		return beat.RunConsumer[decision.Governed](gctx, js, "thump.decisions", tr.handle)
+	})
+
+	return beat.ExitOnError(ctx, g.Wait())
 }

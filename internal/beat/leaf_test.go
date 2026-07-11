@@ -12,13 +12,15 @@ import (
 // may import stdlib, the shared transport infrastructure (broker, publish,
 // and the jetstream types they surface), the OTel tracing SDK (trace.go's
 // Tracer, which every beat's Main calls to build its span provider, and
-// stage.go's Stage, which every beat's loop stages run through), and the
-// Prometheus client (metrics.go's Metrics, stage.go's StageRecorder) — but
-// NEVER a beat package. A clank, rattle, hiss, or thump import appearing
-// here means the runtime kit has become a place where the planes mash
-// together; this test is that regression's tripwire. Widen the allowlist
-// below when tracing or metrics grows a new dependency; never widen it with
-// a beat import.
+// stage.go's Stage, which every beat's loop stages run through), the
+// Prometheus client (metrics.go's Metrics, stage.go's StageRecorder), and
+// the AWS SDK (objectstore.go's NewS3SegmentSink, which builds the S3
+// client a WAL ships sealed segments through) — but NEVER a beat package.
+// A clank, rattle, hiss, or thump import appearing here means the runtime
+// kit has become a place where the planes mash together; this test is that
+// regression's tripwire. Widen the allowlist below when tracing, metrics,
+// or the object store grows a new dependency; never widen it with a beat
+// import.
 func TestBeatImportsNoBeat(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
@@ -33,6 +35,10 @@ func TestBeatImportsNoBeat(t *testing.T) {
 		`"go.opentelemetry.io/otel/sdk/trace"`:                              true,
 		`"go.opentelemetry.io/otel/trace"`:                                  true,
 		`"go.opentelemetry.io/otel/trace/noop"`:                             true,
+		`"github.com/aws/aws-sdk-go-v2/aws"`:                                true,
+		`"github.com/aws/aws-sdk-go-v2/config"`:                             true,
+		`"github.com/aws/aws-sdk-go-v2/credentials"`:                        true,
+		`"github.com/aws/aws-sdk-go-v2/service/s3"`:                         true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

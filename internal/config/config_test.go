@@ -245,6 +245,10 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	// is what's actually going to run. ACTION_CATALOG is required either way.
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
+	t.Setenv("S3_ENDPOINT", "http://minio:9000")
+	t.Setenv("S3_BUCKET", "thump-wal")
+	t.Setenv("S3_ACCESS_KEY", "test-access-key")
+	t.Setenv("S3_SECRET_KEY", "test-secret-key")
 	for _, name := range []string{"THUMP_INBOX", "THUMP_OUTBOX"} {
 		t.Setenv(name, "")
 	}
