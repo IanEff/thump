@@ -1,0 +1,23 @@
+# Fixture for TestLoadWatch_* — deliberately NOT lab data (that lives in
+# config/ceph-lab/rattle/watch.yaml and is pinned by its own golden test in
+# rattle_test.go). Two SLOs is enough to prove parsing of every field
+# including a multi-entry dependency list.
+slos:
+  - id: test-availability
+    object: test-service
+    tier: tier-1
+    objective: 0.995
+    contractRef: test-availability:v1
+    dependencies:
+      - name: test-dep-a
+        role: blocking
+      - name: test-dep-b
+        role: optional
+  - id: test-latency
+    object: test-service-2
+    tier: tier-2
+    objective: 0.99
+    contractRef: test-latency:v1
+    dependencies:
+      - name: test-dep-c
+        role: blocking

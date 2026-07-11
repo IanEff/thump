@@ -9,3 +9,5 @@ metadata:
 data:
   traffic-queries.yaml: |
 {{ .Files.Get (printf "config/%s/rattle/traffic-queries.yaml" .Values.configProfile) | indent 4 }}
+  watch.yaml: |
+{{ .Files.Get (printf "config/%s/rattle/watch.yaml" .Values.configProfile) | indent 4 }}

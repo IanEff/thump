@@ -96,6 +96,7 @@ type Rattle struct {
 	WhirStateQueries string // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
 	Traffic          string // RATTLE_TRAFFIC — optional; empty disables the Hubble traffic source
 	Outbox           string // RATTLE_OUTBOX — optional even offline; unset means detections are logged, not published
+	WatchPath        string // RATTLE_WATCH - required unconditionally
 	WALDir           string // WAL_DIR — required only in the broker path
 }
 
@@ -108,6 +109,7 @@ func LoadRattle(broker bool) (Rattle, error) {
 		PromURL:          l.Require("PROM_URL"),
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
+		WatchPath:        l.Require("RATTLE_WATCH"),
 		Traffic:          l.Optional("RATTLE_TRAFFIC"),
 		Outbox:           l.Optional("RATTLE_OUTBOX"),
 	}
