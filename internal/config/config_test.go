@@ -109,6 +109,11 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	// be demanded when the broker path is what's actually going to run.
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
+	t.Setenv("WAL_DIR", "/var/run/wal")
+	t.Setenv("S3_ENDPOINT", "http://minio:9000")
+	t.Setenv("S3_BUCKET", "thump-wal")
+	t.Setenv("S3_ACCESS_KEY", "test-access-key")
+	t.Setenv("S3_SECRET_KEY", "test-secret-key")
 	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES"} {
 		t.Setenv(name, "")
 	}
@@ -118,10 +123,117 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	}
 }
 
-// setRattleEnv sets every var LoadRattle reads in broker mode (WAL_DIR is
-// the one field that's required only when broker=true — see setRattleEnv's
-// callers) plus RATTLE_WATCH, the new C2 knob replacing the compiled-in
-// watch list.
+func TestLoadClank_BrokerMode_RequiresWALAndS3(t *testing.T) {
+	// The offline trio (CLANK_INBOX/OUTBOX/OUTCOMES) is optional in broker
+	// mode, but WAL_DIR and the S3 fields flip the other way — unset in
+	// offline mode, required once the broker path is what's actually going
+	// to run (it's what beat.RunShipper ships the proposals WAL through).
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
+	for _, name := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		t.Setenv(name, "")
+	}
+
+	_, err := config.LoadClank(true /* broker */)
+	if err == nil {
+		t.Fatal("LoadClank(broker=true): want an error, got nil")
+	}
+	for _, want := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadClank error %q does not mention %s", err, want)
+		}
+	}
+}
+
+// setHissEnv sets every var LoadHiss reads in the offline path (broker=false)
+// — HISS_POLICY plus the offline HISS_INBOX/HISS_OUTBOX pair. WAL_DIR and
+// the S3 fields are broker-only and not set here; see
+// TestLoadHiss_BrokerMode_OfflinePairNotRequired for those.
+func setHissEnv(t *testing.T) {
+	t.Helper()
+	for name, val := range map[string]string{
+		"HISS_POLICY": "/etc/policy.yaml",
+		"HISS_INBOX":  "/var/run/inbox",
+		"HISS_OUTBOX": "/var/run/outbox",
+	} {
+		t.Setenv(name, val)
+	}
+}
+
+func TestLoadHiss_MissingRequired_ReportsAllAtOnce(t *testing.T) {
+	setHissEnv(t)
+	t.Setenv("HISS_POLICY", "")
+	t.Setenv("HISS_INBOX", "")
+
+	_, err := config.LoadHiss(false /* broker */)
+	if err == nil {
+		t.Fatal("LoadHiss: want an error, got nil")
+	}
+	for _, want := range []string{"HISS_POLICY", "HISS_INBOX"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadHiss error %q does not mention %s — missing vars must be reported together, not one redeploy at a time", err, want)
+		}
+	}
+}
+
+func TestLoadHiss_Valid_PopulatesStruct(t *testing.T) {
+	setHissEnv(t)
+
+	got, err := config.LoadHiss(false /* broker */)
+	if err != nil {
+		t.Fatalf("LoadHiss: %v", err)
+	}
+	want := config.Hiss{
+		Policy: "/etc/policy.yaml",
+		Inbox:  "/var/run/inbox",
+		Outbox: "/var/run/outbox",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("LoadHiss (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadHiss_BrokerMode_OfflinePairNotRequired(t *testing.T) {
+	// broker=true is hiss's NATS path — HISS_INBOX/OUTBOX are the offline
+	// dir-poll fallback's vars and must not be demanded when the broker path
+	// is what's actually going to run. WAL_DIR and the S3 fields flip the
+	// other way: unset offline, required here.
+	t.Setenv("HISS_POLICY", "/etc/policy.yaml")
+	t.Setenv("WAL_DIR", "/var/run/wal")
+	t.Setenv("S3_ENDPOINT", "http://minio:9000")
+	t.Setenv("S3_BUCKET", "thump-wal")
+	t.Setenv("S3_ACCESS_KEY", "test-access-key")
+	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	for _, name := range []string{"HISS_INBOX", "HISS_OUTBOX"} {
+		t.Setenv(name, "")
+	}
+
+	if _, err := config.LoadHiss(true /* broker */); err != nil {
+		t.Errorf("LoadHiss(broker=true): want no error with the offline pair unset, got %v", err)
+	}
+}
+
+func TestLoadHiss_BrokerMode_RequiresWALAndS3(t *testing.T) {
+	t.Setenv("HISS_POLICY", "/etc/policy.yaml")
+	for _, name := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		t.Setenv(name, "")
+	}
+
+	_, err := config.LoadHiss(true /* broker */)
+	if err == nil {
+		t.Fatal("LoadHiss(broker=true): want an error, got nil")
+	}
+	for _, want := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadHiss error %q does not mention %s", err, want)
+		}
+	}
+}
+
+// setRattleEnv sets every var LoadRattle reads in the offline path
+// (broker=false) plus RATTLE_WATCH, the C2 knob replacing the compiled-in
+// watch list. WAL_DIR and the S3 fields are broker-only and not set here;
+// see TestLoadRattle_BrokerMode_RequiresWALAndS3 for those.
 func setRattleEnv(t *testing.T) {
 	t.Helper()
 	for name, val := range map[string]string{
@@ -192,6 +304,26 @@ func TestLoadRattle_OptionalDefaults(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("LoadRattle (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadRattle_BrokerMode_RequiresWALAndS3(t *testing.T) {
+	// WAL_DIR and the S3 fields are unset (and unread) offline — the three
+	// existing LoadRattle tests above all run broker=false — but flip to
+	// required once the broker path is what's actually going to run.
+	setRattleEnv(t)
+	for _, name := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		t.Setenv(name, "")
+	}
+
+	_, err := config.LoadRattle(true /* broker */)
+	if err == nil {
+		t.Fatal("LoadRattle(broker=true): want an error, got nil")
+	}
+	for _, want := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadRattle error %q does not mention %s", err, want)
+		}
 	}
 }
 

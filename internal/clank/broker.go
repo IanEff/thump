@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -21,10 +21,11 @@ import (
 // runBroker is clank's NATS branch: it consumes two inbound edges at once —
 // thump.detections (reason a detection into a proposal) and thump.outcomes (the
 // return edge, absorbing an outcome back into the case base) — under one
-// errgroup, publishing thump.proposals. The two-subscriber shape is clank's
-// own; the beat kit supplies the consumer/publisher primitives but leaves this
-// composition here.
-func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+// errgroup, publishing thump.proposals and shipping the proposals WAL's
+// sealed segments to object storage in the background. The two-subscriber
+// shape is clank's own; the beat kit supplies the consumer/publisher
+// primitives but leaves this composition here.
+func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -37,12 +38,18 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 		return 1
 	}
 
-	proposalPub, closeW, err := beat.NewWALPublisher[proposal.Set](js, os.Getenv("WAL_DIR"), "clank", "thump.proposals")
+	proposalPub, closeW, err := beat.NewWALPublisher[proposal.Set](js, cfg.WALDir, "clank", "thump.proposals")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	defer func() { _ = closeW(ctx) }()
+
+	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
 
 	ledger := NewMemProposalLog()
 	cases := NewCaseBase()
@@ -51,6 +58,11 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 	eng := newBrokerEngine(model, intake, store, tools, cat, proposalPub, ledger, cases, tracer, stages)
 
 	g, gctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		beat.RunShipper(gctx, proposalPub.WAL, sink)
+		return nil
+	})
 
 	detSub := broker.NewJetSubscriber[signal.Detection](js)
 	g.Go(func() error {

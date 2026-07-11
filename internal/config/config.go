@@ -25,12 +25,18 @@ type Clank struct {
 	Inbox            string // CLANK_INBOX — required only in the offline (non-broker) path
 	Outbox           string // CLANK_OUTBOX — required only in the offline path
 	Outcomes         string // CLANK_OUTCOMES — required only in the offline path
+	WALDir           string // WAL_DIR — required only in the broker path
+	S3Endpoint       string // S3_ENDPOINT — required only in the broker path
+	S3Bucket         string // S3_BUCKET — required only in the broker path
+	S3AccessKey      string // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey      string // S3_SECRET_KEY — required only in the broker path
 }
 
 // LoadClank reads clank's environment once. broker is whether Main resolved
 // a NATS_URL (lc.NATSURL != "" after beat.Start) — the offline dir-poll
 // inbox/outbox/outcomes trio is only required when it didn't; the broker
-// path never reads them.
+// path never reads them. WAL_DIR and the S3 fields are the inverse — no WAL
+// in the offline path, nothing to ship.
 func LoadClank(broker bool) (Clank, error) {
 	l := &loader{}
 	c := Clank{
@@ -47,6 +53,11 @@ func LoadClank(broker bool) (Clank, error) {
 		c.Inbox = l.Optional("CLANK_INBOX")
 		c.Outbox = l.Optional("CLANK_OUTBOX")
 		c.Outcomes = l.Optional("CLANK_OUTCOMES")
+		c.WALDir = l.Require("WAL_DIR")
+		c.S3Endpoint = l.Require("S3_ENDPOINT")
+		c.S3Bucket = l.Require("S3_BUCKET")
+		c.S3AccessKey = l.Require("S3_ACCESS_KEY")
+		c.S3SecretKey = l.Require("S3_SECRET_KEY")
 	} else {
 		c.Inbox = l.Require("CLANK_INBOX")
 		c.Outbox = l.Require("CLANK_OUTBOX")
@@ -60,18 +71,23 @@ func LoadClank(broker bool) (Clank, error) {
 // the validated string, the same division whir/contract draw between
 // "where's the file" (env) and "what's in it" (the beat's own YAML parse).
 type Hiss struct {
-	Policy string // HISS_POLICY — required
-	Inbox  string // HISS_INBOX — required only in the offline (non-broker) path
-	Outbox string // HISS_OUTBOX — required only in the offline path
-	WALDir string // WAL_DIR — required only in the broker path
+	Policy      string // HISS_POLICY — required
+	Inbox       string // HISS_INBOX — required only in the offline (non-broker) path
+	Outbox      string // HISS_OUTBOX — required only in the offline path
+	WALDir      string // WAL_DIR — required only in the broker path
+	S3Endpoint  string // S3_ENDPOINT — required only in the broker path
+	S3Bucket    string // S3_BUCKET — required only in the broker path
+	S3AccessKey string // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey string // S3_SECRET_KEY — required only in the broker path
 }
 
 // LoadHiss reads hiss's environment once. broker is whether Main resolved a
 // NATS_URL (lc.NATSURL != "" after beat.Start) — the offline dir-poll
-// inbox/outbox pair is only required when it didn't; WAL_DIR is the inverse,
-// required only when it did (beat.NewWALPublisher rejects an empty walDir
-// deep inside runBroker today — this surfaces the same requirement up front,
-// alongside every other var, instead of a lone late failure).
+// inbox/outbox pair is only required when it didn't; WAL_DIR and the S3
+// fields are the inverse, required only when it did (beat.NewWALPublisher
+// rejects an empty walDir deep inside runBroker today — this surfaces the
+// same requirement up front, alongside every other var, instead of a lone
+// late failure).
 func LoadHiss(broker bool) (Hiss, error) {
 	l := &loader{}
 	h := Hiss{
@@ -81,6 +97,10 @@ func LoadHiss(broker bool) (Hiss, error) {
 		h.Inbox = l.Optional("HISS_INBOX")
 		h.Outbox = l.Optional("HISS_OUTBOX")
 		h.WALDir = l.Require("WAL_DIR")
+		h.S3Endpoint = l.Require("S3_ENDPOINT")
+		h.S3Bucket = l.Require("S3_BUCKET")
+		h.S3AccessKey = l.Require("S3_ACCESS_KEY")
+		h.S3SecretKey = l.Require("S3_SECRET_KEY")
 	} else {
 		h.Inbox = l.Require("HISS_INBOX")
 		h.Outbox = l.Require("HISS_OUTBOX")
@@ -100,11 +120,16 @@ type Rattle struct {
 	Outbox           string // RATTLE_OUTBOX — optional even offline; unset means detections are logged, not published
 	WatchPath        string // RATTLE_WATCH - required unconditionally
 	WALDir           string // WAL_DIR — required only in the broker path
+	S3Endpoint       string // S3_ENDPOINT — required only in the broker path
+	S3Bucket         string // S3_BUCKET — required only in the broker path
+	S3AccessKey      string // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey      string // S3_SECRET_KEY — required only in the broker path
 }
 
 // LoadRattle reads rattle's environment once. broker is whether Main
-// resolved a NATS_URL (lc.NATSURL != "" after beat.Start) — WAL_DIR is only
-// required in that path; RATTLE_OUTBOX is optional either way.
+// resolved a NATS_URL (lc.NATSURL != "" after beat.Start) — WAL_DIR and the
+// S3 fields are only required in that path; RATTLE_OUTBOX is optional
+// either way.
 func LoadRattle(broker bool) (Rattle, error) {
 	l := &loader{}
 	r := Rattle{
@@ -117,6 +142,10 @@ func LoadRattle(broker bool) (Rattle, error) {
 	}
 	if broker {
 		r.WALDir = l.Require("WAL_DIR")
+		r.S3Endpoint = l.Require("S3_ENDPOINT")
+		r.S3Bucket = l.Require("S3_BUCKET")
+		r.S3AccessKey = l.Require("S3_ACCESS_KEY")
+		r.S3SecretKey = l.Require("S3_SECRET_KEY")
 	}
 	return r, l.err()
 }
