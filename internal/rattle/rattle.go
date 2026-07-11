@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
@@ -79,6 +80,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	defer func() { _ = shutdownMetrics(ctx) }()
 
 	var pub publish.Publisher[signal.Detection]
+	var walPub *publish.WALPublisher[signal.Detection]
 	if lc.NATSURL != "" {
 		js, closeNC, err := broker.Connect(ctx, lc.NATSURL)
 		if err != nil {
@@ -93,6 +95,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		}
 		defer func() { _ = closeW(ctx) }()
 		pub = p
+		walPub = p
 	} else if cfg.Outbox != "" {
 		// offline path: the DirPublisher is now the keyless fake the seam
 		// tests exercise — broker mode above is how this actually runs.
@@ -120,6 +123,25 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	defer func() { _ = shutdownTracer(ctx) }()
 
 	r := newReconciler(cfg.PromURL, slos, topo, traffic)
+
+	if walPub != nil {
+		sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "%v\n", err)
+			return 1
+		}
+		g, gctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			beat.RunShipper(gctx, walPub.WAL, sink)
+			return nil
+		})
+		g.Go(func() error {
+			runLoop(gctx, r, log, pub, tracer)
+			return nil
+		})
+		return beat.ExitOnError(ctx, g.Wait())
+	}
+
 	runLoop(ctx, r, log, pub, tracer)
 	return 0
 }
