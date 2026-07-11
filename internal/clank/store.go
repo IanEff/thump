@@ -1,12 +1,16 @@
 package clank
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // Store is the reason loop's checkpoint memory — one Turn per model
@@ -138,6 +142,72 @@ func (s *DirStore) appendLine(runID string, v any) error {
 		return fmt.Errorf("dir store: write %s: %w", path, err)
 	}
 	return nil
+}
+
+var _ Store = (*S3Store)(nil)
+
+// S3Store is a Store that writes each checkpointed Turn as its own object,
+// keyed by run and step — never a read-modify-write against a shared key,
+// unlike DirStore's shared per-run file. That's why it carries no mutex:
+// the AWS SDK's S3 client is already safe for concurrent use, and two
+// Checkpoint calls can never target the same object key. Pending, like
+// DirStore's, always returns nil — neither offers crash-recovery, only
+// durability once a run has finished.
+type S3Store struct {
+	Client *s3.Client
+	Bucket string
+}
+
+// NewS3Store returns an S3Store writing objects to bucket via client.
+func NewS3Store(client *s3.Client, bucket string) *S3Store {
+	return &S3Store{Client: client, Bucket: bucket}
+}
+
+// Checkpoint puts t as its own object at transcripts/<RunID>/<Step>.json.
+func (s *S3Store) Checkpoint(ctx context.Context, t Turn) error {
+	return s.putJSON(ctx, turnKey(t.RunID, t.Step), t)
+}
+
+// Pending is unused on this path, same as DirStore.
+func (s *S3Store) Pending(ctx context.Context) ([]Turn, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return nil, nil
+}
+
+// Finish puts a terminal record at transcripts/<RunID>/finish.json noting
+// whether the run errored.
+func (s *S3Store) Finish(ctx context.Context, runID string, runErr error) error {
+	rec := terminalRecord{Finished: true}
+	if runErr != nil {
+		rec.Error = runErr.Error()
+	}
+	return s.putJSON(ctx, finishKey(runID), rec)
+}
+
+func (s *S3Store) putJSON(ctx context.Context, key string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("s3 store: marshal: %w", err)
+	}
+	_, err = s.Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s.Bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(b),
+	})
+	if err != nil {
+		return fmt.Errorf("s3 store: put %s: %w", key, err)
+	}
+	return nil
+}
+
+func turnKey(runID string, step int) string {
+	return fmt.Sprintf("transcripts/%s/%d.json", runID, step)
+}
+
+func finishKey(runID string) string {
+	return fmt.Sprintf("transcripts/%s/finish.json", runID)
 }
 
 type terminalRecord struct {
