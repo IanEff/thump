@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: thump-egress
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "thump") .) | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: thump
+              app.kubernetes.io/component: nats
+      ports:
+        - protocol: TCP
+          port: 4222
+    # No kube-apiserver rule yet: thump's structural_test.go forbids any k8s
+    # client import while it's dry-run-only (v1 has no os/exec, net, or k8s
+    # client in its actuation path). Add one alongside that client, when it
+    # exists — not before.

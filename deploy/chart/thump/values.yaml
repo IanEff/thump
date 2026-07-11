@@ -22,8 +22,11 @@ configProfile: ceph-lab
 prometheus:
   url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
 
+# gateway.enabled is false in the cluster's loki kustomization (singleBinary
+# mode) — clients hit the loki service directly, not a loki-gateway. VERIFY
+# against the lab: `kubectl -n logging get svc` before committing.
 loki:
-  url: http://loki-gateway.monitoring.svc.cluster.local
+  url: http://loki.logging.svc.cluster.local:3100
 
 # The key rides a Secret created out-of-band via the lab's existing
 # SOPS-encrypted-secret flow — this chart only references it by name/key,
