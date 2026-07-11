@@ -58,13 +58,14 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	reg, shutdownMetrics := beat.Metrics("thump")
+	reg, health, shutdownMetrics := beat.Metrics("thump")
 	defer func() { _ = shutdownMetrics(ctx) }()
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg.WALDir, cat, tracer, stages, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg.WALDir, cat, tracer, stages, health, stderr)
 	}
+	health.SetReady(true)
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
 	// tests exercise — broker mode above is how this actually runs. THUMP_INBOX/
@@ -95,13 +96,18 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL, walDir string, cat *contract.StaticCatalog, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL, walDir string, cat *contract.StaticCatalog, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
 	defer closeNC()
+
+	if err := beat.AwaitConsumers(ctx, js, health, "thump.decisions"); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
 
 	orderPub, closeOrders, err := beat.NewWALPublisher[Order](js, walDir, "thump", "thump.orders")
 	if err != nil {

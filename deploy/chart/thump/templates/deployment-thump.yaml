@@ -14,10 +14,34 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap-actions.yaml") . | sha256sum }}
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: thump
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           image: "{{ .Values.image.registry }}/thump-thump:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 5
           env:
             - name: NATS_URL
               value: "nats://nats.thump.svc:4222"

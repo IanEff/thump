@@ -119,14 +119,16 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	reg, shutdownMetrics := beat.Metrics("clank")
+	reg, health, shutdownMetrics := beat.Metrics("clank")
 	defer func() { _ = shutdownMetrics(ctx) }()
 	recorder := NewRecorder(reg)
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, cat, tracer, recorder, stages, stderr)
+		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, cat, tracer, recorder, stages, health, stderr)
 	}
+
+	health.SetReady(true)
 
 	// offline path: the dir-glob Transport is now the keyless fake the
 	// seam tests exercise — broker mode above is how this actually runs.
