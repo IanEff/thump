@@ -11,6 +11,8 @@ spec:
   template:
     metadata:
       labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "thump") .) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-actions.yaml") . | sha256sum }}
     spec:
       containers:
         - name: thump
@@ -21,10 +23,17 @@ spec:
               value: "nats://nats.thump.svc:4222"
             - name: WAL_DIR
               value: /var/thump/wal
+            - name: ACTION_CATALOG
+              value: /etc/thump/actions/catalog.yaml
           volumeMounts:
             - name: wal
               mountPath: /var/thump/wal
+            - name: actions-config
+              mountPath: /etc/thump/actions
           resources: {{- toYaml .Values.beats.thump.resources | nindent 12 }}
       volumes:
         - name: wal
           emptyDir: {}
+        - name: actions-config
+          configMap:
+            name: thump-actions

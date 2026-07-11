@@ -19,6 +19,7 @@ func TestNewBrokerEngine_WiresMetricsTool(t *testing.T) {
 		nil, // intake
 		nil, // store
 		tools,
+		clank.DefaultCatalogForTest(),
 		nil, // pub
 		clank.NewMemProposalLog(),
 		clank.NewCaseBase(),

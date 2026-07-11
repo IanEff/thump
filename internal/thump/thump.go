@@ -45,6 +45,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
+	cat, err := contract.LoadCatalogFile(cfg.ActionCatalog, contract.Preconditions)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load action catalog: %v\n", err)
+		return 1
+	}
+
 	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump")
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
@@ -57,7 +63,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg.WALDir, tracer, stages, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg.WALDir, cat, tracer, stages, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
@@ -75,7 +81,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			Dir:  filepath.Join(cfg.Outbox, "outcomes"),
 			Name: func(o outcome.Outcome) string { return o.SignalRef },
 		},
-		Catalog: contract.Default(),
+		Catalog: cat,
 		Log:     NewOutcomeLog(),
 		Exec:    DryRun{},
 		Tracer:  tracer,
@@ -89,7 +95,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL, walDir string, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL, walDir string, cat *contract.StaticCatalog, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -113,7 +119,7 @@ func runBroker(ctx context.Context, natsURL, walDir string, tracer trace.Tracer,
 	tr := &Transport{
 		OrderPub:   orderPub,
 		OutcomePub: outcomePub,
-		Catalog:    contract.Default(),
+		Catalog:    cat,
 		Log:        NewOutcomeLog(),
 		Exec:       DryRun{},
 		Tracer:     tracer,

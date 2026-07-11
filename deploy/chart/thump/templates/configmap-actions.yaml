@@ -1,0 +1,13 @@
+# The action catalog is global, not per-site (phase-C's C3 call) — unlike
+# whir/rattle's ConfigMaps, this one never interpolates .Values.configProfile.
+# See configmap-whir.yaml for the .Files.Get / config-symlink note.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-actions
+  namespace: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
+data:
+  catalog.yaml: |
+{{ .Files.Get "config/actions/catalog.yaml" | indent 4 }}

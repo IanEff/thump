@@ -50,12 +50,12 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, tracer trace.Tracer, stages *beat.StageRecorder) *Engine {
+func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, tracer trace.Tracer, stages *beat.StageRecorder) *Engine {
 	return &Engine{
 		Intake:       intake,
 		Model:        model,
 		Tools:        tools,
-		Catalog:      contract.Default(),
+		Catalog:      cat,
 		Ranker:       NewRanker(),
 		Store:        store,
 		Scorer:       &CausalScorerImpl{Prior: cases},

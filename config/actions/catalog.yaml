@@ -1,0 +1,57 @@
+# The authored action catalog (phase C · C3) — the actions clank may
+# propose and thump may execute, not a per-site fact (that's why this lives
+# at config/actions/, not under a config/<site>/ profile).
+#
+# contract.LoadCatalogFile binds each Precondition.OK by looking its Name up
+# in a compiled contract.PreconditionRegistry — neither contract below
+# declares one, so the registry stays empty until an authored contract
+# actually needs one.
+#
+# This file is pinned to contract.Default() by
+# TestShippedCatalogMatchesAuthoredDefault (internal/contract/load_test.go).
+# If that test goes red after you hand-edit this file, that's the guard
+# working — either fix the YAML back or update Default() deliberately.
+- name: throttle-non-critical-paths
+  applicableFailureClasses:
+    - dependency_saturation
+  applicableTiers:
+    - tier-1
+  action:
+    description: Throttle non-critical request paths at the ingress
+    scopeParameters:
+      throttle_pct:
+        min: 10
+        max: 60
+        default: 25
+  reversal:
+    method: unthrottle
+    fallback: page-oncall
+  successCriteria:
+    metric: latency_p99
+    target: "p99 < 250ms"
+    # time.Duration has no custom (un)marshaler, so it rides the wire as a
+    # plain integer of nanoseconds: 600000000000 == 10 * time.Minute.
+    window: 600000000000
+
+- name: hold-rebalance
+  applicableFailureClasses:
+    - resource_exhaustion
+    - unknown
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Hold Ceph recovery/rebalancing (osd set noout) while a node is
+      transiently out, so the cluster doesn't thrash; reversible.
+    scopeParameters:
+      hold_minutes:
+        min: 5
+        max: 60
+        default: 15
+  reversal:
+    method: release-rebalance
+    fallback: page-oncall
+  successCriteria:
+    metric: ceph_health
+    target: HEALTH_OK
+    window: 600000000000 # 10 * time.Minute, in nanoseconds

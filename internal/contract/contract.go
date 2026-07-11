@@ -75,6 +75,14 @@ func (s *StaticCatalog) ByName(name string) (ActionContract, bool) {
 	return ActionContract{}, false
 }
 
+// Contracts returns every authored contract in load order — the read side
+// LoadCatalogFile's golden tests (and any future catalog inspector) use to
+// look inside a StaticCatalog, since the contracts slice itself stays
+// unexported.
+func (s *StaticCatalog) Contracts() []ActionContract {
+	return s.contracts
+}
+
 func classMatches(c ActionContract, class proposal.FailureClass) bool {
 	for _, fc := range c.ApplicableFailureClasses {
 		if fc == class {

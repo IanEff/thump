@@ -41,6 +41,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		slog.Info("CLANK_TRANSCRIPTS not set — turns held in memory, not persisted")
 	}
 
+	cat, err := contract.LoadCatalogFile(cfg.ActionCatalog, contract.Preconditions)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load action catalog: %v\n", err)
+		return 1
+	}
+
 	tools := map[string]Tool{}
 	if cfg.PromURL == "" {
 		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
@@ -119,7 +125,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, tracer, recorder, stages, stderr)
+		return runBroker(ctx, lc.NATSURL, model, intake, store, tools, cat, tracer, recorder, stages, stderr)
 	}
 
 	// offline path: the dir-glob Transport is now the keyless fake the
@@ -127,7 +133,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// cfg.Inbox/Outbox/Outcomes are this path's env, not the process's —
 	// config.LoadClank only requires them when broker is false (mirrors
 	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
-	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, model, tools, intake, contract.Default(), store, tracer, stages)
+	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, model, tools, intake, cat, store, tracer, stages)
 	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine}
 	re := l.ReturnEdge
 

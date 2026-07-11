@@ -15,6 +15,7 @@ func setClankEnv(t *testing.T) {
 	t.Helper()
 	for name, val := range map[string]string{
 		"ANTHROPIC_API_KEY":  "test-key",
+		"ACTION_CATALOG":     "/etc/actions/catalog.yaml",
 		"PROM_URL":           "http://prom:9090",
 		"EVIDENCE_QUERIES":   "/etc/evidence-queries.yaml",
 		"LOKI_URL":           "http://loki:3100",
@@ -32,13 +33,14 @@ func setClankEnv(t *testing.T) {
 func TestLoadClank_MissingRequired_ReportsAllAtOnce(t *testing.T) {
 	setClankEnv(t)
 	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ACTION_CATALOG", "")
 	t.Setenv("CLANK_INBOX", "") // offline-mode-required, and offline is the case under test
 
 	_, err := config.LoadClank(false /* broker */)
 	if err == nil {
 		t.Fatal("LoadClank: want an error, got nil")
 	}
-	for _, want := range []string{"ANTHROPIC_API_KEY", "CLANK_INBOX"} {
+	for _, want := range []string{"ANTHROPIC_API_KEY", "ACTION_CATALOG", "CLANK_INBOX"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("LoadClank error %q does not mention %s — missing vars must be reported together, not one redeploy at a time", err, want)
 		}
@@ -54,6 +56,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 	}
 	want := config.Clank{
 		AnthropicAPIKey:  "test-key",
+		ActionCatalog:    "/etc/actions/catalog.yaml",
 		PromURL:          "http://prom:9090",
 		EvidenceQueries:  "/etc/evidence-queries.yaml",
 		LokiURL:          "http://loki:3100",
@@ -73,6 +76,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	// Only what's unconditionally required: the API key, plus the offline
 	// trio since broker=false makes those required too.
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("CLANK_INBOX", "/var/run/inbox")
 	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
 	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
@@ -86,6 +90,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	}
 	want := config.Clank{
 		AnthropicAPIKey: "test-key",
+		ActionCatalog:   "/etc/actions/catalog.yaml",
 		Inbox:           "/var/run/inbox",
 		Outbox:          "/var/run/outbox",
 		Outcomes:        "/var/run/outcomes",
@@ -103,6 +108,7 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	// OUTBOX/OUTCOMES are the offline dir-poll fallback's vars and must not
 	// be demanded when the broker path is what's actually going to run.
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES"} {
 		t.Setenv(name, "")
 	}
@@ -186,6 +192,65 @@ func TestLoadRattle_OptionalDefaults(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("LoadRattle (-want +got):\n%s", diff)
+	}
+}
+
+func setThumpEnv(t *testing.T) {
+	t.Helper()
+	for name, val := range map[string]string{
+		"ACTION_CATALOG": "/etc/actions/catalog.yaml",
+		"THUMP_INBOX":    "/var/run/inbox",
+		"THUMP_OUTBOX":   "/var/run/outbox",
+	} {
+		t.Setenv(name, val)
+	}
+}
+
+func TestLoadThump_MissingRequired_ReportsAllAtOnce(t *testing.T) {
+	setThumpEnv(t)
+	t.Setenv("ACTION_CATALOG", "")
+	t.Setenv("THUMP_INBOX", "")
+
+	_, err := config.LoadThump(false /* broker */)
+	if err == nil {
+		t.Fatal("LoadThump: want an error, got nil")
+	}
+	for _, want := range []string{"ACTION_CATALOG", "THUMP_INBOX"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadThump error %q does not mention %s — missing vars must be reported together, not one redeploy at a time", err, want)
+		}
+	}
+}
+
+func TestLoadThump_Valid_PopulatesStruct(t *testing.T) {
+	setThumpEnv(t)
+
+	got, err := config.LoadThump(false /* broker */)
+	if err != nil {
+		t.Fatalf("LoadThump: %v", err)
+	}
+	want := config.Thump{
+		ActionCatalog: "/etc/actions/catalog.yaml",
+		Inbox:         "/var/run/inbox",
+		Outbox:        "/var/run/outbox",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("LoadThump (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
+	// broker=true is thump's NATS path — THUMP_INBOX/OUTBOX are the offline
+	// dir-poll fallback's vars and must not be demanded when the broker path
+	// is what's actually going to run. ACTION_CATALOG is required either way.
+	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
+	t.Setenv("WAL_DIR", "/var/run/wal")
+	for _, name := range []string{"THUMP_INBOX", "THUMP_OUTBOX"} {
+		t.Setenv(name, "")
+	}
+
+	if _, err := config.LoadThump(true /* broker */); err != nil {
+		t.Errorf("LoadThump(broker=true): want no error with the offline pair unset, got %v", err)
 	}
 }
 
