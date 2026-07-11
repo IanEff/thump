@@ -110,24 +110,24 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		return 1
 	}
 
-	orderPub, closeOrders, err := beat.NewWALPublisher[Order](js, cfg.WALDir, "thump", "thump.orders")
+	orderPub, _, err := beat.NewWALPublisher[Order](js, cfg.WALDir, "thump", "thump.orders")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	defer func() { _ = closeOrders(ctx) }()
-	outcomePub, closeOutcomes, err := beat.NewWALPublisher[outcome.Outcome](js, cfg.WALDir, "thump", "thump.outcomes")
+	outcomePub, _, err := beat.NewWALPublisher[outcome.Outcome](js, cfg.WALDir, "thump", "thump.outcomes")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	defer func() { _ = closeOutcomes(ctx) }()
 
 	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
+	defer func() { _ = orderPub.WAL.Drain(ctx, sink) }()
+	defer func() { _ = outcomePub.WAL.Drain(ctx, sink) }()
 
 	tr := &Transport{
 		OrderPub:   orderPub,

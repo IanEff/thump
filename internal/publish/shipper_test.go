@@ -148,6 +148,56 @@ func TestWAL_ShipLeavesASegmentInPlaceWhenTheSinkFails(t *testing.T) {
 	}
 }
 
+func TestWAL_DrainSealsAndShipsTheActiveSegmentOnShutdown(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	w := &publish.WAL{Dir: dir, Beat: "rattle", Subject: "thump.detections"}
+	ctx := context.Background()
+
+	if err := w.Append(ctx, signal.Detection{Fingerprint: "fp-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	sink := newFakeSink()
+	if err := w.Drain(ctx, sink); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(sink.puts) != 1 {
+		t.Errorf("Drain shipped %d segments, want 1 (the sealed active segment): %v", len(sink.puts), sink.puts)
+	}
+	sealed, err := w.SealedSegments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sealed) != 0 {
+		t.Errorf("Drain left %d sealed segments unshipped on disk: %v", len(sealed), sealed)
+	}
+}
+
+func TestWAL_DrainSkipsSealingAnEmptyActiveSegment(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	w := &publish.WAL{Dir: dir, Beat: "rattle", Subject: "thump.detections", MaxBytes: 1}
+	ctx := context.Background()
+
+	// MaxBytes: 1 forces Append to auto-seal, leaving a fresh, empty active
+	// segment behind — the exact "nothing since the last seal" state Drain
+	// must not turn into a second, useless sealed segment.
+	if err := w.Append(ctx, signal.Detection{Fingerprint: "fp-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	sink := newFakeSink()
+	if err := w.Drain(ctx, sink); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(sink.puts) != 1 {
+		t.Errorf("Drain shipped %d segments, want exactly 1 (the auto-sealed one, not an empty one from Drain itself): %v", len(sink.puts), sink.puts)
+	}
+}
+
 func TestS3SegmentSink_PutStoresBytesRetrievableFromS3(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

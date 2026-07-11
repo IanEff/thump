@@ -38,18 +38,18 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 		return 1
 	}
 
-	proposalPub, closeW, err := beat.NewWALPublisher[proposal.Set](js, cfg.WALDir, "clank", "thump.proposals")
+	proposalPub, _, err := beat.NewWALPublisher[proposal.Set](js, cfg.WALDir, "clank", "thump.proposals")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	defer func() { _ = closeW(ctx) }()
 
 	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
+	defer func() { _ = proposalPub.WAL.Drain(ctx, sink) }()
 
 	ledger := NewMemProposalLog()
 	cases := NewCaseBase()

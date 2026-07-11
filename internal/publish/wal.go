@@ -147,6 +147,26 @@ func (w *WAL) Close(_ context.Context) error {
 	return active.Close()
 }
 
+// Drain seals the active segment if it's non-empty, ships every sealed
+// segment (including the one just sealed) to sink, then closes — the
+// shutdown-path counterpart to RunShipper's periodic ticks, for the one
+// gap those ticks can't cover: whatever's active when the process exits.
+func (w *WAL) Drain(ctx context.Context, sink SegmentSink) error {
+	w.mu.Lock()
+	if w.active != nil && w.size > 0 {
+		if err := w.seal(); err != nil {
+			w.mu.Unlock()
+			return fmt.Errorf("wal: drain: seal: %w", err)
+		}
+	}
+	w.mu.Unlock()
+
+	if err := w.Ship(ctx, sink); err != nil {
+		return fmt.Errorf("wal: drain: ship: %w", err)
+	}
+	return w.Close(ctx)
+}
+
 // seal fsyncs and renames the active segment, making it immutable.
 func (w *WAL) seal() error {
 	if err := w.active.Sync(); err != nil {

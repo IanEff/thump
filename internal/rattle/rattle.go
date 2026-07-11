@@ -88,12 +88,11 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			return 1
 		}
 		defer closeNC()
-		p, closeW, err := beat.NewWALPublisher[signal.Detection](js, cfg.WALDir, "rattle", "thump.detections")
+		p, _, err := beat.NewWALPublisher[signal.Detection](js, cfg.WALDir, "rattle", "thump.detections")
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, err)
 			return 1
 		}
-		defer func() { _ = closeW(ctx) }()
 		pub = p
 		walPub = p
 	} else if cfg.Outbox != "" {
@@ -130,6 +129,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1
 		}
+		defer func() { _ = walPub.WAL.Drain(ctx, sink) }()
 		g, gctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
 			beat.RunShipper(gctx, walPub.WAL, sink)

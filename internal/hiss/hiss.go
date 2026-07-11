@@ -104,18 +104,18 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 		return 1
 	}
 
-	pub, closeW, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "hiss", "thump.decisions")
+	pub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "hiss", "thump.decisions")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	defer func() { _ = closeW(ctx) }()
 
 	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
+	defer func() { _ = pub.WAL.Drain(ctx, sink) }()
 
 	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Tracer: tracer, Stages: stages}
 
