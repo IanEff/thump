@@ -24,13 +24,18 @@ import (
 // errgroup, publishing thump.proposals. The two-subscriber shape is clank's
 // own; the beat kit supplies the consumer/publisher primitives but leaves this
 // composition here.
-func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
 	defer closeNC()
+
+	if err := beat.AwaitConsumers(ctx, js, health, "thump.detections", "thump.outcomes"); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err) // TODO: write error
+		return 1
+	}
 
 	proposalPub, closeW, err := beat.NewWALPublisher[proposal.Set](js, os.Getenv("WAL_DIR"), "clank", "thump.proposals")
 	if err != nil {

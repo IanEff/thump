@@ -58,13 +58,14 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	reg, shutdownMetrics := beat.Metrics("hiss")
+	reg, health, shutdownMetrics := beat.Metrics("hiss")
 	defer func() { _ = shutdownMetrics(ctx) }()
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg.WALDir, pol, tracer, stages, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg.WALDir, pol, tracer, stages, health, stderr)
 	}
+	health.SetReady(true)
 
 	// offline path: the dir-glob Transport is now the keyless fake the seam
 	// tests exercise — broker mode above is how this actually runs.
@@ -88,13 +89,18 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 // runBroker is hiss's NATS branch: consume thump.proposals, evaluate
 // authority, publish thump.decisions.
-func runBroker(ctx context.Context, natsURL, walDir string, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL, walDir string, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
 	defer closeNC()
+
+	if err := beat.AwaitConsumers(ctx, js, health, "thump.proposals"); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err) // TODO: write error message
+		return 1
+	}
 
 	pub, closeW, err := beat.NewWALPublisher[decision.Governed](js, walDir, "hiss", "thump.decisions")
 	if err != nil {

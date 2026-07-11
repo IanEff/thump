@@ -75,6 +75,9 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: http.DefaultClient, Queries: queries}
 	}
 
+	_, health, shutdownMetrics := beat.Metrics("rattle")
+	defer func() { _ = shutdownMetrics(ctx) }()
+
 	var pub publish.Publisher[signal.Detection]
 	if lc.NATSURL != "" {
 		js, closeNC, err := broker.Connect(ctx, lc.NATSURL)
@@ -102,6 +105,12 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			Name: func(d signal.Detection) string { return d.Fingerprint },
 		}
 	}
+
+	// rattle only ever publishes — it has no durable consumer of its own to
+	// bind (thump.detections belongs to clank's), so a successful
+	// broker.Connect above (or no broker dependency at all, offline) is the
+	// entire readiness contract.
+	health.SetReady(true)
 
 	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle")
 	if err != nil {

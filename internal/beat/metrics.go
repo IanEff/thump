@@ -22,17 +22,20 @@ const metricsReadHeaderTimeout = 5 * time.Second
 // unconfigured — same "noop is a valid production state" discipline as
 // Tracer: a beat with no scraper pointed at it still runs, it just has
 // nothing to collect into.
-func Metrics(beatName string) (prometheus.Registerer, Shutdown) {
+func Metrics(beatName string) (prometheus.Registerer, *Health, Shutdown) {
 	reg := prometheus.NewRegistry()
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{"beat": beatName}, reg)
+	health := &Health{}
 
 	addr := os.Getenv("METRICS_ADDR")
 	if addr == "" {
-		return wrapped, func(context.Context) error { return nil }
+		return wrapped, health, func(context.Context) error { return nil }
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	mux.HandleFunc("/healthz", health.Livez)
+	mux.HandleFunc("/readyz", health.Readyz)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           mux,
@@ -41,5 +44,5 @@ func Metrics(beatName string) (prometheus.Registerer, Shutdown) {
 	go func() {
 		_ = srv.ListenAndServe()
 	}()
-	return wrapped, srv.Shutdown
+	return wrapped, health, srv.Shutdown
 }

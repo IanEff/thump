@@ -3,6 +3,7 @@ package beat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/ianeff/thump/internal/broker"
@@ -16,6 +17,17 @@ import (
 // the beat, rather than hiding it behind a knob.
 func RunConsumer[In any](ctx context.Context, js jetstream.JetStream, subject string, h broker.Handler[In]) error {
 	return broker.NewJetSubscriber[In](js).Run(ctx, subject, h)
+}
+
+// AwaitConsumers confirms a durable consumer bind exists for each subject, then flips ready to true.
+func AwaitConsumers(ctx context.Context, js jetstream.JetStream, ready *Health, subjects ...string) error {
+	for _, subject := range subjects {
+		if _, err := js.Consumer(ctx, broker.StreamName, broker.DurableFor(subject)); err != nil {
+			return fmt.Errorf("beat: bind consumer %s: %w", subject, err)
+		}
+	}
+	ready.SetReady(true)
+	return nil
 }
 
 // NewWALPublisher builds the WAL-journaled JetStream publisher every output
