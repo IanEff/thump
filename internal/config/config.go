@@ -15,6 +15,7 @@ import (
 // hoc with os.Getenv.
 type Clank struct {
 	AnthropicAPIKey  string // ANTHROPIC_API_KEY — required
+	ActionCatalog    string // ACTION_CATALOG - required; the authored action catalog YAML
 	PromURL          string // PROM_URL — optional; empty disables the metrics tool
 	EvidenceQueries  string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	LokiURL          string // LOKI_URL — optional; empty disables the loki tool
@@ -34,6 +35,7 @@ func LoadClank(broker bool) (Clank, error) {
 	l := &loader{}
 	c := Clank{
 		AnthropicAPIKey:  l.Require("ANTHROPIC_API_KEY"),
+		ActionCatalog:    l.Require("ACTION_CATALOG"),
 		PromURL:          l.Optional("PROM_URL"),
 		EvidenceQueries:  l.Optional("EVIDENCE_QUERIES"),
 		LokiURL:          l.Optional("LOKI_URL"),
@@ -123,9 +125,10 @@ func LoadRattle(broker bool) (Rattle, error) {
 // WAL publishers in the broker path (runBroker calls beat.NewWALPublisher
 // twice against the one dir) — one field, two consumers.
 type Thump struct {
-	Inbox  string // THUMP_INBOX — required only in the offline (non-broker) path
-	Outbox string // THUMP_OUTBOX — required only in the offline path
-	WALDir string // WAL_DIR — required only in the broker path
+	ActionCatalog string // ACTION_CATALOG - required; the authored action catalog YAML
+	Inbox         string // THUMP_INBOX — required only in the offline (non-broker) path
+	Outbox        string // THUMP_OUTBOX — required only in the offline path
+	WALDir        string // WAL_DIR — required only in the broker path
 }
 
 // LoadThump reads thump's environment once. broker is whether Main resolved
@@ -133,7 +136,9 @@ type Thump struct {
 // inbox/outbox pair is only required when it didn't; WAL_DIR is the inverse.
 func LoadThump(broker bool) (Thump, error) {
 	l := &loader{}
-	t := Thump{}
+	t := Thump{
+		ActionCatalog: l.Require("ACTION_CATALOG"),
+	}
 	if broker {
 		t.Inbox = l.Optional("THUMP_INBOX")
 		t.Outbox = l.Optional("THUMP_OUTBOX")

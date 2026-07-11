@@ -12,7 +12,7 @@ spec:
     metadata:
       labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "clank") .) | nindent 8 }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap-whir.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-whir.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-actions.yaml") . | sha256sum }}
     spec:
       containers:
         - name: clank
@@ -33,6 +33,8 @@ spec:
               value: /etc/thump/whir/state-queries.yaml
             - name: EVIDENCE_QUERIES
               value: /etc/thump/whir/evidence-queries.yaml
+            - name: ACTION_CATALOG
+              value: /etc/thump/actions/catalog.yaml
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -43,6 +45,8 @@ spec:
               mountPath: /var/thump/wal
             - name: whir-config
               mountPath: /etc/thump/whir
+            - name: actions-config
+              moutPath: /etc/thump/actions
           resources: {{- toYaml .Values.beats.clank.resources | nindent 12 }}
       volumes:
         - name: wal
@@ -50,3 +54,6 @@ spec:
         - name: whir-config
           configMap:
             name: thump-whir
+        - name: actions-config
+          configMap:
+            name: thump-actions

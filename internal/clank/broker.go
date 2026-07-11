@@ -13,6 +13,7 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/contract"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
@@ -23,7 +24,7 @@ import (
 // errgroup, publishing thump.proposals. The two-subscriber shape is clank's
 // own; the beat kit supplies the consumer/publisher primitives but leaves this
 // composition here.
-func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -42,7 +43,7 @@ func runBroker(ctx context.Context, natsURL string, model Model, intake *Intake,
 	cases := NewCaseBase()
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}
 
-	eng := newBrokerEngine(model, intake, store, tools, proposalPub, ledger, cases, tracer, stages)
+	eng := newBrokerEngine(model, intake, store, tools, cat, proposalPub, ledger, cases, tracer, stages)
 
 	g, gctx := errgroup.WithContext(ctx)
 
