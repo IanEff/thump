@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/s3test"
 )
 
 func TestStore_PendingReturnsACheckpointedTurn(t *testing.T) {
@@ -135,6 +139,40 @@ func TestDirStore_FinishRecordsARunError(t *testing.T) {
 	}
 	if got := last["error"]; got != "model timed out" {
 		t.Errorf("want error %q recorded, got %v", "model timed out", got)
+	}
+}
+
+func TestS3Store_CheckpointThenPersists(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client, bucket := s3test.New(t)
+	store := clank.NewS3Store(client, bucket)
+
+	want := clank.Turn{RunID: "r1", Step: 0, Msgs: []clank.Message{{Role: "user", Content: "investigate"}}}
+	if err := store.Checkpoint(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String("transcripts/r1/0.json"),
+	})
+	if err != nil {
+		t.Fatalf("get persisted turn: %v", err)
+	}
+	defer func() { _ = out.Body.Close() }()
+
+	raw, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("read persisted turn: %v", err)
+	}
+	var got clank.Turn
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decode persisted turn: %v", err)
+	}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("checkpointed turn didn't round-trip (-want +got):\n%s", diff)
 	}
 }
 

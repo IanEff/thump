@@ -23,6 +23,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/publish"
+	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/yaml"
 )
 
@@ -63,7 +64,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg.WALDir, pol, tracer, stages, health, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg, pol, tracer, stages, health, stderr)
 	}
 	health.SetReady(true)
 
@@ -88,8 +89,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 }
 
 // runBroker is hiss's NATS branch: consume thump.proposals, evaluate
-// authority, publish thump.decisions.
-func runBroker(ctx context.Context, natsURL, walDir string, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+// authority, publish thump.decisions, and ship the decisions WAL's sealed
+// segments to object storage in the background.
+func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -102,16 +104,31 @@ func runBroker(ctx context.Context, natsURL, walDir string, pol Policy, tracer t
 		return 1
 	}
 
-	pub, closeW, err := beat.NewWALPublisher[decision.Governed](js, walDir, "hiss", "thump.decisions")
+	pub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "hiss", "thump.decisions")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	defer func() { _ = closeW(ctx) }()
+
+	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
+	defer func() { _ = pub.WAL.Drain(ctx, sink) }()
 
 	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Tracer: tracer, Stages: stages}
 
-	return beat.ExitOnError(ctx, beat.RunConsumer[proposal.Set](ctx, js, "thump.proposals", tr.handle))
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		beat.RunShipper(gctx, pub.WAL, sink)
+		return nil
+	})
+	g.Go(func() error {
+		return beat.RunConsumer[proposal.Set](gctx, js, "thump.proposals", tr.handle)
+	})
+
+	return beat.ExitOnError(ctx, g.Wait())
 }
 
 // loadPolicy reads HISS_POLICY as a YAML file and unmarshals it into a

@@ -38,11 +38,19 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"github.com/nats-io/nats.go"`:              true,
 		`"github.com/nats-io/nats.go/jetstream"`:    true,
 		// the runtime kit: process lifecycle + the same broker/publish
-		// transports already allowed above, nothing more. Its own leaf tripwire
-		// forbids it from importing anything that reaches infrastructure, so it
-		// carries the same risk profile as broker/publish — not a widening of
-		// what thump can touch, just where the plumbing lives.
+		// transports already allowed above. Its own leaf tripwire forbids it
+		// from ever importing a beat package (rattle/clank/hiss/thump), not
+		// from importing infrastructure-reaching SDKs — it already carries the
+		// OTel exporter and now the S3 client. What keeps that safe for thump
+		// is that neither SDK's types cross this import boundary: beat hands
+		// back trace.Tracer and publish.SegmentSink, both interfaces thump
+		// already trusts, never the concrete otlptracegrpc/aws-sdk-go-v2 types.
 		`"github.com/ianeff/thump/internal/beat"`: true,
+		// pure goroutine-lifecycle plumbing (WithContext + Go + Wait) — no net,
+		// no os/exec, no client. runBroker uses it to run the WAL shipper(s)
+		// alongside the consumer loop, the same composition clank/broker.go
+		// already uses for two subscribers.
+		`"golang.org/x/sync/errgroup"`: true,
 		// the in-memory outcome ledger: sync + time only, a data structure that
 		// touches nothing outside the process. Where OutcomeLog's append/query
 		// lives, not a new capability.
