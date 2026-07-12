@@ -11,6 +11,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // ShipInterval is the fixed cadence RunShipper checks a WAL for sealed,
@@ -45,6 +47,34 @@ func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKe
 		// defensive. Pre-v1.73.0 the override is a no-op — safe either way.
 		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+		// The SDK also always signs Accept-Encoding (it explicitly sets it to
+		// "identity" to keep control of gzip handling — see
+		// service/internal/accept-encoding's DisableGzip middleware). Google's
+		// front-end proxy rewrites that header in transit to
+		// "identity,gzip(gfe)" before it reaches the bucket's signature
+		// verifier, so the signature GCS recomputes never matches what the SDK
+		// sent — a second, independent SignatureDoesNotMatch, distinct from the
+		// checksum one above and not fixed by it. aws-cli/botocore never signs
+		// Accept-Encoding at all, which is why a CLI probe against the same
+		// bucket succeeds while this client 403s without this. Stripping the
+		// header just before signing removes it from SignedHeaders entirely,
+		// so GCS's rewrite is a no-op for verification; net/http still adds
+		// its own unsigned Accept-Encoding: gzip at the transport layer and
+		// transparently decompresses, unaffected by this.
+		o.APIOptions = append(o.APIOptions, func(stack *middleware.Stack) error {
+			return stack.Finalize.Insert(
+				middleware.FinalizeMiddlewareFunc("StripAcceptEncodingBeforeSigning",
+					func(ctx context.Context, in middleware.FinalizeInput, next middleware.FinalizeHandler) (
+						middleware.FinalizeOutput, middleware.Metadata, error,
+					) {
+						if req, ok := in.Request.(*smithyhttp.Request); ok {
+							req.Header.Del("Accept-Encoding")
+						}
+						return next.HandleFinalize(ctx, in)
+					}),
+				"Signing", middleware.Before,
+			)
+		})
 	})
 	return publish.NewS3SegmentSink(client, bucket), nil
 }
