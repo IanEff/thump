@@ -47,7 +47,7 @@ func TestHandle_RenderSpanSharesTheDecisionsTraceID(t *testing.T) {
 	}
 	tr.Tracer = tp.Tracer("thump")
 
-	if err := tr.HandleForTest(ctx, g); err != nil {
+	if err := tr.HandleForTest(ctx, g, nil); err != nil {
 		t.Fatal(err)
 	}
 

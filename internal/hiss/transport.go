@@ -71,7 +71,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			continue // poison doesn't block the queue
 		}
 
-		if err := tr.handle(ctx, ps); err != nil {
+		if err := tr.handle(ctx, ps, nil); err != nil {
 			return fmt.Errorf("hiss: handle %s: %w", path, err)
 		}
 		if err := tr.archive(path); err != nil {
@@ -84,7 +84,9 @@ func (tr *Transport) Tick(ctx context.Context) error {
 // handle evaluates one ProposalSet and publishes the Governed decision — the
 // transport-independent core. Tick calls it after decoding a file; the NATS
 // handler calls it after decoding a message. Same brain, two feeders.
-func (tr *Transport) handle(ctx context.Context, ps proposal.Set) error {
+// Evaluate is fast enough that it never needs heartbeat, unlike clank's
+// reason loop — accepted only to satisfy broker.Handler[T]'s shape.
+func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) error {
 	now := time.Now
 	if tr.Now != nil {
 		now = tr.Now

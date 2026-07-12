@@ -55,7 +55,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	cases := NewCaseBase()
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}
 
-	eng := newBrokerEngine(model, intake, store, tools, cat, proposalPub, ledger, cases, tracer, stages)
+	// HeartbeatingStore lets the detection handler below reset this run's
+	// JetStream AckWait deadline on real checkpoint progress (via
+	// WithHeartbeat) rather than needing engine.go's loop to know a NATS
+	// message exists at all.
+	eng := newBrokerEngine(model, intake, HeartbeatingStore{store}, tools, cat, proposalPub, ledger, cases, tracer, stages)
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -66,8 +70,8 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 
 	detSub := broker.NewJetSubscriber[signal.Detection](js)
 	g.Go(func() error {
-		return detSub.Run(gctx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
-			set, err := eng.Propose(ctx, det)
+		return detSub.Run(gctx, "thump.detections", func(ctx context.Context, det signal.Detection, heartbeat func()) error {
+			set, err := eng.Propose(WithHeartbeat(ctx, heartbeat), det)
 			if err != nil {
 				return err
 			}
@@ -79,8 +83,8 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 
 	outSub := broker.NewJetSubscriber[outcome.Outcome](js)
 	g.Go(func() error {
-		return outSub.Run(gctx, "thump.outcomes", func(ctx context.Context, o outcome.Outcome) error {
-			return learnHandler(ctx, learn, o) // maps Absorb's errors to Ack/transient — see below
+		return outSub.Run(gctx, "thump.outcomes", func(ctx context.Context, o outcome.Outcome, _ func()) error {
+			return learnHandler(ctx, learn, o) // Absorb is fast — no heartbeat needed; maps Absorb's errors to Ack/transient — see below
 		})
 	})
 

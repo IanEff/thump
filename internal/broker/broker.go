@@ -71,8 +71,13 @@ func EnsureTopology(ctx context.Context, js jetstream.JetStream) error {
 			Durable:       DurableFor(subj),
 			FilterSubject: subj,
 			AckPolicy:     jetstream.AckExplicitPolicy,
-			AckWait:       30 * time.Second, // should be greater than slowest handler, the model call
-			MaxDeliver:    maxDeliver,
+			// AckWait no longer needs to outlast the slowest handler (clank's
+			// reason loop can run well past 30s) — Handler's heartbeat param
+			// (subscriber.go) resets this deadline on real progress instead,
+			// so 30s is just "how long with zero progress before we assume
+			// the consumer is dead," not a guessed worst-case latency.
+			AckWait:    30 * time.Second,
+			MaxDeliver: maxDeliver,
 			// No BackOff here: it would silently override NakWithDelay's
 			// requested delay after the first retry (nats-server's
 			// checkPending recomputes the redelivery deadline from the

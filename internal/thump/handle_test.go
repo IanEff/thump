@@ -39,7 +39,7 @@ func TestHandle_RendersExecutesAndPublishesOneOrderAndOutcome(t *testing.T) {
 		Now:        frozenNow,
 	}
 
-	if err := tr.HandleForTest(context.Background(), approvedGoverned()); err != nil {
+	if err := tr.HandleForTest(context.Background(), approvedGoverned(), nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,7 +75,7 @@ func TestHandle_NonApprovalIsANoOp(t *testing.T) {
 		Now:        frozenNow,
 	}
 
-	if err := tr.HandleForTest(context.Background(), escalatedGoverned()); err != nil {
+	if err := tr.HandleForTest(context.Background(), escalatedGoverned(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(orders.published) != 0 || len(outcomes.published) != 0 {

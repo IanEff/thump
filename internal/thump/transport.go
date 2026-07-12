@@ -82,7 +82,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			continue // poison doesn't block the queue
 		}
 
-		if err := tr.handle(ctx, g); err != nil {
+		if err := tr.handle(ctx, g, nil); err != nil {
 			if errors.Is(err, ErrRenderFailed) {
 				// a governed approval thump can't render is evidence of a seam
 				// bug — same instinct as poison: keep it where a human will look.
@@ -108,7 +108,9 @@ func (tr *Transport) Tick(ctx context.Context) error {
 // handle renders, dry-run-executes, and publishes one governed approval —
 // the transport-independent core. Tick calls it after decoding a file; the
 // NATS handler calls it after decoding a message. Same brain, two feeders.
-func (tr *Transport) handle(ctx context.Context, g decision.Governed) error {
+// Rendering a dry-run is fast enough that it never needs heartbeat, unlike
+// clank's reason loop — accepted only to satisfy broker.Handler[T]'s shape.
+func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) error {
 	if g.Decision.Verdict != decision.VerdictApproved {
 		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons, "acted", false)
 		return nil // valid non-approval: nothing to act on
