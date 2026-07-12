@@ -18,11 +18,11 @@ LDFLAGS := -ldflags "-s -w \
   -X main.date=$(DATE)"
 
 
-.PHONY: all ci fmt fmt-check vet lint vulncheck test race coverage build images push-images sign-images sbom-binaries sign-binaries run-clank run-rattle run-hiss run-thump tidy clean eval capture-detection
+.PHONY: all ci fmt fmt-check vet lint vulncheck chart-lint test race coverage build images push-images sign-images sbom-binaries sign-binaries run-clank run-rattle run-hiss run-thump tidy clean eval capture-detection
 
 all: ci
 
-ci: fmt-check vet lint vulncheck race build
+ci: fmt-check vet lint vulncheck chart-lint race build
 
 fmt:
 	go fmt ./...
@@ -38,7 +38,10 @@ lint:
 	golangci-lint run
 
 vulncheck:
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+chart-lint:
+	helm template deploy/chart/thump | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary
 
 test:
 	go test ./...
