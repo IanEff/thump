@@ -37,7 +37,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if cfg.Transcripts == "" {
+	if lc.NATSURL == "" && cfg.Transcripts == "" {
 		slog.Info("CLANK_TRANSCRIPTS not set — turns held in memory, not persisted")
 	}
 
@@ -103,8 +103,21 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}, noopChange{})
 	}
 
+	// Broker mode already Require()s all four S3_* vars for the WAL shipper
+	// (config.LoadClank), so transcripts always ride the same bucket there —
+	// durable-by-default, no separate opt-in. The offline dir-poll path has
+	// no S3 creds to reach for, so CLANK_TRANSCRIPTS keeps its original,
+	// narrower meaning: a local directory, or memory if unset.
 	var store Store = NewMemStore()
-	if cfg.Transcripts != "" {
+	switch {
+	case lc.NATSURL != "":
+		client, err := beat.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "transcripts s3 client: %v\n", err)
+			return 1
+		}
+		store = NewS3Store(client, cfg.S3Bucket)
+	case cfg.Transcripts != "":
 		if err := os.MkdirAll(cfg.Transcripts, 0o750); err != nil { //nolint:gosec
 			_, _ = fmt.Fprintf(stderr, "mkdir transcripts: %v", err)
 			return 1

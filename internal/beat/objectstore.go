@@ -20,11 +20,14 @@ import (
 // the same schedule.
 const ShipInterval = 30 * time.Second
 
-// NewS3SegmentSink builds a publish.SegmentSink over an S3-compatible
-// endpoint (MinIO, s3mock, or real S3) from plain config values — so a
-// beat's Main never has to import the AWS SDK itself to get one, the same
-// hiding Tracer does for the OTel exporter.
-func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKey string) (publish.SegmentSink, error) {
+// NewS3Client builds an S3-compatible client (MinIO, s3mock, or real S3)
+// from plain config values — so a beat's Main never has to import the AWS
+// SDK itself to get one, the same hiding Tracer does for the OTel exporter.
+// Every S3 consumer in this repo (the WAL shipper's segment sink, clank's
+// transcript S3Store) must build its client through here, never
+// s3.NewFromConfig directly — the GCS signing workarounds below are
+// load-bearing for any of them, not just the shipper.
+func NewS3Client(ctx context.Context, endpoint, accessKey, secretKey string) (*s3.Client, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion("us-east-1"),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
@@ -32,7 +35,7 @@ func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKe
 	if err != nil {
 		return nil, fmt.Errorf("beat: load s3 config: %w", err)
 	}
-	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
 		// GCS's S3-compatibility XML API doesn't understand the SDK's default
@@ -75,7 +78,16 @@ func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKe
 				"Signing", middleware.Before,
 			)
 		})
-	})
+	}), nil
+}
+
+// NewS3SegmentSink builds a publish.SegmentSink over an S3-compatible
+// endpoint from plain config values, via NewS3Client above.
+func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKey string) (publish.SegmentSink, error) {
+	client, err := NewS3Client(ctx, endpoint, accessKey, secretKey)
+	if err != nil {
+		return nil, err
+	}
 	return publish.NewS3SegmentSink(client, bucket), nil
 }
 
