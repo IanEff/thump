@@ -24,7 +24,7 @@ import (
 // disposition a healthy reasoner should reach against the PRODUCTION
 // catalog (contract.Default(), the same one Main wires). Unlike the
 // golden-path suite (Stage 4, a scripted model), this drives the REAL
-// Model — it's a score, not a proof, and it never runs in `make ci`.
+// Model — it's a score, not a proof, and it never runs in `task ci`.
 type evalCase struct {
 	fixture         string // file under testdata/detections/
 	wantDisposition string // "propose" | "insufficient"
@@ -289,7 +289,7 @@ func newFakePrometheus(t *testing.T, queries map[string]string, values map[strin
 func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
-		t.Skip("ANTHROPIC_API_KEY unset — the eval harness needs a real model; see `make eval`")
+		t.Skip("ANTHROPIC_API_KEY unset — the eval harness needs a real model; see `task eval`")
 	}
 
 	transcripts := os.Getenv("CLANK_EVAL_TRANSCRIPTS")

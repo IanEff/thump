@@ -25,7 +25,7 @@
 # — GKE's/GCE's nodes are on GCP's network and have no route to it at all.
 # rook-gke and rook-gce-k3s both have to push somewhere their nodes can
 # actually pull from, so both reuse ghcr.io/ianeff, the same registry the
-# release path (`make images`) already pushes to.
+# release path (`task images`) already pushes to.
 #
 # rook-gce-k3s's context is IAP-only — `just tunnel` (in
 # ~/projects/ceph/rook-gce-k3s) must already be running before `tilt up`,

@@ -1,0 +1,101 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# Scoped down from charmbracelet/crush's .goreleaser.yml, which this was modeled on:
+# crush is a public CLI shipped through Homebrew/AUR/npm/winget/nfpm with macOS
+# notarization. thump has none of that — it's four internal binaries shipped as
+# containers. This file only builds tagged binary archives, checksums, and a
+# changelog for GitHub Releases. The container image path (multi-arch buildx +
+# SBOM + provenance + cosign) stays exactly where it already lived, in
+# Taskfile.yaml's `images`/`sign-images` tasks — it isn't reimplemented here.
+version: 2
+
+project_name: thump
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: clank
+    main: ./cmd/clank
+    binary: clank
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+  - id: rattle
+    main: ./cmd/rattle
+    binary: rattle
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+  - id: hiss
+    main: ./cmd/hiss
+    binary: hiss
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+  - id: thump
+    main: ./cmd/thump
+    binary: thump
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+# One archive per {os,arch} bundling all four beat binaries — mirrors what
+# `task build` already produces into bin/, just tarred up per platform.
+archives:
+  - id: default
+    name_template: >-
+      thump_{{ .Version }}_{{ .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64{{- else }}{{ .Arch }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "merge conflict"
+      - Merge branch
+      - Merge pull request
+  groups:
+    - title: "New!"
+      regexp: '^.*feat[(\w)]*:+.*$'
+      order: 100
+    - title: "Fixed"
+      regexp: '^.*fix[(\w)]*:+.*$'
+      order: 200
+    - title: "Other"
+      order: 9999
+
+release:
+  prerelease: auto
