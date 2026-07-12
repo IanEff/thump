@@ -1,0 +1,25 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: thump
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # No component label here on purpose — this is the one selector meant to
+  # match all four service-<beat>.yaml Services at once (each already
+  # carries thump.labels plus its own component label; matching only the
+  # shared name/instance pair is what makes one ServiceMonitor cover all
+  # four without four near-identical copies).
+  selector:
+    matchLabels: {{- include "thump.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - thump
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}
