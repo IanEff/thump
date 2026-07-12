@@ -1,0 +1,33 @@
+# Per-dependency "is it healthy right now" queries for whir's Resolver
+# (internal/whir). `dependency` must match a `metadata.name` in
+# catalog-info.yaml exactly. Each query is an instant PromQL whose result
+# means: value > 0 => healthy, value = 0 => degraded, no result / error =>
+# unknown (a state, not an error).
+#
+# Mirrors config/ceph-lab/whir/state-queries.yaml's query shape (this rig is
+# a clean fork of that stack) with one real difference: node filters drop
+# ceph-lab's "lima-" prefix — this rig's kubectl node names are the bare
+# ceph-node-{1,2,3} (phase-d-live-payoff-guide.md THE CAST: "real names this
+# time, no GKE hash suffixes to VERIFY" — no Lima prefix either).
+#
+# Every query is wrapped in max()/count() on purpose: double-scraped targets
+# can return more than one series, and aggregating here keeps the resolver
+# from ever having to pick which series to believe (the singleton rule).
+version: v1
+queries:
+  - dependency: rook-operator
+    query: 'max(kube_deployment_status_replicas_available{namespace="rook-ceph",deployment="rook-ceph-operator"})'
+  - dependency: cilium
+    query: 'max(kube_daemonset_status_number_ready{namespace="kube-system",daemonset="cilium"})'
+  - dependency: cephcluster
+    query: 'max(ceph_health_status == bool 0)'   # 0 = HEALTH_OK, so ==0 → 1 (healthy)
+  - dependency: cephobjectstore
+    query: 'count(ceph_rgw_metadata)'
+  - dependency: cephblockpool
+    query: 'count(ceph_pool_metadata{name="replicapool"})'
+  - dependency: ceph-node-1
+    query: 'max(kube_node_status_condition{node="ceph-node-1",condition="Ready",status="true"})'
+  - dependency: ceph-node-2
+    query: 'max(kube_node_status_condition{node="ceph-node-2",condition="Ready",status="true"})'
+  - dependency: ceph-node-3
+    query: 'max(kube_node_status_condition{node="ceph-node-3",condition="Ready",status="true"})'

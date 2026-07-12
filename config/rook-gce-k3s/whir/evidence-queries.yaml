@@ -1,0 +1,77 @@
+# evidence-queries.yaml — read-only PromQL the clank `metrics` tool exposes.
+# The model calls metrics with {"q":"<name>"}; the tool runs the mapped query
+# and cites the result as an EvidenceRef (Live:true only on a fresh,
+# non-empty, non-error result — see internal/clank/metrics_tool.go).
+#
+# This is the same declared-surface discipline as
+# config/rook-gce-k3s/whir/state-queries.yaml and the action catalog
+# (clank.go's defaultCatalog): a curated, reviewed set, not arbitrary PromQL
+# the model writes itself.
+#
+# ⚠️ VERIFY EVERY METRIC NAME ON THE TARGET CLUSTER BEFORE TRUSTING THIS.
+# Ceph exporter metric names drift across releases and depend on which
+# exporters are scraped. Run once against the live cluster:
+#   curl -s "$PROM_URL/api/v1/label/__name__/values" | tr ',' '\n' | grep -E 'ceph_|slo:|kube_'
+# and reconcile each query below against what's actually there.
+version: v1
+queries:
+  # ── group 1 · cluster health & the firing SLO (universal) ───────────────
+  - name: ceph_health              # 0=OK, 1=WARN, 2=ERR — the headline
+    query: ceph_health_status
+  - name: slo_burn_ceph_health     # the burn rate rattle fired on
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-health"}
+  - name: slo_burn_rgw             # RGW-availability burn
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-availability"}
+  - name: slo_burn_osd_latency     # OSD-latency burn — the first live site to render this SLO
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-osd-latency"}
+  - name: slo_burn_argocd_sync     # ArgoCD-sync burn — no catalog action maps here (D3 decline probe)
+    query: slo:current_burn_rate:ratio{sloth_id="argocd-sync"}
+
+  # ── group 2 · OSD / rebalance state (evidence FOR or AGAINST hold-rebalance) ─
+  - name: osds_down                # OSDs currently down — transient node loss?
+    query: count(ceph_osd_up == 0) or vector(0)
+  - name: osds_out                 # OSDs marked out — is CRUSH about to rebalance?
+    query: count(ceph_osd_in == 0) or vector(0)
+  - name: pgs_degraded             # degraded PGs — the rebalance's blast surface
+    query: sum(ceph_pg_degraded) or vector(0)
+  - name: pgs_backfilling          # is a rebalance/backfill ALREADY in flight?
+    query: sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)
+  - name: recovery_active          # recovery ops/s — is the cluster thrashing right now?
+    query: sum(ceph_osd_recovery_ops) or vector(0)
+  - name: mons_in_quorum           # mon quorum count — a quorum loss changes everything
+    query: count(ceph_mon_quorum_status == 1) or vector(0)
+
+  # ── group 3 · capacity / resource_exhaustion (the hold-rebalance failure class) ─
+  - name: cluster_used_ratio       # 0..1 whole-cluster fullness
+    query: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes
+  - name: fullest_pool_ratio       # the single most-full pool — nearfull triggers noout thrash
+    query: max(ceph_pool_stored / (ceph_pool_stored + ceph_pool_max_avail))
+  - name: osd_write_latency_ms     # avg OSD write latency, filtered to the latency-bridge job
+    query: 1000 * rate(ceph_osd_op_w_latency_sum{job="ceph-latency-bridge"}[5m]) / rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m])
+    # ⚠️ ceph-latency-bridge's own ladder is already known to have hit an
+    # ms-vs-s unit bug on this same rig lineage (ceph-lab-running-notes
+    # 2026-07-03, "Bug 1"/"Bug 2") — the Sloth SLO's own errorRatioQuery was
+    # corrected to bucket le="102.399999" to work around it. VERIFY this
+    # query's `1000 *` is still the right correction before trusting it live
+    # — if the sum is already ms, drop it. The job filter matters too:
+    # unfiltered ceph_osd_op_w_latency_* triple-counts against
+    # rook-ceph-exporter's other scrape paths (same Bug 2).
+
+  # ── group 4 · RGW / traffic (evidence for throttle-non-critical-paths + rgw SLO) ─
+  - name: rgw_request_rate         # req/s through the object gateway
+    query: sum(rate(ceph_rgw_req[5m])) or vector(0)
+  - name: rgw_failed_rate          # failed req/s — the availability SLI's numerator
+    query: sum(rate(ceph_rgw_failed_req[5m])) or vector(0)
+
+  # ── group 5 · node / pod state ───────────────────────────────────────────
+  # kube-state-metrics is enabled on this rig's prometheus chart
+  # (applications/infrastructure/prometheus/values.yaml, kube-state-metrics.
+  # enabled: true) — unlike rook-gke, this isn't a maybe.
+  - name: nodes_not_ready
+    query: count(kube_node_status_condition{condition="Ready",status="true"} == 0) or vector(0)
+  - name: rook_pods_not_running
+    query: count(kube_pod_status_phase{namespace="rook-ceph",phase!="Running"} == 1) or vector(0)
+
+  # ── group 6 · ArgoCD sync state (evidence for the argocd-sync decline probe) ─
+  - name: argocd_apps_out_of_sync
+    query: count(argocd_app_info{sync_status!="Synced"}) or vector(0)

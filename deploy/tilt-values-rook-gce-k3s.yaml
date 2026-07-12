@@ -1,0 +1,45 @@
+# Tilt dev-loop overrides for the rook-gce-k3s cluster — the third sibling
+# of deploy/tilt-values.yaml (ceph-lab) / deploy/tilt-values-rook-gke.yaml.
+# `tilt up -- --cluster=rook-gce-k3s` picks this file (Tiltfile CLUSTERS
+# table). Values read off the live rig
+# (~/projects/ceph/rook-gce-k3s @ main, phase-d-live-payoff-guide.md D0):
+#   - configProfile: rook-gce-k3s selects config/rook-gce-k3s/ — without it
+#     clank/rattle reason over ceph-lab's phantom topology and every
+#     detection is poisoned, same rule every prior site profile follows.
+#   - prometheus.url: this rig's monitoring stack is the plain
+#     prometheus-community/prometheus chart (releaseName "prometheus",
+#     namespace monitoring) — NOT kube-prometheus-stack like rook-gke — so
+#     the server Service is "prometheus-server", not
+#     "kube-prometheus-stack-prometheus". Confirmed against the chart's own
+#     fullname helper + servicePort (both vendored in the rig repo), not a
+#     guess.
+#   - loki.url: no override — the chart default already matches this rig's
+#     Loki (SingleBinary mode, gateway disabled, namespace logging;
+#     applications/infrastructure/loki/kustomization.yaml), the same setup
+#     ceph-lab's fork lineage shares.
+#   - nats.storageClass: this rig's only StorageClass besides Rook's own
+#     (rook-ceph-block/-bucket) is k3s's built-in "local-path"
+#     (applications/infrastructure/prometheus/values.yaml uses it directly)
+#     — there is no class named "standard" here, unlike the chart's
+#     ceph-lab-flavored default. nodeSelector/tolerations are left at chart
+#     default: ceph-control is a real k3s server node labeled
+#     node-role.kubernetes.io/control-plane, so the chart's built-in pin
+#     lands NATS there correctly, same as ceph-lab (unlike rook-gke, which
+#     had to null the selector out for lack of a schedulable control-plane
+#     node).
+replicas: 1
+
+image:
+  registry: "ghcr.io/ianeff"
+  # Placeholder — Tilt matches on registry+repo (not tag) and rewrites this
+  # to its own content-addressed tag on every build, so the literal value
+  # here never actually reaches the cluster.
+  tag: "dev"
+
+configProfile: rook-gce-k3s
+
+prometheus:
+  url: http://prometheus-server.monitoring.svc.cluster.local
+
+nats:
+  storageClass: local-path

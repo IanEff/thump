@@ -1,0 +1,56 @@
+# rook-gce-k3s's watch list — all four Sloth SLOs, the first site profile
+# that doesn't have to park one (ceph-osd-latency and argocd-sync were both
+# parked out of rook-gke's watch.yaml; this rig renders all four —
+# applications/infrastructure/sloth/prometheusservicelevels.yaml).
+# Objectives/contractRef pulled straight from that file's `objective:`
+# fields. Dependency names must match metadata.name entries in
+# config/rook-gce-k3s/whir/catalog-info.yaml exactly (whir strips the
+# resource:/component: prefix before comparing).
+slos:
+  - id: ceph-rgw-availability
+    object: ceph-rgw
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-rgw-availability:v1
+    dependencies:
+      - name: cephobjectstore
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: ceph-osd-latency
+    object: ceph-osd
+    tier: tier-1
+    objective: 0.99
+    contractRef: ceph-osd-latency:v1
+    dependencies:
+      - name: cephblockpool
+        role: blocking
+      - name: ceph-node-1
+        role: blocking
+      - name: ceph-node-2
+        role: blocking
+      - name: ceph-node-3
+        role: blocking
+
+  - id: ceph-health
+    object: ceph-cluster
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-health:v1
+    dependencies:
+      - name: cephcluster
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: argocd-sync
+    object: argocd
+    tier: tier-1
+    objective: 0.99
+    contractRef: argocd-sync:v1
+    dependencies:
+      - name: cilium
+        role: blocking
+      - name: rook-operator
+        role: optional

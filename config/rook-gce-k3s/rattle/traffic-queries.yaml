@@ -1,0 +1,46 @@
+# Per-SLO blast-radius queries for rattle's HubbleTrafficSource.
+# blast radius = affected ÷ total, clamped to [0,1].
+#
+# `affected` wears `or vector(0)` — absence-of-failures and absence-of-
+# measurement are different facts. A healthy cluster must read as 0 ÷ total = 0,
+# not as "no traffic data". `total` is left bare: if it comes back empty,
+# nothing is being measured, and that's the right signal to surface as-is.
+#
+# ceph-health and argocd-sync get NO entry, on purpose: neither has a
+# meaningful affected/total traffic pair (cluster health isn't
+# request-shaped; sync status isn't traffic). An SLO with no entry here
+# returns (nil, nil) from TrafficSamples and the detection simply carries no
+# traffic context — that absence is the honest answer, not a gap to fill.
+#
+# This rig has Cilium (unlike rook-gke), but mirrors ceph-lab's traffic
+# source anyway, not a Hubble one: ceph-lab already tried the Hubble pair
+# (hubble_tcp_flags_total{flag="RST"}) and retired it 2026-07-04 for
+# undercounting (boto3 holds connections open, so it counts connection
+# setup/teardown, not requests — ~0.02-0.2/s measured vs ~6.2 ops/s of real
+# RGW traffic). Ceph's own request counters replaced it there; this rig
+# forks that stack, so it inherits the fix, not the retired approach.
+#
+# The traffic source is s3-traffic-generator here too (same manifest
+# family) — the RGW SLO has zero data until it's started
+# (kubectl exec -it deploy/s3-traffic-generator -n default -- /start-traffic.sh).
+version: v1
+slos:
+  - id: ceph-rgw-availability
+    # ceph_rgw_req / ceph_rgw_failed_req are Ceph's own RGW op counters
+    # (rook-ceph-mgr exporter) — request-shaped, not yet verified live on
+    # this rig (ceph-lab confirmed both exist and read plausible values
+    # 2026-07-04; carry that expectation over, don't re-guess it).
+    affected: 'sum(rate(ceph_rgw_failed_req[5m])) or vector(0)'
+    total:    'sum(rate(ceph_rgw_req[5m]))'
+
+  - id: ceph-osd-latency
+    # ceph-latency-bridge's own w-latency histogram (`ceph_osd_op_w_latency_*`,
+    # job="ceph-latency-bridge") — NOT the `_seconds` "native" variant (a
+    # different scrape target). le="102.399999" is the same bucket the
+    # Sloth-generated SLI itself uses after the ms-vs-s bucket-unit bug fix
+    # (ceph-lab-running-notes 2026-07-03) — mirroring it here, not
+    # re-guessing it. Filtering both affected and total to
+    # job="ceph-latency-bridge" avoids triple-counting against
+    # rook-ceph-exporter's other scrape paths (the same bug's second half).
+    affected: 'sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m])) - sum(rate(ceph_osd_op_w_latency_bucket{job="ceph-latency-bridge",le="102.399999"}[5m])) or vector(0)'
+    total:    'sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m]))'
