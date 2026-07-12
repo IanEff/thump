@@ -39,6 +39,20 @@ anthropic:
   create: false
   apiKey: ""
 
+# S3-compatible object store — every beat's broker path Require()s all four
+# S3_* vars once NATS_URL is set (internal/config/config.go): the WAL
+# shipper (every beat) and clank's S3Store transcript checkpoints. Same
+# out-of-band posture as anthropic above: production expects secretName to
+# already exist; create/the four value fields are a --set-only escape
+# hatch, never a committed values file.
+s3:
+  secretName: thump-s3
+  create: false
+  endpoint: ""
+  bucket: ""
+  accessKey: ""
+  secretKey: ""
+
 # Per-beat resources (W0-2: one umbrella chart, per-beat values sections).
 # Stage 0 confirmed real headroom; every beat starts small — the whole
 # machine should cost less than one CSI sidecar.

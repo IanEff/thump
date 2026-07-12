@@ -5,23 +5,32 @@
 # depends on.
 
 # Multi-cluster dev loop (phase2-converge-rook-gke-guide.md Stage 0.6
-# addendum): everything that differs between ceph-lab and rook-gke —
-# kubectl context, build platform, image registry, chart values overlay —
-# lives in this one table, picked by `tilt up -- --cluster=<name>`.
+# addendum): everything that differs between ceph-lab, rook-gke, and
+# rook-gce-k3s — kubectl context, build platform, image registry, chart
+# values overlay — lives in this one table, picked by
+# `tilt up -- --cluster=<name>`.
 #
 # platform: None for ceph-lab (Lima's arm64 VMs match the Mac natively, no
-# cross-compile needed); 'linux/amd64' for rook-gke (e2-standard-4 nodes are
-# amd64, and CGO_ENABLED=0 means buildx cross-compiles for free, no QEMU —
-# same trick as the release Dockerfile's $BUILDPLATFORM/$TARGETARCH staging).
-# Deliberately single-platform per profile, not multi-arch: only one context
-# is ever live at a time, so building the arch you're not deploying to is
-# pure waste (the guide's own ruling).
+# cross-compile needed); 'linux/amd64' for rook-gke and rook-gce-k3s (both
+# are real GCE VMs — e2-standard-4 on rook-gke, e2-medium/e2-standard-2 on
+# rook-gce-k3s — all amd64, and CGO_ENABLED=0 means buildx cross-compiles
+# for free, no QEMU — same trick as the release Dockerfile's
+# $BUILDPLATFORM/$TARGETARCH staging). Deliberately single-platform per
+# profile, not multi-arch: only one context is ever live at a time, so
+# building the arch you're not deploying to is pure waste (the guide's own
+# ruling).
 #
 # registry: ceph-lab's insecure local registry lives on the Mac's
 # socket_vmnet subnet (192.168.56.0/24) and is reachable from Lima nodes only
-# — GKE's nodes are on GCP's network and have no route to it at all. rook-gke
-# has to push somewhere GKE can actually pull from, so it reuses ghcr.io/ianeff,
-# the same registry the release path (`make images`) already pushes to.
+# — GKE's/GCE's nodes are on GCP's network and have no route to it at all.
+# rook-gke and rook-gce-k3s both have to push somewhere their nodes can
+# actually pull from, so both reuse ghcr.io/ianeff, the same registry the
+# release path (`make images`) already pushes to.
+#
+# rook-gce-k3s's context is IAP-only — `just tunnel` (in
+# ~/projects/ceph/rook-gce-k3s) must already be running before `tilt up`,
+# same as any other kubectl access to this rig; Tilt has no hook to start
+# that tunnel itself.
 CLUSTERS = {
     'ceph-lab': {
         'context': 'ceph-lab',
@@ -35,9 +44,15 @@ CLUSTERS = {
         'registry': 'ghcr.io/ianeff',
         'values': 'deploy/tilt-values-rook-gke.yaml',
     },
+    'rook-gce-k3s': {
+        'context': 'ceph-gce',
+        'platform': 'linux/amd64',
+        'registry': 'ghcr.io/ianeff',
+        'values': 'deploy/tilt-values-rook-gce-k3s.yaml',
+    },
 }
 
-config.define_string('cluster', usage='which CLUSTERS profile to target: ceph-lab (default) or rook-gke')
+config.define_string('cluster', usage='which CLUSTERS profile to target: ceph-lab (default), rook-gke, or rook-gce-k3s')
 cfg = config.parse()
 cluster_name = cfg.get('cluster', 'ceph-lab')
 if cluster_name not in CLUSTERS:
@@ -94,6 +109,32 @@ local_resource(
     labels=['infra'],
 )
 
+# thump-s3-secret: same posture as thump-anthropic-secret above — every beat
+# (not just clank) needs this once NATS_URL is set, since every beat's
+# broker path Require()s all four S3_* vars for its WAL shipper
+# (internal/config/config.go). Sourced from .env, never from a values file,
+# same reasoning as the Anthropic key. For rook-gce-k3s the four values come
+# from ~/projects/ceph/rook-gce-k3s's storage.tf outputs (thump_s3_bucket /
+# _endpoint / _access_key / _secret_key) — re-run `tofu output` and refresh
+# .env after every fresh `tofu apply` there, since the bucket (and its HMAC
+# key) gets torn down and recreated with `just destroy`/`just apply` same as
+# everything else on that rig.
+local_resource(
+    'thump-s3-secret',
+    cmd='bash -c \'' +
+        'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; ' +
+        'for v in S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY; do ' +
+        '  [ -n "${!v}" ] || { echo "$v not set in .env" >&2; exit 1; }; ' +
+        'done; ' +
+        'kubectl --context ' + cluster['context'] + ' create namespace thump --dry-run=client -o yaml | kubectl --context ' + cluster['context'] + ' apply -f - >/dev/null && ' +
+        'kubectl --context ' + cluster['context'] + ' -n thump create secret generic thump-s3 ' +
+        '--from-literal=endpoint="$S3_ENDPOINT" --from-literal=bucket="$S3_BUCKET" ' +
+        '--from-literal=access-key="$S3_ACCESS_KEY" --from-literal=secret-key="$S3_SECRET_KEY" ' +
+        '--dry-run=client -o yaml | kubectl --context ' + cluster['context'] + ' apply -f -' +
+        '\'',
+    labels=['infra'],
+)
+
 DEV_REGISTRY = cluster['registry']
 
 # COMMIT is resolved once at Tiltfile load (not per-build), so it reflects
@@ -117,7 +158,7 @@ k8s_yaml(helm('deploy/chart/thump', values=[cluster['values']]))
 k8s_resource('nats', labels=['broker'], resource_deps=['thump-registry'])
 
 for beat in ['rattle', 'clank', 'hiss', 'thump']:
-    deps = ['thump-registry', 'nats']   # ← don't start a beat until NATS exists
+    deps = ['thump-registry', 'nats', 'thump-s3-secret']   # ← every beat ships its WAL to S3
     if beat == 'clank':
         deps.append('thump-anthropic-secret')   # ← or until its Secret does
     k8s_resource(
