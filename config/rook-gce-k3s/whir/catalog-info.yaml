@@ -1,0 +1,236 @@
+# Static topology map for rattle's TopologySource (internal/whir). Copied
+# verbatim from the rig's own source of truth —
+# ~/projects/ceph/rook-gce-k3s/applications/infrastructure/topology-catalog/catalog-info.yaml
+# — per phase-d-live-payoff-guide.md D0 step 1: this rig is a clean fork of
+# ceph-lab's stack with real GCE node names (no Lima prefix, no GKE hash
+# suffix), so there's nothing to re-derive here, only to transcribe.
+#
+# dependsOn edges are wired to match all four Sloth SLOs' dependency shape
+# 1:1 (applications/infrastructure/sloth/prometheusservicelevels.yaml):
+#   ceph-rgw-availability -> ceph-rgw component
+#   ceph-osd-latency       -> ceph-osd component
+#   ceph-health            -> ceph-cluster component
+#   argocd-sync            -> argocd component
+# This is the first site profile that doesn't have to park a component for a
+# missing SLO — rook-gke had no argocd/cilium entity at all, ceph-node/disk
+# names there were GKE hash-mangled.
+
+# --- Application components (one per SLO subject, plus their dependencies) ---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-rgw
+  description: RGW — S3-compatible object gateway. Subject of the ceph-rgw-availability SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephobjectstore
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-osd
+  description: OSD read/write path. Subject of the ceph-osd-latency SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephblockpool
+    - resource:default/ceph-node-1
+    - resource:default/ceph-node-2
+    - resource:default/ceph-node-3
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-cluster
+  description: Overall Ceph cluster health. Subject of the ceph-health SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: argocd
+  description: GitOps continuous delivery — syncs all cluster state from git. Subject of the argocd-sync SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - component:default/cilium
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: rook-operator
+  description: Rook operator — manages the CephCluster lifecycle.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: cilium
+  description: CNI, L2 load-balancing, and Gateway API implementation for the cluster.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+
+# --- Storage resources ---
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephcluster
+  description: The CephCluster CR — the whole Ceph deployment.
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephblockpool
+  description: replicapool — the RBD block pool backing rook-ceph-block (cluster-default StorageClass).
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephfilesystem
+  description: CephFS filesystem (requires the CephFilesystemSubVolumeGroup, gotcha #4).
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephobjectstore
+  description: RGW object store backing the ceph-rgw component.
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+
+# --- Compute nodes and disks ---
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-control
+  description: k3s server node (GCE VM, e2-medium).
+spec:
+  type: compute-node
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-1
+  description: k3s agent + Ceph OSD node (GCE VM, e2-standard-2).
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/ceph-node-1-vdc
+    - resource:default/ceph-node-1-vdd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-2
+  description: k3s agent + Ceph OSD node (GCE VM, e2-standard-2).
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/ceph-node-2-vdc
+    - resource:default/ceph-node-2-vdd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-3
+  description: k3s agent + Ceph OSD node (GCE VM, e2-standard-2).
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/ceph-node-3-vdc
+    - resource:default/ceph-node-3-vdd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-1-vdc
+  description: Raw 5GiB OSD disk (/dev/vdc) on ceph-node-1.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-1-vdd
+  description: Raw 5GiB OSD disk (/dev/vdd) on ceph-node-1.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-2-vdc
+  description: Raw 5GiB OSD disk (/dev/vdc) on ceph-node-2.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-2-vdd
+  description: Raw 5GiB OSD disk (/dev/vdd) on ceph-node-2.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-3-vdc
+  description: Raw 5GiB OSD disk (/dev/vdc) on ceph-node-3.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-3-vdd
+  description: Raw 5GiB OSD disk (/dev/vdd) on ceph-node-3.
+spec:
+  type: disk
+  owner: ceph-lab
