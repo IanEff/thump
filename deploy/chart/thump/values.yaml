@@ -103,3 +103,19 @@ nats:
 # Per-beat /healthz and /readyz
 metrics:
   port: 9090
+
+# Each beat gets a service-<beat>.yaml Service exposing the metrics port
+# unconditionally (cheap, no CRD dependency) — the ServiceMonitor on top of
+# them is opt-in because the monitoring.coreos.com CRDs aren't guaranteed
+# to exist on every cluster this chart targets; enabling it against a
+# cluster without the Prometheus Operator installed fails at apply time,
+# not at template time.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  # kube-prometheus-stack's Prometheus CR usually only picks up
+  # ServiceMonitors matching its own serviceMonitorSelector (often a
+  # release label) — set here per-cluster if the lab's Prometheus
+  # requires one. VERIFY against the lab like prometheus.url/loki.url
+  # above.
+  additionalLabels: {}

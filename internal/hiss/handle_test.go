@@ -25,7 +25,7 @@ func TestHandle_EvaluatesAndPublishesOneDecision(t *testing.T) {
 	fake := &fakeDecisionPub{}
 	tr := &hiss.Transport{Pub: fake, Policy: calmPolicy(), Log: hiss.NewDecisionLog(), Now: frozenNow}
 
-	if err := tr.HandleForTest(context.Background(), governedSet()); err != nil {
+	if err := tr.HandleForTest(context.Background(), governedSet(), nil); err != nil {
 		t.Fatal(err)
 	}
 

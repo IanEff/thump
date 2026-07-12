@@ -77,7 +77,15 @@ func (e *Engine) tracer() trace.Tracer {
 // emitting. The set is Recorded to the Ledger either way; it is only
 // published through Pub when the gate passes, and an open set for the same
 // fingerprint suppresses (but still records) a new one.
-func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Set, error) {
+func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposal.Set, err error) {
+	// runID, not sig.Fingerprint alone, keys every Store call below — two
+	// invocations for the same fingerprint (a legitimate re-fire after
+	// rattle's debounce window, a JetStream redelivery, a retry after a
+	// transient error) must never share checkpoint objects, or the second
+	// run silently clobbers the first's transcript at each matching step.
+	runID := fmt.Sprintf("%s/%d", sig.Fingerprint, time.Now().UnixNano())
+	defer func() { _ = e.Store.Finish(ctx, runID, err) }()
+
 	var sao proposal.SAO
 	if err := beat.Stage(ctx, e.tracer(), e.Stages, "assemble_sao", func(sctx context.Context) error {
 		var err error
@@ -87,7 +95,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Se
 		return proposal.Set{}, fmt.Errorf("intake: %w", err)
 	}
 
-	set := proposal.Set{
+	set = proposal.Set{
 		Name:        sig.Name,
 		SignalRef:   sig.Fingerprint,
 		SAOSnapshot: &sao,
@@ -112,7 +120,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (proposal.Se
 		}
 		msgs = append(msgs, comp.Message)
 
-		if err := e.Store.Checkpoint(ctx, Turn{RunID: sig.Fingerprint, Step: step, Msgs: msgs}); err != nil {
+		if err := e.Store.Checkpoint(ctx, Turn{RunID: runID, Step: step, Msgs: msgs}); err != nil {
 			return proposal.Set{}, fmt.Errorf("checkpoint (step %d): %w", step, err)
 		}
 

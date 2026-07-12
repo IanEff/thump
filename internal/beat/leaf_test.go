@@ -14,8 +14,10 @@ import (
 // Tracer, which every beat's Main calls to build its span provider, and
 // stage.go's Stage, which every beat's loop stages run through), the
 // Prometheus client (metrics.go's Metrics, stage.go's StageRecorder), and
-// the AWS SDK (objectstore.go's NewS3SegmentSink, which builds the S3
-// client a WAL ships sealed segments through) — but NEVER a beat package.
+// the AWS SDK plus its underlying smithy-go transport (objectstore.go's
+// NewS3SegmentSink, which builds the S3 client a WAL ships sealed segments
+// through, and the finalize middleware it installs to work around a GCS
+// signing quirk) — but NEVER a beat package.
 // A clank, rattle, hiss, or thump import appearing here means the runtime
 // kit has become a place where the planes mash together; this test is that
 // regression's tripwire. Widen the allowlist below when tracing, metrics,
@@ -39,6 +41,8 @@ func TestBeatImportsNoBeat(t *testing.T) {
 		`"github.com/aws/aws-sdk-go-v2/config"`:                             true,
 		`"github.com/aws/aws-sdk-go-v2/credentials"`:                        true,
 		`"github.com/aws/aws-sdk-go-v2/service/s3"`:                         true,
+		`"github.com/aws/smithy-go/middleware"`:                             true,
+		`"github.com/aws/smithy-go/transport/http"`:                         true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

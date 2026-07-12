@@ -18,7 +18,10 @@ import (
 // and a different granularity. Checkpoint must succeed before the loop takes
 // its next turn; a checkpoint error halts the run rather than risk a turn
 // nothing remembers. Because Propose never mutates infrastructure,
-// re-running a halted signal from scratch is always safe.
+// re-running a halted signal from scratch is always safe — Pending exists
+// as the seam a future crash-recovery path would read from, but nothing in
+// Main wires it up today, deliberately: restarting is the documented
+// safety property, not resuming a stale conversation.
 type Store interface {
 	Checkpoint(context.Context, Turn) error
 	Pending(context.Context) ([]Turn, error)
@@ -80,9 +83,10 @@ func (s *MemStore) Finish(ctx context.Context, runID string, runErr error) error
 }
 
 // DirStore is a Store that appends each Turn as a JSON line to
-// <Dir>/<RunID>.jsonl — one file per signal fingerprint, durable across a
-// restart. It has no crash-recovery path: Pending always returns nil here,
-// unlike MemStore.
+// <Dir>/<RunID>.jsonl — one file per run (engine.go keys RunID
+// fingerprint/unixnano, so two runs of the same signal never share a file),
+// durable across a restart. Pending always returns nil here, unlike
+// MemStore — on purpose, not an oversight; see the Store doc comment.
 type DirStore struct {
 	mu  sync.Mutex
 	Dir string
@@ -100,7 +104,7 @@ func (s *DirStore) Checkpoint(ctx context.Context, t Turn) error {
 	return s.appendLine(t.RunID, t)
 }
 
-// Pending is unused on this path.
+// Pending always returns nil — see the Store doc comment.
 func (s *DirStore) Pending(ctx context.Context) ([]Turn, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -130,6 +134,12 @@ func (s *DirStore) appendLine(runID string, v any) error {
 		return fmt.Errorf("dir store: marshal: %w", err)
 	}
 	path := filepath.Join(s.Dir, runID+".jsonl")
+	// runID may itself contain "/" (engine.go keys it fingerprint/unixnano,
+	// not the bare fingerprint), so its parent directory won't exist yet on
+	// this run's first write.
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("dir store: mkdir %s: %w", filepath.Dir(path), err)
+	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("dir store: open %s: %w", path, err)
@@ -147,12 +157,13 @@ func (s *DirStore) appendLine(runID string, v any) error {
 var _ Store = (*S3Store)(nil)
 
 // S3Store is a Store that writes each checkpointed Turn as its own object,
-// keyed by run and step — never a read-modify-write against a shared key,
-// unlike DirStore's shared per-run file. That's why it carries no mutex:
-// the AWS SDK's S3 client is already safe for concurrent use, and two
-// Checkpoint calls can never target the same object key. Pending, like
-// DirStore's, always returns nil — neither offers crash-recovery, only
-// durability once a run has finished.
+// keyed by run and step (transcripts/<RunID>/<Step>.json, RunID always
+// fingerprint/unixnano — see engine.go) — never a read-modify-write against
+// a shared key, unlike DirStore's shared per-run file. That's why it
+// carries no mutex: the AWS SDK's S3 client is already safe for concurrent
+// use, and two Checkpoint calls never target the same object key, even for
+// two runs of the same signal. Pending always returns nil — see the Store
+// doc comment.
 type S3Store struct {
 	Client *s3.Client
 	Bucket string
@@ -168,7 +179,7 @@ func (s *S3Store) Checkpoint(ctx context.Context, t Turn) error {
 	return s.putJSON(ctx, turnKey(t.RunID, t.Step), t)
 }
 
-// Pending is unused on this path, same as DirStore.
+// Pending always returns nil, same as DirStore.
 func (s *S3Store) Pending(ctx context.Context) ([]Turn, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

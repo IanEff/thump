@@ -19,8 +19,13 @@ var defaultBackoff = []time.Duration{time.Second, 5 * time.Second, 15 * time.Sec
 // Handler processes one decoded message. Returning an error tells the
 // Subscriber the delivery failed and should be retried or dead-lettered —
 // it never sees an undecodable message, since that failure is caught
-// before Handler runs.
-type Handler[T any] func(ctx context.Context, obj T) error
+// before Handler runs. heartbeat resets the message's AckWait deadline
+// (msg.InProgress under the hood) — a handler slower than AckWait calls it
+// on its own real progress (e.g. once per checkpointed step), not on a wall
+// clock, so a handler that's actually hung still times out and gets
+// redelivered instead of looking perpetually alive. Most handlers are fast
+// enough to ignore it.
+type Handler[T any] func(ctx context.Context, obj T, heartbeat func()) error
 
 // Subscriber runs h against every message on subject until ctx is
 // cancelled — the inbound half of a beat's Transport, mirroring Publisher
@@ -94,7 +99,7 @@ func (s *JetSubscriber[T]) Run(ctx context.Context, subject string, h Handler[T]
 		// back equal to ctx.
 		msgCtx := propagation.TraceContext{}.Extract(ctx, propagation.HeaderCarrier(msg.Headers()))
 
-		if err := h(msgCtx, obj); err != nil {
+		if err := h(msgCtx, obj, func() { _ = msg.InProgress() }); err != nil {
 			// DOOR 2 — transient: handler failed. Retry with backoff until
 			// the budget (maxDeliver) is spent, then dead-letter.
 			md, _ := msg.Metadata()

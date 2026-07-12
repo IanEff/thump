@@ -41,7 +41,7 @@ func TestHandle_GovernSpanSharesTheProposalsTraceID(t *testing.T) {
 	tr := &hiss.Transport{Pub: &fakeDecisionPub{}, Policy: calmPolicy(), Log: hiss.NewDecisionLog(), Now: frozenNow}
 	tr.Tracer = tp.Tracer("hiss")
 
-	if err := tr.HandleForTest(ctx, ps); err != nil {
+	if err := tr.HandleForTest(ctx, ps, nil); err != nil {
 		t.Fatal(err)
 	}
 

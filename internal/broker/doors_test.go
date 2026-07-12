@@ -32,7 +32,7 @@ func TestDoors_PoisonGoesToDLQ_AndDoesNotBlock(t *testing.T) {
 	good := make(chan signal.Detection, 1)
 	sub := broker.NewJetSubscriber[signal.Detection](js)
 	go func() {
-		_ = sub.Run(ctx, "thump.detections", func(_ context.Context, d signal.Detection) error {
+		_ = sub.Run(ctx, "thump.detections", func(_ context.Context, d signal.Detection, _ func()) error {
 			good <- d
 			return nil
 		})
@@ -81,7 +81,7 @@ func TestDoors_TransientRetriesThenDLQ(t *testing.T) {
 		sub := broker.NewJetSubscriber[signal.Detection](js)
 		sub.Backoff = fastBackoff
 		go func() {
-			_ = sub.Run(ctx, "thump.detections", func(_ context.Context, d signal.Detection) error {
+			_ = sub.Run(ctx, "thump.detections", func(_ context.Context, d signal.Detection, _ func()) error {
 				if attempts.Add(1) == 1 {
 					return errors.New("simulated transient failure")
 				}
@@ -128,7 +128,7 @@ func TestDoors_TransientRetriesThenDLQ(t *testing.T) {
 		sub := broker.NewJetSubscriber[signal.Detection](js)
 		sub.Backoff = fastBackoff
 		go func() {
-			_ = sub.Run(ctx, "thump.detections", func(_ context.Context, _ signal.Detection) error {
+			_ = sub.Run(ctx, "thump.detections", func(_ context.Context, _ signal.Detection, _ func()) error {
 				deliveries.Add(1)
 				return errors.New("simulated permanent failure")
 			})

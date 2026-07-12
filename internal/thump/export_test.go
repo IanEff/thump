@@ -11,6 +11,6 @@ import (
 // _test.go suffix keeps it out of the shipped binary. Mirrors
 // internal/hiss/export_test.go, internal/clank/export_test.go, and
 // internal/rattle/export_test.go.
-func (tr *Transport) HandleForTest(ctx context.Context, g decision.Governed) error {
-	return tr.handle(ctx, g)
+func (tr *Transport) HandleForTest(ctx context.Context, g decision.Governed, heartbeat func()) error {
+	return tr.handle(ctx, g, heartbeat)
 }

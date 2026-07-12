@@ -77,7 +77,7 @@ func TestClankLearnEdge_ClosesOverBroker(t *testing.T) {
 
 	detSub := broker.NewJetSubscriber[signal.Detection](js)
 	go func() {
-		_ = detSub.Run(subCtx, "thump.detections", func(ctx context.Context, det signal.Detection) error {
+		_ = detSub.Run(subCtx, "thump.detections", func(ctx context.Context, det signal.Detection, _ func()) error {
 			_, err := eng.Propose(ctx, det)
 			return err
 		})
@@ -85,7 +85,7 @@ func TestClankLearnEdge_ClosesOverBroker(t *testing.T) {
 
 	outSub := broker.NewJetSubscriber[outcome.Outcome](js)
 	go func() {
-		_ = outSub.Run(subCtx, "thump.outcomes", func(ctx context.Context, o outcome.Outcome) error {
+		_ = outSub.Run(subCtx, "thump.outcomes", func(ctx context.Context, o outcome.Outcome, _ func()) error {
 			_ = learn.Absorb(ctx, o) // mirror learnHandler: every disposition Acks, never errors
 			return nil
 		})

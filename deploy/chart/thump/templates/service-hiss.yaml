@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hiss-metrics
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hiss
+spec:
+  selector: {{- include "thump.beatSelectorLabels" (merge (dict "component" "hiss") .) | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics

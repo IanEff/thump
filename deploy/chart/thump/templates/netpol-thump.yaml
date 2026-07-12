@@ -30,6 +30,16 @@ spec:
       ports:
         - protocol: TCP
           port: 4222
+    # A plain NetworkPolicy has no hostname-match primitive (that's Cilium's
+    # toFQDNs, which this chart deliberately doesn't require) — this widens
+    # the intended "storage.googleapis.com only" pin (WAL shipping via
+    # internal/publish, wired through internal/beat) to any HTTPS destination.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
     # No kube-apiserver rule yet: thump's structural_test.go forbids any k8s
     # client import while it's dry-run-only (v1 has no os/exec, net, or k8s
     # client in its actuation path). Add one alongside that client, when it

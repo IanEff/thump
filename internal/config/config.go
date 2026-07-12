@@ -21,7 +21,7 @@ type Clank struct {
 	LokiURL          string // LOKI_URL — optional; empty disables the loki tool
 	WhirCatalog      string // WHIR_CATALOG — optional; pairs with WhirStateQueries
 	WhirStateQueries string // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
-	Transcripts      string // CLANK_TRANSCRIPTS — optional; empty keeps turns in memory only
+	Transcripts      string // CLANK_TRANSCRIPTS — optional, offline path only; broker mode always persists to S3 via the WAL's S3_* creds, ignoring this var. Empty keeps turns in memory only.
 	Inbox            string // CLANK_INBOX — required only in the offline (non-broker) path
 	Outbox           string // CLANK_OUTBOX — required only in the offline path
 	Outcomes         string // CLANK_OUTCOMES — required only in the offline path

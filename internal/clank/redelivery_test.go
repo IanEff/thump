@@ -50,7 +50,7 @@ func TestRedelivery_IsAFingerprintNoOp(t *testing.T) {
 	sub := broker.NewJetSubscriber[signal.Detection](js)
 	done := make(chan error, 1)
 	go func() {
-		done <- sub.Run(ctx, "thump.detections", func(ctx context.Context, d signal.Detection) error {
+		done <- sub.Run(ctx, "thump.detections", func(ctx context.Context, d signal.Detection, _ func()) error {
 			_, err := eng.Propose(ctx, d)
 			return err
 		})
