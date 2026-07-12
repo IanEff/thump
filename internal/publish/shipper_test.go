@@ -41,6 +41,32 @@ func (f *fakeSink) Put(_ context.Context, key string, r io.Reader) error {
 	return nil
 }
 
+func TestWAL_ShipIsANoOpWhenTheWALHasNeverBeenWrittenTo(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// No Append yet, so beatDir() has never been created — RunShipper still
+	// ticks on this WAL from process start regardless.
+	w := &publish.WAL{Dir: dir, Beat: "hiss", Subject: "thump.decisions"}
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+	ctx := context.Background()
+
+	sealed, err := w.SealedSegments()
+	if err != nil {
+		t.Fatalf("SealedSegments() error = %v, want nil for a never-written WAL", err)
+	}
+	if len(sealed) != 0 {
+		t.Errorf("got %d sealed segments, want 0", len(sealed))
+	}
+
+	sink := newFakeSink()
+	if err := w.Ship(ctx, sink); err != nil {
+		t.Fatalf("Ship() error = %v, want nil for a never-written WAL", err)
+	}
+	if len(sink.puts) != 0 {
+		t.Errorf("Ship uploaded %d segments from a never-written WAL, want 0", len(sink.puts))
+	}
+}
+
 func TestWAL_ShipUploadsASealedSegmentAndRemovesItLocally(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

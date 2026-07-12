@@ -2,6 +2,7 @@ package publish
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,6 +24,13 @@ type SegmentSink interface {
 func (w *WAL) SealedSegments() ([]string, error) {
 	dir := w.beatDir()
 	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		// ensureActive only MkdirAll's this dir on the WAL's first Append —
+		// a WAL that's never been written to has no directory yet, which is
+		// "zero sealed segments," not a failure. RunShipper polls on a fixed
+		// interval from process start, before that first write may happen.
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("wal: sealed segments: %w", err)
 	}

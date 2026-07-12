@@ -33,6 +33,18 @@ func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKe
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
+		// GCS's S3-compatibility XML API doesn't understand the SDK's default
+		// chunked/trailer-checksum PutObject wire format (STREAMING-...-TRAILER) —
+		// it computes a different signature than the SDK sent, so every write 403s
+		// with SignatureDoesNotMatch. WhenRequired restores plain single-shot SigV4
+		// signing, which GCS does understand.
+		//
+		// The chunked-checksum default arrived in service/s3 v1.73.0 (the SDK's
+		// "default integrity protections" change); this package pins v1.105.0
+		// (go.mod), so it's always in range and this override is load-bearing, not
+		// defensive. Pre-v1.73.0 the override is a no-op — safe either way.
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 	})
 	return publish.NewS3SegmentSink(client, bucket), nil
 }
