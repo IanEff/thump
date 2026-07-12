@@ -35,6 +35,12 @@ jobs:
       - name: vulncheck
         run: make vulncheck
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Chart lint (kubeconform)
+        run: make chart-lint
+
       - name: test
         run: make test
 
