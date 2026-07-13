@@ -40,6 +40,18 @@ func evalTable() []evalCase {
 			fixture:         "argocd-sync-burn.yaml",
 			wantDisposition: "insufficient",
 		},
+		// Live incident, rook-gce-k3s 2026-07-13 (thump-running-notes.md
+		// "2026-07-13 (part 2)"): PG-starved the RGW data pool, rattle fired
+		// slo_burn:ceph-osd, and the reasoner declared resource_exhaustion/
+		// unknown and proposed hold-rebalance instead of declining. No
+		// catalog action maps to ceph-osd-latency's failure class, so the
+		// correct disposition is insufficient. Expect this RED today — same
+		// discrimination bug as the RGW/dependency_saturation case this
+		// branch exists to fix.
+		{
+			fixture:         "ceph-osd-latency.yaml",
+			wantDisposition: "insufficient",
+		},
 	}
 }
 
@@ -72,7 +84,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 				NewIntake(noopTopology{}, noopChange{}),
 				contract.Default(),
 				NewDirStore(transcripts),
-				noop.Tracer{})
+				noop.Tracer{}, nil)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()

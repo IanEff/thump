@@ -5,10 +5,19 @@
 # unknown (a state, not an error).
 #
 # Mirrors config/ceph-lab/whir/state-queries.yaml's query shape (this rig is
-# a clean fork of that stack) with one real difference: node filters drop
-# ceph-lab's "lima-" prefix — this rig's kubectl node names are the bare
-# ceph-node-{1,2,3} (phase-d-live-payoff-guide.md THE CAST: "real names this
-# time, no GKE hash suffixes to VERIFY" — no Lima prefix either).
+# a clean fork of that stack) with one real difference: node filters use
+# this rig's actual kubectl node names, rook-gce-k3s-node-{1,2,3} — VERIFIED
+# live 2026-07-13 (thump-running-notes.md "2026-07-13 (part 2)") against
+# `kubectl get pods -o wide`. The bare ceph-node-{1,2,3} the phase-d guide's
+# THE CAST table claimed ("real names this time, no GKE hash suffixes to
+# VERIFY") was never actually checked against the live cluster and was
+# wrong — catalog-info.yaml's logical resource names (ceph-node-1, etc.) are
+# NOT the same thing as the k8s node hostname a PromQL query needs, and
+# whir's Resolver doesn't map one to the other. Caught live: this bug fed a
+# false "unknown" node-health signal into a real reason-loop run
+# (transcripts/slo_burn:ceph-osd/1783959273531042146/), which the model
+# explicitly cited as evidence for a wrong "transient node unavailability"
+# theory instead of correctly declining.
 #
 # Every query is wrapped in max()/count() on purpose: double-scraped targets
 # can return more than one series, and aggregating here keeps the resolver
@@ -26,8 +35,8 @@ queries:
   - dependency: cephblockpool
     query: 'count(ceph_pool_metadata{name="replicapool"})'
   - dependency: ceph-node-1
-    query: 'max(kube_node_status_condition{node="ceph-node-1",condition="Ready",status="true"})'
+    query: 'max(kube_node_status_condition{node="rook-gce-k3s-node-1",condition="Ready",status="true"})'
   - dependency: ceph-node-2
-    query: 'max(kube_node_status_condition{node="ceph-node-2",condition="Ready",status="true"})'
+    query: 'max(kube_node_status_condition{node="rook-gce-k3s-node-2",condition="Ready",status="true"})'
   - dependency: ceph-node-3
-    query: 'max(kube_node_status_condition{node="ceph-node-3",condition="Ready",status="true"})'
+    query: 'max(kube_node_status_condition{node="rook-gce-k3s-node-3",condition="Ready",status="true"})'
