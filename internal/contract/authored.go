@@ -28,9 +28,13 @@ func Default() *StaticCatalog {
 		},
 		{
 			Name: "hold-rebalance",
+			// unknown deliberately NOT listed: mapping "I don't know" to a
+			// real action gave the model an escape hatch to act instead of
+			// declining (thump-running-notes.md 2026-07-13) — a mismatch
+			// between declared class and proposed action now becomes an
+			// auditable decline (engine.go's errClassMismatch), not silence.
 			ApplicableFailureClasses: []proposal.FailureClass{
 				proposal.ClassResourceExhaustion,
-				proposal.ClassUnknown,
 			},
 			ApplicableTiers: []string{"tier-1"},
 			Action: ActionSpec{

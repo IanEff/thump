@@ -3,6 +3,7 @@ package clank
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -192,7 +193,15 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	}
 
 	if err := e.enforceCatalog(set, sao); err != nil {
-		return proposal.Set{}, err
+		if !errors.Is(err, errClassMismatch) {
+			return proposal.Set{}, err
+		}
+		set.Status.Phase = proposal.PhaseNoAction
+		set.Status.Reason = err.Error()
+		if err := e.Ledger.Record(ctx, set); err != nil {
+			return proposal.Set{}, fmt.Errorf("record: %w", err)
+		}
+		return set, nil
 	}
 
 	enrichFromCatalog(e.Catalog, set.Proposals)
@@ -250,15 +259,27 @@ func (e *Engine) toolSpecs() []ToolSpec {
 	return append(specs, ProposeToolSpec(), InsufficientToolSpec())
 }
 
+// errClassMismatch marks a proposed ContractRef that IS a real catalogued
+// action, just not applicable to the FailureClass the model itself
+// declared — a plausible-but-mislabelled proposal, not an invented one.
+// Propose turns this into an auditable no_action decline; only a
+// ContractRef naming no catalogued action at all (contract.ErrOutsideCatalog)
+// halts the run.
+var errClassMismatch = errors.New("candidate not applicable to declared failure class")
+
 func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 	allowed := make(map[string]bool)
 	for _, c := range e.Catalog.Applicable(set.FailureClass, set.ServiceTier, sao) {
 		allowed[c.Name] = true
 	}
 	for _, cand := range set.Proposals {
-		if !allowed[cand.ContractRef] {
-			return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
+		if allowed[cand.ContractRef] {
+			continue
 		}
+		if _, ok := e.Catalog.ByName(cand.ContractRef); ok {
+			return fmt.Errorf("%w: %q does not apply to declared class %q", errClassMismatch, cand.ContractRef, set.FailureClass)
+		}
+		return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
 	}
 	return nil
 }
