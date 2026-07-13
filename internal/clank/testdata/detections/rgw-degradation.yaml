@@ -1,0 +1,66 @@
+# Raw NATS JetStream capture, rook-gce-k3s, 2026-07-13 (thump-running-notes.md
+# "2026-07-13 (part 3)") — pulled directly off the THUMP stream's
+# thump.detections subject (seq 19) via `nats stream get`, not reconstructed
+# from logs, so every field here is exactly what rattle published.
+#
+# Getting this specific fingerprint to fire took six failed chaos mechanisms
+# first (NetworkChaos delay, NetworkChaos loss, radosgw-admin ratelimit,
+# PG-starving the RGW pool + a finite rados_osd_op_timeout, a pool quota
+# forcing real 507s, and killing the RGW pod mid-request) — all failed
+# because ceph_rgw_failed_req ("Aborted requests", the SLI this SLO burns
+# on) only increments for pre-execution pipeline rejections (auth failure,
+# rate-limiting, a suspended user — see Ceph's rgw_process.cc abort_early()),
+# never for an op that starts executing and then fails normally (ENOSPC,
+# quota-exceeded, a killed connection). What finally worked: suspending the
+# traffic-generator's RGW user (`radosgw-admin user suspend`), which forces
+# a real 403 UserSuspended on every request and hits abort_early
+# deterministically.
+#
+# That mechanism is an auth/access-control failure, not literally the same
+# real-world shape as the original incident (RGW's OSD backend degrading
+# under network chaos) — worth flagging honestly. But ceph-rgw-availability
+# is wired specifically to represent RGW's *dependencies* failing it
+# (config/rook-gce-k3s/rattle/watch.yaml's dependencies: cephobjectstore,
+# rook-operator), so by the catalog's own design intent, any burn of this
+# SLO is meant to discriminate as dependency_saturation regardless of which
+# real mechanism produced it.
+#
+# Confirmed not a recovery-churn confound: `ceph -s` at capture time showed
+# HEALTH_OK, all 489 PGs active+clean, near-idle IO — an earlier PG-starve
+# experiment's autoscaler-driven regrowth had already finished. The full
+# chain still misfired: clank recommended "pause-recovery-to-reduce-write-
+# latency" or contractRef hold-rebalance instead of throttle-non-critical-
+# paths — the exact D2 discrimination bug, reproduced live with a clean
+# kubectl-logs audit trail (contractRef logging from an earlier fix).
+ContractRef: ceph-rgw-availability:v1
+DetectedAt: "2026-07-13T20:34:41.239371391Z"
+DetectorType: burn_rate_acceleration
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 2.536232993197558
+  Trajectory: accelerating
+Fingerprint: slo_burn:ceph-rgw
+Impact:
+  BlastRadius:
+    AffectedPct: 0.03128735632183907
+    DownstreamConsumers: 0
+    Velocity: stable
+  Severity:
+    DegradationPct: 0.035507261904765844
+    Trajectory: accelerating
+Name: ceph-rgw-burn-accel
+OriginService: ceph-rgw
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: cephobjectstore
+    State: healthy
+  - Service: rook-operator
+    State: healthy
+Traffic:
+  AffectedPct: 0.03128735632183907
+  Baseline: 0
+  BaselineWindow: ""

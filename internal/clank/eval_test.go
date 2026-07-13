@@ -48,12 +48,33 @@ func evalTable() []evalCase {
 		// slo_burn:ceph-osd, and the reasoner declared resource_exhaustion/
 		// unknown and proposed hold-rebalance instead of declining. No
 		// catalog action maps to ceph-osd-latency's failure class, so the
-		// correct disposition is insufficient. Expect this RED today — same
-		// discrimination bug as the RGW/dependency_saturation case this
-		// branch exists to fix.
+		// correct disposition is insufficient. Was RED before commits
+		// 0e6878d/a140011 (the "unknown is not a license to act" +
+		// authored-failure-classes fixes); green since.
 		{
 			fixture:         "ceph-osd-latency.yaml",
 			wantDisposition: "insufficient",
+		},
+		// The keystone pin (D2/E3, thump-running-notes.md "2026-07-13
+		// (part 3)"): a raw NATS capture of the real ceph-rgw-availability
+		// burn (testdata/detections/rgw-degradation.yaml — see its header
+		// for the six failed chaos mechanisms it took to get this signal to
+		// fire at all, and why the seventh, suspending the RGW user,
+		// worked). The live 5-beat run misfired — recommended
+		// "pause-recovery-to-reduce-write-latency" / contractRef
+		// hold-rebalance instead of throttle-non-critical-paths — but
+		// replaying the *exact* evidence from that run's own WAL transcript
+		// (not a reconstruction) through this eval harness repeatedly
+		// split between correct-decline and correct-propose across several
+		// runs, never reproducing hold-rebalance. Same shape as
+		// node-death.yaml above: a real decision boundary, not a
+		// deterministic bug — re-run 2-3x before treating a red here as a
+		// regression. evalEvidence's comment for this fixture has the full
+		// trail (recovery_active's unit-less name is the likely culprit).
+		{
+			fixture:         "rgw-degradation.yaml",
+			wantDisposition: "propose",
+			wantContractRef: "throttle-non-critical-paths",
 		},
 	}
 }
@@ -115,6 +136,50 @@ func evalEvidence(fixture string) map[string]string {
 			"rgw_failed_rate":       "0",
 			"nodes_not_ready":       "0",
 			"rook_pods_not_running": "0",
+		}
+	case "rgw-degradation.yaml":
+		// Every number below (except the two flagged VERIFY) is copied
+		// verbatim off the real tool-call evidence from the actual live
+		// misfire run — pulled from clank's own WAL transcript in the
+		// rig's GCS bucket (RunID slo_burn:ceph-rgw/1783974881250430828,
+		// step 2/3, 2026-07-13T20:34:41Z), not reconstructed or estimated.
+		// Two earlier attempts in this same session (rgw_failed_rate as a
+		// small fraction, then as a near-total-failure guess) were pure
+		// fabrication that didn't correspond to anything actually
+		// observed — Ian caught it ("does those numbers even make any
+		// sense... we're trying to test the sensitivity of rattle, not
+		// call in Doctor Data") — this replaces both with what the model
+		// really saw.
+		//
+		// The real misfire wasn't RGW's own failure rate at all — that
+		// was tiny (0.34%, at a near-idle 0.1 req/s). It was
+		// recovery_active = 11366, which the model misread as "11,366 PGs
+		// actively recovering/backfilling" even though pgs_backfilling
+		// and pgs_degraded were both genuinely 0 — evidence-queries.yaml
+		// defines recovery_active as `sum(ceph_osd_recovery_ops)`,
+		// recovery *operations/sec*, not a PG count; the name alone
+		// doesn't disambiguate the unit. Combined with a real, nonzero
+		// rook_pods_not_running = 4, the model concluded RGW's own pod
+		// capacity was saturated — resource_exhaustion, hold-rebalance —
+		// instead of citing the (correctly negligible) RGW failure
+		// signal it also had in hand. slo_burn_rgw is a query the model
+		// made live that the eval harness previously didn't even serve.
+		return map[string]string{
+			"ceph_health":           "0",
+			"osds_down":             "0",
+			"osds_out":              "0", // VERIFY: not queried live; inferred from osds_down=0 + ceph_health=0
+			"pgs_degraded":          "0",
+			"pgs_backfilling":       "0",
+			"recovery_active":       "11366",
+			"mons_in_quorum":        "3",
+			"cluster_used_ratio":    "0.0715",
+			"fullest_pool_ratio":    "0.02", // VERIFY: not queried live; estimate consistent with cluster_used_ratio
+			"osd_write_latency_ms":  "10.8",
+			"rgw_request_rate":      "0.1074",
+			"rgw_failed_rate":       "0.0034",
+			"slo_burn_rgw":          "34.28",
+			"nodes_not_ready":       "0",
+			"rook_pods_not_running": "4",
 		}
 	case "argocd-sync-burn.yaml":
 		// Ceph itself is healthy throughout; only ArgoCD's sync state is
