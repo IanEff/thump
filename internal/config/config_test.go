@@ -16,6 +16,7 @@ func setClankEnv(t *testing.T) {
 	for name, val := range map[string]string{
 		"ANTHROPIC_API_KEY":  "test-key",
 		"ACTION_CATALOG":     "/etc/actions/catalog.yaml",
+		"FAILURE_CLASSES":    "/etc/actions/failure-classes.yaml",
 		"PROM_URL":           "http://prom:9090",
 		"EVIDENCE_QUERIES":   "/etc/evidence-queries.yaml",
 		"LOKI_URL":           "http://loki:3100",
@@ -57,6 +58,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 	want := config.Clank{
 		AnthropicAPIKey:  "test-key",
 		ActionCatalog:    "/etc/actions/catalog.yaml",
+		FailureClasses:   "/etc/actions/failure-classes.yaml",
 		PromURL:          "http://prom:9090",
 		EvidenceQueries:  "/etc/evidence-queries.yaml",
 		LokiURL:          "http://loki:3100",
@@ -77,6 +79,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	// trio since broker=false makes those required too.
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
+	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
 	t.Setenv("CLANK_INBOX", "/var/run/inbox")
 	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
 	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
@@ -91,6 +94,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	want := config.Clank{
 		AnthropicAPIKey: "test-key",
 		ActionCatalog:   "/etc/actions/catalog.yaml",
+		FailureClasses:  "/etc/actions/failure-classes.yaml",
 		Inbox:           "/var/run/inbox",
 		Outbox:          "/var/run/outbox",
 		Outcomes:        "/var/run/outcomes",
@@ -109,6 +113,7 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	// be demanded when the broker path is what's actually going to run.
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
+	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
 	t.Setenv("S3_ENDPOINT", "http://minio:9000")
 	t.Setenv("S3_BUCKET", "thump-wal")
@@ -130,6 +135,7 @@ func TestLoadClank_BrokerMode_RequiresWALAndS3(t *testing.T) {
 	// to run (it's what beat.RunShipper ships the proposals WAL through).
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
+	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
 	for _, name := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
 		t.Setenv(name, "")
 	}

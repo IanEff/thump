@@ -11,3 +11,5 @@ metadata:
 data:
   catalog.yaml: |
 {{ .Files.Get "config/actions/catalog.yaml" | indent 4 }}
+  failure-classes.yaml: |
+{{ .Files.Get "config/actions/failure-classes.yaml" | indent 4 }}

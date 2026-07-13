@@ -1,0 +1,29 @@
+# The authored failure-class definitions — rig-invariant knowledge every
+# site shares (unlike evidence-queries.yaml's query names, which vary by
+# site — ceph-lab/rook-gke/rook-gce-k3s can each name their evidence
+# differently). clank's seedPrompt renders this list so the model is told
+# what a class means instead of inferring it from which action happens to
+# be catalogued for it.
+#
+# This file is pinned to contract.DefaultFailureClasses() by
+# TestShippedFailureClassesMatchesAuthoredDefault
+# (internal/contract/load_test.go). If that test goes red after you
+# hand-edit this file, that's the guard working — either fix the YAML back
+# or update DefaultFailureClasses() deliberately.
+- class: dependency_saturation
+  description: >-
+    an upstream/downstream dependency is overloaded — the resource itself
+    is fine; cite request-rate/failure-rate or upstream latency evidence,
+    not just elevated latency on the resource.
+- class: resource_exhaustion
+  description: >-
+    the resource ITSELF is out of headroom — cite capacity evidence (e.g.
+    utilization/fullness). Ongoing recovery/backfill activity with healthy
+    capacity is NOT resource_exhaustion.
+- class: traffic_shift
+  description: a legitimate change in load pattern, not a failure.
+- class: unknown
+  description: >-
+    the evidence doesn't clearly support any of the above — call
+    insufficient rather than forcing a label just because an action exists
+    for it.

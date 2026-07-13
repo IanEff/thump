@@ -21,24 +21,25 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, store Store, tracer trace.Tracer, stages *beat.StageRecorder) *loop {
+func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, tracer trace.Tracer, stages *beat.StageRecorder) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
-		Intake:       intake,
-		Model:        model,
-		Tools:        tools,
-		Catalog:      cat,
-		Ranker:       NewRanker(),
-		Store:        store,
-		Scorer:       &CausalScorerImpl{Prior: cases}, // scorer reads THIS case base
-		DedupeWindow: time.Hour,
-		Ledger:       ledger, // engine records into THIS ledger
-		Pub:          &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
-		Gate:         ReadinessGate{},
-		MaxSteps:     8,
-		Tracer:       tracer,
-		Stages:       stages,
+		Intake:         intake,
+		Model:          model,
+		Tools:          tools,
+		Catalog:        cat,
+		FailureClasses: classes,
+		Ranker:         NewRanker(),
+		Store:          store,
+		Scorer:         &CausalScorerImpl{Prior: cases}, // scorer reads THIS case base
+		DedupeWindow:   time.Hour,
+		Ledger:         ledger, // engine records into THIS ledger
+		Pub:            &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
+		Gate:           ReadinessGate{},
+		MaxSteps:       8,
+		Tracer:         tracer,
+		Stages:         stages,
 	}
 	re := &ReturnEdge{
 		Inbox: outcomes, // thump's outbox — NOT outbox, which is hiss's inbox
@@ -50,21 +51,22 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, tracer trace.Tracer, stages *beat.StageRecorder) *Engine {
+func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, tracer trace.Tracer, stages *beat.StageRecorder) *Engine {
 	return &Engine{
-		Intake:       intake,
-		Model:        model,
-		Tools:        tools,
-		Catalog:      cat,
-		Ranker:       NewRanker(),
-		Store:        store,
-		Scorer:       &CausalScorerImpl{Prior: cases},
-		DedupeWindow: time.Hour,
-		Ledger:       ledger,
-		Pub:          pub,
-		Gate:         ReadinessGate{},
-		MaxSteps:     8,
-		Tracer:       tracer,
-		Stages:       stages,
+		Intake:         intake,
+		Model:          model,
+		Tools:          tools,
+		Catalog:        cat,
+		FailureClasses: classes,
+		Ranker:         NewRanker(),
+		Store:          store,
+		Scorer:         &CausalScorerImpl{Prior: cases},
+		DedupeWindow:   time.Hour,
+		Ledger:         ledger,
+		Pub:            pub,
+		Gate:           ReadinessGate{},
+		MaxSteps:       8,
+		Tracer:         tracer,
+		Stages:         stages,
 	}
 }
