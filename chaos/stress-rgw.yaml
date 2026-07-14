@@ -3,7 +3,7 @@
 # StressChaos CPU pressure on rook-ceph-rgw pods. This is mechanism 2 from
 # the D2/E3 chase (thump-running-notes.md 2026-07-14), tried after
 # rgw-network-delay.yaml (mechanism 1) proved to have a live confound: it
-# correlated with a `recovery_active`/`rook_pods_not_running` reading that
+# correlated with a `recovery_ops_rate`/`rook_pods_not_running` reading that
 # twice pulled the model toward wrongly proposing hold-rebalance
 # (resource_exhaustion) despite correctly labeling dependency_saturation.
 # CPU-starving the RGW daemon itself touches neither OSD recovery nor pod

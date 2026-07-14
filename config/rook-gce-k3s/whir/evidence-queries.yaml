@@ -38,7 +38,7 @@ queries:
     query: sum(ceph_pg_degraded) or vector(0)
   - name: pgs_backfilling          # is a rebalance/backfill ALREADY in flight?
     query: sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)
-  - name: recovery_active          # recovery ops/s — is the cluster thrashing right now?
+  - name: recovery_ops_rate        # recovery ops/s — is the cluster thrashing right now?
     query: sum(ceph_osd_recovery_ops) or vector(0)
   - name: mons_in_quorum           # mon quorum count — a quorum loss changes everything
     query: count(ceph_mon_quorum_status == 1) or vector(0)

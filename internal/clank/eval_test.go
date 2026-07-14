@@ -70,7 +70,8 @@ func evalTable() []evalCase {
 		// node-death.yaml above: a real decision boundary, not a
 		// deterministic bug — re-run 2-3x before treating a red here as a
 		// regression. evalEvidence's comment for this fixture has the full
-		// trail (recovery_active's unit-less name is the likely culprit).
+		// trail (recovery_ops_rate's unit-less name — recovery_active,
+		// at the time of the incident — is the likely culprit).
 		{
 			fixture:         "rgw-degradation.yaml",
 			wantDisposition: "propose",
@@ -104,7 +105,7 @@ func evalEvidence(fixture string) map[string]string {
 			"osds_out":              "0",
 			"pgs_degraded":          "48",
 			"pgs_backfilling":       "0",
-			"recovery_active":       "120",
+			"recovery_ops_rate":     "120",
 			"mons_in_quorum":        "3",
 			"cluster_used_ratio":    "0.79",
 			"fullest_pool_ratio":    "0.91",
@@ -127,7 +128,7 @@ func evalEvidence(fixture string) map[string]string {
 			"osds_out":              "0",
 			"pgs_degraded":          "0",
 			"pgs_backfilling":       "40", // the PG merge in flight, not a fault
-			"recovery_active":       "18",
+			"recovery_ops_rate":     "18",
 			"mons_in_quorum":        "3",
 			"cluster_used_ratio":    "0.18",
 			"fullest_pool_ratio":    "0.24",
@@ -153,12 +154,13 @@ func evalEvidence(fixture string) map[string]string {
 		//
 		// The real misfire wasn't RGW's own failure rate at all — that
 		// was tiny (0.34%, at a near-idle 0.1 req/s). It was
-		// recovery_active = 11366, which the model misread as "11,366 PGs
-		// actively recovering/backfilling" even though pgs_backfilling
-		// and pgs_degraded were both genuinely 0 — evidence-queries.yaml
-		// defines recovery_active as `sum(ceph_osd_recovery_ops)`,
-		// recovery *operations/sec*, not a PG count; the name alone
-		// doesn't disambiguate the unit. Combined with a real, nonzero
+		// recovery_active (renamed recovery_ops_rate since) = 11366,
+		// which the model misread as "11,366 PGs actively
+		// recovering/backfilling" even though pgs_backfilling and
+		// pgs_degraded were both genuinely 0 — evidence-queries.yaml
+		// defines this query as `sum(ceph_osd_recovery_ops)`, recovery
+		// *operations/sec*, not a PG count; the old name alone didn't
+		// disambiguate the unit. Combined with a real, nonzero
 		// rook_pods_not_running = 4, the model concluded RGW's own pod
 		// capacity was saturated — resource_exhaustion, hold-rebalance —
 		// instead of citing the (correctly negligible) RGW failure
@@ -170,7 +172,7 @@ func evalEvidence(fixture string) map[string]string {
 			"osds_out":              "0", // VERIFY: not queried live; inferred from osds_down=0 + ceph_health=0
 			"pgs_degraded":          "0",
 			"pgs_backfilling":       "0",
-			"recovery_active":       "11366",
+			"recovery_ops_rate":     "11366",
 			"mons_in_quorum":        "3",
 			"cluster_used_ratio":    "0.0715",
 			"fullest_pool_ratio":    "0.02", // VERIFY: not queried live; estimate consistent with cluster_used_ratio
@@ -190,7 +192,7 @@ func evalEvidence(fixture string) map[string]string {
 			"osds_out":                "0",
 			"pgs_degraded":            "0",
 			"pgs_backfilling":         "0",
-			"recovery_active":         "0",
+			"recovery_ops_rate":       "0",
 			"mons_in_quorum":          "3",
 			"cluster_used_ratio":      "0.2",
 			"fullest_pool_ratio":      "0.3",
