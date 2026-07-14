@@ -28,14 +28,19 @@ const StreamName = "THUMP"
 const maxDeliver = 6
 
 // Subjects is the fixed list of subjects EnsureTopology provisions a
-// durable consumer for — the four boundary-object edges the beats hand
-// off across (rattle→clank, clank→hiss, hiss→thump, thump→clank).
-var Subjects = []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes"}
+// durable consumer for — the five boundary-object edges the beats hand
+// off across (rattle→clank, clank→hiss, hiss→thump, thump→clank, and
+// thump→clank's second edge for governance non-approvals).
+var Subjects = []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes", "thump.declines"}
 
 // DurableFor names the durable consumer that owns subject, one name per
 // beat so each beat's read position survives its own restarts without
 // racing another beat's cursor. Returns "" for a subject with no
-// registered reader.
+// registered reader. Every entry must be unique within this switch, even
+// when the same beat reads two subjects (clank reads both thump.detections
+// and thump.declines) — a durable consumer name is a consumer's identity on
+// the shared THUMP stream, so reusing one across two FilterSubjects would
+// silently rebind the existing consumer instead of creating a second one.
 func DurableFor(subject string) string {
 	switch subject {
 	case "thump.detections":
@@ -46,6 +51,8 @@ func DurableFor(subject string) string {
 		return "thump" // thump reads decisions
 	case "thump.outcomes":
 		return "click" // click (clank's return edge) reads outcomes
+	case "thump.declines":
+		return "clank-declines" // clank's ledger-closing consumer — a non-approval never goes through Click
 	}
 	return ""
 }
