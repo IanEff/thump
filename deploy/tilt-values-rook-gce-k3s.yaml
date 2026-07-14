@@ -43,3 +43,16 @@ prometheus:
 
 nats:
   storageClass: local-path
+
+# The chart default (false) exists because the ServiceMonitor CRD isn't
+# guaranteed on every cluster this chart targets. This rig's Prometheus is
+# the plain prometheus-community/prometheus chart (no Operator watching
+# ServiceMonitor CRs today — see applications/infrastructure/prometheus/
+# values.yaml's own header comment) — real scrape discovery here is
+# annotation-based (deploy/chart/thump/templates/service-*.yaml's
+# prometheus.io/scrape annotations), not this CR. Enabling it anyway is a
+# harmless no-op on this rig and keeps the override correct if the rig
+# ever gains a Prometheus Operator (see thump-running-notes.md 2026-07-14
+# for the rig-side migration options that would make this CR live).
+serviceMonitor:
+  enabled: true

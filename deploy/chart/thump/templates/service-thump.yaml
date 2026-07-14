@@ -3,6 +3,10 @@ kind: Service
 metadata:
   name: thump-metrics
   namespace: thump
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.metrics.port }}"
+    prometheus.io/path: "/metrics"
   labels: {{- include "thump.labels" . | nindent 4 }}
     app.kubernetes.io/component: thump
 spec:
