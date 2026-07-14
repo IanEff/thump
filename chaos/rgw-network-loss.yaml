@@ -1,0 +1,31 @@
+# thump chaos — rgw-network-loss.yaml (targets rook-gce-k3s / ceph-gce)
+#
+# NetworkChaos packet loss on rook-ceph-rgw pods. This is mechanism 2 from
+# the D2/E3 chase (thump-running-notes.md 2026-07-13 part 3): confirmed
+# live NOT to move ceph-rgw-availability's ceph_rgw_failed_req — TCP
+# retransmission masks loss up to boto3's 60s default socket timeout, so a
+# request that eventually gets through still reads as a success, just
+# slower.
+#
+# Same reasoning as rgw-network-delay.yaml applies to the new
+# ceph-rgw-saturation SLO (raw GET/PUT latency, not an error ratio): a
+# slower-but-successful op should move this SLI even though it never moved
+# the old availability one. Untested against the saturation SLO — delay is
+# the more direct/deterministic lever of the two, try that first.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: rgw-degradation
+  namespace: chaos-mesh
+spec:
+  action: loss
+  mode: all
+  selector:
+    namespaces:
+      - rook-ceph
+    labelSelectors:
+      app: rook-ceph-rgw
+  loss:
+    loss: "30"
+    correlation: "25"
+  duration: "30m"

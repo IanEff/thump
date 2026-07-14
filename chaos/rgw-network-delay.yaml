@@ -1,0 +1,26 @@
+# thump chaos — rgw-network-delay.yaml (targets rook-gce-k3s / ceph-gce)
+#
+# NetworkChaos delay on rook-ceph-rgw pods. This is mechanism 1 from the
+# D2/E3 chase (thump-running-notes.md 2026-07-13 part 3): confirmed live
+# NOT to move ceph-rgw-availability's ceph_rgw_failed_req (delay makes
+# requests slow, not failed — RGW still completes every op, just later).
+#
+# That's exactly why it's now the first candidate for exercising the new
+# ceph-rgw-saturation SLO (rook-gce-k3s applications/infrastructure/sloth/
+# prometheusservicelevels.yaml, commit 29e70fe): that SLO is a raw SLI on
+# RGW's own GET/PUT latency counters (rgw_l_get_initial_lat /
+# rgw_l_put_initial_lat), not an error ratio — so a mechanism that makes
+# ops slow-but-successful is precisely the shape it exists to catch.
+# Unverified against a live scrape; see the SLO's own description for the
+# metric-name caveat.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: rgw-latency
+  namespace: chaos-mesh
+spec:
+  action: delay
+  mode: all
+  selector: {namespaces: [rook-ceph], labelSelectors: {app: rook-ceph-rgw}}
+  delay: {latency: "2s", jitter: "500ms"}
+  duration: "10m"
