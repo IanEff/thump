@@ -11,17 +11,19 @@ import (
 	"github.com/ianeff/thump/internal/publish"
 )
 
-// loop is the offline (dir-poll) composition root: one Engine and one
-// ReturnEdge sharing a single ledger and case base, so a proposal recorded on
-// the forward path is the same open set the return edge closes.
+// loop is the offline (dir-poll) composition root: one Engine, one
+// ReturnEdge, and one DeclineEdge sharing a single ledger and case base, so
+// a proposal recorded on the forward path is the same open set either
+// return edge closes.
 type loop struct {
 	Engine       *Engine
 	ReturnEdge   *ReturnEdge
+	DeclineEdge  *DeclineEdge
 	Cases        *CaseBase
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, tracer trace.Tracer, stages *beat.StageRecorder) *loop {
+func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, tracer trace.Tracer, stages *beat.StageRecorder) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
@@ -45,7 +47,11 @@ func newLoop(_, outbox, outcomes string, model Model, tools map[string]Tool, int
 		Inbox: outcomes, // thump's outbox — NOT outbox, which is hiss's inbox
 		Click: Click{Ledger: ledger, Cases: cases},
 	}
-	return &loop{Engine: eng, ReturnEdge: re, Cases: cases, OutcomeInbox: outcomes}
+	de := &DeclineEdge{
+		Inbox:  declines, // thump's outbox/declines — a governance non-approval, never an outcome
+		Ledger: ledger,
+	}
+	return &loop{Engine: eng, ReturnEdge: re, DeclineEdge: de, Cases: cases, OutcomeInbox: outcomes}
 }
 
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but

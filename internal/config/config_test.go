@@ -26,6 +26,7 @@ func setClankEnv(t *testing.T) {
 		"CLANK_INBOX":        "/var/run/inbox",
 		"CLANK_OUTBOX":       "/var/run/outbox",
 		"CLANK_OUTCOMES":     "/var/run/outcomes",
+		"CLANK_DECLINES":     "/var/run/declines",
 	} {
 		t.Setenv(name, val)
 	}
@@ -68,6 +69,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 		Inbox:            "/var/run/inbox",
 		Outbox:           "/var/run/outbox",
 		Outcomes:         "/var/run/outcomes",
+		Declines:         "/var/run/declines",
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("LoadClank (-want +got):\n%s", diff)
@@ -83,6 +85,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	t.Setenv("CLANK_INBOX", "/var/run/inbox")
 	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
 	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
+	t.Setenv("CLANK_DECLINES", "/var/run/declines")
 	for _, name := range []string{"PROM_URL", "EVIDENCE_QUERIES", "LOKI_URL", "WHIR_CATALOG", "WHIR_STATE_QUERIES", "CLANK_TRANSCRIPTS"} {
 		t.Setenv(name, "")
 	}
@@ -98,6 +101,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 		Inbox:           "/var/run/inbox",
 		Outbox:          "/var/run/outbox",
 		Outcomes:        "/var/run/outcomes",
+		Declines:        "/var/run/declines",
 		// PromURL, EvidenceQueries, LokiURL, WhirCatalog, WhirStateQueries,
 		// Transcripts all default to "" — genuinely optional, documented by
 		// their zero value rather than a scattered `if x == ""` at call sites.
@@ -119,7 +123,7 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
 	t.Setenv("S3_SECRET_KEY", "test-secret-key")
-	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES"} {
+	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES", "CLANK_DECLINES"} {
 		t.Setenv(name, "")
 	}
 
