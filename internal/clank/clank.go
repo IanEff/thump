@@ -154,19 +154,24 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// cfg.Inbox/Outbox/Outcomes are this path's env, not the process's —
 	// config.LoadClank only requires them when broker is false (mirrors
 	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
-	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, model, tools, intake, cat, classes, store, tracer, stages)
+	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, tracer, stages)
 	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine}
 	re := l.ReturnEdge
+	de := l.DeclineEdge
 
-	// One dir-poll cycle drives both the forward transport (a detection is
-	// reasoned into a proposal) and the return edge (an outcome is absorbed).
-	// Only the forward tick governs the backoff — a failing inbox source is
-	// what should slow the loop down; the return edge runs every cycle
-	// regardless.
+	// One dir-poll cycle drives the forward transport (a detection is
+	// reasoned into a proposal) and both return edges — the outcome edge
+	// (an outcome is absorbed) and the decline edge (a non-approval closes
+	// the ledger's dedup window). Only the forward tick governs the
+	// backoff — a failing inbox source is what should slow the loop down;
+	// the return edges run every cycle regardless.
 	tick := func(ctx context.Context) error {
 		tickErr := tr.Tick(ctx)
 		if err := re.Tick(ctx); err != nil {
 			slog.Error("learn tick failed", "err", err)
+		}
+		if err := de.Tick(ctx); err != nil {
+			slog.Error("decline tick failed", "err", err)
 		}
 		return tickErr
 	}

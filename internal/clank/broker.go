@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
@@ -33,7 +34,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	}
 	defer closeNC()
 
-	if err := beat.AwaitConsumers(ctx, js, health, "thump.detections", "thump.outcomes"); err != nil {
+	if err := beat.AwaitConsumers(ctx, js, health, "thump.detections", "thump.outcomes", "thump.declines"); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err) // TODO: write error
 		return 1
 	}
@@ -88,6 +89,13 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 		})
 	})
 
+	decSub := broker.NewJetSubscriber[decision.Decision](js)
+	g.Go(func() error {
+		return decSub.Run(gctx, "thump.declines", func(ctx context.Context, dec decision.Decision, _ func()) error {
+			return declineHandler(ctx, ledger, dec) // closes the ledger row only — never touches Click or the case base
+		})
+	})
+
 	return beat.ExitOnError(ctx, g.Wait())
 }
 
@@ -105,5 +113,21 @@ func learnHandler(ctx context.Context, c Click, o outcome.Outcome) error {
 	default: // unauditable / incoherent — deterministic, a real seam bug
 		slog.Error("outcome failed absorb", "fingerprint", o.SignalRef, "err", err)
 		return nil // terminal, so Ack (erroring would DLQ-after-retries)
+	}
+}
+
+// declineHandler maps a governance non-approval straight to the ledger,
+// mirroring learnHandler's Ack-mapping: success and ErrNoOpenSet both Ack,
+// because neither improves on redelivery.
+func declineHandler(ctx context.Context, ledger *MemProposalLog, dec decision.Decision) error {
+	switch _, err := ledger.Decline(ctx, dec.SignalRef, dec.EvaluatedAt); {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrNoOpenSet):
+		slog.Warn("decline arrived with no open set", "fingerprint", dec.SignalRef)
+		return nil
+	default:
+		slog.Error("decline failed", "fingerprint", dec.SignalRef, "err", err)
+		return nil
 	}
 }

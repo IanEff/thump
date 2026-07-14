@@ -313,7 +313,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 			prom := newFakePrometheus(t, queries, evalEvidence(tc.fixture))
 			tools := map[string]Tool{"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries}}
 
-			l := newLoop("", t.TempDir(), t.TempDir(),
+			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),
 				NewAnthropicModel(apiKey), tools,
 				NewIntake(noopTopology{}, noopChange{}),
 				contract.Default(),

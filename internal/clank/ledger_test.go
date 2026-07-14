@@ -113,6 +113,48 @@ func TestObserve_TheOutcomeTransitionTable(t *testing.T) {
 	}
 }
 
+func TestLedger_DeclineClosesTheDedupWindow(t *testing.T) {
+	t.Parallel()
+	l := seededLedger(t) // one clickSet() recorded, phase proposed
+	declinedAt := time.Unix(2000, 0)
+
+	got, err := l.Decline(context.Background(), "slo_burn:ceph-rgw", declinedAt)
+	if err != nil {
+		t.Fatal("a matching open set must decline cleanly:", err)
+	}
+
+	if diff := cmp.Diff(proposal.PhaseDeclined, got.Status.Phase); diff != "" {
+		t.Error("wrong phase (-want +got)", diff)
+	}
+	if diff := cmp.Diff(declinedAt, got.Status.ObservedAt); diff != "" {
+		t.Error("ObservedAt must be the decision's own EvaluatedAt (-want +got)", diff)
+	}
+	if got.Status.Outcome != "" {
+		t.Errorf("a decline never touches Status.Outcome — nothing was executed, got %q", got.Status.Outcome)
+	}
+
+	// the whole point: a fresh detection on the same fingerprint is no
+	// longer suppressed, well inside what would have been the DedupeWindow.
+	open, err := l.Open(context.Background(), "slo_burn:ceph-rgw", declinedAt.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 0 {
+		t.Errorf("a declined set must not suppress a new one: want 0, got %d", len(open))
+	}
+}
+
+func TestLedger_DeclineReturnsErrNoOpenSetWhenNothingMatches(t *testing.T) {
+	t.Parallel()
+	l := clank.NewMemProposalLog() // empty — nobody proposed anything
+
+	_, err := l.Decline(context.Background(), "slo_burn:ceph-rgw", time.Unix(2000, 0))
+
+	if !errors.Is(err, clank.ErrNoOpenSet) {
+		t.Errorf("a decline with no open set to answer to must earn ErrNoOpenSet, got %v", err)
+	}
+}
+
 func TestObserve_AnOrphanOutcomeIsANamedRefusal(t *testing.T) {
 	t.Parallel()
 	l := clank.NewMemProposalLog() // empty — nobody proposed anything

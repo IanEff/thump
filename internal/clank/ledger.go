@@ -100,6 +100,30 @@ func (l *MemProposalLog) Observe(ctx context.Context, o outcome.Outcome) (propos
 	return proposal.Set{}, fmt.Errorf("%w: %s", ErrNoOpenSet, o.SignalRef)
 }
 
+// Decline closes the newest open set for fingerprint the moment governance
+// rules against it — the thump.declines edge, never Observe/Outcome, because
+// nothing was rendered or executed for the case base to learn from. Only
+// Phase and ObservedAt move; Status.Outcome stays empty, same as it does for
+// every other non-terminal-by-execution phase.
+func (l *MemProposalLog) Decline(ctx context.Context, fingerprint string, at time.Time) (proposal.Set, error) {
+	if ctx.Err() != nil {
+		return proposal.Set{}, ctx.Err()
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i := len(l.sets) - 1; i >= 0; i-- {
+		r := &l.sets[i]
+		if r.set.SignalRef != fingerprint || r.set.Status == nil || !isOpen(r.set.Status.Phase) {
+			continue
+		}
+		st := *r.set.Status
+		st.Phase, st.ObservedAt = proposal.PhaseDeclined, at
+		r.set.Status = &st
+		return r.set, nil
+	}
+	return proposal.Set{}, fmt.Errorf("%w: %s", ErrNoOpenSet, fingerprint)
+}
+
 func transition(st proposal.Status, o outcome.Outcome) proposal.Status {
 	st.ObservedAt = o.ExecutedAt
 	switch o.Result {

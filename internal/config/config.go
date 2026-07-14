@@ -26,6 +26,7 @@ type Clank struct {
 	Inbox            string // CLANK_INBOX — required only in the offline (non-broker) path
 	Outbox           string // CLANK_OUTBOX — required only in the offline path
 	Outcomes         string // CLANK_OUTCOMES — required only in the offline path
+	Declines         string // CLANK_DECLINES — required only in the offline path
 	WALDir           string // WAL_DIR — required only in the broker path
 	S3Endpoint       string // S3_ENDPOINT — required only in the broker path
 	S3Bucket         string // S3_BUCKET — required only in the broker path
@@ -55,6 +56,7 @@ func LoadClank(broker bool) (Clank, error) {
 		c.Inbox = l.Optional("CLANK_INBOX")
 		c.Outbox = l.Optional("CLANK_OUTBOX")
 		c.Outcomes = l.Optional("CLANK_OUTCOMES")
+		c.Declines = l.Optional("CLANK_DECLINES")
 		c.WALDir = l.Require("WAL_DIR")
 		c.S3Endpoint = l.Require("S3_ENDPOINT")
 		c.S3Bucket = l.Require("S3_BUCKET")
@@ -64,6 +66,7 @@ func LoadClank(broker bool) (Clank, error) {
 		c.Inbox = l.Require("CLANK_INBOX")
 		c.Outbox = l.Require("CLANK_OUTBOX")
 		c.Outcomes = l.Require("CLANK_OUTCOMES")
+		c.Declines = l.Require("CLANK_DECLINES")
 	}
 	return c, l.err()
 }

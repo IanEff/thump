@@ -18,7 +18,7 @@ import (
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
 func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
-	return newLoop("", outbox, outcomes, model, tools, intake, cat, contract.DefaultFailureClasses(), store, noop.Tracer{}, nil)
+	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, contract.DefaultFailureClasses(), store, noop.Tracer{}, nil)
 }
 
 // DefaultCatalogForTest exposes the production catalog (the one Main wires)

@@ -20,12 +20,12 @@ func TestEnsureTopology_IsIdempotent(t *testing.T) {
 		t.Fatal("second ensure must be a no-op, not an error:", err)
 	}
 
-	// the stream exists and carries all four subjects
+	// the stream exists and carries all five subjects
 	s, err := js.Stream(ctx, "THUMP")
 	if err != nil {
 		t.Fatal("stream missing after ensure:", err)
 	}
-	for _, subj := range []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes"} {
+	for _, subj := range []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes", "thump.declines"} {
 		if _, err := s.Consumer(ctx, broker.DurableFor(subj)); err != nil {
 			t.Errorf("durable consumer for %s missing: %v", subj, err)
 		}

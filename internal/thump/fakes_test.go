@@ -198,6 +198,13 @@ func readOneOutcome(t *testing.T, outbox string) outcome.Outcome {
 	return o
 }
 
+func readOneDecline(t *testing.T, outbox string) decision.Decision {
+	t.Helper()
+	var d decision.Decision
+	readOneYAML(t, filepath.Join(outbox, "declines"), &d)
+	return d
+}
+
 func readOneYAML(t *testing.T, dir string, out any) {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
@@ -229,6 +236,10 @@ func newTestTransport(inbox, outbox string) *thump.Transport {
 		OutcomePub: &publish.DirPublisher[outcome.Outcome]{
 			Dir:  filepath.Join(outbox, "outcomes"),
 			Name: func(o outcome.Outcome) string { return o.SignalRef },
+		},
+		DeclinePub: &publish.DirPublisher[decision.Decision]{
+			Dir:  filepath.Join(outbox, "declines"),
+			Name: func(d decision.Decision) string { return d.SignalRef },
 		},
 		Catalog: richCatalog(),
 		Log:     thump.NewOutcomeLog(),

@@ -83,6 +83,10 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			Dir:  filepath.Join(cfg.Outbox, "outcomes"),
 			Name: func(o outcome.Outcome) string { return o.SignalRef },
 		},
+		DeclinePub: &publish.DirPublisher[decision.Decision]{
+			Dir:  filepath.Join(cfg.Outbox, "declines"),
+			Name: func(d decision.Decision) string { return d.SignalRef },
+		},
 		Catalog: cat,
 		Log:     NewOutcomeLog(),
 		Exec:    DryRun{},
@@ -120,6 +124,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
+	declinePub, _, err := beat.NewWALPublisher[decision.Decision](js, cfg.WALDir, "thump", "thump.declines")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
 
 	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
 	if err != nil {
@@ -128,10 +137,12 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	}
 	defer func() { _ = orderPub.WAL.Drain(ctx, sink) }()
 	defer func() { _ = outcomePub.WAL.Drain(ctx, sink) }()
+	defer func() { _ = declinePub.WAL.Drain(ctx, sink) }()
 
 	tr := &Transport{
 		OrderPub:   orderPub,
 		OutcomePub: outcomePub,
+		DeclinePub: declinePub,
 		Catalog:    cat,
 		Log:        NewOutcomeLog(),
 		Exec:       DryRun{},
@@ -146,6 +157,10 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	})
 	g.Go(func() error {
 		beat.RunShipper(gctx, outcomePub.WAL, sink)
+		return nil
+	})
+	g.Go(func() error {
+		beat.RunShipper(gctx, declinePub.WAL, sink)
 		return nil
 	})
 	g.Go(func() error {
