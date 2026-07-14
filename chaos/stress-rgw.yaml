@@ -1,0 +1,42 @@
+# thump chaos — stress-rgw.yaml (targets rook-gce-k3s / ceph-gce)
+#
+# StressChaos CPU pressure on rook-ceph-rgw pods. This is mechanism 2 from
+# the D2/E3 chase (thump-running-notes.md 2026-07-14), tried after
+# rgw-network-delay.yaml (mechanism 1) proved to have a live confound: it
+# correlated with a `recovery_active`/`rook_pods_not_running` reading that
+# twice pulled the model toward wrongly proposing hold-rebalance
+# (resource_exhaustion) despite correctly labeling dependency_saturation.
+# CPU-starving the RGW daemon itself touches neither OSD recovery nor pod
+# scheduling, so it's a more isolated saturation signal — VERIFIED LIVE
+# 2026-07-14: a run under this exact spec produced a clean
+# dependency_saturation classification, throttle-non-critical-paths
+# proposed, gate passed, hiss escalated only on confidence_floor (a correct
+# governance verdict, not a misfire).
+#
+# workers: 4 is load-bearing, not arbitrary — VERIFIED LIVE 2026-07-14:
+# rook-gce-k3s-node-2 (where this RGW pod lands) has 4 real vCPUs, and the
+# RGW container itself only carries a 1-core limit. A first attempt at
+# workers: 2 left 2 cores idle for the scheduler to hand straight to RGW —
+# CPU(cores) on the pod topped out at 463m, latency only reached ~118ms,
+# and the effect decayed before the SLO's 5m burn-rate window filled.
+# Bumping to workers: 4 (matching the node's full core count) left no idle
+# core for RGW to get scheduled on: pod CPU pegged at ~1000m (its own
+# limit), latency held ~85-110ms, and slo:current_burn_rate:ratio for
+# ceph-rgw-saturation climbed cleanly through the window to 20x. If this
+# ever runs on a different node/instance type, workers should track that
+# node's real vCPU count, not stay hardcoded at 4.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: rgw-cpu-stress
+  namespace: chaos-mesh
+spec:
+  mode: all
+  selector:
+    namespaces: [rook-ceph]
+    labelSelectors: { app: rook-ceph-rgw }
+  stressors:
+    cpu:
+      workers: 4
+      load: 100
+  duration: "10m"

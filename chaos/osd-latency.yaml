@@ -1,0 +1,14 @@
+# NOTE: bugs in chaos mesh made using the latency action impossible.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: osd-net-latency
+  namespace: chaos-mesh
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [rook-ceph]
+    labelSelectors: {app: rook-ceph-osd}
+  delay: {latency: "200ms", jitter: "50ms"}
+  duration: "10m"
