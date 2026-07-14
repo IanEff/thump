@@ -1,0 +1,66 @@
+# Raw NATS JetStream capture, rook-gce-k3s, 2026-07-14 (thump-running-notes.md
+# "2026-07-14") — pulled directly off the THUMP stream's thump.detections
+# subject (seq 11) via `nats stream get`, not reconstructed from logs.
+#
+# Mechanism: chaos/stress-rgw.yaml's StressChaos (CPU workers:4, 10m) against
+# rook-ceph-rgw, run WITH real S3 write/list/delete traffic from all 15
+# s3-traffic-generator replicas underneath it (`just generate-traffic 15`) —
+# the missing variable in two earlier same-day attempts that ran the CPU
+# stress with the traffic-generator idle and never got a sustained signal.
+# With real traffic, rgw_get_put_latency_ms held 173-179ms (the SLO's own
+# threshold is 150ms) against ~209 req/s, with 0 failed requests and healthy
+# upstream (OSD write latency 16.9ms, cluster 9.8% used) — a real backend-
+# slow-under-load saturation shape, not a confound.
+#
+# The interesting result isn't a clean win: the reasoner did NOT repeat the
+# resource_exhaustion/hold-rebalance misfire (fixed 0e6878d/a140011) — it
+# correctly read healthy OSD/capacity evidence and ruled that class out. But
+# it landed on traffic_shift, not dependency_saturation, and proposed zero
+# candidates (Proposals: [] — no catalog action maps to traffic_shift). Per
+# failure-classes.yaml's own wording, dependency_saturation requires "cite
+# request-rate/failure-rate or upstream latency evidence, not just elevated
+# latency on the resource" — here only RGW's OWN latency was elevated
+# (upstream OSD and failure-rate both read healthy), so the model read the
+# instruction literally and declined the label. Full transcript:
+# transcripts/slo_burn:ceph-rgw/1784045518809851063/ (S3, thump-wal bucket).
+#
+# Because Proposals was empty, clank's Ranker produced no Recommended, and
+# hiss's ReasonUngatedInput caught it downstream ("an evidence gap upstream,
+# not something hiss has standing to weigh in on") — thump correctly declined
+# to act. This pins as a THIRD decision boundary alongside node-death.yaml and
+# ceph-osd-latency.yaml, not a regression: whether "elevated resource-own
+# latency, healthy upstream" should count as dependency_saturation evidence is
+# an open prompt-wording question (config/actions/failure-classes.yaml), not a
+# bug in this fixture.
+ContractRef: ceph-rgw-saturation:v1
+DetectedAt: "2026-07-14T16:11:11.597474544Z"
+DetectorType: burn_rate_acceleration
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 1.4285714285714273
+  Trajectory: accelerating
+Fingerprint: slo_burn:ceph-rgw
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.2
+    Trajectory: accelerating
+Name: ceph-rgw-burn-accel
+OriginService: ceph-rgw
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: cephobjectstore
+    State: healthy
+  - Service: rook-operator
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""

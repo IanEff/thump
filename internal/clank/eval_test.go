@@ -77,6 +77,29 @@ func evalTable() []evalCase {
 			wantDisposition: "propose",
 			wantContractRef: "throttle-non-critical-paths",
 		},
+		// A fourth decision boundary (2026-07-14, thump-running-notes.md
+		// "2026-07-14"): the first RGW chaos run with a real fix underneath
+		// it — CPU-stressed rook-ceph-rgw with real S3 traffic flowing
+		// (rgw-degradation.yaml's mechanism had none). RGW's own GET/PUT
+		// latency held 173-179ms against a 150ms SLO threshold, 0 failed
+		// requests, healthy upstream OSD/capacity — a real
+		// backend-slow-under-load shape. The live run correctly ruled out
+		// resource_exhaustion (the old bug) but landed on traffic_shift
+		// instead of dependency_saturation, proposing zero candidates — see
+		// ceph-rgw-saturation.yaml's header for the full trail. But
+		// replaying this same metrics-only evidence through the eval
+		// harness went dependency_saturation -> throttle-non-critical-paths
+		// 5/5 times, never once reproducing traffic_shift — the live run's
+		// one difference is a failed k8s pod-list tool call (a dial tcp
+		// timeout to the apiserver, chasing rook_pods_not_running) that
+		// isn't wired into the eval harness's tool set at all; that's the
+		// likely tip, not a reasoning flaw. Pins the correct call as the
+		// regression net, same framing as rgw-degradation.yaml above.
+		{
+			fixture:         "ceph-rgw-saturation.yaml",
+			wantDisposition: "propose",
+			wantContractRef: "throttle-non-critical-paths",
+		},
 	}
 }
 
@@ -182,6 +205,30 @@ func evalEvidence(fixture string) map[string]string {
 			"slo_burn_rgw":          "34.28",
 			"nodes_not_ready":       "0",
 			"rook_pods_not_running": "4",
+		}
+	case "ceph-rgw-saturation.yaml":
+		// Real live tool-call evidence, RunID slo_burn:ceph-rgw/
+		// 1784045518809851063, step 3 (2026-07-14T16:12:36Z) — see
+		// ceph-rgw-saturation.yaml's header for the mechanism. Copied
+		// verbatim from the S3 transcript, not estimated.
+		return map[string]string{
+			"ceph_health":             "0",
+			"osds_down":               "0",
+			"osds_out":                "0", // VERIFY: not queried live; inferred from osds_down=0 + ceph_health=0
+			"pgs_degraded":            "0",
+			"pgs_backfilling":         "0",
+			"recovery_ops_rate":       "0", // VERIFY: not queried live in this run
+			"mons_in_quorum":          "3",
+			"cluster_used_ratio":      "0.0997",
+			"fullest_pool_ratio":      "0.02", // VERIFY: not queried live; estimate consistent with cluster_used_ratio
+			"osd_write_latency_ms":    "16.9",
+			"rgw_request_rate":        "209.4",
+			"rgw_failed_rate":         "0",
+			"rgw_get_put_latency_ms":  "173.2",
+			"slo_burn_rgw":            "0",
+			"slo_burn_rgw_saturation": "60",
+			"nodes_not_ready":         "0",
+			"rook_pods_not_running":   "0", // VERIFY: not queried live in this run
 		}
 	case "argocd-sync-burn.yaml":
 		// Ceph itself is healthy throughout; only ArgoCD's sync state is

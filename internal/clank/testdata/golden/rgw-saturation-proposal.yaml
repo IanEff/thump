@@ -1,0 +1,58 @@
+evidence:
+- live: true
+  query: rgw_get_put_latency_ms
+  ref: metrics://rgw_get_put_latency_ms
+  summary: rgw_get_put_latency_ms = 1
+  tool: metrics
+- live: true
+  query: rgw_request_rate
+  ref: metrics://rgw_request_rate
+  summary: rgw_request_rate = 1
+  tool: metrics
+failureClass: dependency_saturation
+gate:
+  budgetOK: true
+  dedupeOK: true
+  evidenceOK: true
+  passed: true
+hypotheses:
+- name: rgw_backend_saturation
+  weight: 0.85
+name: ceph-rgw-burn-accel
+proposals:
+- confidence: 0.85
+  contractRef: throttle-non-critical-paths
+  governanceLevel:
+    band: act_reversible
+  id: p1
+  rank: 1
+  reversalPath:
+    method: unthrottle
+    trigger: p99 < 250ms
+    watching: latency_p99
+rankingRationale: {}
+recommended: p1
+saoSnapshot:
+  assembledAt: "0001-01-01T00:00:00Z"
+  change: {}
+  signal:
+    blastRadius:
+      AffectedPct: 0
+      DownstreamConsumers: 0
+      Velocity: ""
+    confidence: 1
+    severity:
+      DegradationPct: 0.2
+      Trajectory: accelerating
+  topology:
+    upstream:
+    - name: cephobjectstore
+      state: healthy
+    - name: rook-operator
+      state: healthy
+  version: 1
+serviceTier: tier-1
+signalRef: slo_burn:ceph-rgw
+status:
+  observedAt: "0001-01-01T00:00:00Z"
+  phase: proposed

@@ -1,0 +1,10 @@
+candidateRef: p1
+evaluatedAt: "2026-07-05T12:00:00Z"
+floorApplied: 0.75
+grantedBand: act_reversible
+id: dec:slo_burn:ceph-rgw:1783252800
+policyVersion: golden-v1
+proposalRef: ceph-rgw-burn-accel
+requestedBand: act_reversible
+signalRef: slo_burn:ceph-rgw
+verdict: approved
