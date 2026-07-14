@@ -33,15 +33,16 @@ var ErrRenderFailed = errors.New("thump: render failed")
 // the seam tests drive without a broker; thump.go's Main runs the NATS
 // branch instead in production.
 type Transport struct {
-	Inbox      string                             // directory globbed for *.yaml decision.Governed files
-	OrderPub   publish.Publisher[Order]           // destination for rendered Orders — thump.orders in production
-	OutcomePub publish.Publisher[outcome.Outcome] // destination for executed Outcomes — thump.outcomes in production
-	Catalog    *contract.StaticCatalog            // the authored actions Render may resolve a granted Candidate against
-	Log        *OutcomeLog                        // every Outcome produced, queryable by ByResult
-	Exec       Executor                           // how an Order is carried out — DryRun in v1
-	Now        func() time.Time                   // overridable clock for deterministic tests; nil means time.Now
-	Tracer     trace.Tracer                       // spans "render" under whatever trace ctx already carries; nil-safe via tracer()
-	Stages     *beat.StageRecorder                // RED metrics for "render" — nil-safe, same discipline as Tracer
+	Inbox      string                               // directory globbed for *.yaml decision.Governed files
+	OrderPub   publish.Publisher[Order]             // destination for rendered Orders — thump.orders in production
+	OutcomePub publish.Publisher[outcome.Outcome]   // destination for executed Outcomes — thump.outcomes in production
+	DeclinePub publish.Publisher[decision.Decision] // destination for non-approvals — thump.declines in production; closes clank's ledger row without ever going through Outcome
+	Catalog    *contract.StaticCatalog              // the authored actions Render may resolve a granted Candidate against
+	Log        *OutcomeLog                          // every Outcome produced, queryable by ByResult
+	Exec       Executor                             // how an Order is carried out — DryRun in v1
+	Now        func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
+	Tracer     trace.Tracer                         // spans "render" under whatever trace ctx already carries; nil-safe via tracer()
+	Stages     *beat.StageRecorder                  // RED metrics for "render" — nil-safe, same discipline as Tracer
 }
 
 // tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
@@ -113,6 +114,9 @@ func (tr *Transport) Tick(ctx context.Context) error {
 func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) error {
 	if g.Decision.Verdict != decision.VerdictApproved {
 		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons, "acted", false)
+		if err := tr.DeclinePub.Publish(ctx, "thump.declines", g.Decision); err != nil {
+			return fmt.Errorf("thump: publish decline for %s: %w", g.Decision.SignalRef, err)
+		}
 		return nil // valid non-approval: nothing to act on
 	}
 	now := time.Now

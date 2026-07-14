@@ -64,6 +64,11 @@ func TestTick_SkipsTheUnapprovedLoudly(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(inbox, "skipped", "gov-esc.yaml")); err != nil {
 		t.Error("an unapproved envelope must land in skipped/, not vanish:", err)
 	}
+	// clank still needs to know: a decline notice closes its ledger's dedup
+	// window without ever going through Outcome/Click/the case base.
+	if diff := cmp.Diff(escalatedGoverned().Decision, readOneDecline(t, outbox)); diff != "" {
+		t.Error("decline drifted across the wire (-want +got)", diff)
+	}
 	// and the loop is clean — a second pass over the emptied inbox is a no-op
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("the loop must survive its own skip:", err)
