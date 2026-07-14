@@ -34,9 +34,11 @@
     window: 600000000000
 
 - name: hold-rebalance
+  # unknown deliberately NOT listed here — see authored.go's comment on this
+  # same contract: mapping "unknown" to an action gave the model an out to
+  # act instead of declining.
   applicableFailureClasses:
     - resource_exhaustion
-    - unknown
   applicableTiers:
     - tier-1
   action:

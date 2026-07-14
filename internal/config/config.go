@@ -16,6 +16,7 @@ import (
 type Clank struct {
 	AnthropicAPIKey  string // ANTHROPIC_API_KEY — required
 	ActionCatalog    string // ACTION_CATALOG - required; the authored action catalog YAML
+	FailureClasses   string // FAILURE_CLASSES - required; the authored failure-class definitions YAML
 	PromURL          string // PROM_URL — optional; empty disables the metrics tool
 	EvidenceQueries  string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	LokiURL          string // LOKI_URL — optional; empty disables the loki tool
@@ -42,6 +43,7 @@ func LoadClank(broker bool) (Clank, error) {
 	c := Clank{
 		AnthropicAPIKey:  l.Require("ANTHROPIC_API_KEY"),
 		ActionCatalog:    l.Require("ACTION_CATALOG"),
+		FailureClasses:   l.Require("FAILURE_CLASSES"),
 		PromURL:          l.Optional("PROM_URL"),
 		EvidenceQueries:  l.Optional("EVIDENCE_QUERIES"),
 		LokiURL:          l.Optional("LOKI_URL"),

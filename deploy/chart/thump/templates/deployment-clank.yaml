@@ -81,6 +81,8 @@ spec:
               value: /etc/thump/whir/evidence-queries.yaml
             - name: ACTION_CATALOG
               value: /etc/thump/actions/catalog.yaml
+            - name: FAILURE_CLASSES
+              value: /etc/thump/actions/failure-classes.yaml
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

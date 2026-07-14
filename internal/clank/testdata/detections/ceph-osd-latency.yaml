@@ -1,0 +1,60 @@
+# Reconstructed from a live detection on rook-gce-k3s, 2026-07-13
+# (thump-running-notes.md "2026-07-13 (part 2)") — not a raw NATS capture,
+# but cross-checked against the real transcript pulled from the run's S3
+# checkpoints (transcripts/slo_burn:ceph-osd/1783959273531042146/), not just
+# rattle's log line. Fingerprint/DetectorType/Observed/ContractRef/
+# OriginService/ServiceTier/Severity/BlastRadius are all real values
+# (severity/blast read directly off the seeded prompt: "severity 1%, blast
+# 1%"). Only Divergence.Trajectory and Impact.Severity.Trajectory remain a
+# guess — neither is echoed anywhere in the seeded prompt or transcript, so
+# there's no way to recover them after the fact; VERIFY still applies to
+# those two fields only.
+#
+# Topology below is deliberately the CORRECTED state (all healthy) — i.e.
+# what a detection looks like now that state-queries.yaml's node-name bug
+# is fixed. The actual live incident had all three nodes reporting
+# "unknown" (the bug in question) and the model cited that false signal to
+# justify hold-rebalance instead of declining — see the running notes and
+# the real transcript for that exact reasoning. This fixture pins the
+# forward-looking "even with correct evidence, still decline" behavior, not
+# a reproduction of the bug itself.
+#
+# Live incident: PG-starved ceph-objectstore.rgw.buckets.data (256->1 PGs,
+# autoscaler off) under S3 traffic-generator load — no node/OSD/network
+# fault, pure OSD-internal write-op contention.
+ContractRef: ceph-osd-latency:v1
+DetectedAt: "2026-07-13T16:13:51.5803135Z"
+DetectorType: sustained_burn
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 1.3269639065817393
+  Trajectory: stable # VERIFY — not recoverable from the transcript; best guess
+Fingerprint: slo_burn:ceph-osd
+Impact:
+  BlastRadius:
+    AffectedPct: 0.01
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.01
+    Trajectory: stable # VERIFY — see Divergence.Trajectory note above
+Name: ceph-osd-burn-accel
+OriginService: ceph-osd
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: cephblockpool
+    State: healthy
+  - Service: ceph-node-1
+    State: healthy
+  - Service: ceph-node-2
+    State: healthy
+  - Service: ceph-node-3
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""

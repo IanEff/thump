@@ -25,7 +25,7 @@ import (
 // sealed segments to object storage in the background. The two-subscriber
 // shape is clank's own; the beat kit supplies the consumer/publisher
 // primitives but leaves this composition here.
-func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -59,7 +59,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	// JetStream AckWait deadline on real checkpoint progress (via
 	// WithHeartbeat) rather than needing engine.go's loop to know a NATS
 	// message exists at all.
-	eng := newBrokerEngine(model, intake, HeartbeatingStore{store}, tools, cat, proposalPub, ledger, cases, tracer, stages)
+	eng := newBrokerEngine(model, intake, HeartbeatingStore{store}, tools, cat, classes, proposalPub, ledger, cases, tracer, stages)
 
 	g, gctx := errgroup.WithContext(ctx)
 

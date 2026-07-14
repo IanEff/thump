@@ -18,7 +18,7 @@ import (
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
 func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
-	return newLoop("", outbox, outcomes, model, tools, intake, cat, store, noop.Tracer{}, nil)
+	return newLoop("", outbox, outcomes, model, tools, intake, cat, contract.DefaultFailureClasses(), store, noop.Tracer{}, nil)
 }
 
 // DefaultCatalogForTest exposes the production catalog (the one Main wires)
@@ -31,7 +31,7 @@ func DefaultCatalogForTest() *contract.StaticCatalog {
 
 // NewBrokerEngineForTest exposes the broker-mode Engine construction to tests.
 func NewBrokerEngineForTest(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase) *Engine {
-	return newBrokerEngine(model, intake, store, tools, cat, pub, ledger, cases, noop.Tracer{}, nil)
+	return newBrokerEngine(model, intake, store, tools, cat, contract.DefaultFailureClasses(), pub, ledger, cases, noop.Tracer{}, nil)
 }
 
 // TODO: These are a gooney workaround and this stuff should probably go elsewhere or be relagated to the dustbin of bad ideas.

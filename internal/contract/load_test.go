@@ -101,3 +101,45 @@ func TestShippedCatalogMatchesAuthoredDefault(t *testing.T) {
 		t.Errorf("config/actions/catalog.yaml drifted from contract.Default() (-want +got):\n%s", diff)
 	}
 }
+
+// TestShippedFailureClassesMatchesAuthoredDefault is the failure-class
+// definitions' drift guard, the same shape as
+// TestShippedCatalogMatchesAuthoredDefault: the checked-in
+// config/actions/failure-classes.yaml must still declare exactly the
+// authored set clank's seedPrompt renders to the model.
+func TestShippedFailureClassesMatchesAuthoredDefault(t *testing.T) {
+	got, err := contract.LoadFailureClassesFile("../../config/actions/failure-classes.yaml")
+	if err != nil {
+		t.Fatalf("LoadFailureClassesFile: %v", err)
+	}
+
+	if diff := cmp.Diff(contract.DefaultFailureClasses(), got); diff != "" {
+		t.Errorf("config/actions/failure-classes.yaml drifted from contract.DefaultFailureClasses() (-want +got):\n%s", diff)
+	}
+}
+
+// TestDefaultFailureClasses_CoversEveryFailureClass is the completeness
+// guard: proposal.FailureClass is a closed enum, but Go can't enumerate a
+// type's consts by reflection, so this test hardcodes the canonical set
+// once and fails loudly if DefaultFailureClasses() and this list ever
+// disagree — exactly the failure mode a future added-but-undefined class
+// would otherwise hit silently (a class the model can declare but was never
+// told the meaning of).
+func TestDefaultFailureClasses_CoversEveryFailureClass(t *testing.T) {
+	want := map[proposal.FailureClass]bool{
+		proposal.ClassDependencySaturation: true,
+		proposal.ClassTrafficShift:         true,
+		proposal.ClassResourceExhaustion:   true,
+		proposal.ClassUnknown:              true,
+	}
+	got := map[proposal.FailureClass]bool{}
+	for _, d := range contract.DefaultFailureClasses() {
+		if d.Description == "" {
+			t.Errorf("%q has an empty Description", d.Class)
+		}
+		got[d.Class] = true
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("DefaultFailureClasses() does not cover exactly proposal's FailureClass consts (-want +got):\n%s", diff)
+	}
+}

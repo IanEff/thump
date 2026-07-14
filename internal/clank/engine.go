@@ -3,6 +3,7 @@ package clank
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -25,21 +26,22 @@ import (
 // Propose only ever reads evidence and writes to the Store, the Ledger, and
 // Pub.
 type Engine struct {
-	Intake       *Intake                         // assembles the versioned SAO the loop reasons over
-	Model        Model                           // the LLM seam, faked in tests
-	Tools        map[string]Tool                 // read-only evidence tools, keyed by the name the model calls
-	Catalog      *contract.StaticCatalog         // the autonomy boundary: enforceCatalog rejects any proposed ContractRef this doesn't list
-	Ranker       *Ranker                         // orders the formed candidates once, after the loop exits
-	Gate         ReadinessGate                   // budget ∧ dedup ∧ evidence, evaluated once on the formed set
-	Store        Store                           // loop memory: one checkpoint per turn, a different lifetime from Ledger
-	Scorer       CausalScorer                    // rates each change event's likelihood of causing the signal
-	DedupeWindow time.Duration                   // how far back Ledger.Open looks for a live set on the same fingerprint
-	Ledger       *MemProposalLog                 // every Propose run is recorded here, gated or not — the audit trail
-	Pub          publish.Publisher[proposal.Set] // delivery — only called when the gate passes
-	MaxSteps     int                             // hard bound on reason-loop turns; exhausting it without a propose/insufficient call ends the run budget-exhausted
-	Weights      ScoringWeights
-	Tracer       trace.Tracer        // spans the reason-loop stages under whatever trace ctx already carries; nil-safe via tracer() so existing callers need not set it
-	Stages       *beat.StageRecorder // RED metrics per stage — nil-safe, same discipline as Tracer; every Propose call still logs and spans without one
+	Intake         *Intake                           // assembles the versioned SAO the loop reasons over
+	Model          Model                             // the LLM seam, faked in tests
+	Tools          map[string]Tool                   // read-only evidence tools, keyed by the name the model calls
+	Catalog        *contract.StaticCatalog           // the autonomy boundary: enforceCatalog rejects any proposed ContractRef this doesn't list
+	FailureClasses []contract.FailureClassDefinition // authored, rig-invariant meaning of each class, rendered into seedPrompt; nil renders no block, so a bare-bones test Engine still works
+	Ranker         *Ranker                           // orders the formed candidates once, after the loop exits
+	Gate           ReadinessGate                     // budget ∧ dedup ∧ evidence, evaluated once on the formed set
+	Store          Store                             // loop memory: one checkpoint per turn, a different lifetime from Ledger
+	Scorer         CausalScorer                      // rates each change event's likelihood of causing the signal
+	DedupeWindow   time.Duration                     // how far back Ledger.Open looks for a live set on the same fingerprint
+	Ledger         *MemProposalLog                   // every Propose run is recorded here, gated or not — the audit trail
+	Pub            publish.Publisher[proposal.Set]   // delivery — only called when the gate passes
+	MaxSteps       int                               // hard bound on reason-loop turns; exhausting it without a propose/insufficient call ends the run budget-exhausted
+	Weights        ScoringWeights
+	Tracer         trace.Tracer        // spans the reason-loop stages under whatever trace ctx already carries; nil-safe via tracer() so existing callers need not set it
+	Stages         *beat.StageRecorder // RED metrics per stage — nil-safe, same discipline as Tracer; every Propose call still logs and spans without one
 }
 
 // tracer returns Tracer, or a no-op if unset — Propose never has to nil-check,
@@ -105,7 +107,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	set.Status = &proposal.Status{}
 
 	actions := e.Catalog.ApplicableToTier(sig.ServiceTier, sao)
-	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, actions)}}
+	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions)}}
 	var evidence []proposal.EvidenceRef
 	proposed, declined := false, false
 
@@ -192,7 +194,15 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	}
 
 	if err := e.enforceCatalog(set, sao); err != nil {
-		return proposal.Set{}, err
+		if !errors.Is(err, errClassMismatch) {
+			return proposal.Set{}, err
+		}
+		set.Status.Phase = proposal.PhaseNoAction
+		set.Status.Reason = err.Error()
+		if err := e.Ledger.Record(ctx, set); err != nil {
+			return proposal.Set{}, fmt.Errorf("record: %w", err)
+		}
+		return set, nil
 	}
 
 	enrichFromCatalog(e.Catalog, set.Proposals)
@@ -250,20 +260,32 @@ func (e *Engine) toolSpecs() []ToolSpec {
 	return append(specs, ProposeToolSpec(), InsufficientToolSpec())
 }
 
+// errClassMismatch marks a proposed ContractRef that IS a real catalogued
+// action, just not applicable to the FailureClass the model itself
+// declared — a plausible-but-mislabelled proposal, not an invented one.
+// Propose turns this into an auditable no_action decline; only a
+// ContractRef naming no catalogued action at all (contract.ErrOutsideCatalog)
+// halts the run.
+var errClassMismatch = errors.New("candidate not applicable to declared failure class")
+
 func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 	allowed := make(map[string]bool)
 	for _, c := range e.Catalog.Applicable(set.FailureClass, set.ServiceTier, sao) {
 		allowed[c.Name] = true
 	}
 	for _, cand := range set.Proposals {
-		if !allowed[cand.ContractRef] {
-			return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
+		if allowed[cand.ContractRef] {
+			continue
 		}
+		if _, ok := e.Catalog.ByName(cand.ContractRef); ok {
+			return fmt.Errorf("%w: %q does not apply to declared class %q", errClassMismatch, cand.ContractRef, set.FailureClass)
+		}
+		return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
 	}
 	return nil
 }
 
-func seedPrompt(sig signal.Detection, sao proposal.SAO, actions []contract.ActionContract) string {
+func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.FailureClassDefinition, actions []contract.ActionContract) string {
 	var b strings.Builder
 	subject := sig.OriginService
 	if subject == "" {
@@ -282,6 +304,13 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, actions []contract.Actio
 		}
 	}
 
+	if len(classes) > 0 {
+		b.WriteString("failure classes — pick the one the EVIDENCE supports, not the one that has a matching action:\n")
+		for _, d := range classes {
+			fmt.Fprintf(&b, "- %s: %s\n", d.Class, d.Description)
+		}
+	}
+
 	if len(actions) == 0 {
 		b.WriteString("no catalogued action applies to this signal; if the evidence supports acting you must still call insufficient.")
 		return b.String()
@@ -289,14 +318,14 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, actions []contract.Actio
 
 	b.WriteString("you may ONLY propose an action from this catalog — use the exact contractRef:\n")
 	for _, c := range actions {
-		classes := make([]string, len(c.ApplicableFailureClasses))
+		classNames := make([]string, len(c.ApplicableFailureClasses))
 		for i, fc := range c.ApplicableFailureClasses {
-			classes[i] = string(fc)
+			classNames[i] = string(fc)
 		}
 		if c.Action.Description != "" {
-			fmt.Fprintf(&b, "- %s — %s (applies to: %s)\n", c.Name, c.Action.Description, strings.Join(classes, ", "))
+			fmt.Fprintf(&b, "- %s — %s (applies to: %s)\n", c.Name, c.Action.Description, strings.Join(classNames, ", "))
 		} else {
-			fmt.Fprintf(&b, "- %s (applies to: %s)\n", c.Name, strings.Join(classes, ", "))
+			fmt.Fprintf(&b, "- %s (applies to: %s)\n", c.Name, strings.Join(classNames, ", "))
 		}
 	}
 	return b.String()

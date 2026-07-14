@@ -486,6 +486,44 @@ func TestPropose_RejectsACandidateOutsideTheCatalog(t *testing.T) {
 	}
 }
 
+// TestPropose_ClassMismatchBecomesAnAuditableDecline pins the fix for the
+// 2026-07-13 discrimination bug (thump-running-notes.md): unlike a wholly
+// invented ContractRef (the test above), "hold-rebalance" here IS a real
+// catalogued action — it's just not applicable to the class the model
+// declared. That must become a legible no_action decline recorded to the
+// ledger, never a returned error (which would leave the whole run
+// unaudited) and never delivered.
+func TestPropose_ClassMismatchBecomesAnAuditableDecline(t *testing.T) {
+	t.Parallel()
+	cat := contract.NewStaticCatalog([]contract.ActionContract{{
+		Name:                     "hold-rebalance",
+		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassResourceExhaustion},
+		ApplicableTiers:          []string{"tier-1"},
+	}})
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassUnknown,
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance"}},
+		})}}},
+	}}
+
+	e, sink := newTestEngineWithCatalog(model, cat)
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("a class mismatch must not error the whole run, got %v", err)
+	}
+	if got.Status.Phase != "no_action" {
+		t.Errorf("phase = %q, want no_action", got.Status.Phase)
+	}
+	if got.Status.Reason == "" {
+		t.Fatal("a class-mismatch decline is mute: Status.Reason is empty")
+	}
+	if len(sink.Delivered) != 0 {
+		t.Errorf("a declined set must never be delivered: %d", len(sink.Delivered))
+	}
+}
+
 func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
