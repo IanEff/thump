@@ -1,17 +1,34 @@
-# rook-gce-k3s's watch list — all four Sloth SLOs, the first site profile
-# that doesn't have to park one (ceph-osd-latency and argocd-sync were both
-# parked out of rook-gke's watch.yaml; this rig renders all four —
-# applications/infrastructure/sloth/prometheusservicelevels.yaml).
-# Objectives/contractRef pulled straight from that file's `objective:`
-# fields. Dependency names must match metadata.name entries in
-# config/rook-gce-k3s/whir/catalog-info.yaml exactly (whir strips the
-# resource:/component: prefix before comparing).
+# rook-gce-k3s's watch list — all five Sloth SLOs now that ceph-rgw-
+# saturation exists (applications/infrastructure/sloth/
+# prometheusservicelevels.yaml, commit 29e70fe). Objectives/contractRef
+# pulled straight from that file's `objective:` fields. Dependency names
+# must match metadata.name entries in config/rook-gce-k3s/whir/
+# catalog-info.yaml exactly (whir strips the resource:/component: prefix
+# before comparing).
 slos:
   - id: ceph-rgw-availability
     object: ceph-rgw
     tier: tier-1
     objective: 0.999
     contractRef: ceph-rgw-availability:v1
+    dependencies:
+      - name: cephobjectstore
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  # Raw-SLI companion to ceph-rgw-availability, added to close the D2 crux
+  # gap (phase-e-earn-the-ceiling-guide.md Part 2 D2): the availability SLO
+  # only burns on RGW's pre-execution abort_early() rejections, so a
+  # backend-slow-under-load dependency_saturation scenario never touches
+  # it. This SLO burns on RGW's own GET/PUT AvgTime latency instead — same
+  # ceph-rgw component/dependencies, since it's the same subject observed
+  # a different way, not a different failure surface.
+  - id: ceph-rgw-saturation
+    object: ceph-rgw
+    tier: tier-1
+    objective: 0.99
+    contractRef: ceph-rgw-saturation:v1
     dependencies:
       - name: cephobjectstore
         role: blocking
