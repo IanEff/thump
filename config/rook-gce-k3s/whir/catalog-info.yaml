@@ -20,7 +20,7 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: ceph-rgw
-  description: RGW — S3-compatible object gateway. Subject of the ceph-rgw-availability SLO.
+  description: RGW — S3-compatible object gateway. Subject of the ceph-rgw-availability and ceph-rgw-saturation SLOs.
 spec:
   type: service
   lifecycle: experimental

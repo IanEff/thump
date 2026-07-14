@@ -20,8 +20,10 @@ queries:
     query: ceph_health_status
   - name: slo_burn_ceph_health     # the burn rate rattle fired on
     query: slo:current_burn_rate:ratio{sloth_id="ceph-health"}
-  - name: slo_burn_rgw             # RGW-availability burn
+  - name: slo_burn_rgw             # RGW-availability burn (error-rate SLI — see rgw_failed_rate below)
     query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-availability"}
+  - name: slo_burn_rgw_saturation  # RGW-saturation burn (raw GET/PUT latency SLI — see rgw_get_put_latency_ms below)
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-saturation"}
   - name: slo_burn_osd_latency     # OSD-latency burn — the first live site to render this SLO
     query: slo:current_burn_rate:ratio{sloth_id="ceph-osd-latency"}
   - name: slo_burn_argocd_sync     # ArgoCD-sync burn — no catalog action maps here (D3 decline probe)
@@ -57,11 +59,43 @@ queries:
     # unfiltered ceph_osd_op_w_latency_* triple-counts against
     # rook-ceph-exporter's other scrape paths (same Bug 2).
 
-  # ── group 4 · RGW / traffic (evidence for throttle-non-critical-paths + rgw SLO) ─
+  # ── group 4 · RGW / traffic (evidence for throttle-non-critical-paths + rgw SLOs) ─
   - name: rgw_request_rate         # req/s through the object gateway
     query: sum(rate(ceph_rgw_req[5m])) or vector(0)
-  - name: rgw_failed_rate          # failed req/s — the availability SLI's numerator
+  - name: rgw_failed_rate          # failed req/s — the AVAILABILITY SLI's numerator (pre-execution
     query: sum(rate(ceph_rgw_failed_req[5m])) or vector(0)
+    # rejections only — auth/ratelimit/suspended-user. A backend-slow op
+    # that completes successfully never moves this; see rgw_get_put_latency_ms.
+  - name: rgw_get_put_latency_ms   # avg GET+PUT op latency, ms — the SATURATION SLI's raw value
+    query: >-
+      1000 * (
+        (sum(rate(ceph_rgw_op_get_obj_lat_sum[1m])) + sum(rate(ceph_rgw_op_put_obj_lat_sum[1m])))
+        /
+        (sum(rate(ceph_rgw_op_get_obj_lat_count[1m])) + sum(rate(ceph_rgw_op_put_obj_lat_count[1m])))
+      )
+    # Window matched to the ceph-rgw-saturation SLO's own SLI sub-window
+    # (prometheusservicelevels.yaml's avg_over_time(... > bool 0.15)[{{.window}}:1m])
+    # deliberately, not the usual 5m every other evidence-query here uses.
+    # VERIFIED LIVE 2026-07-14 (rgw-network-delay.yaml chaos run, S3 WAL
+    # transcript slo_burn:ceph-rgw/1784029108993278359): a 5m rate() window
+    # read a diluted "14.48ms, healthy" 40s into a real 4.4s-latency
+    # incident — 4.5 minutes of pre-chaos samples still dominated the
+    # average, so the model declined on stale evidence while the SLO's own
+    # burn rate (1m sub-windows) was already at 40x. 1m still isn't
+    # instant (needs ~2 scrape intervals, 60s, to fully reflect a step
+    # change) but tracks the SLO's own sensitivity instead of lagging it
+    # by 4x.
+    # Metric names verified live 2026-07-14 against ceph-gce's real scrape
+    # (ceph v19.2.3): ceph_rgw_op_get_obj_lat_sum/_count and the _put_ pair
+    # are what's actually exported — the original ceph_rgw_l_get_initial_lat
+    # names (transcribed from rgw_perf_counters.cc) don't exist on this
+    # cluster. Healthy baseline observed the same session: 14-17ms blended,
+    # PUT-only traffic (this rig's s3-traffic-generator does no GETs), 1KB
+    # objects. The ceph-rgw-saturation SLO's own threshold is 150ms (~9x
+    # baseline) — see prometheusservicelevels.yaml for why the SLI itself
+    # is "fraction of the window over the line," not this raw average
+    # directly (the raw number here is for the model to cite; the SLO's
+    # burn rate is the belief-formation signal).
 
   # ── group 5 · node / pod state ───────────────────────────────────────────
   # kube-state-metrics is enabled on this rig's prometheus chart
