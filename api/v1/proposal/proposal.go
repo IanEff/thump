@@ -59,6 +59,12 @@ const (
 	PhaseClosed          = "closed"
 	PhaseNoAction        = "no_action"
 	PhaseBudgetExhausted = "budget_exhausted"
+	// PhaseDeclined means governance ruled against this Set before thump
+	// ever rendered it — distinct from PhaseNoAction (clank itself never
+	// proposed) and PhaseClosed (thump rendered/executed and a real
+	// Outcome closed the loop). A declined Set never produces an Outcome,
+	// so nothing here ever touches the case base.
+	PhaseDeclined = "declined"
 )
 
 // Hypothesis is one candidate explanation for the FailureClass, weighted
