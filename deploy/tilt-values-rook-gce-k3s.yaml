@@ -6,13 +6,12 @@
 #   - configProfile: rook-gce-k3s selects config/rook-gce-k3s/ — without it
 #     clank/rattle reason over ceph-lab's phantom topology and every
 #     detection is poisoned, same rule every prior site profile follows.
-#   - prometheus.url: this rig's monitoring stack is the plain
-#     prometheus-community/prometheus chart (releaseName "prometheus",
-#     namespace monitoring) — NOT kube-prometheus-stack like rook-gke — so
-#     the server Service is "prometheus-server", not
-#     "kube-prometheus-stack-prometheus". Confirmed against the chart's own
-#     fullname helper + servicePort (both vendored in the rig repo), not a
-#     guess.
+#   - prometheus.url: this rig's monitoring stack migrated to
+#     kube-prometheus-stack (rig commit bc2bbb2, 2026-07-14) — Operator +
+#     CRDs + a real Prometheus CR, releaseName "prometheus", namespace
+#     monitoring. The server Service is "prometheus-kube-prometheus-
+#     prometheus" (port 9090), not the old plain-chart "prometheus-server".
+#     Confirmed live: `kubectl get svc -n monitoring`.
 #   - loki.url: no override — the chart default already matches this rig's
 #     Loki (SingleBinary mode, gateway disabled, namespace logging;
 #     applications/infrastructure/loki/kustomization.yaml), the same setup
@@ -39,20 +38,18 @@ image:
 configProfile: rook-gce-k3s
 
 prometheus:
-  url: http://prometheus-server.monitoring.svc.cluster.local
+  url: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
 
 nats:
   storageClass: local-path
 
 # The chart default (false) exists because the ServiceMonitor CRD isn't
-# guaranteed on every cluster this chart targets. This rig's Prometheus is
-# the plain prometheus-community/prometheus chart (no Operator watching
-# ServiceMonitor CRs today — see applications/infrastructure/prometheus/
-# values.yaml's own header comment) — real scrape discovery here is
-# annotation-based (deploy/chart/thump/templates/service-*.yaml's
-# prometheus.io/scrape annotations), not this CR. Enabling it anyway is a
-# harmless no-op on this rig and keeps the override correct if the rig
-# ever gains a Prometheus Operator (see thump-running-notes.md 2026-07-14
-# for the rig-side migration options that would make this CR live).
+# guaranteed on every cluster this chart targets. This rig now runs the
+# kube-prometheus-stack Operator (rig commit bc2bbb2) with an empty
+# serviceMonitorSelector, so the CR is genuinely watched here — confirmed
+# live, all four beat targets show up=1 in /api/v1/targets. The annotation-
+# based scrape (deploy/chart/thump/templates/service-*.yaml's
+# prometheus.io/scrape annotations) still works too; both paths are live
+# and redundant on this rig now, which is harmless.
 serviceMonitor:
   enabled: true
