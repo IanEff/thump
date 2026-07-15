@@ -113,7 +113,8 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			return
 		}
 		slog.Info("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase,
-			"recommended", set.Recommended, "proposals", len(set.Proposals), "evidence", len(set.Evidence),
+			"recommended", set.Recommended, "contractRef", set.ContractRefFor(set.Recommended),
+			"proposals", len(set.Proposals), "evidence", len(set.Evidence),
 			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason)
 	}()
 

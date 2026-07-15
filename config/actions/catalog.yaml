@@ -33,6 +33,32 @@
     # plain integer of nanoseconds: 600000000000 == 10 * time.Minute.
     window: 600000000000
 
+- name: scale-out-rgw-gateways
+  # The second dependency_saturation remedy: adds capacity instead of
+  # shedding load, so a proposal for this class is a real trade-off between
+  # two candidates for the ranker to weigh, not a rubber stamp on the only
+  # option (Phase E's E2).
+  applicableFailureClasses:
+    - dependency_saturation
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Scale up RGW gateway replicas (CephObjectStore spec.gateway.instances)
+      to add serving capacity under load
+    scopeParameters:
+      additional_replicas:
+        min: 1
+        max: 3
+        default: 1
+  reversal:
+    method: scale-in-rgw-gateways
+    fallback: page-oncall
+  successCriteria:
+    metric: rgw_get_put_latency_ms
+    target: "avg < 50ms"
+    window: 600000000000 # 10 * time.Minute, in nanoseconds
+
 - name: hold-rebalance
   # unknown deliberately NOT listed here — see authored.go's comment on this
   # same contract: mapping "unknown" to an action gave the model an out to

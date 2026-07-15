@@ -98,7 +98,8 @@ func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) erro
 		return nil
 	})
 	tr.Log.Record(d)
-	slog.Info("decision", "fingerprint", ps.SignalRef, "verdict", d.Verdict, "reasons", d.Reasons, "requestedBand", d.RequestedBand, "grantedBand", d.GrantedBand)
+	slog.Info("decision", "fingerprint", ps.SignalRef, "verdict", d.Verdict, "reasons", d.Reasons,
+		"requestedBand", d.RequestedBand, "grantedBand", d.GrantedBand, "contractRef", ps.ContractRefFor(d.CandidateRef))
 	return tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: ps})
 }
 

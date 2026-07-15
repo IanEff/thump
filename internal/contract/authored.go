@@ -27,6 +27,22 @@ func Default() *StaticCatalog {
 			SuccessCriteria: SuccessCriteria{Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute},
 		},
 		{
+			// The second dependency_saturation remedy: adds capacity
+			// instead of shedding load, so a proposal for this class is a
+			// real trade-off between two candidates for the ranker to
+			// weigh, not a rubber stamp on the only option (Phase E's E2).
+			Name:                     "scale-out-rgw-gateways",
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
+			ApplicableTiers:          []string{"tier-1"},
+			Action: ActionSpec{
+				Description: "Scale up RGW gateway replicas (CephObjectStore spec.gateway.instances) " +
+					"to add serving capacity under load",
+				ScopeParameters: map[string]Range{"additional_replicas": {Min: 1, Max: 3, Default: 1}},
+			},
+			Reversal:        Reversal{Method: "scale-in-rgw-gateways", Fallback: "page-oncall"},
+			SuccessCriteria: SuccessCriteria{Metric: "rgw_get_put_latency_ms", Target: "avg < 50ms", Window: 10 * time.Minute},
+		},
+		{
 			Name: "hold-rebalance",
 			// unknown deliberately NOT listed: mapping "I don't know" to a
 			// real action gave the model an escape hatch to act instead of
