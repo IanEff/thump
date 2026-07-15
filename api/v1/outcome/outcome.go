@@ -69,6 +69,11 @@ const (
 	ResultSuccess  Result = "success"
 	ResultFailure  Result = "failure"
 	ResultUnknown  Result = "unknown"
+	// ResultBlocked is a live order a disarmed kill-switch refused — a
+	// recorded refusal, never a silent skip, and never a failure, so it needs
+	// no error text to be Auditable. Distinct from a decline (hiss's, before
+	// any order) and from failure (the action ran and broke).
+	ResultBlocked Result = "blocked"
 	// ResultPartialNonConverging is representable FROM BIRTH — charter I-6
 	// defence 4: binary success/failure is the belief-formation trap, and a
 	// vocabulary that can't say "it half-worked and isn't settling" will

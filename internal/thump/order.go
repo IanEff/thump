@@ -13,7 +13,8 @@ import (
 // recommended Candidate, or the matched ActionContract; Render invents no
 // value that isn't already sitting in one of those three.
 type Order struct {
-	ID          string                   `json:"id,omitempty" yaml:"id,omitempty"` // "ord:" + SignalRef + ":" + unix(now)
+	ID          string                   `json:"id,omitempty" yaml:"id,omitempty"`     // "ord:" + SignalRef + ":" + unix(now)
+	Kind        OrderKind                `json:"kind,omitempty" yaml:"kind,omitempty"` // forward (zero value) or reversal — the one bit a kill-switch reads to exempt cleanup; Render leaves it unset, only ReversalWatcher stamps a reversal
 	DecisionRef string                   `json:"decisionRef,omitempty" yaml:"decisionRef,omitempty"`
 	SignalRef   string                   `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`
 	ContractRef string                   `json:"contractRef,omitempty" yaml:"contractRef,omitempty"`
@@ -24,6 +25,17 @@ type Order struct {
 	Success     contract.SuccessCriteria `json:"success,omitempty" yaml:"success,omitempty"` // rendered, not evaluated, in v1 — no convergence watcher exists yet to check it
 	RenderedAt  time.Time                `json:"renderedAt,omitempty" yaml:"renderedAt,omitempty"`
 }
+
+// OrderKind separates a forward action from its undo — the distinction a
+// kill-switch needs to refuse all new blast radius while never stranding
+// in-flight cleanup half-done. The zero value is a forward order, so every
+// Order Render already produces stays gated as forward untouched.
+type OrderKind string
+
+const (
+	OrderForward  OrderKind = ""         // a new action — subject to the kill-switch
+	OrderReversal OrderKind = "reversal" // an undo of an already-executed action — exempt from the kill-switch
+)
 
 // ReversalPlan is how to undo an Order, carried over from the granted
 // Candidate's ReversalPath plus the ActionContract's authored Fallback. A
