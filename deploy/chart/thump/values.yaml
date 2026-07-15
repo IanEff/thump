@@ -10,7 +10,7 @@ replicas: 0
 image:
   registry: ghcr.io/ianeff
   # tag is deliberately blank: the git SHA is stamped at deploy time
-  # (`make images` / CI), never defaulted to `latest` — see
+  # (`task images` / CI), never defaulted to `latest` — see
   # image-tagging-immutability. `helm template/install --set image.tag=<sha>`.
   tag: ""
   pullPolicy: IfNotPresent

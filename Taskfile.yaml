@@ -1,0 +1,224 @@
+version: "3"
+
+vars:
+  PROJECT: thump
+  REGISTRY: '{{.REGISTRY | default "ghcr.io/ianeff"}}'
+  BEATS: "clank rattle hiss thump"
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  COMMIT:
+    sh: git rev-parse HEAD 2>/dev/null || echo none
+  # Pinned to the commit's own timestamp, not wall-clock — two builds of the
+  # same commit must produce the same binary (and therefore the same image
+  # digest), or images/sign-images silently drift the :{{.COMMIT}} tag out
+  # from under whatever was already signed. Falls back to wall-clock only
+  # outside a git checkout (e.g. a source tarball with no .git).
+  DATE:
+    sh: git show -s --format=%cd --date=format:'%Y-%m-%dT%H:%M:%SZ' HEAD 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ
+  LDFLAGS: "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}"
+
+tasks:
+  default:
+    desc: Alias for ci
+    cmds:
+      - task: ci
+
+  ci:
+    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, race, build
+    cmds:
+      - task: fmt-check
+      - task: vet
+      - task: lint
+      - task: vulncheck
+      - task: chart-lint
+      - task: race
+      - task: build
+
+  fmt:
+    desc: gofmt the tree
+    cmds:
+      - go fmt ./...
+
+  fmt-check:
+    desc: Fail if any file is not gofmt-clean
+    cmds:
+      - |
+        out=$(gofmt -l .)
+        if [ -n "$out" ]; then
+          echo "unformatted files:"
+          echo "$out"
+          echo "run: task fmt"
+          exit 1
+        fi
+
+  vet:
+    desc: go vet ./...
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: golangci-lint run
+    cmds:
+      - golangci-lint run
+
+  vulncheck:
+    desc: govulncheck over deps
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+  chart-lint:
+    desc: helm template | kubeconform, strict
+    cmds:
+      - helm template deploy/chart/thump | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary
+
+  test:
+    desc: go test ./...
+    cmds:
+      - go test ./...
+
+  race:
+    desc: go test -race ./...
+    cmds:
+      - go test -race ./...
+
+  coverage:
+    desc: coverage profile + total
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out | tail -1
+
+  # eval is key-gated (ANTHROPIC_API_KEY) and NEVER part of ci — a real-model
+  # assertion is exactly the flakiness `task ci` exists to keep out. Missing
+  # key = a clean skip, not a failure, so this is always safe to run.
+  eval:
+    desc: Run the reasoner eval against the production catalog (key-gated, not part of ci)
+    cmds:
+      - go test -tags eval ./internal/clank -run TestEval_ReasonerAgainstProductionCatalog -v
+
+  capture-detection:
+    desc: "Farm a live detection into a fixture: task capture-detection SRC=<path to .yaml> NAME=<fixture-name>"
+    requires:
+      vars: [SRC, NAME]
+    cmds:
+      - cp "{{.SRC}}" internal/clank/testdata/detections/{{.NAME}}.yaml
+      - echo "captured internal/clank/testdata/detections/{{.NAME}}.yaml"
+      - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
+
+  build:
+    desc: Build all four beats to bin/ (version/commit/date ldflags, -trimpath)
+    cmds:
+      - mkdir -p bin
+      - for beat in {{.BEATS}}; do go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/$beat ./cmd/$beat || exit 1; done
+
+  # images builds one container per beat, tagged with the git SHA (never
+  # `latest` — mutable tags break GitOps drift detection), with an SBOM and
+  # SLSA provenance attestation attached to the manifest list via buildx's
+  # own scanner — no separate syft invocation needed for the image path.
+  # Requires a buildx builder using the docker-container driver (the default
+  # docker driver can't emit multi-platform manifests or attestations).
+  # --metadata-file records the pushed manifest-list digest per beat — the
+  # thing sign-images actually signs, never the mutable tag (Liz Rice's rule:
+  # pin and verify by digest, a tag is a pointer, not an identity).
+  # Override the destination with `task images REGISTRY=ghcr.io/whoever`.
+  images:
+    desc: Multi-arch (linux/amd64,linux/arm64) container per beat, SBOM + provenance, pushed to REGISTRY
+    cmds:
+      - mkdir -p bin/metadata
+      - |
+        for beat in {{.BEATS}}; do
+          echo "building {{.REGISTRY}}/thump-$beat:{{.COMMIT}} (linux/amd64,linux/arm64)"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --sbom=true \
+            --provenance=true \
+            --build-arg BEAT=$beat \
+            --build-arg VERSION={{.VERSION}} \
+            --build-arg COMMIT={{.COMMIT}} \
+            --build-arg DATE={{.DATE}} \
+            -t {{.REGISTRY}}/thump-$beat:{{.COMMIT}} \
+            --metadata-file bin/metadata/$beat.json \
+            --push \
+            . || exit 1
+        done
+
+  push-images:
+    desc: "Alias: multi-arch manifests are already pushed by images (buildx --push)"
+    deps: [images]
+    cmds:
+      - echo "multi-arch manifests already pushed by 'images' (buildx --push) — nothing more to do"
+
+  # sign-images keyless-signs (Sigstore/Fulcio OIDC, no long-lived key) the
+  # exact digest images just pushed, read back from its --metadata-file —
+  # never the :{{.COMMIT}} tag, which is only a pointer to that digest, not
+  # the digest itself. Doesn't touch the source tree or the pushed manifest;
+  # purely additive on the registry side. By default also submits a public
+  # Rekor transparency-log entry — decide on that deliberately, don't just
+  # discover it later. Fulcio is a shared public service outside this repo's
+  # control; 120s bounds the wait (OIDC login + cert issuance) so a stall
+  # there fails loud instead of hanging the terminal forever.
+  sign-images:
+    desc: Keyless (Sigstore/Fulcio) cosign signature over each image images just pushed
+    deps: [images]
+    cmds:
+      - |
+        for beat in {{.BEATS}}; do
+          digest=$(jq -r '."containerimage.digest"' bin/metadata/$beat.json)
+          echo "signing {{.REGISTRY}}/thump-$beat@$digest"
+          timeout 120 go run github.com/sigstore/cosign/v2/cmd/cosign@latest sign --yes \
+            {{.REGISTRY}}/thump-$beat@$digest || exit 1
+        done
+
+  # sbom-binaries/sign-binaries cover the non-container path: bin/ output
+  # isn't shipped anywhere today (images is the real delivery surface), kept
+  # here so the tooling exists once thump grows a bare-binary release channel.
+  sbom-binaries:
+    desc: SBOM for the bin/ outputs
+    deps: [build]
+    cmds:
+      - mkdir -p bin/sbom
+      - |
+        for beat in {{.BEATS}}; do
+          go run github.com/anchore/syft/cmd/syft@latest bin/$beat -o spdx-json=bin/sbom/$beat.sbom.json
+        done
+
+  sign-binaries:
+    desc: Keyless blob-signature for the bin/ outputs
+    deps: [sbom-binaries]
+    cmds:
+      - |
+        for beat in {{.BEATS}}; do
+          go run github.com/sigstore/cosign/v2/cmd/cosign@latest sign-blob --yes \
+            --output-signature=bin/sbom/$beat.sig \
+            --output-certificate=bin/sbom/$beat.pem \
+            bin/$beat
+        done
+
+  run:clank:
+    desc: go run ./cmd/clank
+    cmds:
+      - go run ./cmd/clank
+
+  run:rattle:
+    desc: go run ./cmd/rattle
+    cmds:
+      - go run ./cmd/rattle
+
+  run:hiss:
+    desc: go run ./cmd/hiss
+    cmds:
+      - go run ./cmd/hiss
+
+  run:thump:
+    desc: go run ./cmd/thump
+    cmds:
+      - go run ./cmd/thump
+
+  tidy:
+    desc: go mod tidy
+    cmds:
+      - go mod tidy
+
+  clean:
+    desc: Remove bin/ and coverage.out
+    cmds:
+      - rm -rf bin/ coverage.out

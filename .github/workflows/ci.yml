@@ -21,11 +21,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
       - name: fmt-check
-        run: make fmt-check
+        run: task fmt-check
 
       - name: vet
-        run: make vet
+        run: task vet
 
       - name: lint
         uses: golangci/golangci-lint-action@v9
@@ -33,16 +37,16 @@ jobs:
           version: v2.12.2
 
       - name: vulncheck
-        run: make vulncheck
+        run: task vulncheck
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
       - name: Chart lint (kubeconform)
-        run: make chart-lint
+        run: task chart-lint
 
       - name: test
-        run: make test
+        run: task test
 
       - name: build
-        run: make build
+        run: task build

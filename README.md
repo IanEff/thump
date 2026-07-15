@@ -274,7 +274,7 @@ thump/
 │   ├── clank/               # Reasoning Plane (intake, reason loop, causal scorer, ranker)
 │   ├── hiss/                # Governance Plane (authority, decision log, policy)
 │   └── thump/               # Execution Plane (future)
-├── Makefile · .golangci.yml
+├── Taskfile.yaml · .goreleaser.yml · .golangci.yml
 └── README.md · CLAUDE.md
 ```
 
@@ -290,24 +290,29 @@ thump/
 
 ## Building & testing
 
+Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`), not Make — run
+`task --list-all` for the full set. Tagged binary release archives go through
+`.goreleaser.yml` (fires on `v*.*.*` tags via `.github/workflows/release.yml`); the container
+image path below is untouched by that and stays on `task images`/`task sign-images`.
+
 | Command | What it does |
 |---|---|
-| `make run-clank` / `run-rattle` / `run-hiss` / `run-thump` | run one beat (`go run ./cmd/<beat>`) |
-| `make build` | build all four beats to `bin/` (injects version/commit/date ldflags, `-trimpath`) |
-| `make ci` | full local CI: fmt-check → vet → lint → test → build |
-| `make test` / `make race` | tests, with `-race` |
-| `make coverage` | coverage profile + total |
-| `make vulncheck` | govulncheck over deps (separate security gate, not part of `make ci`) |
-| `make images` | multi-arch (`linux/amd64,linux/arm64`) container per beat, pushed to `$(REGISTRY)`, SBOM + SLSA provenance attached to the manifest |
-| `make sign-images` | keyless (Sigstore/Fulcio) cosign signature over each image `images` just pushed |
-| `make sbom-binaries` / `sign-binaries` | SBOM + keyless blob-signature for the `bin/` outputs (no release channel consumes these yet) |
+| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` | run one beat (`go run ./cmd/<beat>`) |
+| `task build` | build all four beats to `bin/` (injects version/commit/date ldflags, `-trimpath`) |
+| `task ci` | full local CI: fmt-check → vet → lint → vulncheck → chart-lint → race → build |
+| `task test` / `race` | tests, with `-race` |
+| `task coverage` | coverage profile + total |
+| `task vulncheck` | govulncheck over deps |
+| `task images` | multi-arch (`linux/amd64,linux/arm64`) container per beat, pushed to `REGISTRY`, SBOM + SLSA provenance attached to the manifest |
+| `task sign-images` | keyless (Sigstore/Fulcio) cosign signature over each image `images` just pushed |
+| `task sbom-binaries` / `sign-binaries` | SBOM + keyless blob-signature for the `bin/` outputs (no release channel consumes these yet) |
 | `go test ./internal/clank -run TestGate -v` | run a single test |
 | `gotestdox ./...` | read test names back as a spec sentence list |
 
-**Definition of done:** `make ci` green (fmt-check → vet → lint → test `-race` → build);
-each module a green claim; the five belief-formation defences green; the autonomy boundary
-behavioural; the loop invariants green; `gotestdox ./...` reads as a clean spec;
-`make vulncheck` clean; none of the deferred things built.
+**Definition of done:** `task ci` green (fmt-check → vet → lint → vulncheck → chart-lint →
+race → build); each module a green claim; the five belief-formation defences green; the
+autonomy boundary behavioural; the loop invariants green; `gotestdox ./...` reads as a clean
+spec; none of the deferred things built.
 
 ---
 
@@ -352,7 +357,7 @@ Conventions that keep tests sharp:
 This is a **learning project** as much as a build (the author is using it to get fluent in
 Go), and the working agreement reflects that:
 
-- **Never commit or push — the repo owner lands all commits.** Edits, tests, and `make ci`
+- **Never commit or push — the repo owner lands all commits.** Edits, tests, and `task ci`
   are fair game; the commit is always the owner's to make.
 - **Hold TDD loosely.** The wave plan is a great spine, but it is deliberately *not*
   dogmatic — sometimes a test comes first, sometimes a spike, sometimes a tangent. Bring it

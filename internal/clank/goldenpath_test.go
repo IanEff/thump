@@ -29,7 +29,7 @@ import (
 // fixtures, with a SCRIPTED model, and pins every boundary object to a
 // checked-in golden. It proves the deterministic machine — govern → act →
 // learn — closes on the actions clank actually ships, and stays closed on
-// every `make ci`. Whether a *real* model proposes is the eval harness's
+// every `task ci`. Whether a *real* model proposes is the eval harness's
 // non-deterministic question; a golden file can't assert an LLM.
 //
 // goldenNow is the single fixed clock threaded into every beat that stamps a
