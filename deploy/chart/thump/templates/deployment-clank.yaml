@@ -47,6 +47,8 @@ spec:
               value: ":{{ .Values.metrics.port }}"
             - name: NATS_URL
               value: "nats://nats.thump.svc:4222"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.tracing.endpoint | quote }}
             - name: WAL_DIR
               value: /var/thump/wal
             - name: S3_ENDPOINT

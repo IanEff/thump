@@ -7,7 +7,9 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -44,7 +46,19 @@ func newTracer(ctx context.Context, beatName, endpoint string, newExporter expor
 		return nil, nil, fmt.Errorf("beat: build span exporter for %q: %w", endpoint, err)
 	}
 
-	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp))
+	// Every beat's binary is copied into its image as the literal filename
+	// "beat" (the Dockerfile's `COPY --from=build /out/${BEAT}
+	// /usr/local/bin/beat`), so the SDK's own binary-name-derived default
+	// resource would tag every beat's spans "unknown_service:beat" —
+	// indistinguishable from one another in the trace backend. Overwrite
+	// service.name with beatName explicitly so a query for "clank" or
+	// "hiss" actually discriminates.
+	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(semconv.ServiceNameKey.String(beatName)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("beat: build resource for %q: %w", beatName, err)
+	}
+
+	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp), sdktrace.WithResource(res))
 	otel.SetTracerProvider(tp)
 	return tp.Tracer(beatName), tp.Shutdown, nil
 }

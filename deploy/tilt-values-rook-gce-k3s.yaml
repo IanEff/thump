@@ -26,6 +26,11 @@
 #     lands NATS there correctly, same as ceph-lab (unlike rook-gke, which
 #     had to null the selector out for lack of a schedulable control-plane
 #     node).
+#   - tracing.endpoint: Tempo is deployed on this rig (tempo-0, namespace
+#     tracing) with its OTLP/gRPC receiver on the "grpc-tempo-otlp" Service
+#     port — confirmed live via `kubectl get svc tempo -n tracing -o
+#     jsonpath='{.spec.ports}'`. Bare host:port, no scheme (otlptracegrpc.
+#     WithEndpoint's convention, unlike prometheus.url/loki.url above).
 replicas: 1
 
 image:
@@ -53,3 +58,6 @@ nats:
 # and redundant on this rig now, which is harmless.
 serviceMonitor:
   enabled: true
+
+tracing:
+  endpoint: tempo.tracing.svc.cluster.local:4317

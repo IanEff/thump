@@ -28,6 +28,16 @@ prometheus:
 loki:
   url: http://loki.logging.svc.cluster.local:3100
 
+# Empty by default — internal/beat.Tracer treats an empty
+# OTEL_EXPORTER_OTLP_ENDPOINT as "unconfigured" and falls back to a noop
+# Tracer, so a cluster with no OTel collector/Tempo deployed still starts
+# clean. Set per-cluster (bare host:port, no scheme — otlptracegrpc.
+# WithEndpoint's convention, unlike prometheus.url/loki.url above) once
+# Tempo is actually reachable there. VERIFY against the lab like
+# prometheus.url/loki.url.
+tracing:
+  endpoint: ""
+
 # The key rides a Secret created out-of-band via the lab's existing
 # SOPS-encrypted-secret flow — this chart only references it by name/key,
 # it never contains or generates the plaintext key. `create: true` +

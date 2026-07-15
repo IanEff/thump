@@ -30,6 +30,13 @@ spec:
       ports:
         - protocol: TCP
           port: 4222
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tracing
+      ports:
+        - protocol: TCP
+          port: 4317
     # A plain NetworkPolicy has no hostname-match primitive (that's Cilium's
     # toFQDNs, which this chart deliberately doesn't require) — this widens
     # the intended "storage.googleapis.com only" pin (WAL shipping via

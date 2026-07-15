@@ -6,7 +6,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -115,5 +117,45 @@ func TestNewTracer(t *testing.T) {
 			tr, shutdown, err := newTracer(context.Background(), "test-beat", tc.endpoint, tc.factory)
 			tc.check(t, tr, shutdown, err)
 		})
+	}
+}
+
+// TestNewTracer_TagsSpansWithTheBeatsServiceName pins the fix for a real
+// deploy gap: every beat's binary is copied into its image as the literal
+// filename "beat" (Dockerfile's `COPY --from=build /out/${BEAT}
+// /usr/local/bin/beat`), so the OTel SDK's default resource detection —
+// which derives service.name from the process's own binary name absent an
+// explicit Resource — would tag every beat's spans "unknown_service:beat",
+// indistinguishable from one another in Tempo. newTracer must set
+// service.name from beatName explicitly so a query for "clank" or "hiss"
+// actually discriminates.
+func TestNewTracer_TagsSpansWithTheBeatsServiceName(t *testing.T) {
+	exp := &recordingExporter{}
+	tr, shutdown, err := newTracer(context.Background(), "clank", "collector:4317", func(context.Context, string) (sdktrace.SpanExporter, error) {
+		return exp, nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, span := tr.Start(context.Background(), "probe")
+	span.End()
+	if err := shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown returned an error: %v", err)
+	}
+
+	exp.mu.Lock()
+	defer exp.mu.Unlock()
+	if len(exp.spans) != 1 {
+		t.Fatalf("want exactly 1 recorded span, got %d", len(exp.spans))
+	}
+
+	res := exp.spans[0].Resource()
+	got, ok := res.Set().Value(semconv.ServiceNameKey)
+	if !ok {
+		t.Fatalf("recorded span's Resource carries no service.name attribute at all: %v", res)
+	}
+	if diff := cmp.Diff("clank", got.AsString()); diff != "" {
+		t.Error("recorded span's service.name must be the beatName newTracer was given (-want +got)\n", diff)
 	}
 }

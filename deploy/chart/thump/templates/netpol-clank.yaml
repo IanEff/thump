@@ -44,6 +44,13 @@ spec:
       ports:
         - protocol: TCP
           port: 3100
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tracing
+      ports:
+        - protocol: TCP
+          port: 4317
     # A plain NetworkPolicy has no hostname-match primitive (that's Cilium's
     # toFQDNs, which this chart deliberately doesn't require) — this widens
     # the intended "api.anthropic.com only" pin to any HTTPS destination.
