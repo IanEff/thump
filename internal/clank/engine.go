@@ -164,6 +164,11 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 
 		done := false
 		for _, call := range comp.ToolCalls {
+			// One "tool_call" line per dispatched call — including the
+			// terminal propose/insufficient calls, not just evidence tools
+			// — so a live incident's tool-dispatch history reads straight
+			// off kubectl logs instead of requiring an S3 transcript pull.
+			slog.Info("tool_call", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "tool", call.Name)
 			switch call.Name {
 			case "propose":
 				var p proposal.Set
