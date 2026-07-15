@@ -1,0 +1,47 @@
+# thump chaos — rgw-client-delay.yaml (targets rook-gce-k3s / ceph-gce)
+#
+# NetworkChaos delay, scoped to ONLY the client<->RGW hop via `target` +
+# `direction: both` — this is a deliberate fix for the mechanism-1 confound
+# from the D2/E3 chase (thump-running-notes.md 2026-07-14): the original
+# rgw-network-delay.yaml selected the whole RGW pod with no target scoping,
+# so the injected delay hit RGW's own traffic to OSDs/mons too, and twice
+# pulled the model toward wrongly proposing hold-rebalance
+# (resource_exhaustion) via a confounded recovery_ops_rate/
+# rook_pods_not_running reading, despite correctly labeling
+# dependency_saturation.
+#
+# Scoping via `target` (matched by pod IP set, not port — NetworkChaos has
+# no L4 port selector) restricts the netem rule to packets between the RGW
+# pod and the s3-traffic-generator pods specifically. RGW<->OSD and
+# RGW<->mon traffic (different pod IPs, not in the target selector) is
+# untouched, so recovery_ops_rate/rook_pods_not_running should stay clean
+# this time.
+#
+# Tried after stress-rgw.yaml (CPU steal) + doubling s3-traffic-generator
+# replicas plateaued raw op latency at ~70-90ms under real load (2026-07-15)
+# — well short of the SLO's 150ms threshold even at the RGW pod's CPU
+# ceiling. A direct injected delay is deterministic where resource
+# contention wasn't: 250ms comfortably clears the threshold without being
+# so large it risks client-side timeouts turning slow-but-successful ops
+# into failed_req (which would confound ceph-rgw-availability instead).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: rgw-client-delay
+  namespace: chaos-mesh
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [rook-ceph]
+    labelSelectors: { app: rook-ceph-rgw }
+  direction: both
+  target:
+    mode: all
+    selector:
+      namespaces: [default]
+      labelSelectors: { app: s3-traffic-generator }
+  delay:
+    latency: "250ms"
+    jitter: "50ms"
+  duration: "10m"
