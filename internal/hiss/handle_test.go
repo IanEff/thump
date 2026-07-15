@@ -39,3 +39,22 @@ func TestHandle_EvaluatesAndPublishesOneDecision(t *testing.T) {
 		t.Errorf("one handle call must mean one ledger record, got %d", got)
 	}
 }
+
+// TestHandle_DecisionLogsContractRef closes E4's hiss gap: the decision line
+// carried requestedBand/grantedBand but no contractRef, so which catalogued
+// action a verdict concerned was undiagnosable from kubectl logs alone —
+// the same gap clank's and thump's log lines had.
+func TestHandle_DecisionLogsContractRef(t *testing.T) {
+	getLogs := captureLog(t)
+	fake := &fakeDecisionPub{}
+	tr := &hiss.Transport{Pub: fake, Policy: calmPolicy(), Log: hiss.NewDecisionLog(), Now: frozenNow}
+
+	if err := tr.HandleForTest(context.Background(), governedSet(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	line := onlyDecisionLine(t, getLogs())
+	if diff := cmp.Diff("throttle-non-critical-paths", line["contractRef"]); diff != "" {
+		t.Error("decision line must carry contractRef (-want +got)", diff)
+	}
+}

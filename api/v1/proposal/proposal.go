@@ -30,6 +30,20 @@ type Set struct {
 	Status           *Status           `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
+// ContractRefFor returns the ContractRef of the Proposals entry whose ID
+// matches candidateID, or "" if none matches — the lookup every downstream
+// beat needs to log which catalogued action a verdict concerns, without
+// re-deriving what Recommended or a Decision's CandidateRef points at three
+// separate times.
+func (s Set) ContractRefFor(candidateID string) string {
+	for _, c := range s.Proposals {
+		if c.ID == candidateID {
+			return c.ContractRef
+		}
+	}
+	return ""
+}
+
 // RankingRationale records why the ranker ordered Proposals the way it did —
 // the deterministic, auditable half of ranking, kept separate from the
 // model's own hypothesis reasoning.

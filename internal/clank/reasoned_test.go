@@ -99,4 +99,7 @@ func TestPropose_LogsReasonedOnSuccess(t *testing.T) {
 	if _, has := reasoned["err"]; has {
 		t.Errorf("a successful run's reasoned line must not carry an err field: %+v", reasoned)
 	}
+	if diff := cmp.Diff("throttle-non-critical-paths", reasoned["contractRef"]); diff != "" {
+		t.Error("reasoned line must carry the recommended candidate's ContractRef, not just its ID (-want +got)\n", diff)
+	}
 }

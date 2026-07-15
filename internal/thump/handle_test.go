@@ -100,3 +100,32 @@ func TestHandle_NonApprovalIsANoOp(t *testing.T) {
 		t.Error("decline notice drifted from the golden fixture (-want +got)", diff)
 	}
 }
+
+// TestHandle_NonApprovalLogsContractRef closes E4's thump gap: a non-approved
+// run — the governance-correct, expected outcome for most confidence-floor
+// escalations, not a rare edge case — was previously undiagnosable from
+// kubectl logs alone, because the outcome line only carried contractRef on
+// the render/acted branch. escalatedGoverned's Set carries its Recommended
+// Candidate's ContractRef untouched by the escalation, so it must show up
+// here even though nothing was rendered or executed.
+func TestHandle_NonApprovalLogsContractRef(t *testing.T) {
+	getLogs := captureLog(t)
+	tr := &thump.Transport{
+		OrderPub:   &fakeOrderPub{},
+		OutcomePub: &fakeOutcomePub{},
+		DeclinePub: &fakeDeclinePub{},
+		Catalog:    richCatalog(),
+		Log:        thump.NewOutcomeLog(),
+		Exec:       thump.DryRun{},
+		Now:        frozenNow,
+	}
+
+	if err := tr.HandleForTest(context.Background(), escalatedGoverned(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	line := onlyOutcomeLine(t, getLogs())
+	if diff := cmp.Diff("throttle-non-critical-paths", line["contractRef"]); diff != "" {
+		t.Error("a non-approval's outcome line must still carry contractRef (-want +got)", diff)
+	}
+}

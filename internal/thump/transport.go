@@ -113,7 +113,8 @@ func (tr *Transport) Tick(ctx context.Context) error {
 // clank's reason loop — accepted only to satisfy broker.Handler[T]'s shape.
 func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) error {
 	if g.Decision.Verdict != decision.VerdictApproved {
-		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons, "acted", false)
+		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons,
+			"contractRef", g.Set.ContractRefFor(g.Decision.CandidateRef), "acted", false)
 		if err := tr.DeclinePub.Publish(ctx, "thump.declines", g.Decision); err != nil {
 			return fmt.Errorf("thump: publish decline for %s: %w", g.Decision.SignalRef, err)
 		}
