@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -88,6 +89,34 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	runID := fmt.Sprintf("%s/%d", sig.Fingerprint, time.Now().UnixNano())
 	defer func() { _ = e.Store.Finish(ctx, runID, err) }()
 
+	// step is hoisted out of the reason loop below (`for ; step < ...`
+	// instead of `for step := 0; ...`) so the terminal log deferred next
+	// can report how far the run got on every exit path, not just the
+	// ones lexically inside the loop.
+	var step int
+
+	// One "reasoned" line per Propose call, on every exit path — success,
+	// decline, budget exhaustion, or any of the loop's error returns. err
+	// and set are the named returns, so this sees the true terminal
+	// outcome the same way the Store.Finish defer above already does.
+	// Most error returns overwrite set with a fresh proposal.Set{} (see
+	// each `return proposal.Set{}, ...` below), so set.Status is often
+	// nil here — read defensively, never assume it reflects anything
+	// real on an error path.
+	defer func() {
+		phase := ""
+		if set.Status != nil {
+			phase = set.Status.Phase
+		}
+		if err != nil {
+			slog.Error("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase, "err", err)
+			return
+		}
+		slog.Info("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase,
+			"recommended", set.Recommended, "proposals", len(set.Proposals), "evidence", len(set.Evidence),
+			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason)
+	}()
+
 	var sao proposal.SAO
 	if err := beat.Stage(ctx, e.tracer(), e.Stages, "assemble_sao", func(sctx context.Context) error {
 		var err error
@@ -111,7 +140,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	var evidence []proposal.EvidenceRef
 	proposed, declined := false, false
 
-	for step := 0; step < e.MaxSteps; step++ {
+	for ; step < e.MaxSteps; step++ {
 		var comp Completion
 		if err := beat.Stage(ctx, e.tracer(), e.Stages, "llm_complete", func(sctx context.Context) error {
 			var err error

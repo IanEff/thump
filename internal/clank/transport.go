@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"sigs.k8s.io/yaml"
 )
@@ -50,7 +49,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			}
 			continue // poison doesn't block the queue — the hiss/thump/click rule
 		}
-		set, err := tr.Engine.Propose(ctx, det)
+		_, err = tr.Engine.Propose(ctx, det)
 		if err != nil {
 			if tr.attempts == nil {
 				tr.attempts = make(map[string]int)
@@ -68,14 +67,6 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			continue
 		}
 		delete(tr.attempts, path)
-
-		if set.Status.Phase == proposal.PhaseNoAction {
-			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase,
-				"proposals", len(set.Proposals), "reason", set.Status.Reason)
-		} else {
-			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase,
-				"proposals", len(set.Proposals))
-		}
 
 		if err := tr.disposition(path, "processed"); err != nil {
 			return fmt.Errorf("clank: archive %s: %w", path, err)

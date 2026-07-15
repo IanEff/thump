@@ -72,13 +72,8 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	detSub := broker.NewJetSubscriber[signal.Detection](js)
 	g.Go(func() error {
 		return detSub.Run(gctx, "thump.detections", func(ctx context.Context, det signal.Detection, heartbeat func()) error {
-			set, err := eng.Propose(WithHeartbeat(ctx, heartbeat), det)
-			if err != nil {
-				return err
-			}
-			gatePassed := set.Gate != nil && set.Gate.Passed
-			slog.Info("reasoned", "fingerprint", det.Fingerprint, "phase", set.Status.Phase, "recommended", set.Recommended, "gatePassed", gatePassed, "reason", set.Status.Reason, "evidence", len(set.Evidence))
-			return nil
+			_, err := eng.Propose(WithHeartbeat(ctx, heartbeat), det)
+			return err
 		})
 	})
 

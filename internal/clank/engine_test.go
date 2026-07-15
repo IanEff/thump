@@ -154,6 +154,7 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 
 type fakeModel struct {
 	script        []clank.Completion
+	err           error // when set, Complete fails on every call regardless of script — simulates a Model outage
 	i             int
 	calls         int
 	received      [][]clank.Message
@@ -166,6 +167,9 @@ func (m *fakeModel) Complete(_ context.Context, msgs []clank.Message, tools []cl
 	copy(cp, msgs)
 	m.received = append(m.received, cp)
 	m.receivedTools = append(m.receivedTools, tools)
+	if m.err != nil {
+		return clank.Completion{}, m.err
+	}
 	if m.i >= len(m.script) {
 		return clank.Completion{}, nil // ran out of script -> no tool calls -> loop ends
 	}
