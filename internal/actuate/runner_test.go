@@ -29,12 +29,12 @@ func TestRunner_DispatchesExactArgvForEachBinding(t *testing.T) {
 		{
 			name: "scale-out forward patches instances up",
 			ref:  "scale-out-rgw-gateways", reverse: false,
-			want: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "<store>", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":2}}}`},
+			want: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "ceph-objectstore", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":2}}}`},
 		},
 		{
 			name: "scale-out reverse patches instances back",
 			ref:  "scale-out-rgw-gateways", reverse: true,
-			want: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "<store>", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":1}}}`},
+			want: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "ceph-objectstore", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":1}}}`},
 		},
 	}
 	for _, tc := range cases {

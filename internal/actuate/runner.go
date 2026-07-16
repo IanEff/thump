@@ -47,8 +47,8 @@ func newWith(run CommandRunner) *Runner {
 				// ⚠️ instances hardcoded 2→1 for v1. Computing the target from
 				// params.additional_replicas needs the CURRENT count first, which
 				// means a read before the write — deliberately deferred (Part 7).
-				forward: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "<store>", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":2}}}`},
-				reverse: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "<store>", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":1}}}`},
+				forward: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "ceph-objectstore", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":2}}}`},
+				reverse: []string{"kubectl", "-n", "rook-ceph", "patch", "cephobjectstore", "ceph-objectstore", "--type", "merge", "-p", `{"spec":{"gateway":{"instances":1}}}`},
 			},
 		},
 	}
