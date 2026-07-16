@@ -1,0 +1,13 @@
+# Re-templated on every apply, so a redeploy always resets to armed: false —
+# matches FileSwitch's own "any doubt disarms" rule. Flip it live without a
+# redeploy via `kubectl -n thump patch configmap thump-killswitch ...`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-killswitch
+  namespace: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
+data:
+  switch.yaml: |
+    armed: {{ .Values.thump.killSwitch.armed }}

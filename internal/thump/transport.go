@@ -144,7 +144,8 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 		return fmt.Errorf("thump: publish outcome for %s: %w", g.Decision.SignalRef, err)
 	}
 	tr.Log.Record(oc)
-	slog.Info("outcome", "signalRef", g.Decision.SignalRef, "candidateRef", g.Decision.CandidateRef, "contractRef", oc.ContractRef, "acted", true)
+	slog.Info("outcome", "signalRef", g.Decision.SignalRef, "candidateRef", g.Decision.CandidateRef,
+		"contractRef", oc.ContractRef, "acted", true, "mode", oc.Mode, "result", oc.Result, "error", oc.Error)
 	return nil
 }
 

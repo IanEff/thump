@@ -366,6 +366,9 @@ func TestLoadThump_MissingRequired_ReportsAllAtOnce(t *testing.T) {
 
 func TestLoadThump_Valid_PopulatesStruct(t *testing.T) {
 	setThumpEnv(t)
+	for _, name := range []string{"THUMP_EXECUTOR", "THUMP_KILLSWITCH", "PROM_URL", "EVIDENCE_QUERIES"} {
+		t.Setenv(name, "")
+	}
 
 	got, err := config.LoadThump(false /* broker */)
 	if err != nil {

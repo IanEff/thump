@@ -73,11 +73,23 @@ spec:
                   key: secret-key
             - name: ACTION_CATALOG
               value: /etc/thump/actions/catalog.yaml
+            - name: THUMP_EXECUTOR
+              value: {{ .Values.thump.executor | quote }}
+            - name: THUMP_KILLSWITCH
+              value: /etc/thump/killswitch/switch.yaml
+            - name: PROM_URL
+              value: {{ .Values.prometheus.url | quote }}
+            - name: EVIDENCE_QUERIES
+              value: /etc/thump/whir/evidence-queries.yaml
           volumeMounts:
             - name: wal
               mountPath: /var/thump/wal
             - name: actions-config
               mountPath: /etc/thump/actions
+            - name: killswitch
+              mountPath: /etc/thump/killswitch
+            - name: whir-config
+              mountPath: /etc/thump/whir
           resources: {{- toYaml .Values.beats.thump.resources | nindent 12 }}
       volumes:
         - name: wal
@@ -85,3 +97,9 @@ spec:
         - name: actions-config
           configMap:
             name: thump-actions
+        - name: killswitch
+          configMap:
+            name: thump-killswitch
+        - name: whir-config
+          configMap:
+            name: thump-whir

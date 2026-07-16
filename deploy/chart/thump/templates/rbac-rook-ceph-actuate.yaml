@@ -1,0 +1,32 @@
+# Additive to rbac-rook-ceph-read.yaml, kept in its own file so the diff
+# granting write access is reviewable on its own. Scope matches exactly the
+# two bindings in internal/actuate/runner.go — nothing broader. pods/exec
+# can't be pinned to one pod name across rollouts (the name isn't stable),
+# so this grants exec at namespace scope, not pod scope.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-rook-ceph-actuate
+  namespace: rook-ceph
+rules:
+  - apiGroups: ["ceph.rook.io"]
+    resources: ["cephobjectstores"]
+    verbs: ["patch"]
+    resourceNames: ["ceph-objectstore"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-rook-ceph-actuate
+  namespace: rook-ceph
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: Role
+  name: thump-rook-ceph-actuate
+  apiGroup: rbac.authorization.k8s.io

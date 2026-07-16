@@ -1,5 +1,6 @@
 package actuate
 
-// NewWith exposes the fake-CommandRunner constructor to the external test
-// package without widening the production surface.
-func NewWith(run CommandRunner) *Runner { return newWith(run) }
+// NewWith exposes the fake-Kube constructor to the external test package
+// without widening the production surface (production callers get New,
+// which builds a real in-cluster client).
+func NewWith(k Kube) *Runner { return newWith(k) }

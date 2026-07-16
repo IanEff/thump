@@ -6,20 +6,24 @@ import (
 	"github.com/ianeff/thump/internal/config"
 )
 
-func TestBuildExecutor_LiveModeWrapsGatedLive(t *testing.T) {
+func TestBuildExecutor_LiveModeRequiresCluster(t *testing.T) {
 	t.Parallel()
-	exec, sw := buildExecutor(config.Thump{Executor: "live", KillSwitchPath: "/tmp/ks"})
-	if _, ok := exec.(GatedExecutor); !ok {
-		t.Fatalf("live mode must wire a GatedExecutor, got %T", exec)
-	}
-	if sw == nil {
-		t.Fatal("live mode must return a switch to reload")
+	// Off-cluster (CI, local), live mode can't build an in-cluster client.
+	// It must error, not silently fall back to dry — a live executor that
+	// can't reach the apiserver should refuse to start, not turn every action
+	// into a runtime failure.
+	_, _, err := buildExecutor(config.Thump{Executor: "live", KillSwitchPath: "/tmp/ks"})
+	if err == nil {
+		t.Fatal("live mode off-cluster must error, not silently degrade to dry")
 	}
 }
 
 func TestBuildExecutor_DefaultsToDry(t *testing.T) {
 	t.Parallel()
-	exec, sw := buildExecutor(config.Thump{}) // no THUMP_EXECUTOR set
+	exec, sw, err := buildExecutor(config.Thump{}) // no THUMP_EXECUTOR set
+	if err != nil {
+		t.Fatalf("dry mode must not error: %v", err)
+	}
 	if _, ok := exec.(DryRun); !ok {
 		t.Fatalf("empty config must stay dry, got %T", exec)
 	}
