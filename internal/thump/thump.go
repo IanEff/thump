@@ -75,7 +75,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// OUTBOX are this path's env, not the process's — checked here, not above,
 	// so broker mode never has to satisfy them (mirrors rattle.go's NATS_URL-
 	// first branch).
-	exec, sw := buildExecutor(cfg)
+	exec, sw, err := buildExecutor(cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
+		return 1
+	}
 	watcher, err := buildReversalWatcher(cfg)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build reversal watcher: %v\n", err)
@@ -151,7 +155,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	defer func() { _ = outcomePub.WAL.Drain(ctx, sink) }()
 	defer func() { _ = declinePub.WAL.Drain(ctx, sink) }()
 
-	exec, sw := buildExecutor(cfg)
+	exec, sw, err := buildExecutor(cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
+		return 1
+	}
 	watcher, err := buildReversalWatcher(cfg)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build reversal watcher: %v\n", err)
@@ -199,17 +207,19 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 // renders; live wraps a real actuate.Runner in a GatedExecutor so an armed
 // kill-switch is required before anything touches infrastructure. The
 // returned *FileSwitch is nil in dry mode — nothing to reload.
-func buildExecutor(cfg config.Thump) (Executor, *FileSwitch) {
+func buildExecutor(cfg config.Thump) (Executor, *FileSwitch, error) {
 	if cfg.Executor != "live" {
-		return DryRun{}, nil
+		return DryRun{}, nil, nil
+	}
+	runner, err := actuate.New()
+	if err != nil {
+		return nil, nil, fmt.Errorf("build live executor: %w", err)
 	}
 	sw := NewFileSwitch(cfg.KillSwitchPath)
 	return GatedExecutor{
-		Inner: Live{
-			Runner: actuate.New(),
-		},
+		Inner:  Live{Runner: runner},
 		Switch: sw,
-	}, sw
+	}, sw, nil
 }
 
 // buildReversalWatcher wires the automatic-undo probe from cfg.
