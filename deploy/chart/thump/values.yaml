@@ -63,6 +63,14 @@ s3:
   accessKey: ""
   secretKey: ""
 
+# executor unset defaults to dry — a thump deployed with no override renders
+# and never acts. killSwitch.armed only seeds the mounted switch file, which
+# is re-templated on every apply, so a redeploy always resets it to false.
+thump:
+  executor: dry
+  killSwitch:
+    armed: false
+
 # Per-beat resources (W0-2: one umbrella chart, per-beat values sections).
 # Stage 0 confirmed real headroom; every beat starts small — the whole
 # machine should cost less than one CSI sidecar.
