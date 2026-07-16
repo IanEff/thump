@@ -154,7 +154,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// cfg.Inbox/Outbox/Outcomes are this path's env, not the process's —
 	// config.LoadClank only requires them when broker is false (mirrors
 	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
-	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, tracer, stages)
+	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages)
 	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine}
 	re := l.ReturnEdge
 	de := l.DeclineEdge

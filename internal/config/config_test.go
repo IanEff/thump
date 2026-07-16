@@ -3,6 +3,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/config"
@@ -60,6 +61,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 		AnthropicAPIKey:  "test-key",
 		ActionCatalog:    "/etc/actions/catalog.yaml",
 		FailureClasses:   "/etc/actions/failure-classes.yaml",
+		DedupeWindow:     time.Hour,
 		PromURL:          "http://prom:9090",
 		EvidenceQueries:  "/etc/evidence-queries.yaml",
 		LokiURL:          "http://loki:3100",
@@ -98,6 +100,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 		AnthropicAPIKey: "test-key",
 		ActionCatalog:   "/etc/actions/catalog.yaml",
 		FailureClasses:  "/etc/actions/failure-classes.yaml",
+		DedupeWindow:    time.Hour,
 		Inbox:           "/var/run/inbox",
 		Outbox:          "/var/run/outbox",
 		Outcomes:        "/var/run/outcomes",
@@ -105,6 +108,8 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 		// PromURL, EvidenceQueries, LokiURL, WhirCatalog, WhirStateQueries,
 		// Transcripts all default to "" — genuinely optional, documented by
 		// their zero value rather than a scattered `if x == ""` at call sites.
+		// DedupeWindow's default isn't "", so it's asserted explicitly above
+		// rather than by omission like the string fields.
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("LoadClank (-want +got):\n%s", diff)
@@ -405,5 +410,5 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 
 func TestConfigIsALeafPackage(t *testing.T) {
 	t.Parallel()
-	leaftest.AssertLeaf(t, "errors", "fmt", "os")
+	leaftest.AssertLeaf(t, "errors", "fmt", "os", "time")
 }
