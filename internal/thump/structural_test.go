@@ -4,6 +4,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -88,6 +89,33 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 			if !allowed[imp.Path.Value] {
 				t.Errorf("%s imports %s — v1 thump is dry-run BY CONSTRUCTION (I-10); growing this allowlist is a design review, not a convenience",
 					name, imp.Path.Value)
+			}
+		}
+	}
+}
+
+func TestNotifierSDKNeverReachesCoreBeats(t *testing.T) {
+	t.Parallel()
+	const slackModule = `"github.com/slack-go/slack"`
+	for _, dir := range []string{".", "../hiss"} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fset := token.NewFileSet()
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ImportsOnly)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, imp := range f.Imports {
+				if imp.Path.Value == slackModule {
+					t.Errorf("%s/%s imports the Slack SDK directly — it belongs in internal/notify/slack, behind Notifier", dir, name)
+				}
 			}
 		}
 	}

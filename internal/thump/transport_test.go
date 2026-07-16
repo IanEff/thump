@@ -2,6 +2,7 @@ package thump_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -140,6 +141,8 @@ func TestTick_HoldsAndNotifiesButKeepsTheLock(t *testing.T) {
 	inbox, outbox := t.TempDir(), t.TempDir()
 	writeGovernedYAML(t, inbox, "gov-hold.yaml", heldGoverned())
 	tr := newTestTransport(inbox, outbox)
+	notifier := &fakeNotifier{}
+	tr.Notifier = notifier
 
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("a hold must not fail the pass:", err)
@@ -156,6 +159,31 @@ func TestTick_HoldsAndNotifiesButKeepsTheLock(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(inbox, "skipped", "gov-hold.yaml")); err != nil {
 		t.Error("a held envelope must land in skipped/, not vanish:", err)
+	}
+	if len(notifier.notified) != 1 {
+		t.Fatalf("want exactly one Notify call, got %d", len(notifier.notified))
+	}
+	if diff := cmp.Diff(heldGoverned().Decision, notifier.notified[0].Decision); diff != "" {
+		t.Error("the notified HeldAction's decision drifted from the held envelope (-want +got)", diff)
+	}
+}
+
+// TestTick_HoldSurvivesANotifierFailure pins the degrade-gracefully contract
+// the guide's Done-when line names: a Notifier is best-effort delivery, not
+// a gate — its error is logged, never propagated, and the hold still lands
+// where a human can find it.
+func TestTick_HoldSurvivesANotifierFailure(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	writeGovernedYAML(t, inbox, "gov-hold.yaml", heldGoverned())
+	tr := newTestTransport(inbox, outbox)
+	tr.Notifier = &fakeNotifier{err: errors.New("slack: 503")}
+
+	if err := tr.Tick(context.Background()); err != nil {
+		t.Fatal("a notifier failure must not fail the pass:", err)
+	}
+	if _, err := os.Stat(filepath.Join(inbox, "skipped", "gov-hold.yaml")); err != nil {
+		t.Error("a held envelope must still land in skipped/ despite the notifier failing:", err)
 	}
 }
 

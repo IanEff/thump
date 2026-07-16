@@ -25,7 +25,8 @@ import (
 // Policy.AutoBand — eligible, but waiting on a human ack rather than
 // auto-firing. Its fingerprint stays open (never declined, never executed),
 // so the dedupe ledger keeps suppressing a fresh proposal until the window
-// elapses. Minimal today; G3's Notifier grows it.
+// elapses. Carries the full audit chain (Decision + Set) rather than a
+// rendered summary — a Notifier adapter derives human-facing text from it.
 type HeldAction struct {
 	Decision decision.Decision `json:"decision,omitempty" yaml:"decision,omitempty"`
 	Set      proposal.Set      `json:"set,omitempty" yaml:"set,omitempty"`
@@ -56,6 +57,7 @@ type Transport struct {
 	Now        func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
 	Tracer     trace.Tracer                         // spans "render" under whatever trace ctx already carries; nil-safe via tracer()
 	Stages     *beat.StageRecorder                  // RED metrics for "render" — nil-safe, same discipline as Tracer
+	Notifier   Notifier                             // delivers a held action to a human; nil means a hold publishes to HeldPub only
 }
 
 // tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
@@ -157,6 +159,11 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 		held := HeldAction{Decision: g.Decision, Set: g.Set}
 		if err := tr.HeldPub.Publish(ctx, "thump.held", held); err != nil {
 			return fmt.Errorf("thump: publish held for %s: %w", g.Decision.SignalRef, err)
+		}
+		if tr.Notifier != nil {
+			if err := tr.Notifier.Notify(ctx, held); err != nil {
+				slog.Error("notify held action", "signalRef", g.Decision.SignalRef, "err", err)
+			}
 		}
 		return nil
 	default: // escalate, rejected — free the lock

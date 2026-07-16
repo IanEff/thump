@@ -212,6 +212,19 @@ func readOneHeld(t *testing.T, outbox string) thump.HeldAction {
 	return h
 }
 
+// fakeNotifier records every HeldAction it was asked to deliver and returns
+// a programmable error, so a test can drive both the delivered and the
+// degrades-gracefully-on-failure paths.
+type fakeNotifier struct {
+	notified []thump.HeldAction
+	err      error
+}
+
+func (f *fakeNotifier) Notify(_ context.Context, h thump.HeldAction) error {
+	f.notified = append(f.notified, h)
+	return f.err
+}
+
 func readOneYAML(t *testing.T, dir string, out any) {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
