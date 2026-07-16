@@ -30,6 +30,7 @@ type Decision struct {
 	Reasons       []string  `json:"reasons,omitempty" yaml:"reasons,omitempty"`             // one entry per veto that fired (Reason* constants below); empty only when Verdict is approved
 	RequestedBand Band      `json:"requestedBand,omitempty" yaml:"requestedBand,omitempty"` // the Candidate's own GovernanceLevel.Band — BandObserve when the Candidate carried none, since absence is never read as privilege
 	GrantedBand   Band      `json:"grantedBand,omitempty" yaml:"grantedBand,omitempty"`     // set only when Verdict is approved, and always equal to RequestedBand — hiss grants exactly what was asked or it doesn't grant at all
+	RiskBand      Band      `json:"riskBand,omitempty" yaml:"riskBand,omitempty"`           // the intrinsic risk hiss's riskBand lattice computed from reversibility and blast tier, recorded alongside RequestedBand/GrantedBand so a hold verdict's cause is on the record
 	FloorApplied  float64   `json:"floorApplied,omitempty" yaml:"floorApplied,omitempty"`   // the confidence floor looked up for the Set's ServiceTier and FailureClass from Policy.Floors
 	PolicyVersion string    `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"` // which Policy this verdict was evaluated under — required by Auditable, since a verdict with no policy version can't be re-checked later
 	EvaluatedAt   time.Time `json:"evaluatedAt,omitempty" yaml:"evaluatedAt,omitempty"`
@@ -93,3 +94,7 @@ type Governed struct {
 	Decision Decision     `json:"decision,omitempty" yaml:"decision,omitempty"` // the verdict — always about the Set carried alongside it, never a different one
 	Set      proposal.Set `json:"set,omitempty" yaml:"set,omitempty"`           // the exact Set hiss judged, unmutated and un-re-ranked
 }
+
+const VerdictHold Verdict = "hold" // every minimum met, but risk exceeds the auto-fire ceiling — approved-in-principle, pending a human ack
+
+const ReasonRiskCeiling = "risk_ceiling" // the computed risk band outranks Policy.AutoBand for this tier

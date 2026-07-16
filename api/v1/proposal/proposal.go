@@ -175,3 +175,11 @@ type CausalScore struct {
 	Likelihood       float64  `json:"likelihood,omitempty" yaml:"likelihood,omitempty"`             // capped well below 1.0 whenever LiveCorroborated is false; decremented, never left alone, by each absent PredictedSignal (defence 3)
 	Rationale        []string `json:"rationale,omitempty" yaml:"rationale,omitempty"`               // human-legible evidence per score component, one line per defence applied
 }
+
+type BlastTier string
+
+const (
+	BlastLow  BlastTier = "low"  // node/pod-local, additive (e.g. add a replica)
+	BlastMed  BlastTier = "med"  // service- or cluster-scoped but bounded/brief
+	BlastHigh BlastTier = "high" // wide, hard-to-contain, or slow to bleed off
+)
