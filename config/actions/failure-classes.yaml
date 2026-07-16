@@ -20,6 +20,13 @@
     the resource ITSELF is out of headroom — cite capacity evidence (e.g.
     utilization/fullness). Ongoing recovery/backfill activity with healthy
     capacity is NOT resource_exhaustion.
+- class: redundancy_degraded
+  description: >-
+    the cluster is running below its configured replication — placement
+    groups are degraded or undersized, so stored data is at elevated loss
+    risk until recovery restores the full replica count. Cite
+    degraded/undersized PG evidence, not capacity fullness
+    (resource_exhaustion) or request/failure rate (dependency_saturation).
 - class: traffic_shift
   description: a legitimate change in load pattern, not a failure.
 - class: unknown
