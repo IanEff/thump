@@ -71,6 +71,15 @@ thump:
   killSwitch:
     armed: false
 
+# Cilium clusters give the kube-apiserver a reserved security identity that a
+# plain NetworkPolicy ipBlock rule cannot match — so a live thump can't reach
+# the apiserver to actuate (its client-go calls time out) unless a
+# CiliumNetworkPolicy grants toEntities: kube-apiserver. Off by default so
+# non-Cilium profiles (which lack the CRD) still render; enable per-cluster on
+# Cilium rigs. Only meaningful alongside thump.executor: live.
+cilium:
+  apiserverEgress: false
+
 # Per-beat resources (W0-2: one umbrella chart, per-beat values sections).
 # Stage 0 confirmed real headroom; every beat starts small — the whole
 # machine should cost less than one CSI sidecar.

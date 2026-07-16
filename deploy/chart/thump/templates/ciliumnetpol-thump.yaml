@@ -1,0 +1,22 @@
+{{- if .Values.cilium.apiserverEgress }}
+# Cilium-only companion to netpol-thump.yaml. The kube-apiserver carries a
+# reserved Cilium identity ("kube-apiserver") that a standard NetworkPolicy
+# ipBlock/CIDR egress rule does not match — so thump's live executor, which
+# reaches the apiserver over client-go (pod list + pods/exec for ceph toolbox
+# commands, CephObjectStore patch), gets an i/o timeout under the plain
+# NetworkPolicy alone. Cilium unions allow-rules across policies, so this adds
+# apiserver egress on top of thump-egress rather than replacing it. Gated
+# because non-Cilium profiles don't have this CRD.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: thump-apiserver-egress
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "thump") .) | nindent 6 }}
+  egress:
+    - toEntities:
+        - kube-apiserver
+{{- end }}
