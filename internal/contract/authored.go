@@ -39,6 +39,7 @@ func Default() *StaticCatalog {
 					"to add serving capacity under load",
 				ScopeParameters: map[string]Range{"additional_replicas": {Min: 1, Max: 3, Default: 1}},
 			},
+			BlastTier:       proposal.BlastLow,
 			Reversal:        Reversal{Method: "scale-in-rgw-gateways", Fallback: "page-oncall"},
 			SuccessCriteria: SuccessCriteria{Metric: "rgw_get_put_latency_ms", Target: "avg < 50ms", Window: 10 * time.Minute},
 		},
@@ -60,6 +61,7 @@ func Default() *StaticCatalog {
 					"hold_minutes": {Min: 5, Max: 60, Default: 15},
 				},
 			},
+			BlastTier: proposal.BlastMed,
 			Reversal: Reversal{
 				Method:   "release-rebalance",
 				Fallback: "page-oncall",

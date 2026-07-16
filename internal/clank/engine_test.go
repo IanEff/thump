@@ -152,6 +152,9 @@ func TestPropose_ScaleOutRgwGatewaysStampsItsOwnReversalAndBand(t *testing.T) {
 	if diff := cmp.Diff(string(decision.BandActReversible), cand.GovernanceLevel.Band); diff != "" {
 		t.Error("scale-out-rgw-gateways is reversible, must request act_reversible (-want +got)", diff)
 	}
+	if diff := cmp.Diff(string(proposal.BlastLow), string(cand.BlastTier)); diff != "" {
+		t.Error("BlastTier must come from the contract's authored BlastTier (-want +got)", diff)
+	}
 }
 
 // TestPropose_IrreversibleContractLeavesReversalNil is the honesty rider:

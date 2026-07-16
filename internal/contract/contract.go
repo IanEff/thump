@@ -114,6 +114,7 @@ type ActionContract struct {
 	Name                     string                  `json:"name,omitempty" yaml:"name,omitempty"`
 	ApplicableFailureClasses []proposal.FailureClass `json:"applicableFailureClasses,omitempty" yaml:"applicableFailureClasses,omitempty"`
 	ApplicableTiers          []string                `json:"applicableTiers,omitempty" yaml:"applicableTiers,omitempty"`
+	BlastTier                proposal.BlastTier      `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`
 	Preconditions            []Precondition          `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
 	Action                   ActionSpec              `json:"action,omitempty" yaml:"action,omitempty"`
 	Reversal                 Reversal                `json:"reversal,omitempty" yaml:"reversal,omitempty"`

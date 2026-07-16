@@ -15,7 +15,8 @@ hypotheses:
   weight: 0.9
 name: ceph-cluster-burn-accel
 proposals:
-- confidence: 0.9
+- blastTier: med
+  confidence: 0.9
   contractRef: hold-rebalance
   governanceLevel:
     band: act_reversible
