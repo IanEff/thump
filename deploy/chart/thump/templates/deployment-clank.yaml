@@ -85,6 +85,8 @@ spec:
               value: /etc/thump/actions/catalog.yaml
             - name: FAILURE_CLASSES
               value: /etc/thump/actions/failure-classes.yaml
+            - name: DEDUPE_WINDOW
+              value: {{ .Values.beats.clank.dedupeWindow | quote }}
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

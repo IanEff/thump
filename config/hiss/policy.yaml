@@ -13,6 +13,7 @@ floors:
     # v1 is dry-run-only — DryRun.Execute (internal/thump/executor.go) always reports
     # ResultRendered. Confirmed empty on a real approved+executed run, 2026-07-13 (see
     # thump-running-notes.md). Revisit once thump grows a live executor.
+    redundancy_degraded: 0.75 # parity value, fixture-derived — same calibration wait as resource_exhaustion above.
 maxBand:
   tier-1: act_reversible
 autoBand:

@@ -26,6 +26,8 @@ queries:
     query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-saturation"}
   - name: slo_burn_osd_latency     # OSD-latency burn — the first live site to render this SLO
     query: slo:current_burn_rate:ratio{sloth_id="ceph-osd-latency"}
+  - name: slo_burn_redundancy      # data-durability burn — degraded/undersized PGs (the redundancy_degraded signal)
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-redundancy"}
   - name: slo_burn_argocd_sync     # ArgoCD-sync burn — no catalog action maps here (D3 decline probe)
     query: slo:current_burn_rate:ratio{sloth_id="argocd-sync"}
 
@@ -34,8 +36,10 @@ queries:
     query: count(ceph_osd_up == 0) or vector(0)
   - name: osds_out                 # OSDs marked out — is CRUSH about to rebalance?
     query: count(ceph_osd_in == 0) or vector(0)
-  - name: pgs_degraded             # degraded PGs — the rebalance's blast surface
+  - name: pgs_degraded             # degraded PGs — below replica count, the redundancy_degraded surface
     query: sum(ceph_pg_degraded) or vector(0)
+  - name: pgs_undersized           # undersized PGs — too few OSDs to place all replicas
+    query: sum(ceph_pg_undersized) or vector(0)
   - name: pgs_backfilling          # is a rebalance/backfill ALREADY in flight?
     query: sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)
   - name: recovery_ops_rate        # recovery ops/s — is the cluster thrashing right now?

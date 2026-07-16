@@ -149,6 +149,7 @@ const (
 	ClassDependencySaturation FailureClass = "dependency_saturation"
 	ClassTrafficShift         FailureClass = "traffic_shift"
 	ClassResourceExhaustion   FailureClass = "resource_exhaustion"
+	ClassRedundancyDegraded   FailureClass = "redundancy_degraded"
 	ClassUnknown              FailureClass = "unknown"
 )
 

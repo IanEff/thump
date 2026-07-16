@@ -37,6 +37,13 @@ func DefaultFailureClasses() []FailureClassDefinition {
 				"Ongoing recovery/backfill activity with healthy capacity is NOT resource_exhaustion.",
 		},
 		{
+			Class: proposal.ClassRedundancyDegraded,
+			Description: "the cluster is running below its configured replication — placement groups are degraded or " +
+				"undersized, so stored data is at elevated loss risk until recovery restores the full replica count. " +
+				"Cite degraded/undersized PG evidence, not capacity fullness (resource_exhaustion) or request/failure " +
+				"rate (dependency_saturation).",
+		},
+		{
 			Class:       proposal.ClassTrafficShift,
 			Description: "a legitimate change in load pattern, not a failure.",
 		},

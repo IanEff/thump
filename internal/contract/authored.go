@@ -74,5 +74,31 @@ func Default() *StaticCatalog {
 				Window: 10 * time.Minute,
 			},
 		},
+		{
+			// The only high-blast action in the catalog, and the sole remedy
+			// for redundancy_degraded: raising recovery concurrency buys
+			// durability by spending client-serving I/O — a trade a human
+			// blesses, which is why it's authored BlastHigh. Reversible, so
+			// the shaper holds it for a human rather than the gate refusing it.
+			Name:                     "accelerate-recovery",
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassRedundancyDegraded},
+			ApplicableTiers:          []string{"tier-1"},
+			Action: ActionSpec{
+				Description: "Raise OSD recovery/backfill concurrency (osd_max_backfills, " +
+					"osd_recovery_max_active) cluster-wide to restore full data replication faster, " +
+					"trading client I/O headroom for durability while placement groups are degraded; reversible.",
+				ScopeParameters: map[string]Range{"backfill_concurrency": {Min: 4, Max: 32, Default: 16}},
+			},
+			BlastTier: proposal.BlastHigh,
+			Reversal: Reversal{
+				Method:   "restore-recovery-defaults",
+				Fallback: "page-oncall",
+			},
+			SuccessCriteria: SuccessCriteria{
+				Metric: "pgs_degraded",
+				Target: "pgs_degraded == 0",
+				Window: 10 * time.Minute,
+			},
+		},
 	})
 }

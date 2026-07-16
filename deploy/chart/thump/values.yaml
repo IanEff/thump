@@ -89,6 +89,12 @@ beats:
       requests: {cpu: 25m, memory: 32Mi}
       limits: {cpu: 100m, memory: 64Mi}
   clank:
+    # How far back Engine.Propose looks for a still-open set on the same
+    # fingerprint before suppressing a redelivery — and, for a held set that
+    # is never declined, how long it stays deduped before re-surfacing to
+    # re-notify. 1h is the production default; shorten per-cluster for a live
+    # run where waiting an hour to re-trigger is the bottleneck.
+    dedupeWindow: 1h
     resources:
       requests: {cpu: 25m, memory: 32Mi}
       limits: {cpu: 100m, memory: 128Mi}

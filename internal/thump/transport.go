@@ -160,11 +160,18 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 		if err := tr.HeldPub.Publish(ctx, "thump.held", held); err != nil {
 			return fmt.Errorf("thump: publish held for %s: %w", g.Decision.SignalRef, err)
 		}
+		notified := false
 		if tr.Notifier != nil {
 			if err := tr.Notifier.Notify(ctx, held); err != nil {
 				slog.Error("notify held action", "signalRef", g.Decision.SignalRef, "err", err)
+			} else {
+				notified = true
 			}
 		}
+		slog.Info("held", "signalRef", g.Decision.SignalRef,
+			"contractRef", g.Set.ContractRefFor(g.Decision.CandidateRef),
+			"riskBand", g.Decision.RiskBand, "reasons", g.Decision.Reasons,
+			"acted", false, "notified", notified)
 		return nil
 	default: // escalate, rejected — free the lock
 		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons,

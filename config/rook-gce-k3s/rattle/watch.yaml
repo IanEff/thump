@@ -1,6 +1,7 @@
-# rook-gce-k3s's watch list — all five Sloth SLOs now that ceph-rgw-
-# saturation exists (applications/infrastructure/sloth/
-# prometheusservicelevels.yaml, commit 29e70fe). Objectives/contractRef
+# rook-gce-k3s's watch list — all six Sloth SLOs (ceph-redundancy is the
+# durability SLO, on the replicapool object). Source of record:
+# applications/infrastructure/sloth/prometheusservicelevels.yaml.
+# Objectives/contractRef
 # pulled straight from that file's `objective:` fields. Dependency names
 # must match metadata.name entries in config/rook-gce-k3s/whir/
 # catalog-info.yaml exactly (whir strips the resource:/component: prefix
@@ -71,3 +72,19 @@ slos:
         role: blocking
       - name: rook-operator
         role: optional
+
+  # Data-durability companion to ceph-health, on a distinct object
+  # (replicapool) so its fingerprint dedupes separately: burns when placement
+  # groups are degraded or undersized. The redundancy_degraded signal — its
+  # sole remedy is the high-blast, reversible accelerate-recovery action, held
+  # for a human rather than auto-fired.
+  - id: ceph-redundancy
+    object: cephblockpool
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-redundancy:v1
+    dependencies:
+      - name: cephcluster
+        role: blocking
+      - name: rook-operator
+        role: blocking
