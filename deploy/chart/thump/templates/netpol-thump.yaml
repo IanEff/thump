@@ -30,6 +30,16 @@ spec:
       ports:
         - protocol: TCP
           port: 4222
+    # The automatic-reversal Converger reads Prometheus (internal/converge)
+    # to ask "did the action work?" — same monitoring:9090 egress clank uses
+    # for its evidence tool.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
     - to:
         - namespaceSelector:
             matchLabels:
@@ -41,13 +51,13 @@ spec:
     # toFQDNs, which this chart deliberately doesn't require) — this widens
     # the intended "storage.googleapis.com only" pin (WAL shipping via
     # internal/publish, wired through internal/beat) to any HTTPS destination.
+    # NOTE: this does NOT reach the in-cluster kube-apiserver on Cilium — the
+    # apiserver has a reserved Cilium identity that an ipBlock/CIDR rule can't
+    # match. The live executor's apiserver access (pod-list, pods/exec, the
+    # CephObjectStore patch) comes from ciliumnetpol-thump.yaml instead.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
       ports:
         - protocol: TCP
           port: 443
-    # No kube-apiserver rule yet: thump's structural_test.go forbids any k8s
-    # client import while it's dry-run-only (v1 has no os/exec, net, or k8s
-    # client in its actuation path). Add one alongside that client, when it
-    # exists — not before.
