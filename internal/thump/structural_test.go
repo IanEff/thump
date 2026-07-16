@@ -36,8 +36,13 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// staying dry-run, not about how a Governed decision reaches thump.
 		`"github.com/ianeff/thump/internal/broker"`:  true,
 		`"github.com/ianeff/thump/internal/actuate"`: true,
-		`"github.com/nats-io/nats.go"`:               true,
-		`"github.com/nats-io/nats.go/jetstream"`:     true,
+		// Phase F Wave D: the automatic-undo probe. Reads Prometheus over
+		// net/http, same as actuate reaches os/exec — expressed in primitives
+		// (metric, target strings), never Order, so this stays a one-directional
+		// import with no cycle back through thump. See PrometheusConverger.
+		`"github.com/ianeff/thump/internal/converge"`: true,
+		`"github.com/nats-io/nats.go"`:                true,
+		`"github.com/nats-io/nats.go/jetstream"`:      true,
 		// the runtime kit: process lifecycle + the same broker/publish
 		// transports already allowed above. Its own leaf tripwire forbids it
 		// from ever importing a beat package (rattle/clank/hiss/thump), not

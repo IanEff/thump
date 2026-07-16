@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/internal/thump"
 )
 
 func TestTick_GoldenRun_OneEnvelopeInOrderAndOutcomeOut(t *testing.T) {
@@ -101,4 +103,33 @@ func TestTick_PoisonPill_QuarantinesAndSurvives(t *testing.T) {
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("the loop must survive its own quarantine:", err)
 	}
+}
+
+func TestHandle_FiresAnAutomaticReversalAfterALiveForwardOrderFailsToConverge(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		inbox, outbox := t.TempDir(), t.TempDir()
+		writeGovernedYAML(t, inbox, "gov-001.yaml", approvedGoverned())
+
+		runner := &fakeRunner{}
+		tr := newTestTransport(inbox, outbox)
+		tr.Exec = thump.Live{Runner: runner}
+		tr.Reversal = &thump.ReversalWatcher{
+			Probe: thump.PrometheusConverger{Probe: &fakeProbe{answer: false}}, // never converges
+			Now:   frozenNow,
+		}
+
+		if err := tr.Tick(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()                          // let watchAndReverse's goroutine reach its timer block
+		time.Sleep(goldenOrder().Success.Window) // every goroutine now blocked on a timer -> fake clock jumps
+		synctest.Wait()                          // let watchAndReverse finish its post-timer work before we assert
+
+		if !runner.called || !runner.gotReverse {
+			// note: fakeRunner only remembers the LAST call — you may need a
+			// small recording slice here instead if you want to assert BOTH
+			// the forward and the reversal call happened, in order
+			t.Error("an unconverged live order must run its authored undo")
+		}
+	})
 }
