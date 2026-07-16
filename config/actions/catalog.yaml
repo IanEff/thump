@@ -17,12 +17,16 @@
   applicableTiers:
     - tier-1
   action:
-    description: Throttle non-critical request paths at the ingress
+    description: >-
+      Rate-limit anonymous (unauthenticated) RGW requests via
+      radosgw-admin's global ratelimit, shedding non-critical load
+      without touching authenticated request paths
     scopeParameters:
       throttle_pct:
         min: 10
         max: 60
         default: 25
+  blastTier: med
   reversal:
     method: unthrottle
     fallback: page-oncall
