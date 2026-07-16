@@ -9,4 +9,6 @@ floors:
     resource_exhaustion: 0.75
 maxBand:
   tier-1: act_reversible
+autoBand:
+  tier-1: act_reversible
 requireReversal: true

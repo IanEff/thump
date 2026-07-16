@@ -50,6 +50,7 @@ func goldenDecision() decision.Decision {
 		Reasons:       nil,
 		RequestedBand: decision.BandObserve,
 		GrantedBand:   decision.BandObserve,
+		RiskBand:      decision.BandActReversible,
 		FloorApplied:  0.75,
 		PolicyVersion: "v1",
 		EvaluatedAt:   frozenNow(),

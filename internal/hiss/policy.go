@@ -25,6 +25,7 @@ type Policy struct {
 	Version         string                                       `json:"version,omitempty" yaml:"version,omitempty"`                 // stamped onto every Decision as PolicyVersion — the audit trail's answer to "governed under which rules?"
 	Floors          map[string]map[proposal.FailureClass]float64 `json:"floors,omitempty" yaml:"floors,omitempty"`                   // ServiceTier -> FailureClass -> minimum Confidence; below it is ReasonConfidenceFloor
 	MaxBand         map[string]decision.Band                     `json:"maxBand,omitempty" yaml:"maxBand,omitempty"`                 // ServiceTier -> ceiling Band; a requested Band ranked higher is ReasonAuthorityCeiling
+	AutoBand        map[string]decision.Band                     `json:"autoBand,omitempty" yaml:"autoBand,omitempty"`               // ServiceTier -> ceiling Band for RiskBand, the computed risk; a tier missing from this map ranks its ceiling above every real band, so an unconfigured tier never holds
 	FreezeWindows   []Window                                     `json:"freezeWindows,omitempty" yaml:"freezeWindows,omitempty"`     // any Window containing now adds ReasonFreezeWindow
 	RequireReversal bool                                         `json:"requireReversal,omitempty" yaml:"requireReversal,omitempty"` // true escalates any Candidate with no ReversalPath as ReasonIrreversible
 }
