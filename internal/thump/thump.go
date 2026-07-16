@@ -22,6 +22,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/converge"
 	"github.com/ianeff/thump/internal/publish"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -75,6 +76,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// so broker mode never has to satisfy them (mirrors rattle.go's NATS_URL-
 	// first branch).
 	exec, sw := buildExecutor(cfg)
+	watcher, err := buildReversalWatcher(cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "build reversal watcher: %v\n", err)
+		return 1
+	}
 	tr := &Transport{
 		Inbox: cfg.Inbox,
 		OrderPub: &publish.DirPublisher[Order]{
@@ -89,11 +95,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			Dir:  filepath.Join(cfg.Outbox, "declines"),
 			Name: func(d decision.Decision) string { return d.SignalRef },
 		},
-		Catalog: cat,
-		Log:     NewOutcomeLog(),
-		Exec:    exec,
-		Tracer:  tracer,
-		Stages:  stages,
+		Catalog:  cat,
+		Log:      NewOutcomeLog(),
+		Exec:     exec,
+		Reversal: watcher,
+		Tracer:   tracer,
+		Stages:   stages,
 	}
 	if sw != nil {
 		go beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, sw.Reload)
@@ -145,6 +152,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	defer func() { _ = declinePub.WAL.Drain(ctx, sink) }()
 
 	exec, sw := buildExecutor(cfg)
+	watcher, err := buildReversalWatcher(cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "build reversal watcher: %v\n", err)
+		return 1
+	}
 	tr := &Transport{
 		OrderPub:   orderPub,
 		OutcomePub: outcomePub,
@@ -152,6 +164,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		Catalog:    cat,
 		Log:        NewOutcomeLog(),
 		Exec:       exec,
+		Reversal:   watcher,
 		Tracer:     tracer,
 		Stages:     stages,
 	}
@@ -197,4 +210,17 @@ func buildExecutor(cfg config.Thump) (Executor, *FileSwitch) {
 		},
 		Switch: sw,
 	}, sw
+}
+
+// buildReversalWatcher wires the automatic-undo probe from cfg.
+func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
+	if cfg.PromURL == "" {
+		return nil, nil
+	}
+	queries, err := converge.LoadQueries(cfg.EvidenceQueries)
+	if err != nil {
+		return nil, fmt.Errorf("load evidence queries: %w", err)
+	}
+	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries}
+	return &ReversalWatcher{Probe: PrometheusConverger{Probe: prober}}, nil
 }

@@ -40,6 +40,7 @@ type Transport struct {
 	Catalog    *contract.StaticCatalog              // the authored actions Render may resolve a granted Candidate against
 	Log        *OutcomeLog                          // every Outcome produced, queryable by ByResult
 	Exec       Executor                             // how an Order is carried out — DryRun in v1
+	Reversal   *ReversalWatcher                     // fires the authred undo when a live forward Order's success window elapses unmet.
 	Now        func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
 	Tracer     trace.Tracer                         // spans "render" under whatever trace ctx already carries; nil-safe via tracer()
 	Stages     *beat.StageRecorder                  // RED metrics for "render" — nil-safe, same discipline as Tracer
@@ -133,6 +134,9 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 		return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
 	}
 	oc := tr.Exec.Execute(ctx, order, now())
+	if tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultSuccess {
+		go tr.watchAndReverse(ctx, order)
+	}
 	if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
 		return fmt.Errorf("thump: publish order for %s: %w", g.Decision.SignalRef, err)
 	}
@@ -150,4 +154,26 @@ func (tr *Transport) disposition(path, sub string) error {
 		return err
 	}
 	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
+}
+
+// watchAndReverse blocks for order's success window and, if it never
+// converged, executes and publishes the authored undo through the same
+// Exec — no fresh governance pass, because the reversal method was part of
+// what hiss already approved. Runs in its own goroutine so handle returns
+// immediately; ctx is the same long-lived ctx the poll loop or consumer
+// runs under, cancelled only at shutdown.
+func (tr *Transport) watchAndReverse(ctx context.Context, order Order) {
+	reversal, fired := tr.Reversal.Watch(ctx, order)
+	if !fired {
+		return
+	}
+	oc := tr.Exec.Execute(ctx, reversal, time.Now())
+	if err := tr.OrderPub.Publish(ctx, "thump.orders", reversal); err != nil {
+		slog.Error("publish reversal order", "signalRef", reversal.SignalRef, "err", err)
+	}
+	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", oc); err != nil {
+		slog.Error("publish reversal outcome", "signalRef", reversal.SignalRef, "err", err)
+	}
+	tr.Log.Record(oc)
+	slog.Info("outcome", "signalRef", reversal.SignalRef, "contractRef", oc.ContractRef, "acted", true, "reversal", true)
 }

@@ -159,16 +159,18 @@ func LoadRattle(broker bool) (Rattle, error) {
 // WAL publishers in the broker path (runBroker calls beat.NewWALPublisher
 // twice against the one dir) — one field, two consumers.
 type Thump struct {
-	ActionCatalog  string // ACTION_CATALOG - required; the authored action catalog YAML
-	Executor       string // THUMP_EXECUTOR - "dry" (default) | "live"
-	KillSwitchPath string // THUMP_KILLSWITCH -- path to armed:bool file; only read in live mode
-	Inbox          string // THUMP_INBOX — required only in the offline (non-broker) path
-	Outbox         string // THUMP_OUTBOX — required only in the offline path
-	WALDir         string // WAL_DIR — required only in the broker path
-	S3Endpoint     string // S3_ENDPOINT — required only in the broker path
-	S3Bucket       string // S3_BUCKET — required only in the broker path
-	S3AccessKey    string // S3_ACCESS_KEY — required only in the broker path
-	S3SecretKey    string // S3_SECRET_KEY — required only in the broker path
+	ActionCatalog   string // ACTION_CATALOG - required; the authored action catalog YAML
+	Executor        string // THUMP_EXECUTOR - "dry" (default) | "live"
+	KillSwitchPath  string // THUMP_KILLSWITCH -- path to armed:bool file; only read in live mode
+	PromURL         string // PROM_URL — optional; empty disables the automatic reversal watcher
+	EvidenceQueries string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
+	Inbox           string // THUMP_INBOX — required only in the offline (non-broker) path
+	Outbox          string // THUMP_OUTBOX — required only in the offline path
+	WALDir          string // WAL_DIR — required only in the broker path
+	S3Endpoint      string // S3_ENDPOINT — required only in the broker path
+	S3Bucket        string // S3_BUCKET — required only in the broker path
+	S3AccessKey     string // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey     string // S3_SECRET_KEY — required only in the broker path
 }
 
 // LoadThump reads thump's environment once. broker is whether Main resolved
@@ -177,11 +179,13 @@ type Thump struct {
 func LoadThump(broker bool) (Thump, error) {
 	l := &loader{}
 	t := Thump{
-		ActionCatalog: l.Require("ACTION_CATALOG"),
+		ActionCatalog:   l.Require("ACTION_CATALOG"),
+		Executor:        l.Optional("THUMP_EXECUTOR"),
+		KillSwitchPath:  l.Optional("THUMP_KILLSWITCH"),
+		PromURL:         l.Optional("PROM_URL"),
+		EvidenceQueries: l.Optional("EVIDENCE_QUERIES"),
 	}
 	if broker {
-		t.Executor = l.Optional("THUMP_EXECUTOR")
-		t.KillSwitchPath = l.Optional("THUMP_KILLSWITCH")
 		t.Inbox = l.Optional("THUMP_INBOX")
 		t.Outbox = l.Optional("THUMP_OUTBOX")
 		t.WALDir = l.Require("WAL_DIR")
@@ -190,8 +194,6 @@ func LoadThump(broker bool) (Thump, error) {
 		t.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		t.S3SecretKey = l.Require("S3_SECRET_KEY")
 	} else {
-		t.Executor = l.Optional("THUMP_EXECUTOR")
-		t.KillSwitchPath = l.Optional("THUMP_KILLSWITCH")
 		t.Inbox = l.Require("THUMP_INBOX")
 		t.Outbox = l.Require("THUMP_OUTBOX")
 	}
