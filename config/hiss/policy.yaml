@@ -6,7 +6,13 @@ version: v1
 floors:
   tier-1:
     dependency_saturation: 0.75
-    resource_exhaustion: 0.75
+    resource_exhaustion: 0.75 # parity value with dependency_saturation, fixture-derived —
+    # not yet calibrated against agent_proposal_confidence/agent_proposal_success_total.
+    # That's not a TODO, it's a structural wait: agent_proposal_success_total only
+    # populates on ResultSuccess/ResultFailure (metrics.go recordCalibration), and thump
+    # v1 is dry-run-only — DryRun.Execute (internal/thump/executor.go) always reports
+    # ResultRendered. Confirmed empty on a real approved+executed run, 2026-07-13 (see
+    # thump-running-notes.md). Revisit once thump grows a live executor.
 maxBand:
   tier-1: act_reversible
 autoBand:
