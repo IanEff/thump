@@ -37,8 +37,15 @@ type Authority struct{}
 //     a policy match.
 //   - ReasonFreezeWindow — now falls inside one of pol.FreezeWindows.
 //
-// Zero reasons is required to approve; any reason present escalates rather
-// than rejects — hiss is asking for a human, not overruling clank.
+// Zero reasons is required to reach stage two; any stage-one reason escalates
+// rather than rejects — hiss is asking for a human, not overruling clank. A
+// Candidate that clears stage one is eligible but not yet approved: stage two
+// computes RiskBand from reversibility and blast tier alone (never from the
+// requested Band or anything the model produced) and checks it against
+// pol.AutoBand for the tier. Outranking it holds the Candidate for a human
+// with ReasonRiskCeiling — eligible, but too much latitude to grant
+// unattended — while staying inside it approves and grants the requested
+// Band.
 func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.Decision {
 	d := decision.Decision{
 		ID:            fmt.Sprintf("dec:%s:%d", ps.SignalRef, now.Unix()),
@@ -79,6 +86,16 @@ func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.D
 		d.Verdict = decision.VerdictEscalate
 		return d
 	}
+
+	// STAGE 2 — the shaper. Runs only once every stage-1 minimum is met; it
+	// asks how much latitude an eligible Candidate gets, not eligibility.
+	d.RiskBand = RiskBand(rec.ReversalPath != nil, rec.BlastTier)
+	if bandRank(d.RiskBand) > bandRank(pol.AutoBand[ps.ServiceTier]) {
+		d.Reasons = append(d.Reasons, ReasonRiskCeiling)
+		d.Verdict = decision.VerdictHold
+		return d
+	}
+
 	d.Verdict = decision.VerdictApproved
 	d.GrantedBand = d.RequestedBand
 	return d
@@ -106,6 +123,7 @@ const (
 	ReasonIrreversible     = decision.ReasonIrreversible
 	ReasonFreezeWindow     = decision.ReasonFreezeWindow
 	ReasonUngatedInput     = decision.ReasonUngatedInput
+	ReasonRiskCeiling      = decision.ReasonRiskCeiling
 )
 
 func recommended(ps proposal.Set) (proposal.Candidate, bool) {

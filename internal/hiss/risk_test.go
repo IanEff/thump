@@ -6,9 +6,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/hiss"
 )
 
-func TeskRiskBand_EveryCell(t *testing.T) {
+func TestRiskBand_EveryCell(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
 		reversible bool
@@ -25,7 +26,7 @@ func TeskRiskBand_EveryCell(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := riskBand(tc.reversible, tc.blast)
+			got := hiss.RiskBand(tc.reversible, tc.blast)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Error("riskBand cell wrong (-want +got):", diff)
 			}

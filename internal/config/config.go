@@ -9,29 +9,31 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 )
 
 // Clank is clank's environment, one field per var its Main used to read ad
 // hoc with os.Getenv.
 type Clank struct {
-	AnthropicAPIKey  string // ANTHROPIC_API_KEY — required
-	ActionCatalog    string // ACTION_CATALOG - required; the authored action catalog YAML
-	FailureClasses   string // FAILURE_CLASSES - required; the authored failure-class definitions YAML
-	PromURL          string // PROM_URL — optional; empty disables the metrics tool
-	EvidenceQueries  string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
-	LokiURL          string // LOKI_URL — optional; empty disables the loki tool
-	WhirCatalog      string // WHIR_CATALOG — optional; pairs with WhirStateQueries
-	WhirStateQueries string // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
-	Transcripts      string // CLANK_TRANSCRIPTS — optional, offline path only; broker mode always persists to S3 via the WAL's S3_* creds, ignoring this var. Empty keeps turns in memory only.
-	Inbox            string // CLANK_INBOX — required only in the offline (non-broker) path
-	Outbox           string // CLANK_OUTBOX — required only in the offline path
-	Outcomes         string // CLANK_OUTCOMES — required only in the offline path
-	Declines         string // CLANK_DECLINES — required only in the offline path
-	WALDir           string // WAL_DIR — required only in the broker path
-	S3Endpoint       string // S3_ENDPOINT — required only in the broker path
-	S3Bucket         string // S3_BUCKET — required only in the broker path
-	S3AccessKey      string // S3_ACCESS_KEY — required only in the broker path
-	S3SecretKey      string // S3_SECRET_KEY — required only in the broker path
+	AnthropicAPIKey  string        // ANTHROPIC_API_KEY — required
+	ActionCatalog    string        // ACTION_CATALOG - required; the authored action catalog YAML
+	FailureClasses   string        // FAILURE_CLASSES - required; the authored failure-class definitions YAML
+	DedupeWindow     time.Duration // DEDUPE_WINDOW — optional; how far back Engine.Propose looks for a live set on the same fingerprint before suppressing a redelivery; defaults to 1h
+	PromURL          string        // PROM_URL — optional; empty disables the metrics tool
+	EvidenceQueries  string        // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
+	LokiURL          string        // LOKI_URL — optional; empty disables the loki tool
+	WhirCatalog      string        // WHIR_CATALOG — optional; pairs with WhirStateQueries
+	WhirStateQueries string        // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
+	Transcripts      string        // CLANK_TRANSCRIPTS — optional, offline path only; broker mode always persists to S3 via the WAL's S3_* creds, ignoring this var. Empty keeps turns in memory only.
+	Inbox            string        // CLANK_INBOX — required only in the offline (non-broker) path
+	Outbox           string        // CLANK_OUTBOX — required only in the offline path
+	Outcomes         string        // CLANK_OUTCOMES — required only in the offline path
+	Declines         string        // CLANK_DECLINES — required only in the offline path
+	WALDir           string        // WAL_DIR — required only in the broker path
+	S3Endpoint       string        // S3_ENDPOINT — required only in the broker path
+	S3Bucket         string        // S3_BUCKET — required only in the broker path
+	S3AccessKey      string        // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey      string        // S3_SECRET_KEY — required only in the broker path
 }
 
 // LoadClank reads clank's environment once. broker is whether Main resolved
@@ -45,6 +47,7 @@ func LoadClank(broker bool) (Clank, error) {
 		AnthropicAPIKey:  l.Require("ANTHROPIC_API_KEY"),
 		ActionCatalog:    l.Require("ACTION_CATALOG"),
 		FailureClasses:   l.Require("FAILURE_CLASSES"),
+		DedupeWindow:     l.OptionalDuration("DEDUPE_WINDOW", time.Hour),
 		PromURL:          l.Optional("PROM_URL"),
 		EvidenceQueries:  l.Optional("EVIDENCE_QUERIES"),
 		LokiURL:          l.Optional("LOKI_URL"),
@@ -217,6 +220,22 @@ func (l *loader) Require(name string) string {
 
 func (l *loader) Optional(name string) string {
 	return os.Getenv(name)
+}
+
+// OptionalDuration reads name as a time.Duration, defaulting to def when
+// unset. A set-but-unparseable value is a configuration error, same as a
+// missing Require, not a silent fall-back to def.
+func (l *loader) OptionalDuration(name string, def time.Duration) time.Duration {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		l.errs = append(l.errs, fmt.Errorf("%s: invalid duration %q: %w", name, v, err))
+		return def
+	}
+	return d
 }
 
 func (l *loader) err() error {

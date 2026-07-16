@@ -102,7 +102,7 @@ func TestRunner_DispatchesExactPatchForScaleOut(t *testing.T) {
 func TestRunner_UnboundRefIsAnError(t *testing.T) {
 	t.Parallel()
 	r := actuate.NewWith(&recordKube{})
-	err := r.Run(context.Background(), "throttle-non-critical-paths", false, nil)
+	err := r.Run(context.Background(), "no-such-action", false, nil)
 	if err == nil {
 		t.Fatal("an unbound ref must error, not silently no-op")
 	}

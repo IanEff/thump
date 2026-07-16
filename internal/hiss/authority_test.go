@@ -229,6 +229,68 @@ func TestAuthority_LivePolicyApprovesAStampedReversibleAct(t *testing.T) {
 	}
 }
 
+func TestEvaluate_ShaperHoldsHighBlastReversibleActions(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		reversible  bool
+		blast       proposal.BlastTier
+		wantVerdict decision.Verdict
+		wantReasons []string
+	}{
+		"Evaluate auto-fires a low-blast reversible action": {
+			reversible: true, blast: proposal.BlastLow,
+			wantVerdict: decision.VerdictApproved,
+		},
+		"Evaluate holds a high-blast reversible action for a human": {
+			reversible: true, blast: proposal.BlastHigh,
+			wantVerdict: decision.VerdictHold, wantReasons: []string{decision.ReasonRiskCeiling},
+		},
+		"Evaluate escalates an irreversible action before the shaper ever runs": {
+			// the gate's ReasonIrreversible veto fires in stage 1 — the
+			// shaper never sees this candidate at all. See the subtlety
+			// note below; this case is what pins it.
+			reversible: false, blast: proposal.BlastLow,
+			wantVerdict: decision.VerdictEscalate, wantReasons: []string{hiss.ReasonIrreversible},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ps := governedSet()
+			ps.Proposals[0].BlastTier = tc.blast
+			if !tc.reversible {
+				ps.Proposals[0].ReversalPath = nil
+			}
+			pol := calmPolicy()
+			pol.AutoBand = map[string]decision.Band{"tier-1": decision.BandActReversible}
+
+			got := decide(t, ps, pol)
+
+			if diff := cmp.Diff(tc.wantVerdict, got.Verdict); diff != "" {
+				t.Error("shaper verdict wrong (-want +got)", diff)
+			}
+			if diff := cmp.Diff(tc.wantReasons, got.Reasons); diff != "" {
+				t.Error("shaper reasons wrong (-want +got)", diff)
+			}
+		})
+	}
+}
+
+func TestEvaluate_ShaperNeverRunsOnAnUngatedSet(t *testing.T) {
+	t.Parallel()
+	ps := governedSet()
+	ps.Proposals[0].ReversalPath = nil // trips the stage-1 irreversibility veto
+
+	got := decide(t, ps, calmPolicy())
+
+	if diff := cmp.Diff(decision.VerdictEscalate, got.Verdict); diff != "" {
+		t.Error("wrong verdict (-want +got)", diff)
+	}
+	if got.RiskBand != "" {
+		t.Errorf("a stage-1 veto must short-circuit before the shaper runs: RiskBand=%q", got.RiskBand)
+	}
+}
+
 func decide(t *testing.T, ps proposal.Set, pol hiss.Policy) decision.Decision {
 	t.Helper()
 	var auth hiss.Authority
@@ -281,6 +343,7 @@ func calmPolicy() hiss.Policy {
 			"tier-1": {proposal.ClassDependencySaturation: 0.75},
 		},
 		MaxBand:         map[string]decision.Band{"tier-1": decision.BandActReversible},
+		AutoBand:        map[string]decision.Band{"tier-1": decision.BandActReversible},
 		FreezeWindows:   nil,  // Claim 6 adds one
 		RequireReversal: true, // prod posture, always (I-12)
 	}

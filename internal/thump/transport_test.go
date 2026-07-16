@@ -2,6 +2,7 @@ package thump_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/thump"
 )
@@ -132,4 +134,64 @@ func TestHandle_FiresAnAutomaticReversalAfterALiveForwardOrderFailsToConverge(t 
 			t.Error("an unconverged live order must run its authored undo")
 		}
 	})
+}
+
+func TestTick_HoldsAndNotifiesButKeepsTheLock(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	writeGovernedYAML(t, inbox, "gov-hold.yaml", heldGoverned())
+	tr := newTestTransport(inbox, outbox)
+	notifier := &fakeNotifier{}
+	tr.Notifier = notifier
+
+	if err := tr.Tick(context.Background()); err != nil {
+		t.Fatal("a hold must not fail the pass:", err)
+	}
+
+	if diff := cmp.Diff(heldGoverned().Decision, readOneHeld(t, outbox).Decision); diff != "" {
+		t.Error("held decision drifted across the wire (-want +got)", diff)
+	}
+	if got, _ := filepath.Glob(filepath.Join(outbox, "declines", "*.yaml")); len(got) != 0 {
+		t.Errorf("a hold must not free the dedupe lock via a decline, found %v", got)
+	}
+	if got, _ := filepath.Glob(filepath.Join(outbox, "orders", "*.yaml")); len(got) != 0 {
+		t.Errorf("a hold must not fire anything, found order(s) %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(inbox, "skipped", "gov-hold.yaml")); err != nil {
+		t.Error("a held envelope must land in skipped/, not vanish:", err)
+	}
+	if len(notifier.notified) != 1 {
+		t.Fatalf("want exactly one Notify call, got %d", len(notifier.notified))
+	}
+	if diff := cmp.Diff(heldGoverned().Decision, notifier.notified[0].Decision); diff != "" {
+		t.Error("the notified HeldAction's decision drifted from the held envelope (-want +got)", diff)
+	}
+}
+
+// TestTick_HoldSurvivesANotifierFailure pins the degrade-gracefully contract
+// the guide's Done-when line names: a Notifier is best-effort delivery, not
+// a gate — its error is logged, never propagated, and the hold still lands
+// where a human can find it.
+func TestTick_HoldSurvivesANotifierFailure(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	writeGovernedYAML(t, inbox, "gov-hold.yaml", heldGoverned())
+	tr := newTestTransport(inbox, outbox)
+	tr.Notifier = &fakeNotifier{err: errors.New("slack: 503")}
+
+	if err := tr.Tick(context.Background()); err != nil {
+		t.Fatal("a notifier failure must not fail the pass:", err)
+	}
+	if _, err := os.Stat(filepath.Join(inbox, "skipped", "gov-hold.yaml")); err != nil {
+		t.Error("a held envelope must still land in skipped/ despite the notifier failing:", err)
+	}
+}
+
+func heldGoverned() decision.Governed {
+	g := approvedGoverned()
+	g.Decision.Verdict = decision.VerdictHold
+	g.Decision.Reasons = []string{decision.ReasonRiskCeiling}
+	g.Decision.RiskBand = decision.BandActDisruptive
+	g.Decision.GrantedBand = ""
+	return g
 }

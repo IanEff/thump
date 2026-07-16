@@ -319,7 +319,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 				contract.Default(),
 				contract.DefaultFailureClasses(),
 				NewDirStore(transcripts),
-				noop.Tracer{}, nil)
+				time.Hour, noop.Tracer{}, nil)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()

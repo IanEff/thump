@@ -20,7 +20,8 @@ hypotheses:
   weight: 0.85
 name: ceph-rgw-burn-accel
 proposals:
-- confidence: 0.85
+- blastTier: med
+  confidence: 0.85
   contractRef: throttle-non-critical-paths
   governanceLevel:
     band: act_reversible

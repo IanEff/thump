@@ -20,9 +20,11 @@ func Default() *StaticCatalog {
 			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 			ApplicableTiers:          []string{"tier-1"},
 			Action: ActionSpec{
-				Description:     "Throttle non-critical request paths at the ingress",
+				Description: "Rate-limit anonymous (unauthenticated) RGW requests via radosgw-admin's " +
+					"global ratelimit, shedding non-critical load without touching authenticated request paths",
 				ScopeParameters: map[string]Range{"throttle_pct": {Min: 10, Max: 60, Default: 25}},
 			},
+			BlastTier:       proposal.BlastMed,
 			Reversal:        Reversal{Method: "unthrottle", Fallback: "page-oncall"},
 			SuccessCriteria: SuccessCriteria{Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute},
 		},
@@ -39,6 +41,7 @@ func Default() *StaticCatalog {
 					"to add serving capacity under load",
 				ScopeParameters: map[string]Range{"additional_replicas": {Min: 1, Max: 3, Default: 1}},
 			},
+			BlastTier:       proposal.BlastLow,
 			Reversal:        Reversal{Method: "scale-in-rgw-gateways", Fallback: "page-oncall"},
 			SuccessCriteria: SuccessCriteria{Metric: "rgw_get_put_latency_ms", Target: "avg < 50ms", Window: 10 * time.Minute},
 		},
@@ -60,6 +63,7 @@ func Default() *StaticCatalog {
 					"hold_minutes": {Min: 5, Max: 60, Default: 15},
 				},
 			},
+			BlastTier: proposal.BlastMed,
 			Reversal: Reversal{
 				Method:   "release-rebalance",
 				Fallback: "page-oncall",

@@ -6,5 +6,6 @@ id: dec:slo_burn:ceph-cluster:1783252800
 policyVersion: golden-v1
 proposalRef: ceph-cluster-burn-accel
 requestedBand: act_reversible
+riskBand: act_reversible
 signalRef: slo_burn:ceph-cluster
 verdict: approved

@@ -14,11 +14,23 @@ import (
 
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
+
+// HeldAction is a gate-clean Candidate whose computed risk exceeded
+// Policy.AutoBand — eligible, but waiting on a human ack rather than
+// auto-firing. Its fingerprint stays open (never declined, never executed),
+// so the dedupe ledger keeps suppressing a fresh proposal until the window
+// elapses. Carries the full audit chain (Decision + Set) rather than a
+// rendered summary — a Notifier adapter derives human-facing text from it.
+type HeldAction struct {
+	Decision decision.Decision `json:"decision,omitempty" yaml:"decision,omitempty"`
+	Set      proposal.Set      `json:"set,omitempty" yaml:"set,omitempty"`
+}
 
 // ErrRenderFailed marks a governed approval thump's Actuator couldn't render
 // — a deterministic seam bug (bad catalog ref, bad params), not a transient
@@ -37,6 +49,7 @@ type Transport struct {
 	OrderPub   publish.Publisher[Order]             // destination for rendered Orders — thump.orders in production
 	OutcomePub publish.Publisher[outcome.Outcome]   // destination for executed Outcomes — thump.outcomes in production
 	DeclinePub publish.Publisher[decision.Decision] // destination for non-approvals — thump.declines in production; closes clank's ledger row without ever going through Outcome
+	HeldPub    publish.Publisher[HeldAction]        // destination for holds — thump.held in production; never declined, so the fingerprint stays open
 	Catalog    *contract.StaticCatalog              // the authored actions Render may resolve a granted Candidate against
 	Log        *OutcomeLog                          // every Outcome produced, queryable by ByResult
 	Exec       Executor                             // how an Order is carried out — DryRun in v1
@@ -44,6 +57,7 @@ type Transport struct {
 	Now        func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
 	Tracer     trace.Tracer                         // spans "render" under whatever trace ctx already carries; nil-safe via tracer()
 	Stages     *beat.StageRecorder                  // RED metrics for "render" — nil-safe, same discipline as Tracer
+	Notifier   Notifier                             // delivers a held action to a human; nil means a hold publishes to HeldPub only
 }
 
 // tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
@@ -113,7 +127,46 @@ func (tr *Transport) Tick(ctx context.Context) error {
 // Rendering a dry-run is fast enough that it never needs heartbeat, unlike
 // clank's reason loop — accepted only to satisfy broker.Handler[T]'s shape.
 func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) error {
-	if g.Decision.Verdict != decision.VerdictApproved {
+	switch g.Decision.Verdict {
+	case decision.VerdictApproved:
+		now := time.Now
+		if tr.Now != nil {
+			now = tr.Now
+		}
+		var order Order
+		if err := beat.Stage(ctx, tr.tracer(), tr.Stages, "render", func(context.Context) error {
+			var err error
+			order, err = (Actuator{}).Render(g, tr.Catalog, now())
+			return err
+		}); err != nil {
+			return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
+		}
+		oc := tr.Exec.Execute(ctx, order, now())
+		if tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultSuccess {
+			go tr.watchAndReverse(ctx, order)
+		}
+		if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
+			return fmt.Errorf("thump: publish order for %s: %w", g.Decision.SignalRef, err)
+		}
+		if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", oc); err != nil {
+			return fmt.Errorf("thump: publish outcome for %s: %w", g.Decision.SignalRef, err)
+		}
+		tr.Log.Record(oc)
+		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "candidateRef", g.Decision.CandidateRef,
+			"contractRef", oc.ContractRef, "acted", true, "mode", oc.Mode, "result", oc.Result, "error", oc.Error)
+		return nil
+	case decision.VerdictHold:
+		held := HeldAction{Decision: g.Decision, Set: g.Set}
+		if err := tr.HeldPub.Publish(ctx, "thump.held", held); err != nil {
+			return fmt.Errorf("thump: publish held for %s: %w", g.Decision.SignalRef, err)
+		}
+		if tr.Notifier != nil {
+			if err := tr.Notifier.Notify(ctx, held); err != nil {
+				slog.Error("notify held action", "signalRef", g.Decision.SignalRef, "err", err)
+			}
+		}
+		return nil
+	default: // escalate, rejected — free the lock
 		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons,
 			"contractRef", g.Set.ContractRefFor(g.Decision.CandidateRef), "acted", false)
 		if err := tr.DeclinePub.Publish(ctx, "thump.declines", g.Decision); err != nil {
@@ -121,32 +174,6 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 		}
 		return nil // valid non-approval: nothing to act on
 	}
-	now := time.Now
-	if tr.Now != nil {
-		now = tr.Now
-	}
-	var order Order
-	if err := beat.Stage(ctx, tr.tracer(), tr.Stages, "render", func(context.Context) error {
-		var err error
-		order, err = (Actuator{}).Render(g, tr.Catalog, now())
-		return err
-	}); err != nil {
-		return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
-	}
-	oc := tr.Exec.Execute(ctx, order, now())
-	if tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultSuccess {
-		go tr.watchAndReverse(ctx, order)
-	}
-	if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
-		return fmt.Errorf("thump: publish order for %s: %w", g.Decision.SignalRef, err)
-	}
-	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", oc); err != nil {
-		return fmt.Errorf("thump: publish outcome for %s: %w", g.Decision.SignalRef, err)
-	}
-	tr.Log.Record(oc)
-	slog.Info("outcome", "signalRef", g.Decision.SignalRef, "candidateRef", g.Decision.CandidateRef,
-		"contractRef", oc.ContractRef, "acted", true, "mode", oc.Mode, "result", oc.Result, "error", oc.Error)
-	return nil
 }
 
 func (tr *Transport) disposition(path, sub string) error {

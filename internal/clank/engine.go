@@ -372,6 +372,7 @@ func enrichFromCatalog(cat *contract.StaticCatalog, proposals []proposal.Candida
 		if !ok {
 			continue
 		}
+		proposals[i].BlastTier = c.BlastTier // stamp proposal with BlastTier
 		if c.Reversal.Method != "" {
 			proposals[i].ReversalPath = &proposal.ReversalPath{
 				Method:   c.Reversal.Method,
