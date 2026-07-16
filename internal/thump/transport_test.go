@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/thump"
 )
@@ -132,4 +133,37 @@ func TestHandle_FiresAnAutomaticReversalAfterALiveForwardOrderFailsToConverge(t 
 			t.Error("an unconverged live order must run its authored undo")
 		}
 	})
+}
+
+func TestTick_HoldsAndNotifiesButKeepsTheLock(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	writeGovernedYAML(t, inbox, "gov-hold.yaml", heldGoverned())
+	tr := newTestTransport(inbox, outbox)
+
+	if err := tr.Tick(context.Background()); err != nil {
+		t.Fatal("a hold must not fail the pass:", err)
+	}
+
+	if diff := cmp.Diff(heldGoverned().Decision, readOneHeld(t, outbox).Decision); diff != "" {
+		t.Error("held decision drifted across the wire (-want +got)", diff)
+	}
+	if got, _ := filepath.Glob(filepath.Join(outbox, "declines", "*.yaml")); len(got) != 0 {
+		t.Errorf("a hold must not free the dedupe lock via a decline, found %v", got)
+	}
+	if got, _ := filepath.Glob(filepath.Join(outbox, "orders", "*.yaml")); len(got) != 0 {
+		t.Errorf("a hold must not fire anything, found order(s) %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(inbox, "skipped", "gov-hold.yaml")); err != nil {
+		t.Error("a held envelope must land in skipped/, not vanish:", err)
+	}
+}
+
+func heldGoverned() decision.Governed {
+	g := approvedGoverned()
+	g.Decision.Verdict = decision.VerdictHold
+	g.Decision.Reasons = []string{decision.ReasonRiskCeiling}
+	g.Decision.RiskBand = decision.BandActDisruptive
+	g.Decision.GrantedBand = ""
+	return g
 }
