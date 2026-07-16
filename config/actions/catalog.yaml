@@ -89,3 +89,32 @@
     metric: ceph_health
     target: HEALTH_OK
     window: 600000000000 # 10 * time.Minute, in nanoseconds
+
+- name: accelerate-recovery
+  # The only high-blast action in the catalog, and the sole remedy for
+  # redundancy_degraded: raising recovery concurrency buys durability by
+  # spending client-serving I/O — a trade a human blesses, which is why it's
+  # authored high. Reversible, so the shaper holds it rather than refusing it.
+  applicableFailureClasses:
+    - redundancy_degraded
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Raise OSD recovery/backfill concurrency (osd_max_backfills,
+      osd_recovery_max_active) cluster-wide to restore full data
+      replication faster, trading client I/O headroom for durability
+      while placement groups are degraded; reversible.
+    scopeParameters:
+      backfill_concurrency:
+        min: 4
+        max: 32
+        default: 16
+  blastTier: high
+  reversal:
+    method: restore-recovery-defaults
+    fallback: page-oncall
+  successCriteria:
+    metric: pgs_degraded
+    target: "pgs_degraded == 0"
+    window: 600000000000 # 10 * time.Minute, in nanoseconds

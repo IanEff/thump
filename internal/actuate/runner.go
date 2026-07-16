@@ -145,6 +145,19 @@ func bindingSet() map[string]binding {
 			},
 			reverse: toolbox("radosgw-admin", "global", "ratelimit", "disable", "--ratelimit-scope=anonymous"),
 		},
+		// forward raises recovery concurrency far above Ceph's defaults (1
+		// backfill, 3 recovery ops); reverse removes the overrides so the
+		// cluster returns to its compiled defaults, not a guessed number.
+		"accelerate-recovery": {
+			forward: execSeqOp{
+				toolbox("ceph", "config", "set", "osd", "osd_max_backfills", "16"),
+				toolbox("ceph", "config", "set", "osd", "osd_recovery_max_active", "16"),
+			},
+			reverse: execSeqOp{
+				toolbox("ceph", "config", "rm", "osd", "osd_max_backfills"),
+				toolbox("ceph", "config", "rm", "osd", "osd_recovery_max_active"),
+			},
+		},
 	}
 }
 
