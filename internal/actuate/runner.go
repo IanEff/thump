@@ -14,6 +14,8 @@ package actuate
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 )
 
 // Kube is the impure seam actuate reaches the cluster through — exec a
@@ -80,31 +82,39 @@ type Runner struct {
 // liveKube) and tests (NewWith, over a fake). The binding map is the one
 // place in the system that knows a contract ref's concrete mutation.
 func newWith(k Kube) *Runner {
+	return &Runner{kube: k, bindings: bindingSet()}
+}
+
+// bindingSet is the one place in the system that knos a contract
+// ref's concrete mutation and it's undo.  Every Runner shares it,
+// and BoundRefs reads its keys without needing a live Kube.
+func bindingSet() map[string]binding {
 	const rookCeph = "rook-ceph"
 	toolbox := func(argv ...string) execOp {
-		return execOp{namespace: rookCeph, selector: "app=rook-ceph-tools", command: argv}
+		return execOp{
+			namespace: rookCeph,
+			selector:  "app=rook-ceph-tools",
+			command:   argv,
+		}
 	}
 	rgwPatch := func(instances int) patchOp {
 		return patchOp{
-			group: "ceph.rook.io", version: "v1", resource: "cephobjectstores",
-			namespace: rookCeph, name: "ceph-objectstore",
-			patch: []byte(fmt.Sprintf(`{"spec":{"gateway":{"instances":%d}}}`, instances)),
+			group:     "ceph.rook.io",
+			version:   "v1",
+			resource:  "cephobjectstores",
+			namespace: rookCeph,
+			name:      "ceph-objectstore",
+			patch:     []byte(fmt.Sprintf(`{"spec":{"gateway":{"instances":%d}}}`, instances)),
 		}
 	}
-	return &Runner{
-		kube: k,
-		bindings: map[string]binding{
-			"hold-rebalance": {
-				forward: toolbox("ceph", "osd", "set", "noout"),
-				reverse: toolbox("ceph", "osd", "unset", "noout"),
-			},
-			// ⚠️ instances hardcoded 2→1 for v1. Computing the target from
-			// params.additional_replicas needs the CURRENT count first — a
-			// read before the write — deliberately deferred (Part 7).
-			"scale-out-rgw-gateways": {
-				forward: rgwPatch(2),
-				reverse: rgwPatch(1),
-			},
+	return map[string]binding{
+		"hold-rebalance": {
+			forward: toolbox("ceph", "osd", "set", "noout"),
+			reverse: toolbox("ceph", "osd", "unset", "noout"),
+		},
+		"scale-out-rgw-gateways": {
+			forward: rgwPatch(2),
+			reverse: rgwPatch(1),
 		},
 	}
 }
@@ -125,4 +135,10 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 		return fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
 	}
 	return nil
+}
+
+// BoundRefs returns the contract refs the actuator can actually
+// execute, sorted for a stable test.
+func BoundRefs() []string {
+	return slices.Sorted(maps.Keys(bindingSet()))
 }

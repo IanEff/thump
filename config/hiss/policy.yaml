@@ -6,6 +6,7 @@ version: v1
 floors:
   tier-1:
     dependency_saturation: 0.75
+    resource_exhaustion: 0.75
 maxBand:
   tier-1: act_reversible
 requireReversal: true
