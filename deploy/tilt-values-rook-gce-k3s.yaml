@@ -62,14 +62,6 @@ serviceMonitor:
 tracing:
   endpoint: tempo.tracing.svc.cluster.local:4317
 
-# ⚠️ TEMPORARY — Phase F Part 6 arm-live run (2026-07-16). Arms the live
-# executor + seeds the kill-switch file armed. Revert to chart defaults
-# (executor: dry, armed: false) at session end.
-thump:
-  executor: live
-  killSwitch:
-    armed: true
-
 # This rig runs Cilium — the live executor needs a CiliumNetworkPolicy to
 # reach the kube-apiserver (see values.yaml cilium.apiserverEgress). Stays on
 # for any live run here; harmless when executor is dry.
