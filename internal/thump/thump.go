@@ -17,6 +17,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/internal/actuate"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
@@ -73,6 +74,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// OUTBOX are this path's env, not the process's — checked here, not above,
 	// so broker mode never has to satisfy them (mirrors rattle.go's NATS_URL-
 	// first branch).
+	exec, sw := buildExecutor(cfg)
 	tr := &Transport{
 		Inbox: cfg.Inbox,
 		OrderPub: &publish.DirPublisher[Order]{
@@ -89,9 +91,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		},
 		Catalog: cat,
 		Log:     NewOutcomeLog(),
-		Exec:    DryRun{},
+		Exec:    exec,
 		Tracer:  tracer,
 		Stages:  stages,
+	}
+	if sw != nil {
+		go beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, sw.Reload)
 	}
 	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, tr.Tick)
 	return 0
@@ -139,18 +144,25 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	defer func() { _ = outcomePub.WAL.Drain(ctx, sink) }()
 	defer func() { _ = declinePub.WAL.Drain(ctx, sink) }()
 
+	exec, sw := buildExecutor(cfg)
 	tr := &Transport{
 		OrderPub:   orderPub,
 		OutcomePub: outcomePub,
 		DeclinePub: declinePub,
 		Catalog:    cat,
 		Log:        NewOutcomeLog(),
-		Exec:       DryRun{},
+		Exec:       exec,
 		Tracer:     tracer,
 		Stages:     stages,
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
+	if sw != nil {
+		g.Go(func() error {
+			beat.PollLoop(gctx, beat.PollConfig{Interval: 5 * time.Second}, sw.Reload)
+			return nil
+		})
+	}
 	g.Go(func() error {
 		beat.RunShipper(gctx, orderPub.WAL, sink)
 		return nil
@@ -168,4 +180,21 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	})
 
 	return beat.ExitOnError(ctx, g.Wait())
+}
+
+// buildExecutor picks the executor from cfg.Executor — dry (the default)
+// renders; live wraps a real actuate.Runner in a GatedExecutor so an armed
+// kill-switch is required before anything touches infrastructure. The
+// returned *FileSwitch is nil in dry mode — nothing to reload.
+func buildExecutor(cfg config.Thump) (Executor, *FileSwitch) {
+	if cfg.Executor != "live" {
+		return DryRun{}, nil
+	}
+	sw := NewFileSwitch(cfg.KillSwitchPath)
+	return GatedExecutor{
+		Inner: Live{
+			Runner: actuate.New(),
+		},
+		Switch: sw,
+	}, sw
 }
