@@ -129,9 +129,11 @@ func transition(st proposal.Status, o outcome.Outcome) proposal.Status {
 	switch o.Result {
 	case outcome.ResultRendered:
 		st.Phase = proposal.PhaseAcknowledge // rehearsed, not acted; stays open, keeps deduping
-	case outcome.ResultSuccess, outcome.ResultFailure:
+	case outcome.ResultApplied:
+		st.Phase, st.Outcome = proposal.PhaseActed, string(o.Result) // acted, awaiting convergence
+	case outcome.ResultSuccess, outcome.ResultFailure, outcome.ResultPartialNonConverging:
 		st.Phase, st.Outcome = proposal.PhaseClosed, string(o.Result)
-	default: // unknown, partial_non_converging — acted, unsettled, in-flight (the convergence watcher is PARKED)
+	default: // unknown — acted, unsettled
 		st.Phase, st.Outcome = proposal.PhaseActed, string(o.Result)
 	}
 	return st

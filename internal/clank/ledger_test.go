@@ -86,8 +86,11 @@ func TestObserve_TheOutcomeTransitionTable(t *testing.T) {
 		"Observe leaves a set acted when the live outcome is unknown": {
 			in: liveUnknown(), wantPhase: proposal.PhaseActed, wantOutcome: "unknown",
 		},
-		"Observe leaves a partial non-converging set acted and in-flight": {
-			in: livePartial(), wantPhase: proposal.PhaseActed, wantOutcome: "partial_non_converging",
+		"Observe leaves an applied set acted and in-flight, awaiting convergence": {
+			in: liveApplied(), wantPhase: proposal.PhaseActed, wantOutcome: "applied",
+		},
+		"Observe closes a set on a partial_non_converging convergence verdict": {
+			in: livePartial(), wantPhase: proposal.PhaseClosed, wantOutcome: "partial_non_converging",
 		},
 	}
 	for name, tc := range cases {
@@ -197,6 +200,33 @@ func TestObserve_TouchesStatusAndNothingElse(t *testing.T) {
 	}
 }
 
+func TestObserve_AppliedKeepsOpenThenConvergenceClosesAndReplayIsInert(t *testing.T) {
+	t.Parallel()
+	l := seededLedger(t) // one clickSet(), phase proposed
+
+	if _, err := l.Observe(context.Background(), liveApplied()); err != nil {
+		t.Fatal(err)
+	}
+	open, _ := l.Open(context.Background(), "slo_burn:ceph-rgw", time.Time{})
+	if len(open) != 1 {
+		t.Fatalf("an applied set must stay open and keep deduping, got %d open", len(open))
+	}
+
+	got, err := l.Observe(context.Background(), livePartial())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Phase != proposal.PhaseClosed || got.Status.Outcome != "partial_non_converging" {
+		t.Errorf("convergence verdict must close the set as its own outcome, got %+v", got.Status)
+	}
+
+	// I-14: a replayed applied outcome after the close finds no open set — it is
+	// a named refusal, never a re-open.
+	if _, err := l.Observe(context.Background(), liveApplied()); !errors.Is(err, clank.ErrNoOpenSet) {
+		t.Errorf("a replay after close must be inert (ErrNoOpenSet), got %v", err)
+	}
+}
+
 func liveSuccess() outcome.Outcome {
 	return outcome.Outcome{
 		ID:          "out:slo_burn:ceph-rgw:1000", // thump's stamp: "out:" + SignalRef + ":" + unix
@@ -259,4 +289,10 @@ func clickSet() proposal.Set {
 		Recommended: "p1",
 		Status:      &proposal.Status{Phase: proposal.PhaseProposed}, // engine.go:42,140
 	}
+}
+
+func liveApplied() outcome.Outcome {
+	o := liveSuccess()
+	o.Result = outcome.ResultApplied
+	return o
 }

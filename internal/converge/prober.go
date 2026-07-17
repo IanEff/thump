@@ -49,6 +49,15 @@ func (p *Prober) Converged(ctx context.Context, metric, target string) bool {
 	return compare(op, value, threshold)
 }
 
+// Severity resolves the query's name through Queries and reports its live, normalized value.
+func (p *Prober) Severity(ctx context.Context, query string) (value float64, ok bool) {
+	promql, ok := p.Queries[query]
+	if !ok {
+		return 0, false
+	}
+	return p.query(ctx, promql)
+}
+
 func (p *Prober) query(ctx context.Context, query string) (float64, bool) {
 	u, err := url.Parse(p.BaseURL + "/api/v1/query")
 	if err != nil {

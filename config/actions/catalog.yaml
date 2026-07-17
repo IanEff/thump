@@ -36,6 +36,7 @@
     # time.Duration has no custom (un)marshaler, so it rides the wire as a
     # plain integer of nanoseconds: 600000000000 == 10 * time.Minute.
     window: 600000000000
+    severityQuery: severity_rgw_availability
 
 - name: scale-out-rgw-gateways
   # The second dependency_saturation remedy: adds capacity instead of
@@ -63,6 +64,7 @@
     metric: rgw_get_put_latency_ms
     target: "avg < 50ms"
     window: 600000000000 # 10 * time.Minute, in nanoseconds
+    severityQuery: severity_rgw_saturation
 
 - name: hold-rebalance
   # unknown deliberately NOT listed here — see authored.go's comment on this
@@ -118,3 +120,4 @@
     metric: pgs_degraded
     target: "pgs_degraded == 0"
     window: 600000000000 # 10 * time.Minute, in nanoseconds
+    severityQuery: severity_ceph_redundancy

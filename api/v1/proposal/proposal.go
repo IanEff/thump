@@ -58,7 +58,7 @@ type Status struct {
 	Phase        string    `json:"phase,omitempty" yaml:"phase,omitempty"` // one of the Phase* constants below
 	Reason       string    `json:"reason,omitempty" yaml:"reason,omitempty"`
 	SupersededBy string    `json:"supersededBy,omitempty" yaml:"supersededBy,omitempty"` // the Set.Name that superseded this one, when Phase is PhaseSuperseded
-	Outcome      string    `json:"outcome,omitempty" yaml:"outcome,omitempty"`           // success | failure | unknown | partial_non_converging — schema-ready, unpopulated in v1 (nothing writes it yet)
+	Outcome      string    `json:"outcome,omitempty" yaml:"outcome,omitempty"`           // applied | success | failure | unknown | partial_non_converging — applied is interim (Phase stays Acted, awaiting convergence); the rest are terminal
 	ObservedAt   time.Time `json:"observedAt,omitempty" yaml:"observedAt,omitempty"`
 }
 

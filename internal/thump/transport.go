@@ -129,21 +129,17 @@ func (tr *Transport) Tick(ctx context.Context) error {
 func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) error {
 	switch g.Decision.Verdict {
 	case decision.VerdictApproved:
-		now := time.Now
-		if tr.Now != nil {
-			now = tr.Now
-		}
 		var order Order
 		if err := beat.Stage(ctx, tr.tracer(), tr.Stages, "render", func(context.Context) error {
 			var err error
-			order, err = (Actuator{}).Render(g, tr.Catalog, now())
+			order, err = (Actuator{}).Render(g, tr.Catalog, tr.now())
 			return err
 		}); err != nil {
 			return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
 		}
-		oc := tr.Exec.Execute(ctx, order, now())
-		if tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultSuccess {
-			go tr.watchAndReverse(ctx, order)
+		oc := tr.Exec.Execute(ctx, order, tr.now())
+		if tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultApplied {
+			go tr.watchAndSettle(ctx, order)
 		}
 		if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
 			return fmt.Errorf("thump: publish order for %s: %w", g.Decision.SignalRef, err)
@@ -183,6 +179,16 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 	}
 }
 
+// now returns tr.Now() when set, or time.Now — the one clock handle and the
+// watchAndSettle goroutine it spawns both read, so a frozen test clock
+// covers both.
+func (tr *Transport) now() time.Time {
+	if tr.Now != nil {
+		return tr.Now()
+	}
+	return time.Now()
+}
+
 func (tr *Transport) disposition(path, sub string) error {
 	dir := filepath.Join(tr.Inbox, sub)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -191,18 +197,39 @@ func (tr *Transport) disposition(path, sub string) error {
 	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
 }
 
-// watchAndReverse blocks for order's success window and, if it never
-// converged, executes and publishes the authored undo through the same
-// Exec — no fresh governance pass, because the reversal method was part of
-// what hiss already approved. Runs in its own goroutine so handle returns
-// immediately; ctx is the same long-lived ctx the poll loop or consumer
-// runs under, cancelled only at shutdown.
-func (tr *Transport) watchAndReverse(ctx context.Context, order Order) {
-	reversal, fired := tr.Reversal.Watch(ctx, order)
+// watchAndSettle blocks for order's success window, reads convergence once,
+// and emits the terminal convergence Outcome — success when the SLO
+// recovered, partial_non_converging when it did not. On non-convergence it
+// also fires the authored reversal (unchanged from the old watchAndReverse),
+// because the undo was part of the grant hiss already approved. One window,
+// one probe read, two effects. Runs in its own goroutine so handle returns
+// immediately; ctx is the same long-lived ctx the poll loop or consumer runs
+// under, cancelled only at shutdown.
+func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
+	reversal, fired, severity := tr.Reversal.Watch(ctx, order)
+
+	conv := outcome.Outcome{
+		ID:               fmt.Sprintf("out:%s:conv:%d", order.SignalRef, tr.now().Unix()),
+		DecisionRef:      order.DecisionRef, // answers to the same grant → the same ledger set
+		SignalRef:        order.SignalRef,
+		ContractRef:      order.ContractRef,
+		Mode:             outcome.ModeLive,
+		Result:           settleResult(fired),
+		ObservedSeverity: severity, // nil stays nil — unmeasured never becomes a fabricated 0.0
+		Error:            settleError(fired, order.Success.Target),
+		ExecutedAt:       tr.now(),
+	}
+	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", conv); err != nil {
+		slog.Error("publish convergence outcome", "signalRef", order.SignalRef, "err", err)
+	}
+	tr.Log.Record(conv)
+	slog.Info("settled", "signalRef", order.SignalRef, "contractRef", order.ContractRef,
+		"result", conv.Result, "observedSeverity", logSeverity(severity), "reversed", fired)
+
 	if !fired {
 		return
 	}
-	oc := tr.Exec.Execute(ctx, reversal, time.Now())
+	oc := tr.Exec.Execute(ctx, reversal, tr.now())
 	if err := tr.OrderPub.Publish(ctx, "thump.orders", reversal); err != nil {
 		slog.Error("publish reversal order", "signalRef", reversal.SignalRef, "err", err)
 	}
@@ -211,4 +238,31 @@ func (tr *Transport) watchAndReverse(ctx context.Context, order Order) {
 	}
 	tr.Log.Record(oc)
 	slog.Info("outcome", "signalRef", reversal.SignalRef, "contractRef", oc.ContractRef, "acted", true, "reversal", true)
+}
+
+// logSeverity renders a nil severity as "unmeasured" for the slog line rather than
+// a pointer address or a misleading 0 — the log has to be as honest as the field.
+func logSeverity(s *float64) any {
+	if s == nil {
+		return "unmeasured"
+	}
+	return *s
+}
+
+// settleResult maps the watcher's did-it-reverse bool to the terminal result:
+// a fired reversal means the window elapsed unmet.
+func settleResult(fired bool) outcome.Result {
+	if fired {
+		return outcome.ResultPartialNonConverging
+	}
+	return outcome.ResultSuccess
+}
+
+// settleError gives a partial the error text Auditable() demands — silence on a
+// non-convergence is exactly the accountability gap I-6 defence 4 exists to close.
+func settleError(fired bool, target string) string {
+	if fired {
+		return fmt.Sprintf("success window elapsed without meeting %q", target)
+	}
+	return ""
 }

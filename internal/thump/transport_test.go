@@ -123,9 +123,9 @@ func TestHandle_FiresAnAutomaticReversalAfterALiveForwardOrderFailsToConverge(t 
 		if err := tr.Tick(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		synctest.Wait()                          // let watchAndReverse's goroutine reach its timer block
+		synctest.Wait()                          // let watchAndSettle's goroutine reach its timer block
 		time.Sleep(goldenOrder().Success.Window) // every goroutine now blocked on a timer -> fake clock jumps
-		synctest.Wait()                          // let watchAndReverse finish its post-timer work before we assert
+		synctest.Wait()                          // let watchAndSettle finish its post-timer work before we assert
 
 		if !runner.called || !runner.gotReverse {
 			// note: fakeRunner only remembers the LAST call — you may need a

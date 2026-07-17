@@ -48,6 +48,7 @@ func (c *Click) Absorb(ctx context.Context, o outcome.Outcome) error {
 	if c.Recorder != nil {
 		c.Recorder.recordResolution(set, o)
 		c.Recorder.recordCalibration(set, o)
+		c.Recorder.recordEffectiveness(set, o)
 	}
 	return c.Cases.Append(newCase(set, o))
 }

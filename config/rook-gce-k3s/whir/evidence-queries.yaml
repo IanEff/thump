@@ -113,3 +113,27 @@ queries:
   # ── group 6 · ArgoCD sync state (evidence for the argocd-sync decline probe) ─
   - name: argocd_apps_out_of_sync
     query: count(argocd_app_info{sync_status!="Synced"}) or vector(0)
+
+  # ── group 7 · action convergence severity (Phase H — thump's watchAndSettle) ─
+  # slo:sli_error:ratio_rate5m IS rattle's DegradationPct axis: Sloth's own SLI error
+  # fraction (burn_rate × error_budget), clamp_max'd to 0..1. The 5m window is the
+  # freshest Sloth records — right for a post-window "did it settle?" read, not the
+  # onset-detection sensitivity the SLI's internal 1m sub-window chases.
+  # ⚠️ Match sloth_id to the SLO this action is meant to fix (throttle targets the
+  # RGW anonymous-ratelimit / availability path — see rgw-failure-injection).
+  - name: severity_rgw_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-availability"}
+
+  # accelerate-recovery targets redundancy_degraded — same axis, same discipline,
+  # a different sloth_id. Confirmed live 2026-07-17: the recording rule exists
+  # and reads a real 0..1 value (0 on a healthy cluster).
+  - name: severity_ceph_redundancy
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-redundancy"}
+
+  # scale-out-rgw-gateways' success metric is rgw_get_put_latency_ms — the
+  # SATURATION SLI's raw value — so its post-action severity reads the saturation
+  # SLO, NOT availability: a latency fault drives slow-but-successful ops, which
+  # move ceph-rgw-saturation and never touch the availability SLI's rejection count.
+  # ⚠️ VERIFY the recording rule exists on the live cluster before trusting it.
+  - name: severity_rgw_saturation
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-saturation"}

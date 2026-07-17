@@ -33,8 +33,10 @@ import (
 // thump.outcomes) or the directory-poll fallback (THUMP_INBOX/THUMP_OUTBOX)
 // depending on whether a NATS URL is configured. It returns a process exit
 // code rather than calling os.Exit, so the whole startup path stays
-// testable.
-func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string) int {
+// testable. notifierCtor builds the concrete Notifier from a webhook URL —
+// injected because internal/thump can't import internal/notify/slack itself
+// (see buildNotifier); cmd/thump's composition root is the one place that can.
+func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string, notifierCtor func(url string) Notifier) int {
 	lc, code, exit := beat.Start("thump", args, stdout, stderr, beat.Version{Version: version, Commit: commit, Date: date})
 	if exit {
 		return code
@@ -47,6 +49,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
+	notifier := buildNotifier(cfg, notifierCtor)
 
 	cat, err := contract.LoadCatalogFile(cfg.ActionCatalog, contract.Preconditions)
 	if err != nil {
@@ -66,7 +69,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg, cat, tracer, stages, health, stderr)
+		return runBroker(ctx, lc.NATSURL, cfg, cat, notifier, tracer, stages, health, stderr)
 	}
 	health.SetReady(true)
 
@@ -107,6 +110,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Log:      NewOutcomeLog(),
 		Exec:     exec,
 		Reversal: watcher,
+		Notifier: notifier,
 		Tracer:   tracer,
 		Stages:   stages,
 	}
@@ -121,7 +125,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	js, closeNC, err := broker.Connect(ctx, natsURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -184,6 +188,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		Log:        NewOutcomeLog(),
 		Exec:       exec,
 		Reversal:   watcher,
+		Notifier:   notifier,
 		Tracer:     tracer,
 		Stages:     stages,
 	}
@@ -248,4 +253,19 @@ func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 	}
 	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries}
 	return &ReversalWatcher{Probe: PrometheusConverger{Probe: prober}}, nil
+}
+
+// buildNotifier turns cfg's Slack webhook URL into a Notifier via ctor.
+// Unlike buildExecutor/buildReversalWatcher above, this package can't
+// construct the concrete client itself — internal/notify/slack imports
+// internal/thump for HeldAction, so the reverse import would cycle. ctor is
+// supplied by cmd/thump's composition root, which is free to import the
+// Slack package; an empty URL (SLACK_WEBHOOK_URL unset) means no notifier,
+// not a broken one — a hold still publishes to HeldPub, it just pages
+// nobody (handle nil-checks Notifier at transport.go:161).
+func buildNotifier(cfg config.Thump, ctor func(url string) Notifier) Notifier {
+	if cfg.SlackWebhookURL == "" {
+		return nil
+	}
+	return ctor(cfg.SlackWebhookURL)
 }

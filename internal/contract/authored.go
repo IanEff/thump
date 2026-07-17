@@ -24,9 +24,12 @@ func Default() *StaticCatalog {
 					"global ratelimit, shedding non-critical load without touching authenticated request paths",
 				ScopeParameters: map[string]Range{"throttle_pct": {Min: 10, Max: 60, Default: 25}},
 			},
-			BlastTier:       proposal.BlastMed,
-			Reversal:        Reversal{Method: "unthrottle", Fallback: "page-oncall"},
-			SuccessCriteria: SuccessCriteria{Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute},
+			BlastTier: proposal.BlastMed,
+			Reversal:  Reversal{Method: "unthrottle", Fallback: "page-oncall"},
+			SuccessCriteria: SuccessCriteria{
+				Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute,
+				SeverityQuery: "severity_rgw_availability",
+			},
 		},
 		{
 			// The second dependency_saturation remedy: adds capacity
@@ -41,9 +44,12 @@ func Default() *StaticCatalog {
 					"to add serving capacity under load",
 				ScopeParameters: map[string]Range{"additional_replicas": {Min: 1, Max: 3, Default: 1}},
 			},
-			BlastTier:       proposal.BlastLow,
-			Reversal:        Reversal{Method: "scale-in-rgw-gateways", Fallback: "page-oncall"},
-			SuccessCriteria: SuccessCriteria{Metric: "rgw_get_put_latency_ms", Target: "avg < 50ms", Window: 10 * time.Minute},
+			BlastTier: proposal.BlastLow,
+			Reversal:  Reversal{Method: "scale-in-rgw-gateways", Fallback: "page-oncall"},
+			SuccessCriteria: SuccessCriteria{
+				Metric: "rgw_get_put_latency_ms", Target: "avg < 50ms", Window: 10 * time.Minute,
+				SeverityQuery: "severity_rgw_saturation",
+			},
 		},
 		{
 			Name: "hold-rebalance",
@@ -95,9 +101,10 @@ func Default() *StaticCatalog {
 				Fallback: "page-oncall",
 			},
 			SuccessCriteria: SuccessCriteria{
-				Metric: "pgs_degraded",
-				Target: "pgs_degraded == 0",
-				Window: 10 * time.Minute,
+				Metric:        "pgs_degraded",
+				Target:        "pgs_degraded == 0",
+				Window:        10 * time.Minute,
+				SeverityQuery: "severity_ceph_redundancy",
 			},
 		},
 	})

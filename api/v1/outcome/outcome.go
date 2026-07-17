@@ -19,14 +19,15 @@ import (
 // executing (live) one Decision — never a prediction. PredictedImpact
 // (api/v1/proposal) is the forecast; Outcome is the measurement.
 type Outcome struct {
-	ID          string    `json:"id,omitempty" yaml:"id,omitempty"`                   // deterministic: "out:" + SignalRef + ":" + unix(now)
-	DecisionRef string    `json:"decisionRef,omitempty" yaml:"decisionRef,omitempty"` // Decision.ID — the grant this outcome answers to
-	SignalRef   string    `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`     // the fingerprint, threaded through untouched (4th beat, same thread)
-	ContractRef string    `json:"contractRef,omitempty" yaml:"contractRef,omitempty"` // what was (would have been) executed
-	Mode        Mode      `json:"mode,omitempty" yaml:"mode,omitempty"`               // dry_run or live — rehearsal and reality must be distinguishable, never inferred from Result alone
-	Result      Result    `json:"result,omitempty" yaml:"result,omitempty"`
-	Error       string    `json:"error,omitempty" yaml:"error,omitempty"` // required company for failure / partial_non_converging — a failure with no error text is silence, not accountability
-	ExecutedAt  time.Time `json:"executedAt,omitempty" yaml:"executedAt,omitempty"`
+	ID               string    `json:"id,omitempty" yaml:"id,omitempty"`                   // deterministic: "out:" + SignalRef + ":" + unix(now)
+	DecisionRef      string    `json:"decisionRef,omitempty" yaml:"decisionRef,omitempty"` // Decision.ID — the grant this outcome answers to
+	SignalRef        string    `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`     // the fingerprint, threaded through untouched (4th beat, same thread)
+	ContractRef      string    `json:"contractRef,omitempty" yaml:"contractRef,omitempty"` // what was (would have been) executed
+	Mode             Mode      `json:"mode,omitempty" yaml:"mode,omitempty"`               // dry_run or live — rehearsal and reality must be distinguishable, never inferred from Result alone
+	Result           Result    `json:"result,omitempty" yaml:"result,omitempty"`
+	Error            string    `json:"error,omitempty" yaml:"error,omitempty"` // required company for failure / partial_non_converging — a failure with no error text is silence, not accountability
+	ExecutedAt       time.Time `json:"executedAt,omitempty" yaml:"executedAt,omitempty"`
+	ObservedSeverity *float64  `json:"observedSeverity,omitempty" yaml:"observedSeverity,omitempty"`
 }
 
 // Auditable is the invariant every emitted Outcome must satisfy: no
@@ -66,9 +67,15 @@ type Result string
 
 const (
 	ResultRendered Result = "rendered" // dry-run's only terminal state: the order exists, nothing was touched
-	ResultSuccess  Result = "success"
-	ResultFailure  Result = "failure"
-	ResultUnknown  Result = "unknown"
+	// ResultApplied is a live action's immediate word: the mutation ran with
+	// no error, but whether the incident RESOLVED is not yet known — that's
+	// the convergence watcher's word to have, after the success window. Maps
+	// to PhaseActed (in-flight, still deduping); calibration skips it, since
+	// there is nothing settled yet to score.
+	ResultApplied Result = "applied"
+	ResultSuccess Result = "success"
+	ResultFailure Result = "failure"
+	ResultUnknown Result = "unknown"
 	// ResultBlocked is a live order a disarmed kill-switch refused — a
 	// recorded refusal, never a silent skip, and never a failure, so it needs
 	// no error text to be Auditable. Distinct from a decline (hiss's, before
