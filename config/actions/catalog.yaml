@@ -119,3 +119,4 @@
     metric: pgs_degraded
     target: "pgs_degraded == 0"
     window: 600000000000 # 10 * time.Minute, in nanoseconds
+    severityQuery: severity_ceph_redundancy

@@ -98,9 +98,10 @@ func Default() *StaticCatalog {
 				Fallback: "page-oncall",
 			},
 			SuccessCriteria: SuccessCriteria{
-				Metric: "pgs_degraded",
-				Target: "pgs_degraded == 0",
-				Window: 10 * time.Minute,
+				Metric:        "pgs_degraded",
+				Target:        "pgs_degraded == 0",
+				Window:        10 * time.Minute,
+				SeverityQuery: "severity_ceph_redundancy",
 			},
 		},
 	})

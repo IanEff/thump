@@ -123,3 +123,9 @@ queries:
   # RGW anonymous-ratelimit / availability path — see rgw-failure-injection).
   - name: severity_rgw_availability
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-availability"}
+
+  # accelerate-recovery targets redundancy_degraded — same axis, same discipline,
+  # a different sloth_id. Confirmed live 2026-07-17: the recording rule exists
+  # and reads a real 0..1 value (0 on a healthy cluster).
+  - name: severity_ceph_redundancy
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-redundancy"}
