@@ -16,8 +16,17 @@
 version: v1
 queries:
   # ── group 1 · cluster health & the firing SLO (universal) ───────────────
+  # ⚠️ VERIFIED LIVE 2026-07-17 (Phase I, hold-rebalance chaos run): every
+  # mgr-exported ceph_* metric on this rig is scraped by TWO Prometheus jobs
+  # — the dedicated rook-ceph-mgr job AND a generic kubernetes-pods
+  # pod-annotation scrape that also happens to match the mgr pod — so an
+  # unfiltered count()/sum() over one of these reads 2x a single real event.
+  # Same shape as osd_write_latency_ms's documented Bug 2 below, different
+  # metric family. A run that killed exactly one OSD read osds_down=2. Every
+  # query below that aggregates a bare ceph_osd_*/ceph_pg_*/ceph_mon_* series
+  # now pins job="rook-ceph-mgr" for this reason — don't drop the filter.
   - name: ceph_health              # 0=OK, 1=WARN, 2=ERR — the headline
-    query: ceph_health_status
+    query: ceph_health_status{job="rook-ceph-mgr"}
   - name: slo_burn_ceph_health     # the burn rate rattle fired on
     query: slo:current_burn_rate:ratio{sloth_id="ceph-health"}
   - name: slo_burn_rgw             # RGW-availability burn (error-rate SLI — see rgw_failed_rate below)
@@ -33,19 +42,23 @@ queries:
 
   # ── group 2 · OSD / rebalance state (evidence FOR or AGAINST hold-rebalance) ─
   - name: osds_down                # OSDs currently down — transient node loss?
-    query: count(ceph_osd_up == 0) or vector(0)
+    query: count(ceph_osd_up{job="rook-ceph-mgr"} == 0) or vector(0)
   - name: osds_out                 # OSDs marked out — is CRUSH about to rebalance?
-    query: count(ceph_osd_in == 0) or vector(0)
+    query: count(ceph_osd_in{job="rook-ceph-mgr"} == 0) or vector(0)
   - name: pgs_degraded             # degraded PGs — below replica count, the redundancy_degraded surface
-    query: sum(ceph_pg_degraded) or vector(0)
+    query: sum(ceph_pg_degraded{job="rook-ceph-mgr"}) or vector(0)
   - name: pgs_undersized           # undersized PGs — too few OSDs to place all replicas
-    query: sum(ceph_pg_undersized) or vector(0)
+    query: sum(ceph_pg_undersized{job="rook-ceph-mgr"}) or vector(0)
   - name: pgs_backfilling          # is a rebalance/backfill ALREADY in flight?
-    query: sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)
+    query: sum(ceph_pg_backfilling{job="rook-ceph-mgr"} + ceph_pg_backfill_wait{job="rook-ceph-mgr"}) or vector(0)
   - name: recovery_ops_rate        # recovery ops/s — is the cluster thrashing right now?
-    query: sum(ceph_osd_recovery_ops) or vector(0)
+    # Different pairing than the rest of this group: ceph_osd_recovery_ops
+    # comes from the standalone rook-ceph-exporter DaemonSet, not the mgr's
+    # own exporter — still duplicated against kubernetes-pods, just a
+    # different job name to filter to. VERIFIED LIVE 2026-07-17.
+    query: sum(ceph_osd_recovery_ops{job="rook-ceph-exporter"}) or vector(0)
   - name: mons_in_quorum           # mon quorum count — a quorum loss changes everything
-    query: count(ceph_mon_quorum_status == 1) or vector(0)
+    query: count(ceph_mon_quorum_status{job="rook-ceph-mgr"} == 1) or vector(0)
 
   # ── group 3 · capacity / resource_exhaustion (the hold-rebalance failure class) ─
   - name: cluster_used_ratio       # 0..1 whole-cluster fullness
