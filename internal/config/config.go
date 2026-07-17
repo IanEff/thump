@@ -167,6 +167,7 @@ type Thump struct {
 	KillSwitchPath  string // THUMP_KILLSWITCH -- path to armed:bool file; only read in live mode
 	PromURL         string // PROM_URL — optional; empty disables the automatic reversal watcher
 	EvidenceQueries string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
+	SlackWebhookURL string // SLACK_WEBHOOK_URL - optional; empty means no Notifier is wired.
 	Inbox           string // THUMP_INBOX — required only in the offline (non-broker) path
 	Outbox          string // THUMP_OUTBOX — required only in the offline path
 	WALDir          string // WAL_DIR — required only in the broker path
@@ -187,6 +188,7 @@ func LoadThump(broker bool) (Thump, error) {
 		KillSwitchPath:  l.Optional("THUMP_KILLSWITCH"),
 		PromURL:         l.Optional("PROM_URL"),
 		EvidenceQueries: l.Optional("EVIDENCE_QUERIES"),
+		SlackWebhookURL: l.Optional("SLACK_WEBHOOK_URL"),
 	}
 	if broker {
 		t.Inbox = l.Optional("THUMP_INBOX")

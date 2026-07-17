@@ -389,6 +389,30 @@ func TestLoadThump_Valid_PopulatesStruct(t *testing.T) {
 	}
 }
 
+func TestLoadThump_SlackWebhookURLOptional(t *testing.T) {
+	setThumpEnv(t)
+	for _, name := range []string{"THUMP_EXECUTOR", "THUMP_KILLSWITCH", "PROM_URL", "EVIDENCE_QUERIES", "SLACK_WEBHOOK_URL"} {
+		t.Setenv(name, "")
+	}
+
+	got, err := config.LoadThump(false /* broker */)
+	if err != nil {
+		t.Fatalf("LoadThump: %v", err)
+	}
+	if got.SlackWebhookURL != "" {
+		t.Errorf("SlackWebhookURL unset must load empty, got %q", got.SlackWebhookURL)
+	}
+
+	t.Setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.example/T000/B000/xxx")
+	got, err = config.LoadThump(false /* broker */)
+	if err != nil {
+		t.Fatalf("LoadThump: %v", err)
+	}
+	if got.SlackWebhookURL != "https://hooks.slack.example/T000/B000/xxx" {
+		t.Errorf("SlackWebhookURL = %q, want the configured value", got.SlackWebhookURL)
+	}
+}
+
 func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	// broker=true is thump's NATS path — THUMP_INBOX/OUTBOX are the offline
 	// dir-poll fallback's vars and must not be demanded when the broker path
