@@ -37,6 +37,7 @@
     # plain integer of nanoseconds: 600000000000 == 10 * time.Minute.
     window: 600000000000
     severityQuery: severity_rgw_availability
+    severityReductionPct: 0.5
 
 - name: scale-out-rgw-gateways
   # The second dependency_saturation remedy: adds capacity instead of
@@ -65,6 +66,7 @@
     target: "avg < 50ms"
     window: 600000000000 # 10 * time.Minute, in nanoseconds
     severityQuery: severity_rgw_saturation
+    severityReductionPct: 0.6
 
 - name: hold-rebalance
   # unknown deliberately NOT listed here — see authored.go's comment on this
@@ -121,3 +123,4 @@
     target: "pgs_degraded == 0"
     window: 600000000000 # 10 * time.Minute, in nanoseconds
     severityQuery: severity_ceph_redundancy
+    severityReductionPct: 0.8

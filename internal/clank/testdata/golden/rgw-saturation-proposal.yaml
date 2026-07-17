@@ -26,6 +26,8 @@ proposals:
   governanceLevel:
     band: act_reversible
   id: p1
+  predictedImpact:
+    severityReductionPct: 0.5
   rank: 1
   reversalPath:
     method: unthrottle

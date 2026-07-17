@@ -143,6 +143,13 @@ type SuccessCriteria struct {
 	Window          time.Duration `json:"window,omitempty" yaml:"window,omitempty"`
 	AbortConditions []string      `json:"abortConditions,omitempty" yaml:"abortConditions,omitempty"`
 	SeverityQuery   string        `json:"severityQuery,omitempty" yaml:"severityQuery,omitempty"` // Normalized fraction of the SLO's error budget as returned by PromQL
+	// SeverityReductionPct is the authored expectation of how much this
+	// action cuts the SeverityQuery's 0..1 error-budget severity — the
+	// predicted end of the effectiveness delta whose observed end is the
+	// convergence Outcome's ObservedSeverity. Only meaningful alongside a
+	// SeverityQuery; a zero value means unforecast and feeds no effectiveness
+	// datum, never an expectation of zero effect.
+	SeverityReductionPct float64 `json:"severityReductionPct,omitempty" yaml:"severityReductionPct,omitempty"`
 }
 
 type Precondition struct {
