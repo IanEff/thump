@@ -36,6 +36,11 @@ func TestOutcomeAuditable(t *testing.T) {
 		"Auditable rejects a partial non-converging outcome with no error text": {
 			o: silentPartial(goldenOutcome()), wantErr: true,
 		},
+		// ObservedSeverity is never required company: a measured value rides
+		// along on an otherwise-auditable outcome without changing the verdict.
+		"Auditable accepts a measured ObservedSeverity alongside an otherwise-auditable outcome": {
+			o: withMeasuredSeverity(goldenOutcome()), wantErr: false,
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

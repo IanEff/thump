@@ -59,6 +59,12 @@ func silentPartial(o outcome.Outcome) outcome.Outcome {
 	return o
 }
 
+func withMeasuredSeverity(o outcome.Outcome) outcome.Outcome {
+	sev := 0.42
+	o.ObservedSeverity = &sev
+	return o
+}
+
 func frozenNow() time.Time { return time.Unix(1000, 0) }
 
 func approvedGoverned() decision.Governed {
