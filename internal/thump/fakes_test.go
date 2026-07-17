@@ -149,8 +149,9 @@ func richCatalog() *contract.StaticCatalog {
 		SuccessCriteria: contract.SuccessCriteria{
 			Metric:          "latency_p99",
 			Target:          "p99 < 250ms",
-			Window:          10 * time.Minute, // rendered, not evaluated, in v1 (PARKED: the convergence watcher)
+			Window:          10 * time.Minute,
 			AbortConditions: []string{"error_rate > 2%"},
+			SeverityQuery:   "severity_rgw_availability", // the authored 0..1 severity read, H2's watchAndSettle
 		},
 	}})
 }
@@ -171,6 +172,7 @@ func goldenOrder() thump.Order {
 		Success: contract.SuccessCriteria{
 			Metric: "latency_p99", Target: "p99 < 250ms",
 			Window: 10 * time.Minute, AbortConditions: []string{"error_rate > 2%"},
+			SeverityQuery: "severity_rgw_availability",
 		},
 		RenderedAt: frozenNow(),
 	}

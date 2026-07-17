@@ -67,9 +67,15 @@ type Result string
 
 const (
 	ResultRendered Result = "rendered" // dry-run's only terminal state: the order exists, nothing was touched
-	ResultSuccess  Result = "success"
-	ResultFailure  Result = "failure"
-	ResultUnknown  Result = "unknown"
+	// ResultApplied is a live action's immediate word: the mutation ran with
+	// no error, but whether the incident RESOLVED is not yet known — that's
+	// the convergence watcher's word to have, after the success window. Maps
+	// to PhaseActed (in-flight, still deduping); calibration skips it, since
+	// there is nothing settled yet to score.
+	ResultApplied Result = "applied"
+	ResultSuccess Result = "success"
+	ResultFailure Result = "failure"
+	ResultUnknown Result = "unknown"
 	// ResultBlocked is a live order a disarmed kill-switch refused — a
 	// recorded refusal, never a silent skip, and never a failure, so it needs
 	// no error text to be Auditable. Distinct from a decline (hiss's, before

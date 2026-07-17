@@ -9,6 +9,8 @@ import (
 
 type fakeProbe struct {
 	answer            bool
+	severity          float64
+	severityOK        bool
 	gotMetric, gotTgt string
 }
 
@@ -17,14 +19,18 @@ func (f *fakeProbe) Converged(_ context.Context, metric, target string) bool {
 	return f.answer
 }
 
+func (f *fakeProbe) Severity(_ context.Context, _ string) (float64, bool) {
+	return f.severity, f.severityOK
+}
+
 func TestPrometheusConverger_UnpacksOrderSuccessIntoTheProbe(t *testing.T) {
 	t.Parallel()
 	probe := &fakeProbe{answer: true}
 	c := thump.PrometheusConverger{Probe: probe}
 
-	got := c.Converged(context.Background(), goldenOrder())
+	converged, _ := c.Settle(context.Background(), goldenOrder())
 
-	if !got {
+	if !converged {
 		t.Error("PrometheusConverger must return the probe's own answer")
 	}
 	if probe.gotMetric != "latency_p99" || probe.gotTgt != "p99 < 250ms" {

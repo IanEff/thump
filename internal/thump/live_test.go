@@ -32,7 +32,7 @@ func (r *fakeRunner) Run(_ context.Context, ref string, reverse bool, params map
 	return r.err
 }
 
-func TestLive_RunsTheForwardActionAndRecordsAnAuditableSuccess(t *testing.T) {
+func TestLive_RunsTheForwardActionAndRecordsAnAuditableApplied(t *testing.T) {
 	t.Parallel()
 	runner := &fakeRunner{}
 	live := thump.Live{Runner: runner}
@@ -60,11 +60,11 @@ func TestLive_RunsTheForwardActionAndRecordsAnAuditableSuccess(t *testing.T) {
 		SignalRef:   "slo_burn:ceph-rgw",
 		ContractRef: "throttle-non-critical-paths",
 		Mode:        outcome.ModeLive,      // it acted…
-		Result:      outcome.ResultSuccess, // …and the action landed
+		Result:      outcome.ResultApplied, // …but convergence isn't known yet
 		ExecutedAt:  frozenNow(),
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Error("live success outcome drifted from the golden fixture (-want +got)", diff)
+		t.Error("live applied outcome drifted from the golden fixture (-want +got)", diff)
 	}
 }
 
@@ -131,7 +131,7 @@ func TestLive_ComposesUnderADisarmedKillSwitch(t *testing.T) {
 	if !revRunner.gotReverse {
 		t.Error("the exempted reversal must run the undo (reverse=true)")
 	}
-	if rev.Result != outcome.ResultSuccess {
-		t.Errorf("exempted reversal result = %q, want %q", rev.Result, outcome.ResultSuccess)
+	if rev.Result != outcome.ResultApplied {
+		t.Errorf("exempted reversal result = %q, want %q", rev.Result, outcome.ResultApplied)
 	}
 }

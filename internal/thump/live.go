@@ -41,7 +41,7 @@ func (l Live) Execute(ctx context.Context, o Order, now time.Time) outcome.Outco
 		SignalRef:   o.SignalRef,
 		ContractRef: o.ContractRef,
 		Mode:        outcome.ModeLive,
-		Result:      outcome.ResultSuccess,
+		Result:      outcome.ResultApplied,
 		ExecutedAt:  now,
 	}
 	if err := l.Runner.Run(ctx, o.ContractRef, o.Kind == OrderReversal, o.Parameters); err != nil {

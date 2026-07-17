@@ -11,25 +11,17 @@ import (
 	"github.com/ianeff/thump/internal/thump"
 )
 
-// neverConverges / alwaysConverges are the two poles of the convergence probe
-// — a real Converger reads telemetry, but the reversal decision only turns on
-// its bool, so the poles are the whole test surface.
-type neverConverges struct{}
-
-func (neverConverges) Converged(context.Context, thump.Order) bool { return false }
-
-type alwaysConverges struct{}
-
-func (alwaysConverges) Converged(context.Context, thump.Order) bool { return true }
-
 func TestReversalWatcher_FiresAReversalWhenTheWindowElapsesWithCriteriaUnmet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := thump.ReversalWatcher{Probe: neverConverges{}, Now: frozenNow}
 
-		got, fired := w.Watch(context.Background(), goldenOrder())
+		got, fired, severity := w.Watch(context.Background(), goldenOrder())
 
 		if !fired {
 			t.Fatal("an unmet success window must fire a reversal")
+		}
+		if severity == nil || *severity != 0.9 {
+			t.Errorf("Watch must hand back the probe's severity reading, got %v", severity)
 		}
 		want := thump.Order{
 			ID:          "rev:slo_burn:ceph-rgw:1000",
@@ -51,10 +43,13 @@ func TestReversalWatcher_HoldsWhenTheCriteriaAreMet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := thump.ReversalWatcher{Probe: alwaysConverges{}, Now: frozenNow}
 
-		got, fired := w.Watch(context.Background(), goldenOrder())
+		got, fired, severity := w.Watch(context.Background(), goldenOrder())
 
 		if fired {
 			t.Errorf("a met success window must fire no reversal, got %+v", got)
+		}
+		if severity == nil || *severity != 0.05 {
+			t.Errorf("Watch must hand back the probe's severity reading even when converged, got %v", severity)
 		}
 	})
 }
@@ -62,7 +57,7 @@ func TestReversalWatcher_HoldsWhenTheCriteriaAreMet(t *testing.T) {
 func TestReversalWatcher_AReversalSurvivesADisarmedKillSwitch(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := thump.ReversalWatcher{Probe: neverConverges{}, Now: frozenNow}
-		reversal, fired := w.Watch(context.Background(), goldenOrder())
+		reversal, fired, _ := w.Watch(context.Background(), goldenOrder())
 		if !fired {
 			t.Fatal("setup: expected a reversal to fire")
 		}
@@ -80,3 +75,16 @@ func TestReversalWatcher_AReversalSurvivesADisarmedKillSwitch(t *testing.T) {
 		}
 	})
 }
+
+// neverConverges / alwaysConverges are the two poles of the convergence probe
+// — a real Converger reads telemetry, but the reversal decision only turns on
+// its bool, so the poles are the whole test surface.
+func ptr(f float64) *float64 { return &f }
+
+type neverConverges struct{}
+
+func (neverConverges) Settle(context.Context, thump.Order) (bool, *float64) { return false, ptr(0.9) }
+
+type alwaysConverges struct{}
+
+func (alwaysConverges) Settle(context.Context, thump.Order) (bool, *float64) { return true, ptr(0.05) }

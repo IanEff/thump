@@ -142,6 +142,7 @@ type SuccessCriteria struct {
 	Target          string        `json:"target,omitempty" yaml:"target,omitempty"`
 	Window          time.Duration `json:"window,omitempty" yaml:"window,omitempty"`
 	AbortConditions []string      `json:"abortConditions,omitempty" yaml:"abortConditions,omitempty"`
+	SeverityQuery   string        `json:"severityQuery,omitempty" yaml:"severityQuery,omitempty"` // Normalized fraction of the SLO's error budget as returned by PromQL
 }
 
 type Precondition struct {

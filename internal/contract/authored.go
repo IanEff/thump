@@ -24,9 +24,12 @@ func Default() *StaticCatalog {
 					"global ratelimit, shedding non-critical load without touching authenticated request paths",
 				ScopeParameters: map[string]Range{"throttle_pct": {Min: 10, Max: 60, Default: 25}},
 			},
-			BlastTier:       proposal.BlastMed,
-			Reversal:        Reversal{Method: "unthrottle", Fallback: "page-oncall"},
-			SuccessCriteria: SuccessCriteria{Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute},
+			BlastTier: proposal.BlastMed,
+			Reversal:  Reversal{Method: "unthrottle", Fallback: "page-oncall"},
+			SuccessCriteria: SuccessCriteria{
+				Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute,
+				SeverityQuery: "severity_rgw_availability",
+			},
 		},
 		{
 			// The second dependency_saturation remedy: adds capacity

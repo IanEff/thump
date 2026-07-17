@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-// Converger reports whether an Order's SuccessCriteria are met — the metric
-// probe an automatic reversal consults before it fires. The live
-// implementation reads real telemetry; until it exists, nothing outside a
-// test satisfies this.
+// Converger reports both the reversal verdict and the normalized post-action
+// severity for an Order — the two facts watchAndSettle needs after the
+// window. The live implementation reads real telemetry; until it exists,
+// nothing outside a test satisfies this.
 type Converger interface {
-	Converged(ctx context.Context, o Order) bool
+	Settle(ctx context.Context, o Order) (converged bool, severity *float64)
 }
 
 // ReversalWatcher fires the authored undo when a forward Order's success
@@ -27,16 +27,17 @@ type ReversalWatcher struct {
 // Watch blocks for o's success Window, then returns the reversal Order if o
 // still hasn't converged, or (Order{}, false) if it has — a cancelled ctx
 // fires nothing.
-func (w ReversalWatcher) Watch(ctx context.Context, o Order) (Order, bool) {
+func (w ReversalWatcher) Watch(ctx context.Context, o Order) (Order, bool, *float64) {
 	select {
 	case <-ctx.Done():
-		return Order{}, false
+		return Order{}, false, nil
 	case <-time.After(o.Success.Window):
 	}
-	if w.Probe.Converged(ctx, o) {
-		return Order{}, false
+	converged, severity := w.Probe.Settle(ctx, o)
+	if converged {
+		return Order{}, false, severity
 	}
-	return reversalOf(o, w.now()), true
+	return reversalOf(o, w.now()), true, severity
 }
 
 func (w ReversalWatcher) now() time.Time {

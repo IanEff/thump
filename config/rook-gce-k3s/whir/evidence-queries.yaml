@@ -113,3 +113,13 @@ queries:
   # ── group 6 · ArgoCD sync state (evidence for the argocd-sync decline probe) ─
   - name: argocd_apps_out_of_sync
     query: count(argocd_app_info{sync_status!="Synced"}) or vector(0)
+
+  # ── group 7 · action convergence severity (Phase H — thump's watchAndSettle) ─
+  # slo:sli_error:ratio_rate5m IS rattle's DegradationPct axis: Sloth's own SLI error
+  # fraction (burn_rate × error_budget), clamp_max'd to 0..1. The 5m window is the
+  # freshest Sloth records — right for a post-window "did it settle?" read, not the
+  # onset-detection sensitivity the SLI's internal 1m sub-window chases.
+  # ⚠️ Match sloth_id to the SLO this action is meant to fix (throttle targets the
+  # RGW anonymous-ratelimit / availability path — see rgw-failure-injection).
+  - name: severity_rgw_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-availability"}
