@@ -108,16 +108,20 @@ type Candidate struct {
 	ContractRef     string           `json:"contractRef,omitempty" yaml:"contractRef,omitempty"` // must name an entry in the ActionContract catalog — the engine rejects any Candidate whose ContractRef the catalog doesn't list
 	Confidence      float64          `json:"confidence,omitempty" yaml:"confidence,omitempty"`   // the model's hypothesis confidence ("how sure of this fix?") — never signal.Divergence.Confidence ("is this real?")
 	PredictedImpact *PredictedImpact `json:"predictedImpact,omitempty" yaml:"predictedImpact,omitempty"`
-	BlastTier       BlastTier        `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`             // authored; copied from the ActionContract at enrichment — hiss's shaper reads this, never the model's PredictedImpact
+	BlastTier       BlastTier        `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`             // authored; copied from the ActionContract at enrichment — hiss's shaper reads this for risk, never the effectiveness forecast in PredictedImpact
 	ReversalPath    *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence
 	GovernanceLevel *GovernanceLevel `json:"governanceLevel,omitempty" yaml:"governanceLevel,omitempty"` // nil is read as the lowest band (BandObserve), never as elevated privilege
 	Rank            int              `json:"rank,omitempty" yaml:"rank,omitempty"`                       // 1-indexed position after ranking; rank 1 is what Set.Recommended names
 }
 
-// PredictedImpact is the ranker's forecast of what this Candidate would do to
-// the signal, not a measured result — Outcome (api/v1/outcome) carries what
+// PredictedImpact is a forecast of what this Candidate would do to the
+// signal, not a measured result — Outcome (api/v1/outcome) carries what
 // actually happened, once thump acts.
 type PredictedImpact struct {
+	// SeverityReductionPct is the predicted cut to the signal's 0..1
+	// error-budget severity — the authored per-action baseline stamped from
+	// the ActionContract at enrichment, scored against the observed reduction
+	// as agent_action_effectiveness_delta.
 	SeverityReductionPct float64           `json:"severityReductionPct,omitempty" yaml:"severityReductionPct,omitempty"`
 	BlastRadiusDelta     float64           `json:"blastRadiusDelta,omitempty" yaml:"blastRadiusDelta,omitempty"`
 	SLOEffects           map[string]string `json:"sloEffects,omitempty" yaml:"sloEffects,omitempty"` // e.g. "time_to_effect" -> a duration string; the ranker reads this key when velocity-weighting

@@ -28,7 +28,7 @@ func Default() *StaticCatalog {
 			Reversal:  Reversal{Method: "unthrottle", Fallback: "page-oncall"},
 			SuccessCriteria: SuccessCriteria{
 				Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute,
-				SeverityQuery: "severity_rgw_availability",
+				SeverityQuery: "severity_rgw_availability", SeverityReductionPct: 0.5,
 			},
 		},
 		{
@@ -48,7 +48,7 @@ func Default() *StaticCatalog {
 			Reversal:  Reversal{Method: "scale-in-rgw-gateways", Fallback: "page-oncall"},
 			SuccessCriteria: SuccessCriteria{
 				Metric: "rgw_get_put_latency_ms", Target: "avg < 50ms", Window: 10 * time.Minute,
-				SeverityQuery: "severity_rgw_saturation",
+				SeverityQuery: "severity_rgw_saturation", SeverityReductionPct: 0.6,
 			},
 		},
 		{
@@ -101,10 +101,11 @@ func Default() *StaticCatalog {
 				Fallback: "page-oncall",
 			},
 			SuccessCriteria: SuccessCriteria{
-				Metric:        "pgs_degraded",
-				Target:        "pgs_degraded == 0",
-				Window:        10 * time.Minute,
-				SeverityQuery: "severity_ceph_redundancy",
+				Metric:               "pgs_degraded",
+				Target:               "pgs_degraded == 0",
+				Window:               10 * time.Minute,
+				SeverityQuery:        "severity_ceph_redundancy",
+				SeverityReductionPct: 0.8,
 			},
 		},
 	})

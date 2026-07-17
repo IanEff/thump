@@ -373,6 +373,16 @@ func enrichFromCatalog(cat *contract.StaticCatalog, proposals []proposal.Candida
 			continue
 		}
 		proposals[i].BlastTier = c.BlastTier // stamp proposal with BlastTier
+		if c.SuccessCriteria.SeverityReductionPct != 0 {
+			// The forecast half of the effectiveness delta: an authored
+			// per-action expectation, copied like BlastTier — never invented
+			// here, and left absent (not zero) when the catalog forecasts
+			// nothing, so an unforecast action feeds no false effectiveness win.
+			if proposals[i].PredictedImpact == nil {
+				proposals[i].PredictedImpact = &proposal.PredictedImpact{}
+			}
+			proposals[i].PredictedImpact.SeverityReductionPct = c.SuccessCriteria.SeverityReductionPct
+		}
 		if c.Reversal.Method != "" {
 			proposals[i].ReversalPath = &proposal.ReversalPath{
 				Method:   c.Reversal.Method,

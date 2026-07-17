@@ -194,6 +194,72 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 	}
 }
 
+// TestPropose_StampsPredictedImpactFromTheCatalog pins the producer half of
+// the effectiveness delta: enrichFromCatalog copies the authored
+// SeverityReductionPct onto the candidate the same way it copies BlastTier and
+// the reversal, so recordEffectiveness has a forecast to score the observed
+// reduction against. scale-out-rgw-gateways authors a 0.6 baseline.
+func TestPropose_StampsPredictedImpactFromTheCatalog(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rgw_get_put_latency_ms"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "scale-out-rgw-gateways", Confidence: 0.82}},
+		})}}},
+	}}
+
+	e, _ := newTestEngineWithCatalog(model, contract.Default())
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+
+	cand := got.Proposals[0]
+	if cand.PredictedImpact == nil {
+		t.Fatal("a catalogued action with an authored SeverityReductionPct must have PredictedImpact stamped, got nil")
+	}
+	if diff := cmp.Diff(0.6, cand.PredictedImpact.SeverityReductionPct); diff != "" {
+		t.Error("PredictedImpact.SeverityReductionPct must come from the contract's authored baseline (-want +got)", diff)
+	}
+}
+
+// TestPropose_UnforecastContractLeavesPredictedImpactNil is the effectiveness
+// honesty rider, mirroring the reversal one: an action the catalog gives no
+// SeverityReductionPct must come out of Propose with PredictedImpact nil — a
+// zero baseline is unforecast, not a forecast of no effect, so
+// recordEffectiveness skips it rather than scoring a fabricated win.
+func TestPropose_UnforecastContractLeavesPredictedImpactNil(t *testing.T) {
+	t.Parallel()
+	cat := contract.NewStaticCatalog([]contract.ActionContract{{
+		Name:                     "cordon-node",
+		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
+		ApplicableTiers:          []string{"tier-1"},
+		Reversal:                 contract.Reversal{Method: "uncordon-node"},
+		// SuccessCriteria.SeverityReductionPct deliberately zero — this action forecasts nothing
+	}})
+
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
+		})}}},
+	}}
+
+	e, _ := newTestEngineWithCatalog(model, cat)
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+
+	if cand := got.Proposals[0]; cand.PredictedImpact != nil {
+		t.Errorf("an action with no authored SeverityReductionPct must not get a fabricated PredictedImpact, got %+v", cand.PredictedImpact)
+	}
+}
+
 type fakeModel struct {
 	script        []clank.Completion
 	err           error // when set, Complete fails on every call regardless of script — simulates a Model outage
