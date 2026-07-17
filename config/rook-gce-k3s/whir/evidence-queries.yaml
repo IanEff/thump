@@ -129,3 +129,11 @@ queries:
   # and reads a real 0..1 value (0 on a healthy cluster).
   - name: severity_ceph_redundancy
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-redundancy"}
+
+  # scale-out-rgw-gateways' success metric is rgw_get_put_latency_ms — the
+  # SATURATION SLI's raw value — so its post-action severity reads the saturation
+  # SLO, NOT availability: a latency fault drives slow-but-successful ops, which
+  # move ceph-rgw-saturation and never touch the availability SLI's rejection count.
+  # ⚠️ VERIFY the recording rule exists on the live cluster before trusting it.
+  - name: severity_rgw_saturation
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-saturation"}

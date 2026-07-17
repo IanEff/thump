@@ -64,6 +64,7 @@
     metric: rgw_get_put_latency_ms
     target: "avg < 50ms"
     window: 600000000000 # 10 * time.Minute, in nanoseconds
+    severityQuery: severity_rgw_saturation
 
 - name: hold-rebalance
   # unknown deliberately NOT listed here — see authored.go's comment on this
