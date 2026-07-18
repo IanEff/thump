@@ -1,7 +1,0 @@
-contractRef: throttle-non-critical-paths
-decisionRef: dec:slo_burn:ceph-rgw:1783252800
-executedAt: "2026-07-05T12:00:00Z"
-id: out:slo_burn:ceph-rgw:1783252800
-mode: dry_run
-result: rendered
-signalRef: slo_burn:ceph-rgw

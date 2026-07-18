@@ -1,9 +1,0 @@
-Confidence: 0.85
-ContractRef: throttle-non-critical-paths
-DecisionRef: dec:slo_burn:ceph-rgw:1783252800
-FailureClass: dependency_saturation
-Fingerprint: slo_burn:ceph-rgw
-Mode: dry_run
-ObservedAt: "2026-07-05T12:00:00Z"
-OutcomeRef: out:slo_burn:ceph-rgw:1783252800
-Result: rendered

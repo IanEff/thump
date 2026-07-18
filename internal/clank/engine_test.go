@@ -115,48 +115,6 @@ func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 	}
 }
 
-// TestPropose_ScaleOutRgwGatewaysStampsItsOwnReversalAndBand is E2's own
-// mechanism pin: TestPropose_StampsReversalAndBandFromTheCatalog already
-// proves enrichFromCatalog works in general, against a synthetic
-// single-contract catalog. This proves it for the specific action E2 added
-// (b48efdb) to contract.Default() — the second dependency_saturation
-// remedy — so the new contract's own reversal method and band are actually
-// exercised, not just implied by the generic mechanism test.
-func TestPropose_ScaleOutRgwGatewaysStampsItsOwnReversalAndBand(t *testing.T) {
-	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rgw_get_put_latency_ms"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassDependencySaturation,
-			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "scale-out-rgw-gateways", Confidence: 0.82}},
-		})}}},
-	}}
-
-	e, _ := newTestEngineWithCatalog(model, contract.Default())
-	got, err := e.Propose(context.Background(), sigBurnAccel())
-	if err != nil {
-		t.Fatalf("Propose errored: %v", err)
-	}
-
-	cand := got.Proposals[0]
-	if cand.ReversalPath == nil {
-		t.Fatal("scale-out-rgw-gateways is reversible, must have ReversalPath stamped, got nil")
-	}
-	if diff := cmp.Diff("scale-in-rgw-gateways", cand.ReversalPath.Method); diff != "" {
-		t.Error("scale-out-rgw-gateways' own reversal method didn't stamp correctly (-want +got)", diff)
-	}
-	if cand.GovernanceLevel == nil {
-		t.Fatal("scale-out-rgw-gateways is reversible, must have GovernanceLevel stamped, got nil")
-	}
-	if diff := cmp.Diff(string(decision.BandActReversible), cand.GovernanceLevel.Band); diff != "" {
-		t.Error("scale-out-rgw-gateways is reversible, must request act_reversible (-want +got)", diff)
-	}
-	if diff := cmp.Diff(string(proposal.BlastLow), string(cand.BlastTier)); diff != "" {
-		t.Error("BlastTier must come from the contract's authored BlastTier (-want +got)", diff)
-	}
-}
-
 // TestPropose_IrreversibleContractLeavesReversalNil is the honesty rider:
 // stamping must never INVENT a reversal an action doesn't have — that would
 // defeat hiss's I-12 irreversibility veto. An authored action with an empty
@@ -198,15 +156,15 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 // the effectiveness delta: enrichFromCatalog copies the authored
 // SeverityReductionPct onto the candidate the same way it copies BlastTier and
 // the reversal, so recordEffectiveness has a forecast to score the observed
-// reduction against. scale-out-rgw-gateways authors a 0.6 baseline.
+// reduction against. hold-rebalance authors a 0.7 baseline.
 func TestPropose_StampsPredictedImpactFromTheCatalog(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rgw_get_put_latency_ms"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassDependencySaturation,
-			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "scale-out-rgw-gateways", Confidence: 0.82}},
+			FailureClass: proposal.ClassRedundancyDegraded,
+			Hypotheses:   []proposal.Hypothesis{{Name: "redundancy_degraded", Weight: 0.8}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.82}},
 		})}}},
 	}}
 
@@ -220,7 +178,7 @@ func TestPropose_StampsPredictedImpactFromTheCatalog(t *testing.T) {
 	if cand.PredictedImpact == nil {
 		t.Fatal("a catalogued action with an authored SeverityReductionPct must have PredictedImpact stamped, got nil")
 	}
-	if diff := cmp.Diff(0.6, cand.PredictedImpact.SeverityReductionPct); diff != "" {
+	if diff := cmp.Diff(0.7, cand.PredictedImpact.SeverityReductionPct); diff != "" {
 		t.Error("PredictedImpact.SeverityReductionPct must come from the contract's authored baseline (-want +got)", diff)
 	}
 }

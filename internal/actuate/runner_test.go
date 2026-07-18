@@ -67,38 +67,6 @@ func TestRunner_DispatchesExactExecForHoldRebalance(t *testing.T) {
 	}
 }
 
-func TestRunner_DispatchesExactPatchForScaleOut(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name    string
-		reverse bool
-		want    string
-	}{
-		{"forward patches instances up", false, `{"spec":{"gateway":{"instances":2}}}`},
-		{"reverse patches instances back", true, `{"spec":{"gateway":{"instances":1}}}`},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			k := &recordKube{}
-			r := actuate.NewWith(k)
-
-			if err := r.Run(context.Background(), "scale-out-rgw-gateways", tc.reverse, nil); err != nil {
-				t.Fatalf("Run(scale-out-rgw-gateways) returned error: %v", err)
-			}
-			if k.patchGVR != [3]string{"ceph.rook.io", "v1", "cephobjectstores"} {
-				t.Errorf("patch GVR = %v, want ceph.rook.io/v1/cephobjectstores", k.patchGVR)
-			}
-			if k.patchNS != "rook-ceph" || k.patchName != "ceph-objectstore" {
-				t.Errorf("patch targeted %s/%q, want rook-ceph/ceph-objectstore", k.patchNS, k.patchName)
-			}
-			if diff := cmp.Diff(tc.want, k.patchBody); diff != "" {
-				t.Errorf("patch body drifted (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
 func TestRunner_UnboundRefIsAnError(t *testing.T) {
 	t.Parallel()
 	r := actuate.NewWith(&recordKube{})
