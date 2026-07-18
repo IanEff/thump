@@ -73,7 +73,7 @@
   # same contract: mapping "unknown" to an action gave the model an out to
   # act instead of declining.
   applicableFailureClasses:
-    - resource_exhaustion
+    - redundancy_degraded
   applicableTiers:
     - tier-1
   action:
@@ -93,6 +93,8 @@
     metric: ceph_health
     target: HEALTH_OK
     window: 600000000000 # 10 * time.Minute, in nanoseconds
+    severityQuery: severity_ceph_redundancy
+    severityReductionPct: 0.7
 
 - name: accelerate-recovery
   # The only high-blast action in the catalog, and the sole remedy for

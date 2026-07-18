@@ -127,6 +127,38 @@ func TestDefault_DependencySaturationOffersTwoDistinctRemedies(t *testing.T) {
 	}
 }
 
+// TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast pins I2's
+// realignment: hold-rebalance is reachable under redundancy_degraded
+// (relabeled off resource_exhaustion, thump-running-notes.md 2026-07-17 part
+// 9), and it carries the SeverityQuery/SeverityReductionPct pair
+// recordEffectiveness needs — a contract with no SeverityReductionPct feeds
+// the effectiveness delta no forecast to score against. redundancy_degraded
+// now offers two independently reversible remedies, the same discrimination
+// shape dependency_saturation has above.
+func TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast(t *testing.T) {
+	got := contract.Default().Applicable(proposal.ClassRedundancyDegraded, "tier-1", proposal.SAO{})
+
+	var names []string
+	for _, c := range got {
+		names = append(names, c.Name)
+	}
+	want := []string{"hold-rebalance", "accelerate-recovery"}
+	if diff := cmp.Diff(want, names); diff != "" {
+		t.Errorf("redundancy_degraded's applicable actions (-want +got):\n%s", diff)
+	}
+
+	holdRebalance, ok := contract.Default().ByName("hold-rebalance")
+	if !ok {
+		t.Fatal("hold-rebalance is not in the catalog")
+	}
+	if holdRebalance.SuccessCriteria.SeverityReductionPct == 0 {
+		t.Error("hold-rebalance needs a non-zero SeverityReductionPct or the effectiveness delta has no forecast to score")
+	}
+	if holdRebalance.SuccessCriteria.SeverityQuery == "" {
+		t.Error("hold-rebalance needs a SeverityQuery so the post-action check has an axis to read")
+	}
+}
+
 // TestShippedFailureClassesMatchesAuthoredDefault is the failure-class
 // definitions' drift guard, the same shape as
 // TestShippedCatalogMatchesAuthoredDefault: the checked-in

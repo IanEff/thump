@@ -59,7 +59,7 @@ func Default() *StaticCatalog {
 			// between declared class and proposed action now becomes an
 			// auditable decline (engine.go's errClassMismatch), not silence.
 			ApplicableFailureClasses: []proposal.FailureClass{
-				proposal.ClassResourceExhaustion,
+				proposal.ClassRedundancyDegraded,
 			},
 			ApplicableTiers: []string{"tier-1"},
 			Action: ActionSpec{
@@ -75,13 +75,15 @@ func Default() *StaticCatalog {
 				Fallback: "page-oncall",
 			},
 			SuccessCriteria: SuccessCriteria{
-				Metric: "ceph_health",
-				Target: "HEALTH_OK",
-				Window: 10 * time.Minute,
+				Metric:               "ceph_health",
+				Target:               "HEALTH_OK",
+				Window:               10 * time.Minute,
+				SeverityQuery:        "severity_ceph_redundancy",
+				SeverityReductionPct: 0.7,
 			},
 		},
 		{
-			// The only high-blast action in the catalog, and the sole remedy
+			// The only high-blast action in the catalog, and one of two remedies
 			// for redundancy_degraded: raising recovery concurrency buys
 			// durability by spending client-serving I/O — a trade a human
 			// blesses, which is why it's authored BlastHigh. Reversible, so

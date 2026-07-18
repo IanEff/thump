@@ -51,7 +51,7 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion, // in defaultCatalog's hold-rebalance
+			FailureClass: proposal.ClassRedundancyDegraded, // in defaultCatalog's hold-rebalance
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -314,7 +314,7 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion,
+			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -422,7 +422,7 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion,
+			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -492,7 +492,7 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 	return &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion,
+			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -528,14 +528,14 @@ func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine
 }
 
 // goldenPolicy is a hiss policy that approves the node-death path: the
-// tier-1 × resource_exhaustion floor sits below the 0.9 candidate confidence,
+// tier-1 × redundancy_degraded floor sits below the 0.9 candidate confidence,
 // and the tier-1 ceiling admits the requested act_reversible band.
 func goldenPolicy() hiss.Policy {
 	return hiss.Policy{
 		Version: "golden-v1",
 		Floors: map[string]map[proposal.FailureClass]float64{
 			"tier-1": {
-				proposal.ClassResourceExhaustion:   0.75,
+				proposal.ClassRedundancyDegraded:   0.75,
 				proposal.ClassDependencySaturation: 0.75,
 			},
 		},
