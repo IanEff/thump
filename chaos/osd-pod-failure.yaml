@@ -1,0 +1,34 @@
+# thump chaos — osd-pod-failure.yaml (targets rook-gce-k3s / ceph-gce)
+#
+# Phase I, Wave I1: proving hold-rebalance genuinely relieves ceph-redundancy.
+# Deliberately `pod-failure`, not `pod-kill` (osd-chaos.yaml's action) — pod-failure
+# patches the pod in place for the fault's duration and auto-reverts, instead of
+# deleting it outright. A pod-kill on a Deployment-backed OSD respawns in well under
+# a minute, so degraded PGs would self-heal before Ceph ever considers marking the
+# OSD out — noout or not, making a "win" coincidental rather than causal. pod-failure
+# holds the OSD down for exactly `duration`, no respawn race, so a lowered
+# mon_osd_down_out_interval (see thump-runbooks.md, hold-rebalance section) can
+# actually be crossed on purpose in the control arm.
+#
+# mode: one picks exactly one OSD pod across however many are running — a transient
+# single-OSD outage, not a multi-OSD event.
+#
+# duration: 240s against mon_osd_down_out_interval=60s (osd_heartbeat_grace=20s,
+# so mark-out is expected ~80s in) — widened from an original 180s/90s pairing
+# after the first control-arm run (2026-07-17) landed the real outage close to
+# its full nominal duration but a ~100s Prometheus scrape gap during the
+# crash-loop window swallowed direct evidence of the mark-out moment. More
+# margin here isn't fixing a timing problem (the fault itself ran long enough)
+# — it's insurance against that same kind of observability gap recurring.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: osd-pod-failure
+  namespace: chaos-mesh
+spec:
+  action: pod-failure
+  mode: one
+  selector:
+    namespaces: [rook-ceph]
+    labelSelectors: {app: rook-ceph-osd}
+  duration: "240s"
