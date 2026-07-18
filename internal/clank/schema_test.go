@@ -6,11 +6,13 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/contract"
 )
 
 // update regenerates the golden files instead of asserting against them:
@@ -49,6 +51,47 @@ func TestProposeToolSpec_PinsTheAutonomyBoundaryToGolden(t *testing.T) {
 	}
 	if diff := cmp.Diff(string(want), string(got)); diff != "" {
 		t.Errorf("propose schema drifted from golden (-want +got):\n%s", diff)
+	}
+}
+
+// failureClassEnum extracts the failureClass property's enum list from a
+// propose input JSON Schema document, sorted for comparison against another
+// unordered source of class names.
+func failureClassEnum(t *testing.T, schema json.RawMessage) []string {
+	t.Helper()
+
+	var doc struct {
+		Properties struct {
+			FailureClass struct {
+				Enum []string `json:"enum"`
+			} `json:"failureClass"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &doc); err != nil {
+		t.Fatalf("propose schema is not valid JSON: %v", err)
+	}
+
+	enum := doc.Properties.FailureClass.Enum
+	sort.Strings(enum)
+	return enum
+}
+
+// TestProposeToolSpec_FailureClassEnumCoversEveryDefaultFailureClass pins the
+// propose schema's failureClass enum against contract.DefaultFailureClasses —
+// the model can only ever declare a class this enum lists, so a class present
+// in the catalog's prompt but absent here is one the real model can never
+// name, no matter what seedPrompt tells it.
+func TestProposeToolSpec_FailureClassEnumCoversEveryDefaultFailureClass(t *testing.T) {
+	got := failureClassEnum(t, clank.ProposeToolSpec().InputSchema)
+
+	want := make([]string, 0, len(contract.DefaultFailureClasses()))
+	for _, def := range contract.DefaultFailureClasses() {
+		want = append(want, string(def.Class))
+	}
+	sort.Strings(want)
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("propose schema's failureClass enum disagrees with DefaultFailureClasses", cmp.Diff(want, got))
 	}
 }
 

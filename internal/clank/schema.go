@@ -29,7 +29,7 @@ func SchemaOf[T any]() json.RawMessage {
 type proposeInput struct {
 	// The enum mirrors the proposal.FailureClass constants; the
 	// propose_schema.json golden pins the emitted shape.
-	FailureClass proposal.FailureClass `json:"failureClass" jsonschema:"required,enum=dependency_saturation,enum=traffic_shift,enum=resource_exhaustion,enum=unknown"`
+	FailureClass proposal.FailureClass `json:"failureClass" jsonschema:"required,enum=dependency_saturation,enum=traffic_shift,enum=resource_exhaustion,enum=unknown,enum=redundancy_degraded"`
 	Hypotheses   []proposal.Hypothesis `json:"hypotheses,omitempty"`
 	Proposals    []proposeCandidate    `json:"proposals" jsonschema:"required"`
 }

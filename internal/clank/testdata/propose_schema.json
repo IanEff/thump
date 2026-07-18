@@ -8,7 +8,8 @@
         "dependency_saturation",
         "traffic_shift",
         "resource_exhaustion",
-        "unknown"
+        "unknown",
+        "redundancy_degraded"
       ]
     },
     "hypotheses": {
