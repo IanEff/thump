@@ -34,6 +34,8 @@ type Decision struct {
 	FloorApplied  float64   `json:"floorApplied,omitempty" yaml:"floorApplied,omitempty"`   // the confidence floor looked up for the Set's ServiceTier and FailureClass from Policy.Floors
 	PolicyVersion string    `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"` // which Policy this verdict was evaluated under — required by Auditable, since a verdict with no policy version can't be re-checked later
 	EvaluatedAt   time.Time `json:"evaluatedAt,omitempty" yaml:"evaluatedAt,omitempty"`
+	Forced        bool      `json:"forced,omitempty" yaml:"forced,omitempty"`     // true when a human pushed this through trim's break-glass path instead of hiss granting it — never rendered as an earned approval
+	Operator      string    `json:"operator,omitempty" yaml:"operator,omitempty"` // who forced it; set only when Forced is true
 }
 
 // Auditable is the invariant every Authority.Evaluate output is tested
