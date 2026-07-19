@@ -1,0 +1,69 @@
+# Tilt dev-loop overrides for the thump-test cluster — Wave 7's addition to
+# CLUSTERS, sibling to deploy/tilt-values-rook-gce-k3s.yaml (thump-test is
+# that rig's replacement: same GCE/k3s/Cilium substrate, Ceph kept, the OTel
+# demo added alongside it as a second orthogonal domain — thump-test repo
+# CLAUDE.md §1). `tilt up -- --cluster=thump-test` picks this file.
+#   - configProfile: thump-test selects config/thump-test/ (both domains'
+#     watch/topology/state/evidence queries, Wave 6) — without it clank/
+#     rattle reason over a phantom topology, same rule every site profile
+#     follows.
+#   - prometheus.url: thump-test runs the identical kube-prometheus-stack
+#     setup rook-gce-k3s does (releaseName "prometheus", namespace
+#     monitoring) — confirmed live via `kubectl --context thump-test -n
+#     monitoring get svc`, same Service name/port.
+#   - loki.url: no override, same reasoning as rook-gce-k3s's file — the
+#     chart default already matches this rig's Loki (SingleBinary, gateway
+#     disabled, namespace logging), ported verbatim from that rig.
+#   - nats.storageClass: thump-test's k3s ships the same built-in
+#     "local-path" class rook-gce-k3s does (confirmed live: `kubectl
+#     --context thump-test get storageclass` — no "standard" class here
+#     either) — control-plane node affinity stays at chart default for the
+#     same reason (a real k3s server node, schedulable).
+#   - tracing.endpoint: Tempo is deployed here too (tempo-0, namespace
+#     tracing), OTLP/gRPC on the "grpc-tempo-otlp" Service port — confirmed
+#     live via `kubectl --context thump-test -n tracing get svc tempo -o
+#     jsonpath='{.spec.ports}'`, same port (4317) as rook-gce-k3s.
+#   - cilium.apiserverEgress: thump-test runs Cilium (confirmed live), same
+#     as every other GCE-based profile — the live executor needs the
+#     CiliumNetworkPolicy to reach the apiserver.
+replicas: 1
+
+image:
+  registry: "ghcr.io/ianeff"
+  # Placeholder — Tilt matches on registry+repo (not tag) and rewrites this
+  # to its own content-addressed tag on every build, so the literal value
+  # here never actually reaches the cluster.
+  tag: "dev"
+
+configProfile: thump-test
+
+prometheus:
+  url: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+
+nats:
+  storageClass: local-path
+
+# Same posture as rook-gce-k3s's file: this rig's kube-prometheus-stack
+# Operator runs with an empty serviceMonitorSelector
+# (applications/infrastructure/prometheus/values.yaml,
+# serviceMonitorSelectorNilUsesHelmValues: false, no selector set), so any
+# ServiceMonitor this chart creates is picked up cluster-wide with no extra
+# labeling needed.
+serviceMonitor:
+  enabled: true
+
+tracing:
+  endpoint: tempo.tracing.svc.cluster.local:4317
+
+cilium:
+  apiserverEgress: true
+
+# thump.executor stays at the chart default (dry) here deliberately — Wave 7
+# prep wired this profile up but did NOT run `tilt up` against it or arm
+# live execution (thump-test rig CLAUDE.md, Wave 7 next steps). Before the
+# actual live-proof run, arm it the same way rook-gce-k3s's file did for its
+# I-live v2 run:
+#   thump:
+#     executor: live
+#     killSwitch:
+#       armed: true

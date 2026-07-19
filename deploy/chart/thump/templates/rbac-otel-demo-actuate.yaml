@@ -1,0 +1,32 @@
+# Scope matches exactly the otel-demo-domain bindings in
+# internal/actuate/runner.go (flagd() and restart-cart-pod) — nothing
+# broader. No paired rbac-otel-demo-read.yaml exists because nothing in
+# this domain is read through the Kube seam; state comes from Prometheus.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-otel-demo-actuate
+  namespace: otel-demo
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "patch"]
+    resourceNames: ["flagd-config"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]
+    resourceNames: ["cart"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-otel-demo-actuate
+  namespace: otel-demo
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: Role
+  name: thump-otel-demo-actuate
+  apiGroup: rbac.authorization.k8s.io

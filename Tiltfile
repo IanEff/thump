@@ -50,9 +50,22 @@ CLUSTERS = {
         'registry': 'ghcr.io/ianeff',
         'values': 'deploy/tilt-values-rook-gce-k3s.yaml',
     },
+    # thump-test (Wave 7): the rook-gce-k3s rig's successor — same GCE/k3s/
+    # Cilium substrate, same kubectl-context-is-the-cluster-name convention
+    # (thump-test rig repo's `just credentials` writes it), Ceph KEPT and the
+    # OTel demo added alongside it as a second, orthogonal domain. context is
+    # IAP-only exactly like rook-gce-k3s — `gcloud compute start-iap-tunnel
+    # thump-test-control-plane 6443 ...` (thump-test repo README/CLAUDE.md)
+    # must already be running before `tilt up`, Tilt has no hook to start it.
+    'thump-test': {
+        'context': 'thump-test',
+        'platform': 'linux/amd64',
+        'registry': 'ghcr.io/ianeff',
+        'values': 'deploy/tilt-values-thump-test.yaml',
+    },
 }
 
-config.define_string('cluster', usage='which CLUSTERS profile to target: ceph-lab (default), rook-gke, or rook-gce-k3s')
+config.define_string('cluster', usage='which CLUSTERS profile to target: ceph-lab (default), rook-gke, rook-gce-k3s, or thump-test')
 cfg = config.parse()
 cluster_name = cfg.get('cluster', 'ceph-lab')
 if cluster_name not in CLUSTERS:

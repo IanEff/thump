@@ -119,3 +119,30 @@
     window: 300000000000 # 5 * time.Minute, in nanoseconds
     severityQuery: severity_cart_availability
     severityReductionPct: 0.9
+
+- name: restart-cart-pod
+  # cart's plausible-but-wrong alternative (Wave 7's ranker exercise): real,
+  # BlastLow, reversible — clears the gate on its own merits. What
+  # discriminates it from disable-cart-failure is the honest
+  # severityReductionPct below: cartFailure is flagd-controlled flag state,
+  # not pod state, so recycling cart's pods doesn't touch the fault.
+  applicableFailureClasses:
+    - service_failure
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Roll the cart Deployment's pods (merge-patch a pod-template restart
+      annotation, the same mechanism `kubectl rollout restart` uses);
+      reversible in the sense that repeating it is harmless, but it does not
+      clear a flagd-controlled fault.
+  blastTier: low
+  reversal:
+    method: restart-cart-pod
+    fallback: page-oncall
+  successCriteria:
+    metric: cart_error_ratio
+    target: "cart_error_ratio == 0"
+    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    severityQuery: severity_cart_availability
+    severityReductionPct: 0.1
