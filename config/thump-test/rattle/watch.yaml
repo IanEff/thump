@@ -1,0 +1,126 @@
+# thump-test's watch list — the six Ceph Sloth SLOs (ceph-redundancy is the
+# durability SLO, on the replicapool object), carried verbatim from
+# config/rook-gce-k3s/rattle/watch.yaml (same manifests, same CR names,
+# verified live against this cluster 2026-07-19 — cephobjectstore
+# ceph-objectstore, cephblockpool replicapool, cephcluster rook-ceph all
+# match), PLUS the two Wave 5 demo SLOs added alongside them — additive, per
+# CLAUDE.md §8: both domains share this one watch list but share no signal,
+# failure class, or catalog action with each other.
+#
+# Source of record for objectives/contractRef: the rig repo
+# (~/projects/ceph/thump-test) applications/infrastructure/sloth/
+# prometheusservicelevels.yaml. Dependency names must match metadata.name
+# entries in config/thump-test/whir/catalog-info.yaml exactly (whir strips
+# the resource:/component: prefix before comparing).
+version: v1
+slos:
+  # ── Ceph domain (unchanged from rook-gce-k3s) ──────────────────────────
+  - id: ceph-rgw-availability
+    object: ceph-rgw
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-rgw-availability:v1
+    dependencies:
+      - name: cephobjectstore
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: ceph-rgw-saturation
+    object: ceph-rgw
+    tier: tier-1
+    objective: 0.99
+    contractRef: ceph-rgw-saturation:v1
+    dependencies:
+      - name: cephobjectstore
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: ceph-osd-latency
+    object: ceph-osd
+    tier: tier-1
+    objective: 0.99
+    contractRef: ceph-osd-latency:v1
+    dependencies:
+      - name: cephblockpool
+        role: blocking
+      - name: ceph-node-1
+        role: blocking
+      - name: ceph-node-2
+        role: blocking
+      - name: ceph-node-3
+        role: blocking
+
+  - id: ceph-health
+    object: ceph-cluster
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-health:v1
+    dependencies:
+      - name: cephcluster
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  - id: argocd-sync
+    object: argocd
+    tier: tier-1
+    objective: 0.99
+    contractRef: argocd-sync:v1
+    dependencies:
+      - name: cilium
+        role: blocking
+      - name: rook-operator
+        role: optional
+
+  - id: ceph-redundancy
+    object: cephblockpool
+    tier: tier-1
+    objective: 0.999
+    contractRef: ceph-redundancy:v1
+    dependencies:
+      - name: cephcluster
+        role: blocking
+      - name: rook-operator
+        role: blocking
+
+  # ── OTel demo domain (Wave 5, new) ──────────────────────────────────────
+  # Both are events-ratio SLIs (real error-events/total-events fraction),
+  # the proven ceph-rgw-availability shape — never a raw ratio fed into
+  # Sloth's burn math. Live-verified 2026-07-19 (see the rig repo's Wave 5
+  # handoff): baseline ~0 burn, real burn under a manually-flipped flagd
+  # flag, recovery once the flag flips back.
+  - id: product-catalog-availability
+    # productCatalogFailure makes GetProduct error (HTTP 500) for one
+    # chaos-target product id. frontend emits the SLI directly; flagd is the
+    # fault's control plane. Deliberately NOT dependent on product-catalog
+    # itself as a dependency entry — it's the SLO's object, not a
+    # precondition for trusting the signal.
+    object: product-catalog
+    tier: tier-1
+    objective: 0.99
+    contractRef: product-catalog-availability:v1
+    dependencies:
+      - name: frontend
+        role: blocking
+      - name: flagd
+        role: blocking
+
+  - id: cart-availability
+    # cartFailure breaks cart's EmptyCart RPC (gRPC status 9). Cart itself
+    # emits no rpc_server_duration and frontend emits no rpc_client series —
+    # the SLI's only in-cluster view is checkout's rpc_client_duration_*
+    # toward oteldemo.CartService, so checkout (not cart) is the blocking
+    # dependency. Also the ranker's two-eligible-action case (Wave 7):
+    # restart-pod vs disable-cart-failure, only the flag flip actually
+    # clears it.
+    object: cart
+    tier: tier-1
+    objective: 0.99
+    contractRef: cart-availability:v1
+    dependencies:
+      - name: checkout
+        role: blocking
+      - name: flagd
+        role: blocking

@@ -1,0 +1,51 @@
+# Per-dependency "is it healthy right now" queries for whir's Resolver
+# (internal/whir). `dependency` must match a `metadata.name` in
+# catalog-info.yaml exactly. Each query is an instant PromQL whose result
+# means: value > 0 => healthy, value = 0 => degraded, no result / error =>
+# unknown (a state, not an error).
+#
+# Ceph entries carried from config/rook-gce-k3s/whir/state-queries.yaml with
+# ONE real change: node filters use THIS cluster's actual kubectl node
+# names, thump-test-node-{1,2,3} — VERIFIED live 2026-07-19 against
+# `kubectl --context thump-test get nodes -o wide`. Do not re-guess this:
+# rook-gce-k3s's own state-queries.yaml has a documented incident
+# (thump-running-notes.md "2026-07-13 (part 2)") where the catalog's logical
+# resource name (ceph-node-1) was wrongly assumed to equal the k8s node
+# hostname, feeding a false "unknown" node-health signal into a real
+# reason-loop run.
+#
+# OTel demo entries (Wave 6, new) use kube_deployment_status_replicas_available
+# in the otel-demo namespace — VERIFIED live 2026-07-19 (`kubectl --context
+# thump-test get deploy -n otel-demo`): frontend, checkout, flagd, cart, and
+# product-catalog all exist as Deployments with those exact names.
+#
+# Every query is wrapped in max()/count() on purpose: double-scraped targets
+# can return more than one series, and aggregating here keeps the resolver
+# from ever having to pick which series to believe (the singleton rule).
+version: v1
+queries:
+  # ── Ceph domain ──────────────────────────────────────────────────────────
+  - dependency: rook-operator
+    query: 'max(kube_deployment_status_replicas_available{namespace="rook-ceph",deployment="rook-ceph-operator"})'
+  - dependency: cilium
+    query: 'max(kube_daemonset_status_number_ready{namespace="kube-system",daemonset="cilium"})'
+  - dependency: cephcluster
+    query: 'max(ceph_health_status == bool 0)'   # 0 = HEALTH_OK, so ==0 → 1 (healthy)
+  - dependency: cephobjectstore
+    query: 'count(ceph_rgw_metadata)'
+  - dependency: cephblockpool
+    query: 'count(ceph_pool_metadata{name="replicapool"})'
+  - dependency: ceph-node-1
+    query: 'max(kube_node_status_condition{node="thump-test-node-1",condition="Ready",status="true"})'
+  - dependency: ceph-node-2
+    query: 'max(kube_node_status_condition{node="thump-test-node-2",condition="Ready",status="true"})'
+  - dependency: ceph-node-3
+    query: 'max(kube_node_status_condition{node="thump-test-node-3",condition="Ready",status="true"})'
+
+  # ── OTel demo domain (Wave 6, new) ──────────────────────────────────────
+  - dependency: frontend
+    query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="frontend"})'
+  - dependency: checkout
+    query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="checkout"})'
+  - dependency: flagd
+    query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="flagd"})'
