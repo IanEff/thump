@@ -154,7 +154,13 @@ const (
 	ClassTrafficShift         FailureClass = "traffic_shift"
 	ClassResourceExhaustion   FailureClass = "resource_exhaustion"
 	ClassRedundancyDegraded   FailureClass = "redundancy_degraded"
-	ClassUnknown              FailureClass = "unknown"
+	// ClassServiceFailure is deliberately disjoint from every Ceph class
+	// above: the OTel demo domain (thump-test rig, CLAUDE.md §1) exists to
+	// prove the engine carries no domain-specific knowledge, which requires
+	// the two domains to share no failure class — an injected demo fault
+	// must never be catalog-matched by a Ceph-authored action, or vice versa.
+	ClassServiceFailure FailureClass = "service_failure"
+	ClassUnknown        FailureClass = "unknown"
 )
 
 // GateResult is a conjunction of minimums, never an average — one failing

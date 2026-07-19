@@ -1,0 +1,130 @@
+# evidence-queries.yaml — read-only PromQL the clank `metrics` tool exposes.
+# The model calls metrics with {"q":"<name>"}; the tool runs the mapped query
+# and cites the result as an EvidenceRef (Live:true only on a fresh,
+# non-empty, non-error result — see internal/clank/metrics_tool.go).
+#
+# Ceph groups carried from config/rook-gce-k3s/whir/evidence-queries.yaml
+# unchanged (no node-hostname-specific PromQL in this file). OTel demo group
+# (Wave 6, new) uses the exact SLI numerator/denominator VERIFIED live in
+# Wave 5 (rig repo handoff, 2026-07-19): baseline 0, burns to ~1.0
+# (product-catalog) / ~0.45 (cart) under a manually-flipped flagd flag.
+#
+# ⚠️ VERIFY EVERY METRIC NAME ON THE TARGET CLUSTER BEFORE TRUSTING THIS.
+# Run once against the live cluster:
+#   curl -s "$PROM_URL/api/v1/label/__name__/values" | tr ',' '\n' | grep -E 'ceph_|slo:|kube_|app_frontend|rpc_client'
+# and reconcile each query below against what's actually there.
+version: v1
+queries:
+  # ── group 1 · cluster health & the firing SLO (universal) ───────────────
+  # every mgr-exported ceph_* metric on this rig is scraped by TWO
+  # Prometheus jobs (dedicated rook-ceph-mgr job + a generic kubernetes-pods
+  # pod-annotation scrape that also matches the mgr pod), so an unfiltered
+  # count()/sum() over one of these reads 2x a single real event. Every
+  # query below that aggregates a bare ceph_osd_*/ceph_pg_*/ceph_mon_*
+  # series pins job="rook-ceph-mgr" for this reason — don't drop the filter.
+  - name: ceph_health              # 0=OK, 1=WARN, 2=ERR — the headline
+    query: ceph_health_status{job="rook-ceph-mgr"}
+  - name: slo_burn_ceph_health     # the burn rate rattle fired on
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-health"}
+  - name: slo_burn_rgw             # RGW-availability burn (error-rate SLI — see rgw_failed_rate below)
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-availability"}
+  - name: slo_burn_rgw_saturation  # RGW-saturation burn (raw GET/PUT latency SLI — see rgw_get_put_latency_ms below)
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-saturation"}
+  - name: slo_burn_osd_latency     # OSD-latency burn
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-osd-latency"}
+  - name: slo_burn_redundancy      # data-durability burn — degraded/undersized PGs (the redundancy_degraded signal)
+    query: slo:current_burn_rate:ratio{sloth_id="ceph-redundancy"}
+  - name: slo_burn_argocd_sync     # ArgoCD-sync burn — no catalog action maps here (decline probe)
+    query: slo:current_burn_rate:ratio{sloth_id="argocd-sync"}
+
+  # ── group 2 · OSD / rebalance state (evidence FOR or AGAINST hold-rebalance) ─
+  - name: osds_down                # OSDs currently down — transient node loss?
+    query: count(ceph_osd_up{job="rook-ceph-mgr"} == 0) or vector(0)
+  - name: osds_out                 # OSDs marked out — is CRUSH about to rebalance?
+    query: count(ceph_osd_in{job="rook-ceph-mgr"} == 0) or vector(0)
+  - name: pgs_degraded             # degraded PGs — below replica count, the redundancy_degraded surface
+    query: sum(ceph_pg_degraded{job="rook-ceph-mgr"}) or vector(0)
+  - name: pgs_undersized           # undersized PGs — too few OSDs to place all replicas
+    query: sum(ceph_pg_undersized{job="rook-ceph-mgr"}) or vector(0)
+  - name: pgs_backfilling          # is a rebalance/backfill ALREADY in flight?
+    query: sum(ceph_pg_backfilling{job="rook-ceph-mgr"} + ceph_pg_backfill_wait{job="rook-ceph-mgr"}) or vector(0)
+  - name: recovery_ops_rate        # recovery ops/s — is the cluster thrashing right now?
+    # ⚠️ COUNTER, NOT A GAUGE — must be wrapped in rate(). Pinned to
+    # job="rook-ceph-exporter" (a separate DaemonSet from the mgr's own
+    # exporter, still duplicated against kubernetes-pods).
+    query: sum(rate(ceph_osd_recovery_ops{job="rook-ceph-exporter"}[2m])) or vector(0)
+  - name: mons_in_quorum           # mon quorum count — a quorum loss changes everything
+    query: count(ceph_mon_quorum_status{job="rook-ceph-mgr"} == 1) or vector(0)
+
+  # ── group 3 · capacity / resource_exhaustion (the hold-rebalance failure class) ─
+  - name: cluster_used_ratio       # 0..1 whole-cluster fullness
+    query: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes
+  - name: fullest_pool_ratio       # the single most-full pool — nearfull triggers noout thrash
+    query: max(ceph_pool_stored / (ceph_pool_stored + ceph_pool_max_avail))
+  - name: osd_write_latency_ms     # avg OSD write latency, filtered to the latency-bridge job
+    query: 1000 * rate(ceph_osd_op_w_latency_sum{job="ceph-latency-bridge"}[5m]) / rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m])
+
+  # ── group 4 · RGW / traffic (evidence for throttle-non-critical-paths + rgw SLOs) ─
+  - name: rgw_request_rate         # req/s through the object gateway
+    query: sum(rate(ceph_rgw_req[5m])) or vector(0)
+  - name: rgw_failed_rate          # failed req/s — the AVAILABILITY SLI's numerator
+    query: sum(rate(ceph_rgw_failed_req[5m])) or vector(0)
+  - name: rgw_get_put_latency_ms   # avg GET+PUT op latency, ms — the SATURATION SLI's raw value
+    query: >-
+      1000 * (
+        (sum(rate(ceph_rgw_op_get_obj_lat_sum[1m])) + sum(rate(ceph_rgw_op_put_obj_lat_sum[1m])))
+        /
+        (sum(rate(ceph_rgw_op_get_obj_lat_count[1m])) + sum(rate(ceph_rgw_op_put_obj_lat_count[1m])))
+      )
+
+  # ── group 5 · node / pod state ───────────────────────────────────────────
+  - name: nodes_not_ready
+    query: count(kube_node_status_condition{condition="Ready",status="true"} == 0) or vector(0)
+  - name: rook_pods_not_running
+    query: count(kube_pod_status_phase{namespace="rook-ceph",phase!="Running"} == 1) or vector(0)
+
+  # ── group 6 · ArgoCD sync state (evidence for the argocd-sync decline probe) ─
+  - name: argocd_apps_out_of_sync
+    query: count(argocd_app_info{sync_status!="Synced"}) or vector(0)
+
+  # ── group 7 · action convergence severity (Ceph) ─────────────────────────
+  # slo:sli_error:ratio_rate5m IS rattle's DegradationPct axis: Sloth's own
+  # SLI error fraction, clamp_max'd to 0..1. Right for a post-window "did it
+  # settle?" read.
+  - name: severity_rgw_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-availability"}
+  - name: severity_ceph_redundancy
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-redundancy"}
+  - name: severity_rgw_saturation
+    query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-saturation"}
+
+  # ── group 8 · OTel demo domain (Wave 6, new) ─────────────────────────────
+  - name: slo_burn_product_catalog
+    query: slo:current_burn_rate:ratio{sloth_id="product-catalog-availability"}
+  - name: slo_burn_cart
+    query: slo:current_burn_rate:ratio{sloth_id="cart-availability"}
+  # severity_* pair action success windows check against — same discipline
+  # as group 7, one sloth_id per armed flag.
+  - name: severity_product_catalog_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="product-catalog-availability"}
+  - name: severity_cart_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="cart-availability"}
+  # Raw 0..1 error ratios — the same numerator/denominator as each SLO's own
+  # Sloth SLI (prometheusservicelevels.yaml), for the model to cite directly
+  # and for disable-*-failure's SuccessCriteria.Metric/Target to check
+  # against. VERIFIED LIVE Wave 5 (2026-07-19): baseline 0/0 -> NaN is
+  # possible when the loadgenerator isn't hitting the target path; `or
+  # vector(0)` on the numerator keeps a healthy-but-idle window reading 0,
+  # not absent.
+  - name: product_catalog_error_ratio
+    query: >-
+      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])) or vector(0))
+      /
+      sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[5m]))
+  - name: cart_error_ratio
+    query: >-
+      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
+      /
+      sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m]))
+  - name: demo_pods_not_running
+    query: count(kube_pod_status_phase{namespace="otel-demo",phase!="Running"} == 1) or vector(0)

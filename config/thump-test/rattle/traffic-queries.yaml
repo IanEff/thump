@@ -1,0 +1,29 @@
+# Per-SLO blast-radius queries for rattle's HubbleTrafficSource. Carried
+# from config/rook-gce-k3s/rattle/traffic-queries.yaml (Ceph entries
+# unchanged — no node-hostname-specific PromQL here to update) plus the two
+# Wave 5 demo SLOs, using the exact same affected/total counters as each
+# SLO's own Sloth SLI (same discipline as ceph-rgw-availability below: reuse
+# the SLI's own numerator/denominator rather than inventing a second query
+# pair for the same fault).
+#
+# blast radius = affected ÷ total, clamped to [0,1]. `affected` wears
+# `or vector(0)` — absence-of-failures and absence-of-measurement are
+# different facts. ceph-health/argocd-sync/ceph-redundancy get no entry, on
+# purpose: none is request-shaped.
+version: v1
+slos:
+  - id: ceph-rgw-availability
+    affected: 'sum(rate(ceph_rgw_failed_req[5m])) or vector(0)'
+    total:    'sum(rate(ceph_rgw_req[5m]))'
+
+  - id: ceph-osd-latency
+    affected: 'sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m])) - sum(rate(ceph_osd_op_w_latency_bucket{job="ceph-latency-bridge",le="102.399999"}[5m])) or vector(0)'
+    total:    'sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m]))'
+
+  - id: product-catalog-availability
+    affected: 'sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])) or vector(0)'
+    total:    'sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[5m]))'
+
+  - id: cart-availability
+    affected: 'sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0)'
+    total:    'sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m]))'

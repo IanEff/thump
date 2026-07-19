@@ -95,6 +95,22 @@ func (l liveKube) Patch(ctx context.Context, group, version, resource, namespace
 	return nil
 }
 
+// GetConfigMapKey returns one ConfigMap's data key via the typed clientset —
+// the read half of a flagd flag flip, which must inspect the blob's other
+// flags before merge-patching the whole string back (see runner.go's
+// flagVariantOp).
+func (l liveKube) GetConfigMapKey(ctx context.Context, namespace, name, key string) (string, error) {
+	cm, err := l.cs.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("get configmap %s/%s: %w", namespace, name, err)
+	}
+	val, ok := cm.Data[key]
+	if !ok {
+		return "", fmt.Errorf("configmap %s/%s has no data key %q", namespace, name, key)
+	}
+	return val, nil
+}
+
 // firstRunning returns the name and first-container name of the first Running
 // pod in the list — exec needs a concrete pod, and a label selector can match
 // a terminating or pending replica mid-rollout.

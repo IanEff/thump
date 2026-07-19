@@ -74,5 +74,65 @@ func Default() *StaticCatalog {
 				SeverityReductionPct: 0.8,
 			},
 		},
+		// The OTel demo domain's two remedies (Wave 6, thump-test rig
+		// CLAUDE.md §8) — one per armed flagd flag. Both are BlastLow
+		// (a single ConfigMap flip, no node/cluster-wide effect) and
+		// reversible (flip the flag back on), so both auto-band under
+		// hiss's tier-1 act_reversible ceiling. Deliberately scoped to
+		// proposal.ClassServiceFailure only — see that constant's comment
+		// for why the demo domain must never share a failure class with
+		// Ceph's.
+		{
+			Name:                     "disable-product-catalog-failure",
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassServiceFailure},
+			ApplicableTiers:          []string{"tier-1"},
+			Action: ActionSpec{
+				Description: "Flip the productCatalogFailure flagd flag to \"off\" (merge-patch the " +
+					"flagd-config ConfigMap in otel-demo), clearing the injected GetProduct fault; reversible.",
+			},
+			BlastTier: proposal.BlastLow,
+			Reversal: Reversal{
+				Method:   "enable-product-catalog-failure",
+				Fallback: "page-oncall",
+			},
+			SuccessCriteria: SuccessCriteria{
+				Metric: "product_catalog_error_ratio",
+				Target: "product_catalog_error_ratio == 0",
+				Window: 5 * time.Minute,
+				// VERIFIED LIVE 2026-07-19 (Wave 5): flag off -> ratio back
+				// to 0 within ~40-60s of the ConfigMap patch propagating.
+				// 0.9 not 1.0 leaves headroom for scrape-interval noise
+				// rather than demanding an exact zero.
+				SeverityQuery:        "severity_product_catalog_availability",
+				SeverityReductionPct: 0.9,
+			},
+		},
+		{
+			// cart is the ranker's two-eligible-action case (Wave 7):
+			// cartFailure is also "fixable" by restarting the cart pod, but
+			// the fault is flag state, not pod state, so only this action
+			// actually clears it. Authored the same as
+			// disable-product-catalog-failure otherwise.
+			Name:                     "disable-cart-failure",
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassServiceFailure},
+			ApplicableTiers:          []string{"tier-1"},
+			Action: ActionSpec{
+				Description: "Flip the cartFailure flagd flag to \"off\" (merge-patch the flagd-config " +
+					"ConfigMap in otel-demo), clearing the injected EmptyCart RPC fault (checkout -> " +
+					"CartService gRPC status 9); reversible.",
+			},
+			BlastTier: proposal.BlastLow,
+			Reversal: Reversal{
+				Method:   "enable-cart-failure",
+				Fallback: "page-oncall",
+			},
+			SuccessCriteria: SuccessCriteria{
+				Metric:               "cart_error_ratio",
+				Target:               "cart_error_ratio == 0",
+				Window:               5 * time.Minute,
+				SeverityQuery:        "severity_cart_availability",
+				SeverityReductionPct: 0.9,
+			},
+		},
 	})
 }

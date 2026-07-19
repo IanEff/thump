@@ -163,6 +163,7 @@ func TestDefaultFailureClasses_CoversEveryFailureClass(t *testing.T) {
 		proposal.ClassTrafficShift:         true,
 		proposal.ClassResourceExhaustion:   true,
 		proposal.ClassRedundancyDegraded:   true,
+		proposal.ClassServiceFailure:       true,
 		proposal.ClassUnknown:              true,
 	}
 	got := map[proposal.FailureClass]bool{}

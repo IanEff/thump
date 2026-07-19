@@ -13,16 +13,18 @@ package actuate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
 )
 
 // Kube is the impure seam actuate reaches the cluster through — exec a
-// command inside a pod (selected by label), or merge-patch a named custom
-// resource. Expressed in primitives, not client-go types, so the fake in
-// tests is trivial and the pure core above stays free of any apiserver
-// import. Production wires a liveKube (kube.go); tests inject a recorder.
+// command inside a pod (selected by label), merge-patch a named custom
+// resource, or read one ConfigMap data key back. Expressed in primitives,
+// not client-go types, so the fake in tests is trivial and the pure core
+// above stays free of any apiserver import. Production wires a liveKube
+// (kube.go); tests inject a recorder.
 type Kube interface {
 	// Exec runs command inside the first Running pod matching selector in
 	// namespace, returning an error (with captured stderr) if it fails. No
@@ -31,6 +33,12 @@ type Kube interface {
 	// Patch applies a merge patch to the named resource identified by its
 	// group/version/resource in namespace.
 	Patch(ctx context.Context, group, version, resource, namespace, name string, mergePatch []byte) error
+	// GetConfigMapKey returns the string value stored at key in the named
+	// ConfigMap's data — the read half of a read-modify-write flip, needed
+	// whenever the desired patch can't be expressed as static bytes because
+	// it depends on the resource's current state (unlike Patch's
+	// caller-supplied literal).
+	GetConfigMapKey(ctx context.Context, namespace, name, key string) (string, error)
 }
 
 // operation is one ref-direction's concrete mutation — an exec into a pod or
@@ -68,6 +76,46 @@ func (s execSeqOp) do(ctx context.Context, k Kube) error {
 	return nil
 }
 
+// flagVariantOp flips one flagd flag's defaultVariant by reading the target
+// ConfigMap's JSON-blob data key, editing that one field, and merge-patching
+// the whole blob back — the same read-modify-write the thump-test rig's own
+// chaos/_flagd.sh performs by hand (kubectl get | jq | kubectl patch), and
+// the reason this can't be a plain Patch: the ConfigMap's `data` value is an
+// opaque JSON string, not structured fields a merge patch can reach inside
+// without first knowing every other flag's current state.
+type flagVariantOp struct {
+	namespace, configMap, dataKey, flag, variant string
+}
+
+func (f flagVariantOp) do(ctx context.Context, k Kube) error {
+	current, err := k.GetConfigMapKey(ctx, f.namespace, f.configMap, f.dataKey)
+	if err != nil {
+		return fmt.Errorf("read %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
+	}
+
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(current), &doc); err != nil {
+		return fmt.Errorf("parse %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
+	}
+	flags, _ := doc["flags"].(map[string]any)
+	def, ok := flags[f.flag].(map[string]any)
+	if !ok {
+		return fmt.Errorf("flag %q not defined in %s/%s[%s]", f.flag, f.namespace, f.configMap, f.dataKey)
+	}
+	def["defaultVariant"] = f.variant
+
+	updated, err := json.Marshal(doc)
+	if err != nil {
+		return fmt.Errorf("marshal %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
+	}
+	patch, err := json.Marshal(map[string]any{"data": map[string]string{f.dataKey: string(updated)}})
+	if err != nil {
+		return fmt.Errorf("build merge patch for %s/%s: %w", f.namespace, f.configMap, err)
+	}
+
+	return k.Patch(ctx, "", "v1", "configmaps", f.namespace, f.configMap, patch)
+}
+
 // binding is a ref's forward mutation and its authored undo.
 type binding struct {
 	forward operation
@@ -100,6 +148,17 @@ func bindingSet() map[string]binding {
 			command:   argv,
 		}
 	}
+	// flagd flips the thump-test rig's OTel demo faults — the flagd-config
+	// ConfigMap lives in otel-demo, keyed by demo.flagd.json (matches
+	// chaos/_flagd.sh in the rig repo exactly). forward disables the named
+	// failure (variant "off", the fix); reverse re-arms it (variant "on").
+	const flagdNamespace, flagdConfigMap, flagdDataKey = "otel-demo", "flagd-config", "demo.flagd.json"
+	flagd := func(flag string) binding {
+		return binding{
+			forward: flagVariantOp{namespace: flagdNamespace, configMap: flagdConfigMap, dataKey: flagdDataKey, flag: flag, variant: "off"},
+			reverse: flagVariantOp{namespace: flagdNamespace, configMap: flagdConfigMap, dataKey: flagdDataKey, flag: flag, variant: "on"},
+		}
+	}
 	return map[string]binding{
 		"hold-rebalance": {
 			forward: toolbox("ceph", "osd", "set", "noout"),
@@ -118,6 +177,8 @@ func bindingSet() map[string]binding {
 				toolbox("ceph", "config", "rm", "osd", "osd_recovery_max_active"),
 			},
 		},
+		"disable-product-catalog-failure": flagd("productCatalogFailure"),
+		"disable-cart-failure":            flagd("cartFailure"),
 	}
 }
 

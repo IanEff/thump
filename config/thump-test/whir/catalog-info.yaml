@@ -1,0 +1,299 @@
+# Static topology map for rattle's TopologySource (internal/whir).
+# Ceph section carried verbatim from config/rook-gce-k3s/whir/catalog-info.yaml
+# (same manifest family — cephobjectstore/cephblockpool/cephcluster CR names
+# verified live against this cluster 2026-07-19: ceph-objectstore,
+# replicapool, rook-ceph). OTel demo section is new (Wave 6), additive per
+# CLAUDE.md §8: two orthogonal domains, one topology file, no shared edges
+# between them.
+#
+# dependsOn edges wired 1:1 to every Sloth SLO's dependency shape
+# (rattle/watch.yaml):
+#   ceph-rgw-availability/-saturation -> ceph-rgw component
+#   ceph-osd-latency                   -> ceph-osd component
+#   ceph-health                        -> ceph-cluster component
+#   argocd-sync                        -> argocd component
+#   ceph-redundancy                    -> cephblockpool resource
+#   product-catalog-availability       -> product-catalog component
+#   cart-availability                  -> cart component
+
+# --- Ceph domain: application components ---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-rgw
+  description: RGW — S3-compatible object gateway. Subject of the ceph-rgw-availability and ceph-rgw-saturation SLOs.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephobjectstore
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-osd
+  description: OSD read/write path. Subject of the ceph-osd-latency SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephblockpool
+    - resource:default/ceph-node-1
+    - resource:default/ceph-node-2
+    - resource:default/ceph-node-3
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ceph-cluster
+  description: Overall Ceph cluster health. Subject of the ceph-health SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: argocd
+  description: GitOps continuous delivery — syncs all cluster state from git. Subject of the argocd-sync SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+  dependsOn:
+    - component:default/cilium
+    - component:default/rook-operator
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: rook-operator
+  description: Rook operator — manages the CephCluster lifecycle.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: cilium
+  description: CNI, L2 load-balancing, and Gateway API implementation for the cluster.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ceph-lab
+
+# --- Ceph domain: storage resources ---
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephcluster
+  description: The CephCluster CR — the whole Ceph deployment.
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephblockpool
+  description: replicapool — the RBD block pool backing rook-ceph-block (cluster-default StorageClass).
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephfilesystem
+  description: CephFS filesystem (requires the CephFilesystemSubVolumeGroup, gotcha #4).
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cephobjectstore
+  description: RGW object store backing the ceph-rgw component.
+spec:
+  type: ceph-storage
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/cephcluster
+
+# --- Ceph domain: compute nodes and disks ---
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-control
+  description: k3s server node (GCE VM, e2-medium).
+spec:
+  type: compute-node
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-1
+  description: k3s agent + Ceph OSD node (GCE VM, e2-standard-4).
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/ceph-node-1-vdc
+    - resource:default/ceph-node-1-vdd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-2
+  description: k3s agent + Ceph OSD node (GCE VM, e2-standard-4).
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/ceph-node-2-vdc
+    - resource:default/ceph-node-2-vdd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-3
+  description: k3s agent + Ceph OSD node (GCE VM, e2-standard-2).
+spec:
+  type: compute-node
+  owner: ceph-lab
+  dependsOn:
+    - resource:default/ceph-node-3-vdc
+    - resource:default/ceph-node-3-vdd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-1-vdc
+  description: Raw OSD disk (/dev/vdc) on ceph-node-1.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-1-vdd
+  description: Raw OSD disk (/dev/vdd) on ceph-node-1.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-2-vdc
+  description: Raw OSD disk (/dev/vdc) on ceph-node-2.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-2-vdd
+  description: Raw OSD disk (/dev/vdd) on ceph-node-2.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-3-vdc
+  description: Raw OSD disk (/dev/vdc) on ceph-node-3.
+spec:
+  type: disk
+  owner: ceph-lab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ceph-node-3-vdd
+  description: Raw OSD disk (/dev/vdd) on ceph-node-3.
+spec:
+  type: disk
+  owner: ceph-lab
+
+# --- OTel demo domain (Wave 6, new): call-graph components ---
+# Only the services referenced by an SLO (as object or dependency) are
+# entered — frontend -> product-catalog / cart / checkout, checkout -> cart,
+# per CLAUDE.md §8. flagd is the shared fault control plane for both armed
+# flags, a dependency of both demo SLOs, no dependents.
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: frontend
+  description: Demo storefront — emits app_frontend_requests_total, the product-catalog-availability SLI.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+  dependsOn:
+    - component:default/product-catalog
+    - component:default/cart
+    - component:default/checkout
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: checkout
+  description: Checkout service — gRPC client to CartService; emits rpc_client_duration_milliseconds, the cart-availability SLI.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+  dependsOn:
+    - component:default/cart
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: product-catalog
+  description: Product catalog service. Subject of the product-catalog-availability SLO (productCatalogFailure flagd fault).
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: cart
+  description: Cart service. Subject of the cart-availability SLO (cartFailure flagd fault, EmptyCart RPC).
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: flagd
+  description: Feature-flag service — the control plane for both armed demo faults (productCatalogFailure, cartFailure). A disable-<flag>-failure action merge-patches its flagd-config ConfigMap.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
