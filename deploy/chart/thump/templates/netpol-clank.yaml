@@ -54,9 +54,11 @@ spec:
     # A plain NetworkPolicy has no hostname-match primitive (that's Cilium's
     # toFQDNs, which this chart deliberately doesn't require) — this widens
     # the intended "api.anthropic.com only" pin to any HTTPS destination.
-    # It also happens to be how clank reaches kube-apiserver: the in-cluster
-    # kubernetes.default.svc ClusterIP is port 443 too, so this one rule
-    # covers both needs without a separate apiserver carve-out.
+    # NOTE: this does NOT reach the in-cluster kube-apiserver on Cilium — the
+    # apiserver has a reserved Cilium identity that an ipBlock/CIDR rule can't
+    # match, even though kubernetes.default.svc is also port 443. clank's
+    # read-only pod-listing evidence tool reaches the apiserver via
+    # ciliumnetpol-clank.yaml instead (gated on cilium.apiserverEgress).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

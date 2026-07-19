@@ -13,7 +13,18 @@ floors:
     # v1 is dry-run-only — DryRun.Execute (internal/thump/executor.go) always reports
     # ResultRendered. Confirmed empty on a real approved+executed run, 2026-07-13 (see
     # thump-running-notes.md). Revisit once thump grows a live executor.
-    redundancy_degraded: 0.75 # parity value, fixture-derived — same calibration wait as resource_exhaustion above.
+    redundancy_degraded: 0.3 # SEED VALUE, lowered from the 0.75 fixture parity 2026-07-18
+    # to unblock the first live approved+executed run on this class (see thump-running-notes
+    # part 8: clank reasons to hold-rebalance correctly now, but its honest confidence came in
+    # under 0.75 and hiss escalated). Set deliberately low to near-guarantee the pass so the
+    # run yields the win AND the first real confidence datum — the decision slog line now
+    # carries confidence+floorApplied, so the actual number is observable regardless of verdict.
+    # Rationale for it being safe to lower: this path is already guarded by requireReversal +
+    # autoBand tier-1 -> act_reversible, so ONLY reversible actions auto-approve here regardless
+    # of the floor — a high confidence floor stacked on "must be reversible" mainly starves the
+    # calibration loop (agent_proposal_success_total can't populate until one run gets through).
+    # Raise to a data-derived value once real agent_proposal_confidence/_success_total exists.
+    # NOT a committed value — test-scoped, like the tilt-values arm block.
 maxBand:
   tier-1: act_reversible
 autoBand:

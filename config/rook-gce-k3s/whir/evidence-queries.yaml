@@ -54,9 +54,18 @@ queries:
   - name: recovery_ops_rate        # recovery ops/s — is the cluster thrashing right now?
     # Different pairing than the rest of this group: ceph_osd_recovery_ops
     # comes from the standalone rook-ceph-exporter DaemonSet, not the mgr's
-    # own exporter — still duplicated against kubernetes-pods, just a
-    # different job name to filter to. VERIFIED LIVE 2026-07-17.
-    query: sum(ceph_osd_recovery_ops{job="rook-ceph-exporter"}) or vector(0)
+    # own exporter — still duplicated against kubernetes-pods, so pin
+    # job="rook-ceph-exporter".
+    # ⚠️ COUNTER, NOT A GAUGE — must be wrapped in rate(). The bare
+    # sum(ceph_osd_recovery_ops) is a monotonic lifetime total (~4594 at rest
+    # on this rig, 2026-07-18), NOT ops/sec. Fed raw, it reads as "recovery
+    # already in full flight" even on an idle cluster — which made clank pick
+    # accelerate-recovery and reject hold-rebalance every time (you can't
+    # "hold" a rebalance the evidence says is already running). Cost a whole
+    # I-live run, 2026-07-18 part 7. The earlier "VERIFIED LIVE 2026-07-17"
+    # note only confirmed the metric SCRAPES; a scrape check can't catch a
+    # counter-vs-rate mislabel — only reading it at rest vs. under load can.
+    query: sum(rate(ceph_osd_recovery_ops{job="rook-ceph-exporter"}[2m])) or vector(0)
   - name: mons_in_quorum           # mon quorum count — a quorum loss changes everything
     query: count(ceph_mon_quorum_status{job="rook-ceph-mgr"} == 1) or vector(0)
 
