@@ -60,6 +60,17 @@ builds:
       - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+  - id: trun
+    main: ./cmd/trim
+    binary: trim
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
 # One archive per {os,arch} bundling all four beat binaries — mirrors what
 # `task build` already produces into bin/, just tarred up per platform.

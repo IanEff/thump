@@ -3,7 +3,7 @@ version: "3"
 vars:
   PROJECT: thump
   REGISTRY: '{{.REGISTRY | default "ghcr.io/ianeff"}}'
-  BEATS: "clank rattle hiss thump"
+  BEATS: "clank rattle hiss thump trim"
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo dev
   COMMIT:
@@ -212,6 +212,11 @@ tasks:
     desc: go run ./cmd/thump
     cmds:
       - go run ./cmd/thump
+
+  run:trim:
+    desc: go run ./cmd/trim
+    cmds:
+      - go run ./cmd/trim
 
   tidy:
     desc: go mod tidy
