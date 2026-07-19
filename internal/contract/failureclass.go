@@ -48,6 +48,13 @@ func DefaultFailureClasses() []FailureClassDefinition {
 			Description: "a legitimate change in load pattern, not a failure.",
 		},
 		{
+			Class: proposal.ClassServiceFailure,
+			Description: "a service is returning errors on its own request or RPC path independent of load or " +
+				"capacity — an injected fault or bad config, not a dependency being overloaded (dependency_saturation) " +
+				"or a resource running out of headroom (resource_exhaustion). Cite the service's own error-rate " +
+				"evidence; the fix is disabling the fault, not scaling or waiting.",
+		},
+		{
 			Class: proposal.ClassUnknown,
 			Description: "the evidence doesn't clearly support any of the above — call insufficient rather than " +
 				"forcing a label just because an action exists for it.",

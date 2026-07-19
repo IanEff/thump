@@ -13,6 +13,14 @@ floors:
     # v1 is dry-run-only — DryRun.Execute (internal/thump/executor.go) always reports
     # ResultRendered. Confirmed empty on a real approved+executed run, 2026-07-13 (see
     # thump-running-notes.md). Revisit once thump grows a live executor.
+    service_failure: 0.75 # parity value with dependency_saturation/resource_exhaustion — the
+    # OTel demo domain's two BlastLow, fully-reversible flagd-flip actions
+    # (disable-product-catalog-failure, disable-cart-failure) have no live
+    # confidence datum yet (Wave 6, thump-test rig CLAUDE.md §8). Unlike
+    # redundancy_degraded below, there's no observed under-floor run to
+    # justify seeding it low pre-emptively — leave at fixture parity and
+    # revisit once Wave 7's live proof run yields a real
+    # agent_proposal_confidence/_success_total datum for this class.
     redundancy_degraded: 0.3 # SEED VALUE, lowered from the 0.75 fixture parity 2026-07-18
     # to unblock the first live approved+executed run on this class (see thump-running-notes
     # part 8: clank reasons to hold-rebalance correctly now, but its honest confidence came in

@@ -9,7 +9,8 @@
         "traffic_shift",
         "resource_exhaustion",
         "unknown",
-        "redundancy_degraded"
+        "redundancy_degraded",
+        "service_failure"
       ]
     },
     "hypotheses": {
