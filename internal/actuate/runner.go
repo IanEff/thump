@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 )
 
 // Kube is the impure seam actuate reaches the cluster through — exec a
@@ -116,6 +117,36 @@ func (f flagVariantOp) do(ctx context.Context, k Kube) error {
 	return k.Patch(ctx, "", "v1", "configmaps", f.namespace, f.configMap, patch)
 }
 
+// restartOp triggers a rolling restart of a Deployment by merge-patching a
+// timestamp annotation onto its pod template — the same mechanism `kubectl
+// rollout restart` uses under the hood, expressed through the existing Patch
+// primitive rather than a new Kube method. Authored for cart's "plausible
+// but wrong" second remedy (Wave 7): it recycles cart's pods, which does
+// nothing for a flagd-controlled fault, so it never actually clears
+// cartFailure — see restart-cart-pod's low authored SeverityReductionPct in
+// internal/contract/authored.go.
+type restartOp struct {
+	namespace, deployment string
+}
+
+func (r restartOp) do(ctx context.Context, k Kube) error {
+	patch, err := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"metadata": map[string]any{
+					"annotations": map[string]any{
+						"thump.io/restartedAt": time.Now().UTC().Format(time.RFC3339),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("build merge patch for %s/%s restart: %w", r.namespace, r.deployment, err)
+	}
+	return k.Patch(ctx, "apps", "v1", "deployments", r.namespace, r.deployment, patch)
+}
+
 // binding is a ref's forward mutation and its authored undo.
 type binding struct {
 	forward operation
@@ -179,6 +210,13 @@ func bindingSet() map[string]binding {
 		},
 		"disable-product-catalog-failure": flagd("productCatalogFailure"),
 		"disable-cart-failure":            flagd("cartFailure"),
+		// restarting a pod has no real inverse — repeating it is the
+		// honest "undo" (harmless, idempotent in effect), same posture a
+		// human takes when asked to roll back a restart.
+		"restart-cart-pod": {
+			forward: restartOp{namespace: flagdNamespace, deployment: "cart"},
+			reverse: restartOp{namespace: flagdNamespace, deployment: "cart"},
+		},
 	}
 }
 

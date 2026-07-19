@@ -134,5 +134,38 @@ func Default() *StaticCatalog {
 				SeverityReductionPct: 0.9,
 			},
 		},
+		{
+			// cart's plausible-but-wrong alternative (Wave 7's ranker
+			// exercise, see disable-cart-failure's comment above): a real,
+			// authored action, not a strawman — BlastLow and reversible so
+			// it clears hiss's gate on its own merits, the same as
+			// disable-cart-failure. What discriminates them is the honest
+			// SeverityReductionPct below: cartFailure is flagd-controlled
+			// flag state, not pod state, so recycling cart's pods doesn't
+			// touch the fault. Authored low rather than 0 — a restart isn't
+			// provably inert (e.g. it would clear a genuinely wedged
+			// process), just ineffective against this failure class.
+			Name:                     "restart-cart-pod",
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassServiceFailure},
+			ApplicableTiers:          []string{"tier-1"},
+			Action: ActionSpec{
+				Description: "Roll the cart Deployment's pods (merge-patch a pod-template " +
+					"restart annotation, the same mechanism `kubectl rollout restart` uses); " +
+					"reversible in the sense that repeating it is harmless, but it does not " +
+					"clear a flagd-controlled fault.",
+			},
+			BlastTier: proposal.BlastLow,
+			Reversal: Reversal{
+				Method:   "restart-cart-pod",
+				Fallback: "page-oncall",
+			},
+			SuccessCriteria: SuccessCriteria{
+				Metric:               "cart_error_ratio",
+				Target:               "cart_error_ratio == 0",
+				Window:               5 * time.Minute,
+				SeverityQuery:        "severity_cart_availability",
+				SeverityReductionPct: 0.1,
+			},
+		},
 	})
 }

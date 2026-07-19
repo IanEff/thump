@@ -157,6 +157,39 @@ func TestRunner_DispatchesFlagVariantPatchForDisableProductCatalogFailure(t *tes
 	}
 }
 
+func TestRunner_DispatchesDeploymentPatchForRestartCartPod(t *testing.T) {
+	t.Parallel()
+	for _, reverse := range []bool{false, true} {
+		k := &recordKube{}
+		r := actuate.NewWith(k)
+
+		if err := r.Run(context.Background(), "restart-cart-pod", reverse, nil); err != nil {
+			t.Fatalf("Run(restart-cart-pod, reverse=%v) returned error: %v", reverse, err)
+		}
+
+		wantGVR := [3]string{"apps", "v1", "deployments"}
+		if k.patchGVR != wantGVR || k.patchNS != "otel-demo" || k.patchName != "cart" {
+			t.Errorf("patched %v %s/%s, want %v otel-demo/cart", k.patchGVR, k.patchNS, k.patchName, wantGVR)
+		}
+
+		var patch struct {
+			Spec struct {
+				Template struct {
+					Metadata struct {
+						Annotations map[string]string `json:"annotations"`
+					} `json:"metadata"`
+				} `json:"template"`
+			} `json:"spec"`
+		}
+		if err := json.Unmarshal([]byte(k.patchBody), &patch); err != nil {
+			t.Fatalf("patch body isn't valid JSON: %v\nbody: %s", err, k.patchBody)
+		}
+		if _, ok := patch.Spec.Template.Metadata.Annotations["thump.io/restartedAt"]; !ok {
+			t.Errorf("patch body missing thump.io/restartedAt annotation: %s", k.patchBody)
+		}
+	}
+}
+
 func TestRunner_FlagVariantOp_UnknownFlagIsAnError(t *testing.T) {
 	t.Parallel()
 	k := &recordKube{getReturn: `{"flags":{"someOtherFlag":{"defaultVariant":"on"}}}`}
