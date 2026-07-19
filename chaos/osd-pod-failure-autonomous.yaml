@@ -1,0 +1,36 @@
+# thump chaos — osd-pod-failure-autonomous.yaml (targets rook-gce-k3s / ceph-gce)
+#
+# Phase I, Wave I-live: proving the MACHINE, unaided, catches a hold-rebalance WIN.
+#
+# Distinct from osd-pod-failure.yaml (the I1 two-arm CAUSALITY proof, duration 240s
+# against mon_osd_down_out_interval=60s). That pairing deliberately marks the OSD out
+# fast to show, by hand, that noout prevents the thrash. It is the WRONG pairing for the
+# autonomous test: hold-rebalance is only a coherent action in the window [OSD down, OSD
+# marked out], and that window's width == mon_osd_down_out_interval. At 60s the window
+# shuts ~2 min before the detect→reason→govern→act pipeline (~150s observed, 2026-07-18
+# run) can apply noout — the machine cannot win a race that's already over.
+#
+# So this manifest pairs a LONG mark-out interval with a LONGER fault:
+#   - mon_osd_down_out_interval = 300s  (set at runtime, see the handoff doc) —
+#     comfortably past pipeline latency, so noout lands during [down, not-out].
+#   - duration = 480s (here) > interval (300s) — so a mark-out WOULD fire without
+#     intervention. Duration <= interval self-heals before mark-out regardless of noout,
+#     making a "win" coincidental, not causal (the trap thump-runbooks.md warns about).
+#     480s also leaves ~180s of unambiguous "OSD down but still IN, noout holding" after
+#     the would-be mark-out at ~320s — the visible proof the action worked.
+#
+# action: pod-failure (not pod-kill) — patches the pod in place for `duration` and
+# auto-reverts, no respawn race. mode: one — exactly one OSD, a transient single-OSD
+# outage. Same rationale as osd-pod-failure.yaml; only the timing pairing differs.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: osd-pod-failure-autonomous
+  namespace: chaos-mesh
+spec:
+  action: pod-failure
+  mode: one
+  selector:
+    namespaces: [rook-ceph]
+    labelSelectors: {app: rook-ceph-osd}
+  duration: "480s"

@@ -102,28 +102,35 @@ func TestShippedCatalogMatchesAuthoredDefault(t *testing.T) {
 	}
 }
 
-// TestDefault_DependencySaturationOffersTwoDistinctRemedies is E2's
-// discrimination pin: a failure class served by exactly one authored action
-// is a rubber-stamp, not a choice — the model has nothing to weigh.
-// dependency_saturation must offer both a load-shedding remedy
-// (throttle-non-critical-paths) and a capacity remedy
-// (scale-out-rgw-gateways), each independently reversible, so ranking a
-// dependency_saturation proposal is a real trade-off (Seam 3's causal
-// scorer/ranker have two candidates to compare), not a formality.
-func TestDefault_DependencySaturationOffersTwoDistinctRemedies(t *testing.T) {
-	got := contract.Default().Applicable(proposal.ClassDependencySaturation, "tier-1", proposal.SAO{})
+// TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast pins I2's
+// realignment: hold-rebalance is reachable under redundancy_degraded
+// (relabeled off resource_exhaustion, thump-running-notes.md 2026-07-17 part
+// 9), and it carries the SeverityQuery/SeverityReductionPct pair
+// recordEffectiveness needs — a contract with no SeverityReductionPct feeds
+// the effectiveness delta no forecast to score against. redundancy_degraded
+// now offers two independently reversible remedies, the same discrimination
+// shape dependency_saturation has above.
+func TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast(t *testing.T) {
+	got := contract.Default().Applicable(proposal.ClassRedundancyDegraded, "tier-1", proposal.SAO{})
 
 	var names []string
 	for _, c := range got {
 		names = append(names, c.Name)
-		if c.Reversal.Method == "" {
-			t.Errorf("%s has no reversal method — every dependency_saturation action must be reversible", c.Name)
-		}
+	}
+	want := []string{"hold-rebalance", "accelerate-recovery"}
+	if diff := cmp.Diff(want, names); diff != "" {
+		t.Errorf("redundancy_degraded's applicable actions (-want +got):\n%s", diff)
 	}
 
-	want := []string{"throttle-non-critical-paths", "scale-out-rgw-gateways"}
-	if diff := cmp.Diff(want, names); diff != "" {
-		t.Errorf("dependency_saturation's applicable actions (-want +got):\n%s", diff)
+	holdRebalance, ok := contract.Default().ByName("hold-rebalance")
+	if !ok {
+		t.Fatal("hold-rebalance is not in the catalog")
+	}
+	if holdRebalance.SuccessCriteria.SeverityReductionPct == 0 {
+		t.Error("hold-rebalance needs a non-zero SeverityReductionPct or the effectiveness delta has no forecast to score")
+	}
+	if holdRebalance.SuccessCriteria.SeverityQuery == "" {
+		t.Error("hold-rebalance needs a SeverityQuery so the post-action check has an axis to read")
 	}
 }
 

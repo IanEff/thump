@@ -68,17 +68,6 @@ func (s execSeqOp) do(ctx context.Context, k Kube) error {
 	return nil
 }
 
-// patchOp merge-patches one named custom resource — no exec, no toolbox.
-type patchOp struct {
-	group, version, resource string
-	namespace, name          string
-	patch                    []byte
-}
-
-func (p patchOp) do(ctx context.Context, k Kube) error {
-	return k.Patch(ctx, p.group, p.version, p.resource, p.namespace, p.name, p.patch)
-}
-
 // binding is a ref's forward mutation and its authored undo.
 type binding struct {
 	forward operation
@@ -111,39 +100,10 @@ func bindingSet() map[string]binding {
 			command:   argv,
 		}
 	}
-	rgwPatch := func(instances int) patchOp {
-		return patchOp{
-			group:     "ceph.rook.io",
-			version:   "v1",
-			resource:  "cephobjectstores",
-			namespace: rookCeph,
-			name:      "ceph-objectstore",
-			patch:     []byte(fmt.Sprintf(`{"spec":{"gateway":{"instances":%d}}}`, instances)),
-		}
-	}
 	return map[string]binding{
 		"hold-rebalance": {
 			forward: toolbox("ceph", "osd", "set", "noout"),
 			reverse: toolbox("ceph", "osd", "unset", "noout"),
-		},
-		"scale-out-rgw-gateways": {
-			forward: rgwPatch(2),
-			reverse: rgwPatch(1),
-		},
-		// The rig fronts RGW with a plain Gateway API HTTPRoute — no
-		// ingress-layer throttle exists to bind against. RGW's own
-		// anonymous-scope rate limit is the real knob: it caps
-		// unauthenticated traffic, leaving authenticated (critical)
-		// requests untouched. 500 ops/min is a starting ceiling, not a
-		// calibrated one — same posture as the confidence floors in
-		// config/hiss/policy.yaml.
-		"throttle-non-critical-paths": {
-			forward: execSeqOp{
-				toolbox("radosgw-admin", "global", "ratelimit", "set",
-					"--ratelimit-scope=anonymous", "--max-read-ops=500", "--max-write-ops=500"),
-				toolbox("radosgw-admin", "global", "ratelimit", "enable", "--ratelimit-scope=anonymous"),
-			},
-			reverse: toolbox("radosgw-admin", "global", "ratelimit", "disable", "--ratelimit-scope=anonymous"),
 		},
 		// forward raises recovery concurrency far above Ceph's defaults (1
 		// backfill, 3 recovery ops); reverse removes the overrides so the

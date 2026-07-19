@@ -51,7 +51,7 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion, // in defaultCatalog's hold-rebalance
+			FailureClass: proposal.ClassRedundancyDegraded, // in defaultCatalog's hold-rebalance
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -134,122 +134,6 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	}
 }
 
-// TestGoldenPath_RgwSaturationClosesTheLoopOnTheProductionCatalog is the
-// dependency_saturation/throttle-non-critical-paths mirror of the node-death
-// test above — the production catalog's OTHER action, closed end to end with
-// a scripted model. The fixture (testdata/detections/ceph-rgw-saturation.yaml)
-// is a raw NATS capture of a real chaos run (2026-07-14): CPU-stressed
-// rook-ceph-rgw under real S3 traffic burned the ceph-rgw-saturation SLO to
-// 40-60x with RGW's own GET/PUT latency at 173-179ms, healthy upstream OSD
-// and capacity. Replaying that evidence through the real-model eval harness
-// (eval_test.go's ceph-rgw-saturation.yaml row) lands on this exact call 6/6
-// times; the live run itself landed on traffic_shift once instead (see the
-// fixture's header) — this golden pins the correct call as a hard regression
-// net, the same role node-death's golden plays for hold-rebalance.
-func TestGoldenPath_RgwSaturationClosesTheLoopOnTheProductionCatalog(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	det := loadDetectionFixtureExt(t, "ceph-rgw-saturation.yaml")
-
-	// scripted model: gather the two live citations that actually discriminate
-	// this class (RGW's own latency vs. its request rate), then propose
-	// throttle-non-critical-paths — the catalogued action for
-	// dependency_saturation at tier-1.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rgw_get_put_latency_ms"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rgw_request_rate"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassDependencySaturation,
-			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_backend_saturation", Weight: 0.85}},
-			Proposals: []proposal.Candidate{{
-				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.85,
-				// bare — no ReversalPath, no GovernanceLevel: enrichFromCatalog
-				// must stamp both from the catalog's own reversal/tier data.
-			}},
-		})}}},
-	}}
-
-	ts := goldenPrometheusServer(t)
-	defer ts.Close()
-
-	tools := map[string]clank.Tool{
-		"metrics": &clank.MetricsTool{
-			BaseURL: ts.URL,
-			Queries: map[string]string{
-				"rgw_get_put_latency_ms": "1000 * (sum(rate(ceph_rgw_op_get_obj_lat_sum[1m])) / sum(rate(ceph_rgw_op_get_obj_lat_count[1m])))",
-				"rgw_request_rate":       "sum(rate(ceph_rgw_req[5m])) or vector(0)",
-			},
-		},
-	}
-
-	eng, sink := goldenEngine(model, tools)
-
-	// ── beat one+two: reason → deliver ──────────────────────────────────
-	set, err := eng.Propose(ctx, det)
-	if err != nil {
-		t.Fatalf("Propose errored: %v", err)
-	}
-	if set.Gate == nil || !set.Gate.Passed {
-		t.Fatalf("the production catalog should serve rgw saturation: gate=%+v", set.Gate)
-	}
-	if len(sink.Delivered) != 1 {
-		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.Delivered))
-	}
-	delivered := sink.Delivered[0]
-	if delivered.Recommended != "p1" || delivered.Proposals[0].ContractRef != "throttle-non-critical-paths" {
-		t.Fatalf("recommended action should be throttle-non-critical-paths, got %q (%s)",
-			delivered.Proposals[0].ContractRef, delivered.Recommended)
-	}
-	cand := delivered.Proposals[0]
-	if cand.ReversalPath == nil || cand.ReversalPath.Method != "unthrottle" {
-		t.Fatalf("enrichFromCatalog must stamp ReversalPath from the catalog even when the model left it nil; got %+v", cand.ReversalPath)
-	}
-	if cand.GovernanceLevel == nil || cand.GovernanceLevel.Band != string(decision.BandActReversible) {
-		t.Fatalf("enrichFromCatalog must stamp the requested band from the catalog's reversibility; got %+v", cand.GovernanceLevel)
-	}
-	scrubVolatile(&delivered)
-	assertGolden(t, "rgw-saturation-proposal.yaml", delivered)
-
-	// ── beat three: govern ──────────────────────────────────────────────
-	dec := hiss.Authority{}.Evaluate(delivered, goldenPolicy(), goldenNow)
-	if err := dec.Auditable(); err != nil {
-		t.Fatal("decision must be auditable:", err)
-	}
-	if dec.Verdict != decision.VerdictApproved {
-		t.Fatalf("hiss must approve the golden path: %s (reasons: %v)", dec.Verdict, dec.Reasons)
-	}
-	assertGolden(t, "rgw-saturation-decision.yaml", dec)
-
-	// ── beat four: render + rehearse (dry-run, nothing executed) ────────
-	order, err := thump.Actuator{}.Render(
-		decision.Governed{Decision: dec, Set: delivered}, goldenCatalog(), goldenNow)
-	if err != nil {
-		t.Fatal("thump.Render errored:", err)
-	}
-	out := thump.DryRun{}.Execute(ctx, order, goldenNow)
-	if out.Result != outcome.ResultRendered {
-		t.Fatalf("a dry-run ends rendered, not executed: %s", out.Result)
-	}
-	assertGolden(t, "rgw-saturation-outcome.yaml", out)
-
-	// ── beat five: learn — bank the rehearsal, belief UNMOVED ───────────
-	cb := clank.NewCaseBase()
-	click := clank.Click{Ledger: eng.Ledger, Cases: cb}
-	if err := click.Absorb(ctx, out); err != nil {
-		t.Fatal("click.Absorb errored:", err)
-	}
-	cases := cb.Cases(det.Fingerprint)
-	if len(cases) != 1 {
-		t.Fatalf("one outcome, one case; got %d", len(cases))
-	}
-	assertGolden(t, "rgw-saturation-case.yaml", cases[0])
-
-	// a rehearsal is bookkeeping, not evidence: nothing may be believed yet.
-	if _, corroborated := cb.Alignment(det.Fingerprint); corroborated {
-		t.Error("the loop closed on a dry-run — the prior must stay untouched")
-	}
-}
-
 // TestGoldenPath_DedupOnReplaySuppressesTheSecondSet pins the ledger's
 // fingerprint dedup: an already-open set for a fingerprint suppresses a fresh
 // one for the same fingerprint (recorded, NOT delivered). This is the
@@ -314,7 +198,7 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion,
+			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -422,7 +306,7 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion,
+			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -492,7 +376,7 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 	return &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
-			FailureClass: proposal.ClassResourceExhaustion,
+			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
@@ -528,14 +412,14 @@ func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine
 }
 
 // goldenPolicy is a hiss policy that approves the node-death path: the
-// tier-1 × resource_exhaustion floor sits below the 0.9 candidate confidence,
+// tier-1 × redundancy_degraded floor sits below the 0.9 candidate confidence,
 // and the tier-1 ceiling admits the requested act_reversible band.
 func goldenPolicy() hiss.Policy {
 	return hiss.Policy{
 		Version: "golden-v1",
 		Floors: map[string]map[proposal.FailureClass]float64{
 			"tier-1": {
-				proposal.ClassResourceExhaustion:   0.75,
+				proposal.ClassRedundancyDegraded:   0.75,
 				proposal.ClassDependencySaturation: 0.75,
 			},
 		},

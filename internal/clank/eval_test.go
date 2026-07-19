@@ -72,10 +72,15 @@ func evalTable() []evalCase {
 		// regression. evalEvidence's comment for this fixture has the full
 		// trail (recovery_ops_rate's unit-less name — recovery_active,
 		// at the time of the incident — is the likely culprit).
+		// wantDisposition flipped to insufficient (Phase I, I5,
+		// thump-running-notes.md 2026-07-18): throttle-non-critical-paths
+		// was demoted from the catalog as a dead knob on this rig
+		// (rgw-failure-injection.md). dependency_saturation now has zero
+		// remedies, and seedPrompt no longer offers this ref at all, so a
+		// healthy model must decline, not propose it.
 		{
 			fixture:         "rgw-degradation.yaml",
-			wantDisposition: "propose",
-			wantContractRef: "throttle-non-critical-paths",
+			wantDisposition: "insufficient",
 		},
 		// A fourth decision boundary (2026-07-14, thump-running-notes.md
 		// "2026-07-14"): the first RGW chaos run with a real fix underneath
@@ -95,10 +100,15 @@ func evalTable() []evalCase {
 		// isn't wired into the eval harness's tool set at all; that's the
 		// likely tip, not a reasoning flaw. Pins the correct call as the
 		// regression net, same framing as rgw-degradation.yaml above.
+		// wantDisposition flipped to insufficient (Phase I, I5,
+		// thump-running-notes.md 2026-07-18): throttle-non-critical-paths
+		// was demoted from the catalog as a dead knob on this rig
+		// (rgw-failure-injection.md). dependency_saturation now has zero
+		// remedies, and seedPrompt no longer offers this ref at all, so a
+		// healthy model must decline, not propose it.
 		{
 			fixture:         "ceph-rgw-saturation.yaml",
-			wantDisposition: "propose",
-			wantContractRef: "throttle-non-critical-paths",
+			wantDisposition: "insufficient",
 		},
 	}
 }

@@ -16,42 +16,6 @@ import (
 func Default() *StaticCatalog {
 	return NewStaticCatalog([]ActionContract{
 		{
-			Name:                     "throttle-non-critical-paths",
-			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
-			ApplicableTiers:          []string{"tier-1"},
-			Action: ActionSpec{
-				Description: "Rate-limit anonymous (unauthenticated) RGW requests via radosgw-admin's " +
-					"global ratelimit, shedding non-critical load without touching authenticated request paths",
-				ScopeParameters: map[string]Range{"throttle_pct": {Min: 10, Max: 60, Default: 25}},
-			},
-			BlastTier: proposal.BlastMed,
-			Reversal:  Reversal{Method: "unthrottle", Fallback: "page-oncall"},
-			SuccessCriteria: SuccessCriteria{
-				Metric: "latency_p99", Target: "p99 < 250ms", Window: 10 * time.Minute,
-				SeverityQuery: "severity_rgw_availability", SeverityReductionPct: 0.5,
-			},
-		},
-		{
-			// The second dependency_saturation remedy: adds capacity
-			// instead of shedding load, so a proposal for this class is a
-			// real trade-off between two candidates for the ranker to
-			// weigh, not a rubber stamp on the only option (Phase E's E2).
-			Name:                     "scale-out-rgw-gateways",
-			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
-			ApplicableTiers:          []string{"tier-1"},
-			Action: ActionSpec{
-				Description: "Scale up RGW gateway replicas (CephObjectStore spec.gateway.instances) " +
-					"to add serving capacity under load",
-				ScopeParameters: map[string]Range{"additional_replicas": {Min: 1, Max: 3, Default: 1}},
-			},
-			BlastTier: proposal.BlastLow,
-			Reversal:  Reversal{Method: "scale-in-rgw-gateways", Fallback: "page-oncall"},
-			SuccessCriteria: SuccessCriteria{
-				Metric: "rgw_get_put_latency_ms", Target: "avg < 50ms", Window: 10 * time.Minute,
-				SeverityQuery: "severity_rgw_saturation", SeverityReductionPct: 0.6,
-			},
-		},
-		{
 			Name: "hold-rebalance",
 			// unknown deliberately NOT listed: mapping "I don't know" to a
 			// real action gave the model an escape hatch to act instead of
@@ -59,7 +23,7 @@ func Default() *StaticCatalog {
 			// between declared class and proposed action now becomes an
 			// auditable decline (engine.go's errClassMismatch), not silence.
 			ApplicableFailureClasses: []proposal.FailureClass{
-				proposal.ClassResourceExhaustion,
+				proposal.ClassRedundancyDegraded,
 			},
 			ApplicableTiers: []string{"tier-1"},
 			Action: ActionSpec{
@@ -75,13 +39,15 @@ func Default() *StaticCatalog {
 				Fallback: "page-oncall",
 			},
 			SuccessCriteria: SuccessCriteria{
-				Metric: "ceph_health",
-				Target: "HEALTH_OK",
-				Window: 10 * time.Minute,
+				Metric:               "ceph_health",
+				Target:               "HEALTH_OK",
+				Window:               10 * time.Minute,
+				SeverityQuery:        "severity_ceph_redundancy",
+				SeverityReductionPct: 0.7,
 			},
 		},
 		{
-			// The only high-blast action in the catalog, and the sole remedy
+			// The only high-blast action in the catalog, and one of two remedies
 			// for redundancy_degraded: raising recovery concurrency buys
 			// durability by spending client-serving I/O — a trade a human
 			// blesses, which is why it's authored BlastHigh. Reversible, so

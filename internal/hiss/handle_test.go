@@ -58,3 +58,26 @@ func TestHandle_DecisionLogsContractRef(t *testing.T) {
 		t.Error("decision line must carry contractRef (-want +got)", diff)
 	}
 }
+
+// TestHandle_DecisionLogsConfidenceAndFloor pins the recommended candidate's
+// confidence and the floor it was measured against onto the decision line.
+// Without both, a confidence_floor escalation is undiagnosable from logs — the
+// verdict says "below floor" but not by how much, and the number that would
+// calibrate the floor is otherwise recoverable from no persisted artifact.
+func TestHandle_DecisionLogsConfidenceAndFloor(t *testing.T) {
+	getLogs := captureLog(t)
+	fake := &fakeDecisionPub{}
+	tr := &hiss.Transport{Pub: fake, Policy: calmPolicy(), Log: hiss.NewDecisionLog(), Now: frozenNow}
+
+	if err := tr.HandleForTest(context.Background(), governedSet(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	line := onlyDecisionLine(t, getLogs())
+	if diff := cmp.Diff(0.87, line["confidence"]); diff != "" {
+		t.Error("decision line must carry the recommended candidate's confidence (-want +got)", diff)
+	}
+	if diff := cmp.Diff(0.75, line["floorApplied"]); diff != "" {
+		t.Error("decision line must carry the floor confidence was measured against (-want +got)", diff)
+	}
+}
