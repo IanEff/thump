@@ -36,6 +36,7 @@ type Decision struct {
 	EvaluatedAt   time.Time `json:"evaluatedAt,omitempty" yaml:"evaluatedAt,omitempty"`
 	Forced        bool      `json:"forced,omitempty" yaml:"forced,omitempty"`     // true when a human pushed this through trim's break-glass path instead of hiss granting it — never rendered as an earned approval
 	Operator      string    `json:"operator,omitempty" yaml:"operator,omitempty"` // who forced it; set only when Forced is true
+	Approver      string    `json:"approver,omitempty" yaml:"approver,omitempty"` // who acked a held Candidate through trim approve's re-issue path; set only by hiss's approval handler, never by Evaluate, and never alongside Forced — earned via ack or pushed through break-glass, never both
 }
 
 // Auditable is the invariant every Authority.Evaluate output is tested

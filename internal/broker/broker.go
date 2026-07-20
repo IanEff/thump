@@ -31,7 +31,7 @@ const maxDeliver = 6
 // durable consumer for — the five boundary-object edges the beats hand
 // off across (rattle→clank, clank→hiss, hiss→thump, thump→clank, and
 // thump→clank's second edge for governance non-approvals).
-var Subjects = []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes", "thump.declines"}
+var Subjects = []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes", "thump.declines", "thump.approvals"}
 
 // DurableFor names the durable consumer that owns subject, one name per
 // beat so each beat's read position survives its own restarts without
@@ -53,6 +53,8 @@ func DurableFor(subject string) string {
 		return "click" // click (clank's return edge) reads outcomes
 	case "thump.declines":
 		return "clank-declines" // clank's ledger-closing consumer — a non-approval never goes through Click
+	case "thump.approvals":
+		return "his-approvals" // hiss's second subscriber
 	}
 	return ""
 }

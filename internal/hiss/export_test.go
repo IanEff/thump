@@ -3,6 +3,7 @@ package hiss
 import (
 	"context"
 
+	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
@@ -12,4 +13,8 @@ import (
 // internal/clank/export_test.go and internal/rattle/export_test.go.
 func (tr *Transport) HandleForTest(ctx context.Context, ps proposal.Set, heartbeat func()) error {
 	return tr.handle(ctx, ps, heartbeat)
+}
+
+func (tr *Transport) ApproveHandlerForTest(ctx context.Context, a approval.Approval, heartbeat func()) error {
+	return tr.approveHandler(ctx, a, heartbeat)
 }

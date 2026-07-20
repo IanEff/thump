@@ -17,6 +17,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
@@ -117,7 +118,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	}
 	defer func() { _ = pub.WAL.Drain(ctx, sink) }()
 
-	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Tracer: tracer, Stages: stages}
+	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: NewPendingHolds(), Tracer: tracer, Stages: stages}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -126,6 +127,10 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	})
 	g.Go(func() error {
 		return beat.RunConsumer[proposal.Set](gctx, js, "thump.proposals", tr.handle)
+	})
+	approvalSub := broker.NewJetSubscriber[approval.Approval](js)
+	g.Go(func() error {
+		return approvalSub.Run(gctx, "thump.approvals", tr.approveHandler)
 	})
 
 	return beat.ExitOnError(ctx, g.Wait())

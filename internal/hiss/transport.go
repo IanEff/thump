@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
+	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
@@ -28,6 +29,7 @@ type Transport struct {
 	Pub    publish.Publisher[decision.Governed] // destination for governed decisions — thump.decisions in production
 	Policy Policy                               // the floors, ceilings, and freeze windows Authority.Evaluate governs against
 	Log    *DecisionLog                         // every Decision reached, queryable by ByVerdict
+	Holds  *PendingHolds                        // fingerprints hiss has held
 	Now    func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
 	Tracer trace.Tracer                         // spans "govern" under whatever trace ctx already carries; nil-safe via tracer()
 	Stages *beat.StageRecorder                  // RED metrics for "govern" — nil-safe, same discipline as Tracer
@@ -97,6 +99,9 @@ func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) erro
 		d = auth.Evaluate(ps, tr.Policy, now())
 		return nil
 	})
+	if d.Verdict == decision.VerdictHold && tr.Holds != nil {
+		tr.Holds.Record(decision.Governed{Decision: d, Set: ps})
+	}
 	tr.Log.Record(d)
 	rec, _ := recommended(ps)
 	slog.Info("decision", "fingerprint", ps.SignalRef, "verdict", d.Verdict, "reasons", d.Reasons,
@@ -119,4 +124,36 @@ func (tr *Transport) archive(path string) error {
 		return err
 	}
 	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
+}
+
+func (tr *Transport) approveHandler(ctx context.Context, a approval.Approval, _ func()) error {
+	held, ok := tr.Holds.Take(a.SignalRef)
+	if !ok {
+		slog.Warn("approval arrived for an unheld fingerprint", "signalRef", a.SignalRef)
+		return nil
+	}
+
+	now := time.Now
+	if tr.Now != nil {
+		now = tr.Now
+	}
+
+	d := held.Decision
+	d.ID = fmt.Sprintf("dec:%s:%d", d.SignalRef, now().Unix())
+	d.Verdict = decision.VerdictApproved
+	d.GrantedBand = d.RequestedBand
+	d.Reasons = nil // the risk-ceiling reason that earned the hold is satisfied now
+	d.Approver = a.Approver
+	d.PolicyVersion = tr.Policy.Version
+	d.EvaluatedAt = now()
+
+	if err := d.Auditable(); err != nil {
+		return fmt.Errorf("hiss: re-stamped decision not auditable: %w", err)
+	}
+	if err := tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: held.Set}); err != nil {
+		return fmt.Errorf("hiss: publish re-issued decision for %s: %w", a.SignalRef, err)
+	}
+	tr.Log.Record(d)
+	slog.Info("approved", "signalRef", a.SignalRef, "approver", a.Approver, "grantedBand", d.GrantedBand)
+	return nil
 }

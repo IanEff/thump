@@ -179,3 +179,14 @@ func TestRenderIncidents_ListsDeclinesAlongsideHolds(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderIncident_ShowsWhoApprovedWhenNotForced(t *testing.T) {
+	t.Parallel()
+	inc := Incident{Fingerprint: "fp-1", Stage: StageApproved, Service: "checkout-api", Approver: "alice"}
+
+	got := renderIncident(inc, time.Now())
+
+	if !strings.Contains(got, "approved by alice") {
+		t.Errorf("want the approver named in the rendered line, got %q", got)
+	}
+}
