@@ -58,12 +58,15 @@ tracing:
 cilium:
   apiserverEgress: true
 
-# thump.executor stays at the chart default (dry) here deliberately — Wave 7
-# prep wired this profile up but did NOT run `tilt up` against it or arm
-# live execution (thump-test rig CLAUDE.md, Wave 7 next steps). Before the
-# actual live-proof run, arm it the same way rook-gce-k3s's file did for its
-# I-live v2 run:
-#   thump:
-#     executor: live
-#     killSwitch:
-#       armed: true
+# ⚠️ TEMPORARY — arm-live block for the Phase-I live-proof run on thump-test
+# (2026-07-20). Remove after the run. Same shape as rook-gce-k3s's I-live v2
+# block: executor: live lets thump actually merge-patch the flagd ConfigMap;
+# dedupeWindow shortened to 10m so a held/stuck fingerprint can't block
+# re-detection for an hour and eat the session.
+thump:
+  executor: live
+  killSwitch:
+    armed: true
+beats:
+  clank:
+    dedupeWindow: 10m

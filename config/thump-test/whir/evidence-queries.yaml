@@ -118,9 +118,9 @@ queries:
   # not absent.
   - name: product_catalog_error_ratio
     query: >-
-      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])) or vector(0))
+      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[2m])) or vector(0))
       /
-      sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[5m]))
+      sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[2m]))
   - name: cart_error_ratio
     query: >-
       (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
