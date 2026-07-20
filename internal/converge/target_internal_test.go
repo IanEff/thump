@@ -19,6 +19,8 @@ func TestParseTarget(t *testing.T) {
 		{name: "avg latency target", target: "avg < 50ms", wantOp: "<", wantThreshold: 50},
 		{name: "ceph health special case", target: "HEALTH_OK", wantOp: "==", wantThreshold: 0},
 		{name: "decimal threshold", target: "p99 < 12.5ms", wantOp: "<", wantThreshold: 12.5},
+		{name: "equality target", target: "product_catalog_error_ratio == 0", wantOp: "==", wantThreshold: 0},
+		{name: "equality target nonzero", target: "pgs_degraded == 3", wantOp: "==", wantThreshold: 3},
 		{name: "empty target errors", target: "", wantErr: true},
 		{name: "unrecognized prose errors", target: "somewhere between fine and not", wantErr: true},
 		{name: "unsupported operator errors", target: "p99 <= 250ms", wantErr: true},
