@@ -3,13 +3,19 @@ package trim_test
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/api/v1/approval"
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/trim"
+	"sigs.k8s.io/yaml"
 )
 
 // TestMain_IncidentsJSONPrintsCleanParseableJSON pins the W-R4 claim: piping
@@ -89,5 +95,117 @@ func TestMain_ReturnsUsageErrorForAnUnknownCommand(t *testing.T) {
 	}
 	if stderr.String() == "" {
 		t.Error("want an error message on stderr, got none")
+	}
+}
+
+func TestMain_ApprovePublishesAnAuditableApproval(t *testing.T) {
+	t.Parallel()
+	outbox := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	code := trim.Main([]string{"approve", "fp-1", "--approver", "alice", "--outbox", outbox}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	matches, err := filepath.Glob(filepath.Join(outbox, "*.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("want exactly one written Approval, got %d", len(matches))
+	}
+	raw, err := os.ReadFile(matches[0]) //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got approval.Approval
+	if err := yaml.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff("fp-1", got.SignalRef); diff != "" {
+		t.Error("wrong fingerprint written (-want +got)", diff)
+	}
+	if diff := cmp.Diff("alice", got.Approver); diff != "" {
+		t.Error("wrong approver written (-want +got)", diff)
+	}
+	if err := got.Auditable(); err != nil {
+		t.Error("written Approval must be Auditable:", err)
+	}
+}
+
+func TestMain_ApproveRequiresExactlyOneFingerprintArgument(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+
+	code := trim.Main([]string{"approve", "--outbox", t.TempDir()}, &stdout, &stderr)
+
+	if code == 0 {
+		t.Error("want a nonzero exit code with no fingerprint argument, got 0")
+	}
+}
+
+func TestMain_ForcePublishesAForcedGovernedStraightToDecisions(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	held := decision.Governed{
+		Decision: decision.Decision{
+			ID: "dec-1", SignalRef: "fp-1", Verdict: decision.VerdictHold,
+			RequestedBand: decision.BandActDisruptive, RiskBand: decision.BandActDisruptive,
+			PolicyVersion: "policy-v3", EvaluatedAt: time.Now(),
+			Reasons: []string{decision.ReasonRiskCeiling},
+		},
+		Set: proposal.Set{SignalRef: "fp-1"},
+	}
+	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", held)
+
+	var stdout, stderr bytes.Buffer
+	code := trim.Main([]string{"force", "fp-1", "--operator", "alice", "--inbox", inbox, "--outbox", outbox}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	matches, err := filepath.Glob(filepath.Join(outbox, "*.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("want exactly one forced Governed written, got %d", len(matches))
+	}
+	raw, err := os.ReadFile(matches[0]) //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got decision.Governed
+	if err := yaml.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff(decision.VerdictApproved, got.Decision.Verdict); diff != "" {
+		t.Error("wrong verdict (-want +got)", diff)
+	}
+	if !got.Decision.Forced {
+		t.Error("want Forced=true on a break-glass decision")
+	}
+	if diff := cmp.Diff("alice", got.Decision.Operator); diff != "" {
+		t.Error("wrong operator recorded (-want +got)", diff)
+	}
+	if err := got.Decision.Auditable(); err != nil {
+		t.Error("forced decision must be Auditable:", err)
+	}
+}
+
+func TestMain_ForceFailsWhenTheFingerprintIsNotCurrentlyHeld(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	code := trim.Main([]string{"force", "no-such-fp", "--inbox", inbox, "--outbox", outbox}, &stdout, &stderr)
+
+	if code == 0 {
+		t.Error("want a nonzero exit code for a fingerprint with nothing held, got 0")
+	}
+	if stderr.String() == "" {
+		t.Error("want an explanatory message on stderr, got none")
 	}
 }

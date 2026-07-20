@@ -232,6 +232,18 @@ func TestFold(t *testing.T) {
 			obj:   "not a boundary object",
 			want:  proposed,
 		},
+		"Fold records the Approver when hiss re-issues a Governed through the ack path": {
+			prior: held,
+			obj: decision.Governed{
+				Decision: decision.Decision{
+					SignalRef: fp, Verdict: decision.VerdictApproved,
+					RequestedBand: decision.BandActDisruptive, GrantedBand: decision.BandActDisruptive,
+					PolicyVersion: "policy-v3", EvaluatedAt: t2Reissue, Approver: "alice",
+				},
+				Set: set,
+			},
+			want: trim.Incident{Fingerprint: fp, Stage: trim.StageApproved, Service: svc, UpdatedAt: t2Reissue, Held: nil, Approver: "alice"},
+		},
 	}
 
 	for name, tc := range tests {

@@ -81,3 +81,43 @@ func TestHandle_DecisionLogsConfidenceAndFloor(t *testing.T) {
 		t.Error("decision line must carry the floor confidence was measured against (-want +got)", diff)
 	}
 }
+
+func TestHandle_RecordsAPendingHoldOnVerdictHold(t *testing.T) {
+	t.Parallel()
+	fake := &fakeDecisionPub{}
+	holds := hiss.NewPendingHolds()
+	tr := &hiss.Transport{Pub: fake, Policy: holdPolicy(), Log: hiss.NewDecisionLog(), Holds: holds, Now: frozenNow}
+
+	if err := tr.HandleForTest(context.Background(), governedSet(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := holds.Take(governedSet().SignalRef)
+	if !ok {
+		t.Fatal("want handle to Record the held Governed under its fingerprint, got nothing")
+	}
+	if diff := cmp.Diff(decision.VerdictHold, got.Decision.Verdict); diff != "" {
+		t.Error("wrong verdict retained in the pending hold (-want +got)", diff)
+	}
+}
+
+func TestHandle_DoesNotRecordAnApprovedVerdictAsAHold(t *testing.T) {
+	t.Parallel()
+	fake := &fakeDecisionPub{}
+	holds := hiss.NewPendingHolds()
+	tr := &hiss.Transport{Pub: fake, Policy: calmPolicy(), Log: hiss.NewDecisionLog(), Holds: holds, Now: frozenNow}
+
+	if err := tr.HandleForTest(context.Background(), governedSet(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := holds.Take(governedSet().SignalRef); ok {
+		t.Error("want an approved verdict to leave nothing pending, got a recorded hold")
+	}
+}
+
+func holdPolicy() hiss.Policy {
+	pol := calmPolicy()
+	pol.AutoBand = map[string]decision.Band{"tier-1": decision.BandObserve}
+	return pol
+}

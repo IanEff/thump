@@ -38,6 +38,9 @@ func renderIncident(inc Incident, now time.Time) string {
 		sb.WriteString(dangerStyle.Render("FORCED"))
 		sb.WriteString(" by ")
 		sb.WriteString(inc.Operator)
+	} else if inc.Approver != "" {
+		sb.WriteString("  approved by ")
+		sb.WriteString(inc.Approver)
 	}
 	return sb.String()
 }

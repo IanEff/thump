@@ -49,6 +49,12 @@ type Incident struct {
 	Forced bool `json:"forced,omitempty"`
 	// Operator names who forced it. Only meaningful when Forced is true.
 	Operator string `json:"operator,omitempty"`
+	// Approver names who acked a held fingerprint through trim approve —
+	// meaningful only when the Decision came from hiss's re-issue handler,
+	// never from Evaluate itself, and never alongside Forced: an approval
+	// is either earned via an ack or pushed through the break-glass, never
+	// both.
+	Approver string `json:"approver,omitempty"`
 }
 
 // Fold advances prior by one boundary object. Every case has to start from
@@ -78,6 +84,7 @@ func Fold(prior Incident, obj any) Incident {
 		next.UpdatedAt = v.Decision.EvaluatedAt
 		next.Forced = v.Decision.Forced
 		next.Operator = v.Decision.Operator
+		next.Approver = v.Decision.Approver
 		switch v.Decision.Verdict {
 		case decision.VerdictHold:
 			next.Stage = StageHeld

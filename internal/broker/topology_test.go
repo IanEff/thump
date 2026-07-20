@@ -25,7 +25,7 @@ func TestEnsureTopology_IsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal("stream missing after ensure:", err)
 	}
-	for _, subj := range []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes", "thump.declines"} {
+	for _, subj := range []string{"thump.detections", "thump.proposals", "thump.decisions", "thump.outcomes", "thump.declines", "thump.approvals"} {
 		if _, err := s.Consumer(ctx, broker.DurableFor(subj)); err != nil {
 			t.Errorf("durable consumer for %s missing: %v", subj, err)
 		}
