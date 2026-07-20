@@ -16,8 +16,9 @@ import (
 
 // EvidenceQuery represents a single named query from the evidence-queries.yaml file.
 type EvidenceQuery struct {
-	Name  string `json:"name"`
-	Query string `json:"query"`
+	Name    string `json:"name"`
+	Query   string `json:"query"`
+	Subject string `json:"subject,omitempty"` // the whir catalog-info.yaml entity this query's result is about; omitting it makes no topology claim — see EvidenceRef.Subject
 }
 
 // MetricsTool is the production implementation of the "metrics" tool.
@@ -26,6 +27,11 @@ type MetricsTool struct {
 	BaseURL string
 	Client  *http.Client
 	Queries map[string]string
+	// Subjects maps a query name to the topology node it concerns, for the
+	// gate's cross-domain coherence check (EvidenceRef.Subject). A name
+	// absent from this map stamps no Subject — the query makes no
+	// topology claim, so its Live citation is never attenuated.
+	Subjects map[string]string
 }
 
 // Ensure MetricsTool implements the Tool interface.
@@ -73,6 +79,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 			Live:    false,
 		}, nil
 	}
+	subject := m.Subjects[input.Q]
 
 	u, err := url.Parse(m.BaseURL + "/api/v1/query")
 	if err != nil {
@@ -97,6 +104,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 			Query:   input.Q,
 			Summary: fmt.Sprintf("prometheus request failed: %v", err),
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 	defer func() {
@@ -109,6 +117,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 			Query:   input.Q,
 			Summary: fmt.Sprintf("prometheus returned status: %s", resp.Status),
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 
@@ -130,6 +139,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 			Query:   input.Q,
 			Summary: "query returned no data",
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 
@@ -144,26 +154,34 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 		Summary: fmt.Sprintf("%s = %s", input.Q, v),
 		Ref:     "metrics://" + input.Q,
 		Live:    true,
+		Subject: subject,
 	}, nil
 }
 
-// LoadEvidenceQueries parses the evidence-queries.yaml into a new lookup map.
-func LoadEvidenceQueries(path string) (map[string]string, error) {
+// LoadEvidenceQueries parses evidence-queries.yaml into a query lookup and a
+// parallel subjects lookup — a name absent from subjects declared no
+// subject: tag, so MetricsTool stamps no Subject for it (see
+// EvidenceRef.Subject).
+func LoadEvidenceQueries(path string) (queries map[string]string, subjects map[string]string, err error) {
 	raw, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
-		return nil, fmt.Errorf("read evidence queries file %s: %w", path, err)
+		return nil, nil, fmt.Errorf("read evidence queries file %s: %w", path, err)
 	}
 
 	var file struct {
 		Queries []EvidenceQuery `json:"queries"`
 	}
 	if err := yaml.Unmarshal(raw, &file); err != nil {
-		return nil, fmt.Errorf("parse evidence queries: %w", err)
+		return nil, nil, fmt.Errorf("parse evidence queries: %w", err)
 	}
 
-	out := make(map[string]string, len(file.Queries))
+	queries = make(map[string]string, len(file.Queries))
+	subjects = make(map[string]string, len(file.Queries))
 	for _, q := range file.Queries {
-		out[q.Name] = q.Query
+		queries[q.Name] = q.Query
+		if q.Subject != "" {
+			subjects[q.Name] = q.Subject
+		}
 	}
-	return out, nil
+	return queries, subjects, nil
 }

@@ -297,6 +297,127 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 	assertGolden(t, "argocd-sync-status.yaml", set.Status)
 }
 
+// TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification pins the
+// 2026-07-20 live-run bug: an argocd-sync signal (testdata/detections/
+// argocd-sync-burn.yaml — topology cilium, rook-operator, nothing else) got
+// a live citation of the OTel demo's product_catalog_error_ratio (a real
+// value, from a domain with zero declared relationship to argocd), and the
+// model used it to justify RECLASSIFYING the signal as
+// ClassRedundancyDegraded and proposing hold-rebalance — a Ceph action, in
+// response to noise in an unrelated app. The gate's topology-coherence
+// check (gate.go anyCoherentLive) is the fix: a Live ref whose Subject
+// isn't in the signal's own SAO can't clear the belief-formation floor by
+// itself, so this exact script must decline, not deliver.
+func TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	det := loadDetectionFixtureExt(t, "argocd-sync-burn.yaml")
+
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassRedundancyDegraded,
+			Hypotheses:   []proposal.Hypothesis{{Name: "noisy_neighbor_misattribution", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				ReversalPath: &proposal.ReversalPath{
+					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
+				},
+				GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
+			}},
+		})}}},
+	}}
+
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL:  ts.URL,
+			Queries:  map[string]string{"product_catalog_error_ratio": "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))"},
+			Subjects: map[string]string{"product_catalog_error_ratio": "product-catalog"},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
+	set, err := eng.Propose(ctx, det)
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+
+	if set.Gate == nil || set.Gate.Passed {
+		t.Fatalf("a cross-domain-only live citation must fail the gate, not clear it: gate=%+v", set.Gate)
+	}
+	if set.Gate.Reason != "evidence" {
+		t.Errorf("the gate must veto on evidence coherence, not another minimum; got reason %q", set.Gate.Reason)
+	}
+	if len(sink.Delivered) != 0 {
+		t.Fatalf("a declined set delivers nothing; delivered %d", len(sink.Delivered))
+	}
+	if set.Status.Phase != "no_action" {
+		t.Errorf("a gate-declined set is phase=no_action, got %q", set.Status.Phase)
+	}
+}
+
+// TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated is the same
+// fixture and the same fabricated cross-domain citation, but this time the
+// model ALSO cites live evidence about a node that genuinely is in the
+// argocd signal's topology (rook-operator, degraded) — the real
+// noisy-neighbor path defence 5b must keep open: the in-topology ref is
+// what grounds the gate; the cross-domain ref rides along without vetoing
+// a classification that now has actual support.
+func TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	det := loadDetectionFixtureExt(t, "argocd-sync-burn.yaml")
+
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rook_operator_health"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassRedundancyDegraded,
+			Hypotheses:   []proposal.Hypothesis{{Name: "rook_operator_cascade", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				ReversalPath: &proposal.ReversalPath{
+					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
+				},
+				GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
+			}},
+		})}}},
+	}}
+
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{
+				"product_catalog_error_ratio": "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))",
+				"rook_operator_health":        "rook_operator_health_status",
+			},
+			Subjects: map[string]string{
+				"product_catalog_error_ratio": "product-catalog",
+				"rook_operator_health":        "rook-operator",
+			},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
+	set, err := eng.Propose(ctx, det)
+	if err != nil {
+		t.Fatalf("Propose errored: %v", err)
+	}
+
+	if set.Gate == nil || !set.Gate.Passed {
+		t.Fatalf("an in-topology citation must still clear the gate even alongside a cross-domain one: gate=%+v", set.Gate)
+	}
+	if len(sink.Delivered) != 1 {
+		t.Fatalf("a passed set is delivered exactly once; delivered %d", len(sink.Delivered))
+	}
+}
+
 func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

@@ -36,6 +36,7 @@ queries:
     query: slo:current_burn_rate:ratio{sloth_id="ceph-redundancy"}
   - name: slo_burn_argocd_sync     # ArgoCD-sync burn — no catalog action maps here (decline probe)
     query: slo:current_burn_rate:ratio{sloth_id="argocd-sync"}
+    subject: argocd
 
   # ── group 2 · OSD / rebalance state (evidence FOR or AGAINST hold-rebalance) ─
   - name: osds_down                # OSDs currently down — transient node loss?
@@ -86,6 +87,7 @@ queries:
   # ── group 6 · ArgoCD sync state (evidence for the argocd-sync decline probe) ─
   - name: argocd_apps_out_of_sync
     query: count(argocd_app_info{sync_status!="Synced"}) or vector(0)
+    subject: argocd
 
   # ── group 7 · action convergence severity (Ceph) ─────────────────────────
   # slo:sli_error:ratio_rate5m IS rattle's DegradationPct axis: Sloth's own
@@ -99,16 +101,25 @@ queries:
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-saturation"}
 
   # ── group 8 · OTel demo domain (Wave 6, new) ─────────────────────────────
+  # subject: tags every query below by the whir catalog-info.yaml entity it
+  # concerns (2026-07-20, the cross-domain misclassification fix — see
+  # gate.go anyCoherentLive). This is what lets the gate tell "the model
+  # investigated an unrelated app" from "the model found the actual cause"
+  # without restricting which queries the model may run.
   - name: slo_burn_product_catalog
     query: slo:current_burn_rate:ratio{sloth_id="product-catalog-availability"}
+    subject: product-catalog
   - name: slo_burn_cart
     query: slo:current_burn_rate:ratio{sloth_id="cart-availability"}
+    subject: cart
   # severity_* pair action success windows check against — same discipline
   # as group 7, one sloth_id per armed flag.
   - name: severity_product_catalog_availability
     query: slo:sli_error:ratio_rate5m{sloth_id="product-catalog-availability"}
+    subject: product-catalog
   - name: severity_cart_availability
     query: slo:sli_error:ratio_rate5m{sloth_id="cart-availability"}
+    subject: cart
   # Raw 0..1 error ratios — the same numerator/denominator as each SLO's own
   # Sloth SLI (prometheusservicelevels.yaml), for the model to cite directly
   # and for disable-*-failure's SuccessCriteria.Metric/Target to check
@@ -121,10 +132,15 @@ queries:
       (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[2m])) or vector(0))
       /
       sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[2m]))
+    subject: product-catalog
   - name: cart_error_ratio
     query: >-
       (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
       /
       sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m]))
+    subject: cart
+  # demo_pods_not_running spans the whole otel-demo namespace, not one
+  # component — left untagged rather than pinned to a single subject that
+  # would overclaim which node it's actually about.
   - name: demo_pods_not_running
     query: count(kube_pod_status_phase{namespace="otel-demo",phase!="Running"} == 1) or vector(0)

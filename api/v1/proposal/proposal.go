@@ -98,6 +98,7 @@ type EvidenceRef struct {
 	Summary string `json:"summary,omitempty" yaml:"summary,omitempty"` // the one-line digest that actually enters the conversation
 	Ref     string `json:"ref,omitempty" yaml:"ref,omitempty"`         // a backend pointer to re-fetch the source data, e.g. "kube://ns/pods" — not the data itself
 	Live    bool   `json:"live,omitempty" yaml:"live,omitempty"`       // true only for fresh telemetry, never for case-base/change-snapshot lookups — the gate requires at least one Live EvidenceRef to pass (belief-formation defence 5)
+	Subject string `json:"subject,omitempty" yaml:"subject,omitempty"` // the topology node this evidence's query concerns, e.g. "argocd" — empty means no declared claim and is never attenuated; set, the gate requires it to appear in the SAO's Topology before this ref can clear defence 5 alone (a Live ref about a node the signal has no declared relationship to can't drive a classification by itself)
 }
 
 // Candidate is one catalogued action the reason loop proposed, with its own

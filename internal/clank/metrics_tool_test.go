@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -123,5 +125,100 @@ func TestMetricsTool_Run(t *testing.T) {
 				t.Error("MetricsTool.Run returned wrong EvidenceRef", diff)
 			}
 		})
+	}
+}
+
+// TestMetricsTool_RunStampsSubject pins the plumbing the gate's topology
+// coherence check depends on: Run must copy the query's configured Subject
+// onto the returned EvidenceRef, and a query with no Subjects entry must
+// stamp none — the zero-blast-radius default that keeps every untagged
+// query behaving exactly as it did before Subject existed.
+func TestMetricsTool_RunStampsSubject(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[
+			{"metric":{"__name__":"x"},"value":[1688745600,"1"]}
+		]}}`))
+	}))
+	defer ts.Close()
+
+	cases := map[string]struct {
+		query       string
+		subjects    map[string]string
+		wantSubject string
+	}{
+		"Run stamps the configured Subject for a tagged query": {
+			query:       "product_catalog_error_ratio",
+			subjects:    map[string]string{"product_catalog_error_ratio": "product-catalog"},
+			wantSubject: "product-catalog",
+		},
+		"Run stamps no Subject for a query absent from Subjects": {
+			query:       "ceph_health",
+			subjects:    map[string]string{"product_catalog_error_ratio": "product-catalog"},
+			wantSubject: "",
+		},
+		"Run stamps no Subject when Subjects is nil": {
+			query:       "ceph_health",
+			subjects:    nil,
+			wantSubject: "",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tool := &clank.MetricsTool{
+				BaseURL:  ts.URL,
+				Queries:  map[string]string{tc.query: "irrelevant_promql"},
+				Subjects: tc.subjects,
+			}
+			ref, err := tool.Run(context.Background(), json.RawMessage(`{"q":"`+tc.query+`"}`))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if diff := cmp.Diff(tc.wantSubject, ref.Subject); diff != "" {
+				t.Error("wrong Subject on the returned EvidenceRef", diff)
+			}
+		})
+	}
+}
+
+// TestLoadEvidenceQueries_ParsesSubjectTags pins the on-disk contract:
+// evidence-queries.yaml's optional subject: field must land in the second
+// return value, keyed by query name, and a query with no subject: line must
+// be absent from it entirely — not present with an empty string — so
+// MetricsTool.Subjects[name] misses cleanly via the zero value.
+func TestLoadEvidenceQueries_ParsesSubjectTags(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "evidence-queries.yaml")
+	const doc = `
+version: v1
+queries:
+  - name: argocd_apps_out_of_sync
+    query: count(argocd_app_info{sync_status!="Synced"}) or vector(0)
+    subject: argocd
+  - name: ceph_health
+    query: ceph_health_status{job="rook-ceph-mgr"}
+`
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	queries, subjects, err := clank.LoadEvidenceQueries(path)
+	if err != nil {
+		t.Fatalf("LoadEvidenceQueries errored: %v", err)
+	}
+
+	wantQueries := map[string]string{
+		"argocd_apps_out_of_sync": `count(argocd_app_info{sync_status!="Synced"}) or vector(0)`,
+		"ceph_health":             `ceph_health_status{job="rook-ceph-mgr"}`,
+	}
+	if diff := cmp.Diff(wantQueries, queries); diff != "" {
+		t.Error("wrong queries map", diff)
+	}
+
+	wantSubjects := map[string]string{"argocd_apps_out_of_sync": "argocd"}
+	if diff := cmp.Diff(wantSubjects, subjects); diff != "" {
+		t.Error("wrong subjects map (untagged queries must be absent, not empty-string)", diff)
 	}
 }

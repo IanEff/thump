@@ -57,14 +57,15 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	if cfg.PromURL == "" {
 		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
 	} else if cfg.EvidenceQueries != "" {
-		queries, err := LoadEvidenceQueries(cfg.EvidenceQueries)
+		queries, subjects, err := LoadEvidenceQueries(cfg.EvidenceQueries)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load evidence queries: %v\n", err)
 			return 1
 		}
 		tools["metrics"] = &MetricsTool{
-			BaseURL: cfg.PromURL,
-			Queries: queries,
+			BaseURL:  cfg.PromURL,
+			Queries:  queries,
+			Subjects: subjects,
 		}
 	}
 

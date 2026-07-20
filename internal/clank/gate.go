@@ -23,12 +23,15 @@ type ReadinessGate struct{}
 // Evaluate runs. DedupeOK is false when openDupes is non-empty: an open set
 // for the same fingerprint suppresses a new one (suppressed means recorded,
 // not delivered). EvidenceOK is false unless at least one ps.Evidence ref is
-// Live — the forced live-telemetry citation defence: a set grounded only in
-// change_snapshot or historical_alignment cannot pass.
+// both Live and topologically coherent — the forced live-telemetry citation
+// defence, widened to the cross-domain axis: a live metric about a node the
+// signal's own SAO has no declared relationship to cannot drive a
+// classification on its own, the same "not alone" shape defence 1 already
+// applies to an uncorroborated case-base match.
 func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateResult {
 	budgetOK := true
 	dedupeOK := len(openDupes) == 0
-	evidenceOK := anyLive(ps.Evidence)
+	evidenceOK := anyCoherentLive(ps.Evidence, ps.SAOSnapshot)
 
 	passed := budgetOK && dedupeOK && evidenceOK
 	reason := ""
@@ -52,10 +55,36 @@ func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateR
 	}
 }
 
-func anyLive(refs []proposal.EvidenceRef) bool {
+// anyCoherentLive reports whether refs has a Live entry the gate may treat
+// as grounding on its own. A ref with no declared Subject makes no
+// topology claim and always qualifies — this is what keeps every
+// unclassified tool call (the whole fleet, until evidence-queries.yaml
+// grows subject: tags) behaving exactly as it did before this check
+// existed. A ref that does declare a Subject only qualifies when that node
+// appears in sao's Topology; a cross-domain claim still enters Evidence
+// (the model saw it, and it can corroborate a hypothesis another in-topology
+// ref already grounds) but can't be the sole citation that clears the gate.
+func anyCoherentLive(refs []proposal.EvidenceRef, sao *proposal.SAO) bool {
 	for _, ref := range refs {
-		if ref.Live {
+		if ref.Live && (ref.Subject == "" || inTopology(ref.Subject, sao)) {
 			return true
+		}
+	}
+	return false
+}
+
+// inTopology reports whether subject names a node in sao's frozen
+// Topology snapshot — a nil sao (no SAO assembled) can confirm nothing, so
+// it reports false rather than passing a claim it has no basis to check.
+func inTopology(subject string, sao *proposal.SAO) bool {
+	if sao == nil {
+		return false
+	}
+	for _, group := range [][]proposal.NodeState{sao.Topology.Upstream, sao.Topology.Downstream} {
+		for _, n := range group {
+			if n.Name == subject {
+				return true
+			}
 		}
 	}
 	return false

@@ -41,6 +41,22 @@ func TestGate(t *testing.T) {
 			ps:   psWithLiveEvidence(),
 			want: verdict{Passed: true, Reason: ""},
 		},
+		"Gate rejects a live citation whose subject sits outside the signal's topology": {
+			ps:   psWithCrossDomainLiveEvidence(),
+			want: verdict{Passed: false, Reason: "evidence"},
+		},
+		"Gate admits a live citation whose subject appears in the signal's topology": {
+			ps:   psWithInTopologyLiveEvidence(),
+			want: verdict{Passed: true, Reason: ""},
+		},
+		"Gate admits a cross-domain citation corroborated by an in-topology live ref": {
+			ps:   psWithCrossDomainCorroboratedByInTopology(),
+			want: verdict{Passed: true, Reason: ""},
+		},
+		"Gate rejects a subject-tagged live citation when no SAO was ever assembled": {
+			ps:   psWithSubjectTaggedLiveEvidenceNoSAO(),
+			want: verdict{Passed: false, Reason: "evidence"},
+		},
 	}
 
 	var gate clank.ReadinessGate
@@ -66,4 +82,68 @@ func psHistoricalOnly() proposal.Set {
 
 func psWithNoEvidence() proposal.Set {
 	return proposal.Set{Name: "no_evidence"}
+}
+
+// argocdSAO is the frozen SAO an argocd-origin signal would actually carry:
+// one-hop topology (cilium, rook-operator) — see testdata/detections/
+// argocd-sync-burn.yaml — with product-catalog nowhere in it. This is the
+// Bug 3 shape: a signal from one domain, an evidence citation from another,
+// no declared edge between them.
+func argocdSAO() *proposal.SAO {
+	return &proposal.SAO{
+		Version: 1,
+		Topology: proposal.TopologySnapshot{
+			Upstream: []proposal.NodeState{
+				{Name: "cilium", State: "healthy"},
+				{Name: "rook-operator", State: "healthy"},
+			},
+		},
+	}
+}
+
+// psWithCrossDomainLiveEvidence reproduces the live-run bug: the sole live
+// citation names a Subject (the OTel demo's product-catalog) that the
+// argocd signal's own topology never declared a relationship to.
+func psWithCrossDomainLiveEvidence() proposal.Set {
+	return proposal.Set{
+		Name:        "cross_domain",
+		SAOSnapshot: argocdSAO(),
+		Evidence:    []proposal.EvidenceRef{{Live: true, Subject: "product-catalog"}},
+	}
+}
+
+// psWithInTopologyLiveEvidence is the same shape but the Subject names a
+// node the SAO's topology actually lists — a legitimate live citation.
+func psWithInTopologyLiveEvidence() proposal.Set {
+	return proposal.Set{
+		Name:        "in_topology",
+		SAOSnapshot: argocdSAO(),
+		Evidence:    []proposal.EvidenceRef{{Live: true, Subject: "rook-operator"}},
+	}
+}
+
+// psWithCrossDomainCorroboratedByInTopology is the noisy-neighbor path this
+// defence must keep open: a cross-domain citation alongside an independent
+// in-topology one. The in-topology ref is what actually grounds the gate;
+// the cross-domain ref rides along without vetoing it.
+func psWithCrossDomainCorroboratedByInTopology() proposal.Set {
+	return proposal.Set{
+		Name:        "corroborated_cross_domain",
+		SAOSnapshot: argocdSAO(),
+		Evidence: []proposal.EvidenceRef{
+			{Live: true, Subject: "product-catalog"},
+			{Live: true, Subject: "rook-operator"},
+		},
+	}
+}
+
+// psWithSubjectTaggedLiveEvidenceNoSAO pins the fail-closed case: a Subject
+// claim can't be confirmed against topology that was never assembled, so it
+// can't ground the gate either — a nil SAOSnapshot must not be read as
+// "topology doesn't apply, let it through."
+func psWithSubjectTaggedLiveEvidenceNoSAO() proposal.Set {
+	return proposal.Set{
+		Name:     "subject_tagged_no_sao",
+		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "rook-operator"}},
+	}
 }
