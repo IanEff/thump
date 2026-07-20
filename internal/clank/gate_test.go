@@ -140,7 +140,7 @@ func psWithCrossDomainCorroboratedByInTopology() proposal.Set {
 // psWithSubjectTaggedLiveEvidenceNoSAO pins the fail-closed case: a Subject
 // claim can't be confirmed against topology that was never assembled, so it
 // can't ground the gate either — a nil SAOSnapshot must not be read as
-// "topology doesn't apply, let it through."
+// "topology doesn't apply, let it through".
 func psWithSubjectTaggedLiveEvidenceNoSAO() proposal.Set {
 	return proposal.Set{
 		Name:     "subject_tagged_no_sao",
