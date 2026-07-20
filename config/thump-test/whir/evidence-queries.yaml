@@ -135,9 +135,9 @@ queries:
     subject: product-catalog
   - name: cart_error_ratio
     query: >-
-      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
+      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[2m])) or vector(0))
       /
-      sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m]))
+      sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[2m]))
     subject: cart
   # demo_pods_not_running spans the whole otel-demo namespace, not one
   # component — left untagged rather than pinned to a single subject that
