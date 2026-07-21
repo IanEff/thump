@@ -58,11 +58,12 @@ tracing:
 cilium:
   apiserverEgress: true
 
-# ⚠️ TEMPORARY — arm-live block for the Phase-I live-proof run on thump-test
-# (2026-07-20). Remove after the run. Same shape as rook-gce-k3s's I-live v2
-# block: executor: live lets thump actually merge-patch the flagd ConfigMap;
-# dedupeWindow shortened to 10m so a held/stuck fingerprint can't block
-# re-detection for an hour and eat the session.
+# ⚠️ TEMPORARY — arm-live block for the Phase-II live test session
+# (2026-07-21, docs/phase-j-implementation-plan.md §2). Remove after the
+# session. executor: live lets thump actually merge-patch the flagd
+# ConfigMap / touch ceph config; dedupeWindow shortened to 10m so a
+# held/stuck fingerprint can't block re-detection for an hour and eat the
+# session.
 thump:
   executor: live
   killSwitch:
