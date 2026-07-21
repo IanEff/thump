@@ -67,15 +67,3 @@ tracing:
 # for any live run here; harmless when executor is dry.
 cilium:
   apiserverEgress: true
-
-# ⚠️ TEMPORARY — arm-live block for the I-live v2 hold-rebalance run
-# (2026-07-18). Remove after the run. executor: live lets thump actually run
-# `ceph osd set noout`; dedupeWindow shortened to 10m so a held/stuck
-# fingerprint can't block re-detection for an hour and eat the session.
-thump:
-  executor: live
-  killSwitch:
-    armed: true
-beats:
-  clank:
-    dedupeWindow: 10m

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/publish"
 )
 
@@ -43,6 +44,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return runApprove(args[1:], stdout, stderr)
 	case "force":
 		return runForce(args[1:], stdout, stderr)
+	case "sync":
+		return runSync(args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "trim: unknown command: %q\n", args[0])
 		return 2
@@ -78,8 +81,62 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// outboxPublisher picks the Publisher runApprove/runForce write through:
+// DirPublisher when natsURL is empty (the offline/testscript path, unchanged
+// from before this existed), or a live JetPublisher when it's set — so an
+// operator pointed at a NATS-backed rig can reach hiss's real
+// thump.approvals subscriber (or thump's thump.decisions one) directly,
+// instead of a directory nothing durable ever reads. The returned close
+// func is a no-op in the DirPublisher case.
+func outboxPublisher[T any](natsURL, outbox string, name func(T) string) (publish.Publisher[T], func(), error) {
+	if natsURL == "" {
+		return &publish.DirPublisher[T]{Dir: outbox, Name: name}, func() {}, nil
+	}
+	js, closeNC, err := broker.Connect(context.Background(), natsURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return publish.NewJetPublisher[T](js), closeNC, nil
+}
+
+// runSync connects to NATS and materializes the current stream state into
+// --inbox as YAML, so runIncidents (unmodified, filesystem-only) has
+// something to read on a rig where NATS, not a shared directory, is how the
+// beats actually exchange boundary objects.
+func runSync(args []string, stdout, stderr io.Writer) int {
+	usage := "usage: trim sync [--nats-url url] [--inbox dir]"
+	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	natsURL := fs.String("nats-url", os.Getenv("NATS_URL"), "NATS server URL (defaults to $NATS_URL)")
+	inbox := fs.String("inbox", ".", "directory to materialize boundary objects into")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *natsURL == "" {
+		_, _ = fmt.Fprintln(stderr, usage+" (or set NATS_URL)")
+		return 2
+	}
+
+	ctx := context.Background()
+	js, closeNC, err := broker.Connect(ctx, *natsURL)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
+	}
+	defer closeNC()
+
+	n, err := (&NATSSync{JS: js, Inbox: *inbox}).Run(ctx)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
+	}
+
+	_, _ = fmt.Fprintf(stdout, "synced %d object(s) into %s\n", n, *inbox)
+	return 0
+}
+
 func runApprove(args []string, stdout, stderr io.Writer) int {
-	usage := "usage: trim approve <fingerprint> [--approver name] [--outbox dir]"
+	usage := "usage: trim approve <fingerprint> [--approver name] [--outbox dir] [--nats-url url]"
 	fp, rest, ok := shiftPositional(args)
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, usage)
@@ -89,7 +146,8 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("approve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	approver := fs.String("approver", os.Getenv("USER"), "who is approving")
-	outbox := fs.String("outbox", ".", "directory trim writes the Approval to (thump.approvals in production)")
+	outbox := fs.String("outbox", ".", "directory trim writes the Approval to (ignored if --nats-url is set)")
+	natsURL := fs.String("nats-url", os.Getenv("NATS_URL"), "NATS server URL (defaults to $NATS_URL); publishes straight to thump.approvals instead of --outbox")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -104,23 +162,27 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	pub := &publish.DirPublisher[approval.Approval]{
-		Dir: *outbox,
-		Name: func(a approval.Approval) string {
-			return a.SignalRef
-		},
+	pub, closeNC, err := outboxPublisher(*natsURL, *outbox, func(a approval.Approval) string { return a.SignalRef })
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
 	}
+	defer closeNC()
+
 	if err := pub.Publish(context.Background(), "thump.approvals", a); err != nil {
 		_, _ = fmt.Fprintln(stderr, "trim:", err)
 		return 1
 	}
 
-	_, _ = fmt.Fprintf(stdout, "approved %s as %s", a.SignalRef, a.Approver)
+	// "published," not "approved": this only puts the Approval on thump.approvals.
+	// hiss decides whether the fingerprint is actually held and grants (or rejects,
+	// for a stale/unheld one) — that verdict lands async on thump.decisions, not here.
+	_, _ = fmt.Fprintf(stdout, "published approval for %s as %s — async; watch 'trim incidents' or hiss logs for the grant\n", a.SignalRef, a.Approver)
 	return 0
 }
 
 func runForce(args []string, stdout, stderr io.Writer) int {
-	usage := "usage: trim force <fingerprint> [--operator name] [--inbox dir] [--outbox dir]"
+	usage := "usage: trim force <fingerprint> [--operator name] [--inbox dir] [--outbox dir] [--nats-url url]"
 	fp, rest, ok := shiftPositional(args)
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, usage)
@@ -130,8 +192,9 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("force", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	operator := fs.String("operator", os.Getenv("USER"), "who is forcing this through")
-	inbox := fs.String("inbox", ".", "directory trim reads incidents from")
-	outbox := fs.String("outbox", ".", "directory trim writes the forced Governed to (thump.decisions in production)")
+	inbox := fs.String("inbox", ".", "directory trim reads incidents from (run trim sync first on a NATS-backed rig)")
+	outbox := fs.String("outbox", ".", "directory trim writes the forced Governed to (ignored if --nats-url is set)")
+	natsURL := fs.String("nats-url", os.Getenv("NATS_URL"), "NATS server URL (defaults to $NATS_URL); publishes straight to thump.decisions instead of --outbox")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -166,10 +229,13 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	pub := &publish.DirPublisher[decision.Governed]{
-		Dir:  *outbox,
-		Name: func(g decision.Governed) string { return g.Decision.SignalRef },
+	pub, closeNC, err := outboxPublisher(*natsURL, *outbox, func(g decision.Governed) string { return g.Decision.SignalRef })
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
 	}
+	defer closeNC()
+
 	if err := pub.Publish(context.Background(), "thump.decisions", g); err != nil {
 		_, _ = fmt.Fprintln(stderr, "trim:", err)
 		return 1

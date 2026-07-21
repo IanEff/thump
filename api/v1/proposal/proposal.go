@@ -44,6 +44,19 @@ func (s Set) ContractRefFor(candidateID string) string {
 	return ""
 }
 
+// ConfidenceFor returns the Confidence of the Proposals entry whose ID
+// matches candidateID, or 0 if none matches — the same lookup pattern as
+// ContractRefFor, used by slog lines that need the float without scanning
+// Proposals themselves.
+func (s Set) ConfidenceFor(candidateID string) float64 {
+	for _, c := range s.Proposals {
+		if c.ID == candidateID {
+			return c.Confidence
+		}
+	}
+	return 0
+}
+
 // RankingRationale records why the ranker ordered Proposals the way it did —
 // the deterministic, auditable half of ranking, kept separate from the
 // model's own hypothesis reasoning.

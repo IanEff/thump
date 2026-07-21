@@ -1,0 +1,32 @@
+# Mirrors rbac-rook-ceph-read.yaml's scope for the otel-demo domain — clank's
+# kube tool needs pod state (crash-loop/restart signal) to disambiguate an
+# ambiguous SLO burn from a flagd-flipped fault when Prometheus/Loki alone
+# don't settle it (see the cart-failure live run, 2026-07-21: an evidence
+# surface with only a metric and no matching log lines left every candidate
+# hypothesis equally supported).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-otel-demo-read
+  namespace: otel-demo
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-otel-demo-read
+  namespace: otel-demo
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: Role
+  name: thump-otel-demo-read
+  apiGroup: rbac.authorization.k8s.io

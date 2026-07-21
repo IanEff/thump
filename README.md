@@ -1,5 +1,11 @@
 # thump
 
+[![CI](https://github.com/IanEff/thump/actions/workflows/ci.yml/badge.svg)](https://github.com/IanEff/thump/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Taskfile](https://img.shields.io/badge/built_with-Taskfile-
+  2196F3?style=flat&logo=task)](Taskfile.yaml
+  
 thump is a general-purpose, DRAL-based agentic SRE for a Kubernetes cluster —
 a multidimensional thermostat that watches reliability signals, reasons about
 them with an LLM, and executes an authored, catalog-bound action when policy
@@ -26,6 +32,7 @@ job eventually and the vault's job today; see [Source of truth](#source-of-truth
 
 ## Table of contents
 
+- [Architecture](#thump-architecture)
 - [Authority model & guardrails](#authority-model--guardrails)
 - [The five beats](#the-five-beats)
 - [A golden path, worked end to end](#a-golden-path-worked-end-to-end)
@@ -37,6 +44,24 @@ job eventually and the vault's job today; see [Source of truth](#source-of-truth
 - [Source of truth](#source-of-truth)
 
 ---
+
+## Thump architecture
+
+```mermaid
+    [ rattle ] (Detect)  ──► [ NATS JetStream ]
+                                   │
+                                   ▼
+                             [ clank ] (Reason + SAO) ◄── [ whir ] (Topology)
+                                   │
+                                   ▼
+                             [ hiss ] (Govern)
+                                   │
+                                   ▼
+                             [ thump ] (Act / Reverse)
+                                   │
+                                   ▼
+                             [ trim ] (CLI Operator Surface)
+```
 
 ## Authority model & guardrails
 
