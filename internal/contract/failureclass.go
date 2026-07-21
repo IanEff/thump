@@ -28,8 +28,10 @@ func DefaultFailureClasses() []FailureClassDefinition {
 	return []FailureClassDefinition{
 		{
 			Class: proposal.ClassDependencySaturation,
-			Description: "an upstream/downstream dependency is overloaded — the resource itself is fine; " +
-				"cite request-rate/failure-rate or upstream latency evidence, not just elevated latency on the resource.",
+			Description: "an upstream/downstream dependency is overloaded for every caller — the resource itself " +
+				"is unhealthy, not this one service's connection to it; cite request-rate/failure-rate or upstream " +
+				"latency evidence, not just elevated latency on the resource. A single caller failing to reach an " +
+				"otherwise-healthy dependency because of its OWN injected fault or bad config is service_failure, not this.",
 		},
 		{
 			Class: proposal.ClassResourceExhaustion,
@@ -49,10 +51,11 @@ func DefaultFailureClasses() []FailureClassDefinition {
 		},
 		{
 			Class: proposal.ClassServiceFailure,
-			Description: "a service is returning errors on its own request or RPC path independent of load or " +
-				"capacity — an injected fault or bad config, not a dependency being overloaded (dependency_saturation) " +
-				"or a resource running out of headroom (resource_exhaustion). Cite the service's own error-rate " +
-				"evidence; the fix is disabling the fault, not scaling or waiting.",
+			Description: "a service is returning errors on its own request or RPC path, or failing to reach a " +
+				"dependency it needs, because of an injected fault or bad config IN THAT SERVICE — not because the " +
+				"dependency is degraded for every caller (dependency_saturation) or a resource is out of headroom " +
+				"(resource_exhaustion). Cite the service's own error-rate evidence; the fix is disabling the fault, " +
+				"not scaling or waiting.",
 		},
 		{
 			Class: proposal.ClassUnknown,
