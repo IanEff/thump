@@ -99,10 +99,10 @@ func Default() *StaticCatalog {
 				Metric: "product_catalog_error_ratio",
 				Target: "product_catalog_error_ratio == 0",
 				Window: 5 * time.Minute,
-				// VERIFIED LIVE 2026-07-19 (Wave 5): flag off -> ratio back
-				// to 0 within ~40-60s of the ConfigMap patch propagating.
-				// 0.9 not 1.0 leaves headroom for scrape-interval noise
-				// rather than demanding an exact zero.
+				// VERIFIED LIVE 2026-07-19 (Wave 5): HTTP errors clear ~40-60s after
+				// the ConfigMap patch propagates, but the rate([2m]) convergence query
+				// needs a full 2-minute clean window to read 0. Total settle time is
+				// therefore ~propagation + 2m, well inside the 5-minute Window below.
 				SeverityQuery:        "severity_product_catalog_availability",
 				SeverityReductionPct: 0.9,
 			},
@@ -113,13 +113,23 @@ func Default() *StaticCatalog {
 			// the fault is flag state, not pod state, so only this action
 			// actually clears it. Authored the same as
 			// disable-product-catalog-failure otherwise.
+			//
+			// VERIFIED LIVE 2026-07-21: the flag's real mechanism is a
+			// ValkeyCartStore.EnsureRedisConnected() failure (cart can't
+			// reach its Redis/Valkey backend), not the EmptyCart gRPC fault
+			// this was originally authored against. Left at service_failure
+			// only — see failure-classes.yaml's service_failure description
+			// for the class-boundary fix instead of a second class binding
+			// here (dependency_saturation has no per-domain Precondition,
+			// so binding this action to it would make it proposable for an
+			// unrelated Ceph saturation signal too).
 			Name:                     "disable-cart-failure",
 			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassServiceFailure},
 			ApplicableTiers:          []string{"tier-1"},
 			Action: ActionSpec{
 				Description: "Flip the cartFailure flagd flag to \"off\" (merge-patch the flagd-config " +
-					"ConfigMap in otel-demo), clearing the injected EmptyCart RPC fault (checkout -> " +
-					"CartService gRPC status 9); reversible.",
+					"ConfigMap in otel-demo), restoring cart's Redis/Valkey connectivity " +
+					"(ValkeyCartStore.EnsureRedisConnected()); reversible.",
 			},
 			BlastTier: proposal.BlastLow,
 			Reversal: Reversal{

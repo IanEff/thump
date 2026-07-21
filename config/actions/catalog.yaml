@@ -100,6 +100,10 @@
   # cart is the ranker's two-eligible-action case (Wave 7): cartFailure is
   # also "fixable" by restarting the cart pod, but the fault is flag state,
   # not pod state, so only this action actually clears it.
+  # VERIFIED LIVE 2026-07-21: the flag's real mechanism is a
+  # ValkeyCartStore.EnsureRedisConnected() failure (cart can't reach its
+  # Redis/Valkey backend), not the EmptyCart gRPC fault this was originally
+  # authored against.
   applicableFailureClasses:
     - service_failure
   applicableTiers:
@@ -107,8 +111,8 @@
   action:
     description: >-
       Flip the cartFailure flagd flag to "off" (merge-patch the flagd-config
-      ConfigMap in otel-demo), clearing the injected EmptyCart RPC fault
-      (checkout -> CartService gRPC status 9); reversible.
+      ConfigMap in otel-demo), restoring cart's Redis/Valkey connectivity
+      (ValkeyCartStore.EnsureRedisConnected()); reversible.
   blastTier: low
   reversal:
     method: enable-cart-failure
