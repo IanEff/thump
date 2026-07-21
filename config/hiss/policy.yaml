@@ -5,15 +5,16 @@
 version: v1
 floors:
   tier-1:
-    dependency_saturation: 0.75
-    resource_exhaustion: 0.75 # parity value with dependency_saturation, fixture-derived —
-    # not yet calibrated against agent_proposal_confidence/agent_proposal_success_total.
-    # That's not a TODO, it's a structural wait: agent_proposal_success_total only
-    # populates on ResultSuccess/ResultFailure (metrics.go recordCalibration), and thump
-    # v1 is dry-run-only — DryRun.Execute (internal/thump/executor.go) always reports
-    # ResultRendered. Confirmed empty on a real approved+executed run, 2026-07-13 (see
-    # thump-running-notes.md). Revisit once thump grows a live executor.
-    service_failure: 0.75 # parity value with dependency_saturation/resource_exhaustion — the
+    # dependency_saturation and resource_exhaustion floors REMOVED 2026-07-21 —
+    # no catalogued action's ApplicableFailureClasses names either class after
+    # the dead-knob demote (0fff1b2 threw out throttle-non-critical-paths and
+    # scale-out-rgw-gateways, their only actuators). A floor for a class with
+    # no bound action is dead config that misleads an operator into thinking
+    # the class is live; TestPolicy_FloorsCoverEveryActuatableClass
+    # (policy_completeness_test.go) can't catch it either way, since it walks
+    # actuate.BoundRefs() forward and an unreferenced floor is invisible to
+    # that direction of the check.
+    service_failure: 0.75 # parity value, fixture-derived — the
     # OTel demo domain's two BlastLow, fully-reversible flagd-flip actions
     # (disable-product-catalog-failure, disable-cart-failure) have no live
     # confidence datum yet (Wave 6, thump-test rig CLAUDE.md §8). Unlike
