@@ -115,7 +115,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		slog.Info("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase,
 			"recommended", set.Recommended, "contractRef", set.ContractRefFor(set.Recommended),
 			"proposals", len(set.Proposals), "evidence", len(set.Evidence),
-			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason)
+			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason, "confidence", set.ConfidenceFor(set.Recommended))
 	}()
 
 	var sao proposal.SAO
@@ -137,7 +137,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	set.Status = &proposal.Status{}
 
 	actions := e.Catalog.ApplicableToTier(sig.ServiceTier, sao)
-	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions)}}
+	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions, e.MaxSteps)}}
 	var evidence []proposal.EvidenceRef
 	proposed, declined := false, false
 
@@ -150,7 +150,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		}); err != nil {
 			return proposal.Set{}, fmt.Errorf("model complete (step %d): %w", step, err)
 		}
-		msgs = append(msgs, comp.Message)
+		msgs = append(msgs, Message{Role: comp.Message.Role, Content: comp.Message.Content, ToolCalls: comp.ToolCalls})
 
 		if err := e.Store.Checkpoint(ctx, Turn{RunID: runID, Step: step, Msgs: msgs}); err != nil {
 			return proposal.Set{}, fmt.Errorf("checkpoint (step %d): %w", step, err)
@@ -320,7 +320,7 @@ func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 	return nil
 }
 
-func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.FailureClassDefinition, actions []contract.ActionContract) string {
+func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.FailureClassDefinition, actions []contract.ActionContract, maxSteps int) string {
 	var b strings.Builder
 	subject := sig.OriginService
 	if subject == "" {
@@ -328,6 +328,7 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 	}
 	fmt.Fprintf(&b, "signal on %s (severity %.0f%%, blast %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action — or insufficient if the evidence supports no action.\n",
 		subject, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+	fmt.Fprintf(&b, "you have at most %d investigation turns. re-querying a metric or log search that already came back unchanged does not produce new evidence — once further queries stop changing what you know, decide: propose your best-supported hypothesis or call insufficient.\n", maxSteps)
 
 	if len(sao.Topology.Upstream) > 0 || len(sao.Topology.Downstream) > 0 {
 		b.WriteString("observed topology:\n")

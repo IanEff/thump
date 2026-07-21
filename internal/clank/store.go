@@ -239,8 +239,9 @@ type Turn struct {
 // field: a tool result is folded into Content as a one-line digest, never a
 // raw payload.
 type Message struct {
-	Role    string
-	Content string
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
 }
 
 // Completion is one Model.Complete response: the assistant's Message plus

@@ -102,4 +102,7 @@ func TestPropose_LogsReasonedOnSuccess(t *testing.T) {
 	if diff := cmp.Diff("throttle-non-critical-paths", reasoned["contractRef"]); diff != "" {
 		t.Error("reasoned line must carry the recommended candidate's ContractRef, not just its ID (-want +got)\n", diff)
 	}
+	if diff := cmp.Diff(0.87, reasoned["confidence"]); diff != "" {
+		t.Error("reasoned line must carry the recommended candidate's confidence (-want +got)\n", diff)
+	}
 }

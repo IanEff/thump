@@ -39,7 +39,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 		Ledger:         ledger, // engine records into THIS ledger
 		Pub:            &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
 		Gate:           ReadinessGate{},
-		MaxSteps:       8,
+		MaxSteps:       10,
 		Tracer:         tracer,
 		Stages:         stages,
 	}
@@ -71,7 +71,7 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 		Ledger:         ledger,
 		Pub:            pub,
 		Gate:           ReadinessGate{},
-		MaxSteps:       8,
+		MaxSteps:       10,
 		Tracer:         tracer,
 		Stages:         stages,
 	}
