@@ -57,6 +57,23 @@ func TestGate(t *testing.T) {
 			ps:   psWithSubjectTaggedLiveEvidenceNoSAO(),
 			want: verdict{Passed: false, Reason: "evidence"},
 		},
+		"Gate admits a live citation whose subject appears downstream in the signal's topology": {
+			ps:   psWithDownstreamTopologyLiveEvidence(),
+			want: verdict{Passed: true, Reason: ""},
+		},
+		"Gate rejects two live citations that both sit outside the signal's topology": {
+			ps:   psWithTwoCrossDomainLiveEvidence(),
+			want: verdict{Passed: false, Reason: "evidence"},
+		},
+		"Gate rejects a subject-tagged live citation against an assembled-but-empty topology": {
+			ps:   psWithEmptyTopologyLiveEvidence(),
+			want: verdict{Passed: false, Reason: "evidence"},
+		},
+		"Gate reports evidence, not dedupe, when a set both duplicates and lacks coherent evidence": {
+			ps:        psWithCrossDomainLiveEvidence(),
+			openDupes: []proposal.Set{{}},
+			want:      verdict{Passed: false, Reason: "evidence"},
+		},
 	}
 
 	var gate clank.ReadinessGate
@@ -145,5 +162,49 @@ func psWithSubjectTaggedLiveEvidenceNoSAO() proposal.Set {
 	return proposal.Set{
 		Name:     "subject_tagged_no_sao",
 		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "rook-operator"}},
+	}
+}
+
+// psWithDownstreamTopologyLiveEvidence grounds the gate on a node the SAO
+// lists Downstream, not Upstream — inTopology walks both legs, and only an
+// Upstream match is otherwise exercised, so the Downstream branch would rot
+// silently if a refactor dropped it.
+func psWithDownstreamTopologyLiveEvidence() proposal.Set {
+	return proposal.Set{
+		Name: "downstream_topology",
+		SAOSnapshot: &proposal.SAO{
+			Version: 1,
+			Topology: proposal.TopologySnapshot{
+				Downstream: []proposal.NodeState{{Name: "ceph-osd", State: "degraded"}},
+			},
+		},
+		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "ceph-osd"}},
+	}
+}
+
+// psWithTwoCrossDomainLiveEvidence pins that anyCoherentLive wants one
+// coherent ref, not a quorum of live ones: two live citations, both naming
+// nodes outside the signal's topology, still fail — noise doesn't corroborate
+// noise.
+func psWithTwoCrossDomainLiveEvidence() proposal.Set {
+	return proposal.Set{
+		Name:        "two_cross_domain",
+		SAOSnapshot: argocdSAO(),
+		Evidence: []proposal.EvidenceRef{
+			{Live: true, Subject: "product-catalog"},
+			{Live: true, Subject: "cart"},
+		},
+	}
+}
+
+// psWithEmptyTopologyLiveEvidence separates "no SAO" from "an SAO whose
+// topology is empty": a non-nil SAO with zero nodes confirms nothing, so a
+// subject-tagged ref fails closed against it exactly as it does against a nil
+// snapshot — assembling a SAO is not itself grounding.
+func psWithEmptyTopologyLiveEvidence() proposal.Set {
+	return proposal.Set{
+		Name:        "empty_topology",
+		SAOSnapshot: &proposal.SAO{Version: 1},
+		Evidence:    []proposal.EvidenceRef{{Live: true, Subject: "rook-operator"}},
 	}
 }

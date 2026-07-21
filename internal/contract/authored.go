@@ -99,10 +99,11 @@ func Default() *StaticCatalog {
 				Metric: "product_catalog_error_ratio",
 				Target: "product_catalog_error_ratio == 0",
 				Window: 5 * time.Minute,
-				// VERIFIED LIVE 2026-07-19 (Wave 5): HTTP errors clear ~40-60s after
-				// the ConfigMap patch propagates, but the rate([2m]) convergence query
-				// needs a full 2-minute clean window to read 0. Total settle time is
-				// therefore ~propagation + 2m, well inside the 5-minute Window below.
+				// VERIFIED LIVE 2026-07-21: the rate([2m]) convergence query reads 0
+				// well inside the 5-minute Window, but SeverityQuery below is a 5-minute
+				// gauge that keeps rolling off the fault after convergence — so
+				// ObservedSeverity landing around 0.4 at a success outcome is the
+				// gauge's own window lag, not a sign the fix didn't take.
 				SeverityQuery:        "severity_product_catalog_availability",
 				SeverityReductionPct: 0.9,
 			},
