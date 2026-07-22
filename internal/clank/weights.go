@@ -12,4 +12,12 @@ type ScoringWeights struct {
 	Topological       float64
 	Historical        float64
 	FreshnessHalfLife time.Duration // how fast historical alignment decays by topology staleness (defence 2)
+
+	// GroundingNone, GroundingOne, and GroundingMany are scoreConfidence's
+	// multiplier for a candidate whose citations resolve to 0, 1, or 2+
+	// live, in-topology EvidenceRefs — the same tiered floor causal.go
+	// already applies to Likelihood, applied here to emitted confidence.
+	GroundingNone float64
+	GroundingOne  float64
+	GroundingMany float64
 }

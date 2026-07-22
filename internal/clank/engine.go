@@ -20,6 +20,20 @@ import (
 	"github.com/ianeff/thump/internal/publish"
 )
 
+// errClassMismatch marks a proposed ContractRef that IS a real catalogued
+// action, just not applicable to the FailureClass the model itself
+// declared — a plausible-but-mislabelled proposal, not an invented one.
+// Propose turns this into an auditable no_action decline; only a
+// ContractRef naming no catalogued action at all (contract.ErrOutsideCatalog)
+// halts the run.
+var errClassMismatch = errors.New("candidate not applicable to declared failure class")
+
+// errUngroundedCitation marks a proposed candidate citing evidence the run
+// never gathered, or citing nothing at all — a causal claim with no
+// inspectable basis. It declines auditably rather than halting: the model
+// made a checkable mistake, not an out-of-catalog escape.
+var errUngroundedCitation = errors.New("candidate cites evidence the run did not gather")
+
 // Engine runs the bounded reason loop — one signal.Detection in, one
 // proposal.Set out. It owns every seam the loop composes: the LLM, the
 // read-only tools, the action catalog, the ranker, the readiness gate, the
@@ -36,6 +50,7 @@ type Engine struct {
 	Gate           ReadinessGate                     // budget ∧ dedup ∧ evidence, evaluated once on the formed set
 	Store          Store                             // loop memory: one checkpoint per turn, a different lifetime from Ledger
 	Scorer         CausalScorer                      // rates each change event's likelihood of causing the signal
+	Prior          Prior                             // scoreConfidence's corroboration read — the same case base CausalScorerImpl.Prior points at; Engine needs its own reference because CausalScorer never exposes the one it holds
 	DedupeWindow   time.Duration                     // how far back Ledger.Open looks for a live set on the same fingerprint
 	Ledger         *MemProposalLog                   // every Propose run is recorded here, gated or not — the audit trail
 	Pub            publish.Publisher[proposal.Set]   // delivery — only called when the gate passes
@@ -240,10 +255,28 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		return set, nil
 	}
 
+	if err := e.enforceCitations(set); err != nil {
+		if !errors.Is(err, errUngroundedCitation) {
+			return proposal.Set{}, err
+		}
+
+		set.Status.Phase = proposal.PhaseNoAction
+		set.Status.Reason = err.Error()
+		if err := e.Ledger.Record(ctx, set); err != nil {
+			return proposal.Set{}, fmt.Errorf("record: %w", err)
+		}
+		return set, nil
+	}
+
 	enrichFromCatalog(e.Catalog, set.Proposals)
 
 	_ = beat.Stage(ctx, e.tracer(), e.Stages, "causal_score", func(context.Context) error {
 		set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Weights)
+		return nil
+	})
+
+	_ = beat.Stage(ctx, e.tracer(), e.Stages, "score_confidence", func(context.Context) error {
+		scoreConfidences(&set, sao, e.Prior, sig.Fingerprint, e.Weights)
 		return nil
 	})
 
@@ -295,14 +328,6 @@ func (e *Engine) toolSpecs() []ToolSpec {
 	return append(specs, ProposeToolSpec(), InsufficientToolSpec())
 }
 
-// errClassMismatch marks a proposed ContractRef that IS a real catalogued
-// action, just not applicable to the FailureClass the model itself
-// declared — a plausible-but-mislabelled proposal, not an invented one.
-// Propose turns this into an auditable no_action decline; only a
-// ContractRef naming no catalogued action at all (contract.ErrOutsideCatalog)
-// halts the run.
-var errClassMismatch = errors.New("candidate not applicable to declared failure class")
-
 func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 	allowed := make(map[string]bool)
 	for _, c := range e.Catalog.Applicable(set.FailureClass, set.ServiceTier, sao) {
@@ -313,9 +338,32 @@ func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 			continue
 		}
 		if _, ok := e.Catalog.ByName(cand.ContractRef); ok {
-			return fmt.Errorf("%w: %q does not apply to declared class %q", errClassMismatch, cand.ContractRef, set.FailureClass)
+			return fmt.Errorf("%w: %q does not apply to declared class %q", errClassMismatch, cand.ContractRef,
+				set.FailureClass)
 		}
 		return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
+	}
+	return nil
+}
+
+func (e *Engine) enforceCitations(set proposal.Set) error {
+	gathered := make(map[string]bool, len(set.Evidence))
+	for _, ev := range set.Evidence {
+		if ev.Query != "" {
+			gathered[ev.Query] = true
+		}
+	}
+
+	for _, cand := range set.Proposals {
+		if len(cand.Citations) == 0 {
+			return fmt.Errorf("%w: candidate %q carries no citations", errUngroundedCitation, cand.ID)
+		}
+
+		for _, cite := range cand.Citations {
+			if !gathered[cite] {
+				return fmt.Errorf("%w: %q", errUngroundedCitation, cite)
+			}
+		}
 	}
 	return nil
 }
@@ -326,8 +374,22 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 	if subject == "" {
 		subject = sig.Name
 	}
-	fmt.Fprintf(&b, "signal on %s (severity %.0f%%, blast %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action — or insufficient if the evidence supports no action.\n",
-		subject, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+
+	if sao.Signal.Metric != "" {
+		fmt.Fprintf(&b, "signal on %s [%s] (confidence: %.2f, severity: %0.f%%, blast: %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action -- or insufficient if the evidence supports no action.\n",
+			subject, sao.Signal.Metric, sao.Signal.Confidence, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+	} else {
+		fmt.Fprintf(&b, "signal on %s (confidence %.2f, severity %.0f%%, blast %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action -- or insufficient if the evidence supports no action.\n",
+			subject, sao.Signal.Confidence, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+	}
+
+	if len(sao.Change.Events) > 0 {
+		b.WriteString("recent change events:\n")
+
+		for _, e := range sao.Change.Events {
+			fmt.Fprintf(&b, "- %s change on %s (age %s seconds)\n", e.Type, e.Target, e.Age.Round(time.Second))
+		}
+	}
 
 	if len(sao.Topology.Upstream) > 0 || len(sao.Topology.Downstream) > 0 {
 		b.WriteString("observed topology:\n")
@@ -338,6 +400,11 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 			fmt.Fprintf(&b, "- downstream %s: %s\n", n.Name, n.State)
 		}
 	}
+
+	b.WriteString("evidence & confidence rules:\n")
+	b.WriteString("- to propose an action, cite at least one LIVE telemetry result about the affected service, or a node in its declared topology.\n")
+	b.WriteString("- a live metric is sufficient in corroboration on its own; log lines can corroborate but are never required.\n")
+	b.WriteString("- your stated confidence can lower the emitted number, but never raise it-- it is computed from your citations' grounding.\n")
 
 	if len(classes) > 0 {
 		b.WriteString("failure classes — pick the one the EVIDENCE supports, not the one that has a matching action:\n")

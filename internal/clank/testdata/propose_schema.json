@@ -43,12 +43,19 @@
           },
           "confidence": {
             "type": "number"
+          },
+          "citations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "contractRef"
+          "contractRef",
+          "citations"
         ]
       },
       "type": "array"

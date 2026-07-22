@@ -4,6 +4,11 @@ evidence:
   ref: metrics://ceph_health
   summary: ceph_health = 1
   tool: metrics
+- live: true
+  query: osd_capacity
+  ref: metrics://osd_capacity
+  summary: osd_capacity = 1
+  tool: metrics
 failureClass: redundancy_degraded
 gate:
   budgetOK: true
@@ -16,6 +21,9 @@ hypotheses:
 name: ceph-cluster-burn-accel
 proposals:
 - blastTier: med
+  citations:
+  - ceph_health
+  - osd_capacity
   confidence: 0.9
   contractRef: hold-rebalance
   governanceLevel:

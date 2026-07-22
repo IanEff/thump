@@ -44,6 +44,17 @@ func (s Set) ContractRefFor(candidateID string) string {
 	return ""
 }
 
+// ConfidenceFor returns the Confidence of the Proposals whose ID
+// matches candidateID or 0 if none matches.
+func (s Set) ConfidenceFor(candidateID string) float64 {
+	for _, p := range s.Proposals {
+		if p.ID == candidateID {
+			return p.Confidence
+		}
+	}
+	return 0
+}
+
 // RankingRationale records why the ranker ordered Proposals the way it did —
 // the deterministic, auditable half of ranking, kept separate from the
 // model's own hypothesis reasoning.
@@ -113,6 +124,7 @@ type Candidate struct {
 	ReversalPath    *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence
 	GovernanceLevel *GovernanceLevel `json:"governanceLevel,omitempty" yaml:"governanceLevel,omitempty"` // nil is read as the lowest band (BandObserve), never as elevated privilege
 	Rank            int              `json:"rank,omitempty" yaml:"rank,omitempty"`                       // 1-indexed position after ranking; rank 1 is what Set.Recommended names
+	Citations       []string         `json:"citations,omitempty" yaml:"citations,omitempty"`             // EvidenceRef.Query names backing this Candidate - what the gate grounds and the confidence function corroborates.
 }
 
 // PredictedImpact is a forecast of what this Candidate would do to the

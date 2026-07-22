@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -44,22 +45,25 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 
 // TestPropose_GateDeclineSurfacesReason pins the other half of the "mute
 // decline" bug: a model that DOES propose (unlike the insufficient-evidence
-// path TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason exercises) but
-// gathers no live evidence first still gets declined by the readiness gate
-// — and that decline must say why (Status.Reason), not just what
-// (Status.Phase).
+// path TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason exercises) and
+// cites evidence it actually gathered — so the citation check clears — but
+// that evidence is never Live, so the readiness gate itself declines. That
+// decline must say why (Status.Reason), not just what (Status.Phase).
 func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	t.Parallel()
+	tool := fakeTool{name: "logs", digest: "no live signal", ref: "loki:xyz", live: false, query: "log_scan"}
 	model := &fakeModel{script: []clank.Completion{
-		// turn 1: propose straight away, no evidence-gathering tool call first
+		// turn 1: gather evidence that is never Live
+		{ToolCalls: []clank.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"log_scan"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{"log_scan"}}},
 		})}}},
 	}}
 
 	e, sink := newTestEngine(model)
+	e.Tools = map[string]clank.Tool{"logs": tool}
 	got, err := e.Propose(context.Background(), sigBurnAccel())
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
@@ -90,7 +94,7 @@ func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			// bare — no ReversalPath, no GovernanceLevel, exactly what production omits
-			Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -133,7 +137,7 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -164,7 +168,7 @@ func TestPropose_StampsPredictedImpactFromTheCatalog(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "redundancy_degraded", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.82}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.82, Citations: []string{`{"q":"ceph_health"}`}}},
 		})}}},
 	}}
 
@@ -203,7 +207,7 @@ func TestPropose_UnforecastContractLeavesPredictedImpactNil(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -215,6 +219,131 @@ func TestPropose_UnforecastContractLeavesPredictedImpactNil(t *testing.T) {
 
 	if cand := got.Proposals[0]; cand.PredictedImpact != nil {
 		t.Errorf("an action with no authored SeverityReductionPct must not get a fabricated PredictedImpact, got %+v", cand.PredictedImpact)
+	}
+}
+
+func TestScoreConfidence_TableOverGroundingClasses(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		signalConf   float64
+		corroborated int // citations resolving to live, in-topology refs
+		selfReport   float64
+		want         float64
+	}{
+		"scoreConfidence caps an uncorroborated candidate well below its self-report": {
+			signalConf: 0.9, corroborated: 0, selfReport: 0.95, want: 0.27,
+		},
+		"scoreConfidence lets two corroborated citations carry the signal confidence through": {
+			signalConf: 0.9, corroborated: 2, selfReport: 0.95, want: 0.9,
+		},
+		"scoreConfidence honors a self-report lower than the computed grounding": {
+			signalConf: 0.9, corroborated: 2, selfReport: 0.6, want: 0.6,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := clank.ScoreConfidenceForTest(tc.signalConf, tc.corroborated, tc.selfReport)
+
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong computed confidence (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
+// noChangeIntake builds an Intake with an empty ChangeSnapshot, so
+// scoreConfidence's causal term drops out entirely (LikelihoodOK false) —
+// isolating a test to the citation-grounding term alone, the way a real
+// production run does today (noopChange{}, CLAUDE.md § rattle).
+func noChangeIntake() *clank.Intake {
+	return clank.NewIntake(
+		fakeTopo{snap: proposal.TopologySnapshot{
+			Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+		}},
+		fakeChange{snap: proposal.ChangeSnapshot{}},
+	)
+}
+
+func TestPropose_AnUncorroboratedCandidateCannotKeepItsSelfReportedConfidence(t *testing.T) {
+	t.Parallel()
+
+	// The model asserts 0.95 while citing a real evidence ref the run
+	// gathered (so K1's "cite something you actually looked at" check
+	// passes) — but that ref is not Live, e.g. a case-base/historical
+	// lookup rather than fresh telemetry. Whatever the coefficients, a
+	// self-report with no inspectable grounding must be pulled below
+	// itself — otherwise the emitted number is the model's opinion wearing
+	// the audit trail's clothes.
+	const selfReported = 0.95
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "history", Args: json.RawMessage(`{"q":"past_incidents"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: selfReported,
+				Citations: []string{"past_incidents"},
+			}},
+		})}}},
+	}}
+
+	eng, _ := newTestEngine(model)
+	eng.Intake = noChangeIntake()
+	eng.Tools["history"] = fakeTool{name: "history", digest: "3 similar incidents on file", live: false, query: "past_incidents"}
+
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conf := got.ConfidenceFor(got.Recommended)
+	if conf >= selfReported {
+		t.Errorf("uncorroborated candidate kept its self-report: got %v, want < %v", conf, selfReported)
+	}
+}
+
+func TestPropose_ASelfReportLowersButNeverRaisesTheComputedConfidence(t *testing.T) {
+	t.Parallel()
+
+	// Two runs, identical grounding (one Live, in-topology citation, no
+	// change events), only the self-report differs: 0.99 and 0.30. A
+	// self-report above the computed grounding can't push the emitted
+	// number past it; a self-report below it still pulls the number down.
+	run := func(selfReported float64) float64 {
+		model := &fakeModel{script: []clank.Completion{
+			{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+			{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+				FailureClass: proposal.ClassDependencySaturation,
+				Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+				Proposals: []proposal.Candidate{{
+					ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: selfReported,
+					Citations: []string{`{"q":"latency_p99"}`},
+				}},
+			})}}},
+		}}
+		eng, _ := newTestEngine(model)
+		eng.Intake = noChangeIntake()
+
+		got, err := eng.Propose(context.Background(), sigBurnAccel())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.ConfidenceFor(got.Recommended)
+	}
+
+	// The grounding ceiling: one corroborated citation, no self-report
+	// low enough to constrain it (1.0 clears anything scoreConfidence
+	// could compute here) — the same pure function K3's table test locks.
+	ceiling := clank.ScoreConfidenceForTest(0.9, 1, 1.0)
+
+	if diff := cmp.Diff(ceiling, run(0.99)); diff != "" {
+		t.Error("a self-report above the computed grounding must not raise it (-want +got)\n", diff)
+	}
+	if diff := cmp.Diff(0.30, run(0.30)); diff != "" {
+		t.Error("a self-report below the computed grounding must still lower it (-want +got)\n", diff)
 	}
 }
 
@@ -296,7 +425,19 @@ func newTestEngine(model clank.Model) (*clank.Engine, *publishtest.CapturePublis
 		Ledger:       clank.NewMemProposalLog(),
 		Pub:          pub,
 		MaxSteps:     8,
+		Weights:      testWeights(),
 	}, pub
+}
+
+// testWeights layers scoreConfidence's grounding tiers onto uniformWeights
+// (causal_test.go) — every engine test that runs the full Propose loop gets
+// a real, nonzero CausalScore for its fixture's one fake change event,
+// instead of an unconfigured 0 silently zeroing out every candidate's
+// emitted confidence.
+func testWeights() clank.ScoringWeights {
+	w := uniformWeights()
+	w.GroundingNone, w.GroundingOne, w.GroundingMany = 0.3, 0.7, 1.0
+	return w
 }
 
 func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
@@ -321,6 +462,7 @@ func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*
 		Ledger:       clank.NewMemProposalLog(),
 		Pub:          pub,
 		MaxSteps:     8,
+		Weights:      testWeights(),
 	}, pub
 }
 
@@ -344,10 +486,11 @@ type fakeTool struct {
 	digest string
 	ref    string
 	live   bool
+	query  string
 }
 
 func (f fakeTool) Run(_ context.Context, _ json.RawMessage) (proposal.EvidenceRef, error) {
-	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live}, nil
+	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live, Query: f.query}, nil
 }
 
 func (f fakeTool) Spec() clank.ToolSpec {
@@ -594,6 +737,69 @@ func TestPropose_ClassMismatchBecomesAnAuditableDecline(t *testing.T) {
 	}
 }
 
+func TestPropose_RecordsTheCitationsEachCandidateCarries(t *testing.T) {
+	t.Parallel()
+
+	// The citation list must survive the round trip untouched: what the model
+	// cited is what the audit trail carries — the gate and the confidence
+	// function read this list, so a dropped or reordered citation would change
+	// what the machine believes it verified.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
+				Citations: []string{`{"q":"latency_p99"}`},
+			}},
+		})}}},
+	}}
+
+	eng, _ := newTestEngine(model)
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{`{"q":"latency_p99"}`}
+	if diff := cmp.Diff(want, got.Proposals[0].Citations); diff != "" {
+		t.Error("candidate citations did not survive the round trip (-want +got)\n", diff)
+	}
+}
+
+func TestPropose_DeclinesACandidateCitingEvidenceTheRunNeverGathered(t *testing.T) {
+	t.Parallel()
+
+	// A citation naming a query the loop never issued is a causal claim with
+	// no inspectable basis — the run must end as an auditable no_action, never
+	// a delivered set. This is the same refusal shape as a class-mismatched
+	// contract ref: recorded and loud, not silent.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
+				Citations: []string{`{"q":"a_query_never_issued"}`},
+			}},
+		})}}},
+	}}
+
+	eng, sink := newTestEngine(model)
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Status.Phase != proposal.PhaseNoAction {
+		t.Errorf("an ungrounded citation must decline, got phase %q (reason %q)", got.Status.Phase, got.Status.Reason)
+	}
+	if len(sink.Delivered) != 0 {
+		t.Error("an ungrounded citation must never be delivered", cmp.Diff(0, len(sink.Delivered)))
+	}
+}
+
 func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -602,7 +808,7 @@ func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89, Citations: []string{`{"q":"x"}`}}},
 		})}}},
 	}}
 	e, sink := newTestEngine(model)
@@ -628,7 +834,7 @@ func TestPropose_FreezesTheSAOIntoTheSet(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Citations: []string{`{"q":"x"}`}}},
 		})}}},
 	}}
 	e, _ := newTestEngine(model)
@@ -648,7 +854,7 @@ func TestPropose_AttachesCausalScoresToTheSet(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Citations: []string{`{"q":"x"}`}}},
 		})}}},
 	}}
 	e, _ := newTestEngine(model)
@@ -665,5 +871,47 @@ func TestPropose_AttachesCausalScoresToTheSet(t *testing.T) {
 		if len(cs.Rationale) == 0 {
 			t.Errorf("every causal score must carry its rationale, not just a number: %v", cs)
 		}
+	}
+}
+
+func TestSeedPrompt_StatesTheEvidenceStandardWithoutNamingAnyApp(t *testing.T) {
+	t.Parallel()
+
+	// The seed message is captured on the initial completion request even if no
+	// tool calls are returned.
+	model := &fakeModel{}
+	eng, _ := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+	seed := model.received[0][0].Content
+
+	// The standard must be stated in rig-invariant terms (live, topology, cite).
+	for _, want := range []string{"live", "topology", "cite"} {
+		if !strings.Contains(seed, want) {
+			t.Errorf("seed prompt is missing the evidence standard; expected %q in:\n%s", want, seed)
+		}
+	}
+	// Verify no app-specific codenames or demo services are mentioned.
+	for _, banned := range []string{"flagd", "cart", "ceph", "argocd"} {
+		if strings.Contains(seed, banned) {
+			t.Errorf("seed prompt names an app (%q) — rig knowledge belongs in config, not code:\n%s", banned, seed)
+		}
+	}
+}
+
+func TestSeedPrompt_RendersChangeEventsWhenTheSAOHasThem(t *testing.T) {
+	t.Parallel()
+
+	model := &fakeModel{}
+	eng, _ := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+	seed := model.received[0][0].Content
+
+	if !strings.Contains(seed, "payments-db") {
+		t.Errorf("seed prompt omits the SAO's change events; expected the deploy target in:\n%s",
+			seed)
 	}
 }

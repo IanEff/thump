@@ -43,18 +43,21 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "node-death.yaml")
 
-	// scripted model: step 1 gather LIVE evidence (metricsTool → Live:true,
-	// clears the gate's evidenceOK); step 2 propose hold-rebalance — a
+	// scripted model: step 1 gather two pieces of LIVE evidence (metricsTool
+	// → Live:true, clears both the gate's evidenceOK and scoreConfidence's
+	// two-corroborated-citation tier); step 2 propose hold-rebalance — a
 	// catalogued action for the fixture's class+tier — carrying a
 	// ReversalPath (or hiss Claim 5 vetoes) and a requested band (or the
 	// grant defaults to observe).
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osd_capacity"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded, // in defaultCatalog's hold-rebalance
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"ceph_health", "osd_capacity"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -69,7 +72,10 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+			Queries: map[string]string{
+				"ceph_health":  "ceph_health_status",
+				"osd_capacity": "ceph_osd_capacity_ratio",
+			},
 		},
 	}
 
@@ -202,6 +208,7 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"osds_down", "pgs_backfilling"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -320,6 +327,7 @@ func TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification(t *testin
 			Hypotheses:   []proposal.Hypothesis{{Name: "noisy_neighbor_misattribution", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"product_catalog_error_ratio"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -379,6 +387,7 @@ func TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "rook_operator_cascade", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"product_catalog_error_ratio", "rook_operator_health"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -431,6 +440,7 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"osds_down", "pgs_backfilling"},
 				// bare — no ReversalPath, no GovernanceLevel
 			}},
 		})}}},
@@ -487,6 +497,62 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	}
 }
 
+func TestGoldenPath_InTopologyFillerCantCarryAnOutOfDomainAction(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	det := loadDetectionFixtureExt(t, "argocd-sync-burn.yaml")
+
+	// Both refs are real and live. The in-topology one (rook-operator) backs
+	// nothing the model proposes; the action's sole support is the OTel demo's
+	// metric, from a domain this signal has no declared relationship to. The
+	// recommendation's own grounding is what the gate must read — filler in
+	// the evidence list can't stand in for it.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rook_operator_health"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassServiceFailure,
+			Hypotheses:   []proposal.Hypothesis{{Name: "cross_domain_bridge", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "disable-product-catalog-failure", Confidence: 0.95,
+				Citations: []string{"product_catalog_error_ratio"},
+			}},
+		})}}},
+	}}
+
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{
+				"rook_operator_health":        "rook_operator_health_status",
+				"product_catalog_error_ratio": "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))",
+			},
+			Subjects: map[string]string{
+				"rook_operator_health":        "rook-operator",
+				"product_catalog_error_ratio": "product-catalog",
+			},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
+	set, err := eng.Propose(ctx, det)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if set.Gate == nil || set.Gate.Passed {
+		t.Fatalf("an action grounded only in another domain's evidence must fail the gate: gate=%+v", set.Gate)
+	}
+	if set.Gate.Reason != "evidence" {
+		t.Error("the veto must land on the evidence minimum", cmp.Diff("evidence", set.Gate.Reason))
+	}
+	if len(sink.Delivered) != 0 {
+		t.Error("a declined set delivers nothing", cmp.Diff(0, len(sink.Delivered)))
+	}
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────
 
 // goldenNodeDeathModel is the node-death propose script, minted fresh per
@@ -501,6 +567,7 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"ceph_health"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -529,6 +596,7 @@ func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine
 		Ledger:       clank.NewMemProposalLog(),
 		Pub:          pub,
 		MaxSteps:     8,
+		Weights:      clank.ScoringWeights{GroundingNone: 0.3, GroundingOne: 0.7, GroundingMany: 1.0},
 	}, pub
 }
 
