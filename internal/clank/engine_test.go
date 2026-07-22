@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -870,5 +871,47 @@ func TestPropose_AttachesCausalScoresToTheSet(t *testing.T) {
 		if len(cs.Rationale) == 0 {
 			t.Errorf("every causal score must carry its rationale, not just a number: %v", cs)
 		}
+	}
+}
+
+func TestSeedPrompt_StatesTheEvidenceStandardWithoutNamingAnyApp(t *testing.T) {
+	t.Parallel()
+
+	// The seed message is captured on the initial completion request even if no
+	// tool calls are returned.
+	model := &fakeModel{}
+	eng, _ := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+	seed := model.received[0][0].Content
+
+	// The standard must be stated in rig-invariant terms (live, topology, cite).
+	for _, want := range []string{"live", "topology", "cite"} {
+		if !strings.Contains(seed, want) {
+			t.Errorf("seed prompt is missing the evidence standard; expected %q in:\n%s", want, seed)
+		}
+	}
+	// Verify no app-specific codenames or demo services are mentioned.
+	for _, banned := range []string{"flagd", "cart", "ceph", "argocd"} {
+		if strings.Contains(seed, banned) {
+			t.Errorf("seed prompt names an app (%q) — rig knowledge belongs in config, not code:\n%s", banned, seed)
+		}
+	}
+}
+
+func TestSeedPrompt_RendersChangeEventsWhenTheSAOHasThem(t *testing.T) {
+	t.Parallel()
+
+	model := &fakeModel{}
+	eng, _ := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+	seed := model.received[0][0].Content
+
+	if !strings.Contains(seed, "payments-db") {
+		t.Errorf("seed prompt omits the SAO's change events; expected the deploy target in:\n%s",
+			seed)
 	}
 }

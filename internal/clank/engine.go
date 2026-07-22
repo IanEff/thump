@@ -374,8 +374,22 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 	if subject == "" {
 		subject = sig.Name
 	}
-	fmt.Fprintf(&b, "signal on %s (severity %.0f%%, blast %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action — or insufficient if the evidence supports no action.\n",
-		subject, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+
+	if sao.Signal.Metric != "" {
+		fmt.Fprintf(&b, "signal on %s [%s] (confidence: %.2f, severity: %0.f%%, blast: %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action -- or insufficient if the evidence supports no action.\n",
+			subject, sao.Signal.Metric, sao.Signal.Confidence, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+	} else {
+		fmt.Fprintf(&b, "signal on %s (confidence %.2f, severity %.0f%%, blast %.0f%%); investigate with the read-only tools, then call propose with your hypotheses and a candidate action -- or insufficient if the evidence supports no action.\n",
+			subject, sao.Signal.Confidence, sao.Signal.Severity.DegradationPct*100, sao.Signal.BlastRadius.AffectedPct*100)
+	}
+
+	if len(sao.Change.Events) > 0 {
+		b.WriteString("recent change events:\n")
+
+		for _, e := range sao.Change.Events {
+			fmt.Fprintf(&b, "- %s change on %s (age %s seconds)\n", e.Type, e.Target, e.Age.Round(time.Second))
+		}
+	}
 
 	if len(sao.Topology.Upstream) > 0 || len(sao.Topology.Downstream) > 0 {
 		b.WriteString("observed topology:\n")
@@ -386,6 +400,11 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 			fmt.Fprintf(&b, "- downstream %s: %s\n", n.Name, n.State)
 		}
 	}
+
+	b.WriteString("evidence & confidence rules:\n")
+	b.WriteString("- to propose an action, cite at least one LIVE telemetry result about the affected service, or a node in its declared topology.\n")
+	b.WriteString("- a live metric is sufficient in corroboration on its own; log lines can corroborate but are never required.\n")
+	b.WriteString("- your stated confidence can lower the emitted number, but never raise it-- it is computed from your citations' grounding.\n")
 
 	if len(classes) > 0 {
 		b.WriteString("failure classes — pick the one the EVIDENCE supports, not the one that has a matching action:\n")
