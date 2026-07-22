@@ -332,7 +332,8 @@ func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 			continue
 		}
 		if _, ok := e.Catalog.ByName(cand.ContractRef); ok {
-			return fmt.Errorf("enforce: %q does not apply to declared class %q: %w", cand.ContractRef, set.FailureClass, errClassMismatch)
+			return fmt.Errorf("%w: %q does not apply to declared class %q", errClassMismatch, cand.ContractRef,
+				set.FailureClass)
 		}
 		return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
 	}
@@ -349,12 +350,12 @@ func (e *Engine) enforceCitations(set proposal.Set) error {
 
 	for _, cand := range set.Proposals {
 		if len(cand.Citations) == 0 {
-			return fmt.Errorf("enforce: candidate %q carries no citations: %w", cand.ID, errUngroundedCitation)
+			return fmt.Errorf("%w: candidate %q carries no citations", errUngroundedCitation, cand.ID)
 		}
 
 		for _, cite := range cand.Citations {
 			if !gathered[cite] {
-				return fmt.Errorf("enforce: %q: %w", cite, errUngroundedCitation)
+				return fmt.Errorf("%w: %q", errUngroundedCitation, cite)
 			}
 		}
 	}
