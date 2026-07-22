@@ -101,14 +101,14 @@ SignalDetection        ProposalSet             Decision                Outcome
   │rattle │────────────▶│ clank │──────────────▶│ hiss  │─────────────▶│ thump │
   └───────┘             └───────┘                └───────┘             └───┬───┘
    Signal                Reasoning               Governance                │ acts
-                                                                             ▼
-                                                                      (the cluster)
-                                                                             │
-                                                                      click reads Outcome
-                                                                      back into clank's
-                                                                      case base — the
-                                                                      return edge, not
-                                                                      a sixth box
+                                                                            ▼
+                                                                     (the cluster)
+                                                                            │
+                                                                     click reads Outcome
+                                                                     back into clank's
+                                                                     case base — the
+                                                                     return edge, not
+                                                                     a sixth box
 ```
 
 | Beat | Plane | Job | Never |
