@@ -46,41 +46,43 @@ job eventually and the vault's job today; see [Source of truth](#source-of-truth
 ## Authority model & guardrails
 
 **The model proposes magnitude, it never invents it.** Every catalogued action
-carries an authored `SeverityReductionPct` — in today's rook/Ceph catalog,
-`throttle-non-critical-paths` is authored at 0.5, `scale-out-rgw-gateways` at
-0.6, `accelerate-recovery` at 0.8 (`internal/contract/authored.go`). Whatever
-runbook gets added next authors its own number the same way. The LLM picks
-which action and how confident it is in the diagnosis; it does not get to
-decide that *this* incident's throttle will cut severity by 73%. When an
-action has no authored number (`hold-rebalance` doesn't), the forecast comes
-back `nil`, not `0` — an unforecast action must never look like a forecast of
-no effect.
+carries an authored `SeverityReductionPct` — in the compiled-in catalog,
+`hold-rebalance` is authored at 0.7, `accelerate-recovery` at 0.8,
+`disable-product-catalog-failure` at 0.9, `disable-cart-failure` at 0.9, and
+`restart-cart-pod` at 0.1 (`internal/contract/authored.go`). Whatever runbook
+gets added next authors its own number the same way. The LLM picks which action
+and how confident it is in the diagnosis; it does not get to decide that *this*
+incident's action will cut severity by 73%. When an action has no authored
+number or query, `SeverityReductionPct` defaults to `0` (unforecast), which
+feeds no effectiveness datum, never an expectation of zero effect.
 
 **Modulates, never replaces.** The authored number above is a *prior*. The
-design (in progress, not finished — see [Known-open](#known-open)) is for a
-future SAO/topology-aware multiplier to adjust that prior up or down, never
-substitute a model-vibed number for it. Half of this is built today — the
-baseline is stamped onto every candidate — the multiplier itself isn't yet.
+design (in progress — see [Known-open](#known-open)) is for a future
+SAO/topology-aware multiplier to adjust that prior up or down, never
+substitute a model-vibed number for it. Today, the baseline is stamped onto
+every candidate (`api/v1/proposal/proposal.go`), while model evidence grounding
+decorates hypothesis confidence (`internal/clank/weights.go`).
 
 **Blast tiers, a kill switch, and a dedupe window bound what can go wrong.**
 Every action carries a `BlastTier` (`low` / `med` / `high`) authored by a
-human, not computed by the reasoner — `accelerate-recovery` is the one
-`high`-tier action in the catalog today, because trading client I/O for
-durability is a call a human should bless, not the loop. `hiss` reads the tier
-against a policy (`config/hiss/policy.yaml`) and holds anything past the
-auto-fire ceiling for a human. Underneath all of that sits one coarse,
-disarm-anything kill switch (`THUMP_KILLSWITCH`, `internal/thump/killswitch.go`)
-— live execution refuses to run at all while it's off, full stop, no partial
-credit. And a `DedupeWindow` (default 1h, `DEDUPE_WINDOW`) stops a still-firing
+human, not computed by the reasoner — `accelerate-recovery` is authored
+`high`-tier in the catalog because trading client I/O for durability is a call
+a human should bless, not the loop. `hiss` reads the tier against a policy
+(`config/hiss/policy.yaml`) and holds anything past the auto-fire ceiling for a
+human. Underneath all of that sits one coarse, disarm-anything kill switch
+(`THUMP_KILLSWITCH`, `internal/thump/killswitch.go`) — live execution refuses
+to run at all while it's off, full stop, no partial credit. And a `DedupeWindow`
+(default 1h, `DEDUPE_WINDOW`, `internal/config/config.go`) stops a still-firing
 signal from re-triggering a fresh action on top of one already in flight.
 
-**Declining is a first-class outcome, not a failure to act.** `no_action` with
-a cited reason (`ProposalSet.Status.Reason`) is a pass condition. It fires when
-the model can't gather enough evidence, when a proposed action doesn't
-actually apply to the failure class it claimed (`errClassMismatch` — the model
-doesn't get an "I don't know" escape hatch that quietly maps to *do something
-anyway*), or when the readiness gate vetoes on a single weak dimension. Silence
-is the failure mode this project is built to not have.
+**Declining is a first-class outcome, not a failure to act.** `no_action` or
+`declined` with a cited reason (`ProposalSet.Status.Reason`) is a pass
+condition. It fires when the model can't gather enough evidence, when a
+proposed action doesn't actually apply to the failure class it claimed
+(`errClassMismatch` — the model doesn't get an "I don't know" escape hatch that
+quietly maps to *do something anyway*), or when the readiness gate vetoes on a
+single weak dimension. Silence is the failure mode this project is built to not
+have.
 
 **Zero doesn't mean "we expect zero effect."** `Outcome.ObservedSeverity` is a
 `*float64` — nil means *unmeasured*, and it's rendered as `unmeasured`, never
@@ -99,14 +101,14 @@ SignalDetection        ProposalSet             Decision                Outcome
   │rattle │────────────▶│ clank │──────────────▶│ hiss  │─────────────▶│ thump │
   └───────┘             └───────┘                └───────┘             └───┬───┘
    Signal                Reasoning               Governance                │ acts
-                                                                            ▼
-                                                                     (the cluster)
-                                                                            │
-                                                                     click reads Outcome
-                                                                     back into clank's
-                                                                     case base — the
-                                                                     return edge, not
-                                                                     a sixth box
+                                                                             ▼
+                                                                      (the cluster)
+                                                                             │
+                                                                      click reads Outcome
+                                                                      back into clank's
+                                                                      case base — the
+                                                                      return edge, not
+                                                                      a sixth box
 ```
 
 | Beat | Plane | Job | Never |
@@ -128,9 +130,9 @@ allow/hold/deny).
 
 ## A golden path, worked end to end
 
-The engine is general-purpose; the worked example below is just whatever
-happens to be in the catalog today. This is a real fixture
-(`internal/clank/testdata/golden/rgw-saturation-*.yaml`), not a hypothetical.
+The engine is general-purpose; the worked example below is backed by real
+fixtures (`internal/clank/testdata/detections/ceph-rgw-saturation.yaml` and
+`internal/clank/testdata/golden/node-death-*.yaml`), not a hypothetical.
 
 1. **rattle detects.** RGW latency and request-rate diverge from baseline —
    `severity.DegradationPct: 0.2`, trajectory `accelerating`. rattle fingerprints
@@ -138,28 +140,27 @@ happens to be in the catalog today. This is a real fixture
    recomputes this — it trusts the fingerprint and the confidence rattle
    assigned.
 2. **clank reasons.** It assembles the SAO (the signal snapshot above, plus
-   topology — `cephobjectstore`/`rook-operator` both `healthy`), calls the
-   `metrics` tool twice for `rgw_get_put_latency_ms` and `rgw_request_rate`
-   (both come back live, both get cited), forms the hypothesis
-   `rgw_backend_saturation` at weight 0.85, and proposes
-   `throttle-non-critical-paths` at confidence 0.85 — `blastTier: med`,
-   `predictedImpact.severityReductionPct: 0.5` (the authored baseline, not a
-   model guess), a `reversalPath` (`unthrottle`, triggered on `p99 < 250ms`).
-3. **The gate passes.** `budgetOK`, `dedupeOK`, `evidenceOK` are all true — two
-   live citations clear the forced-live-telemetry defense; the set was never
-   at risk of getting through on historical alignment alone.
-4. **hiss governs.** Policy's `tier-1` floor for `dependency_saturation` is
-   0.75; the proposal's confidence (0.85) clears it. The action is reversible
-   (`unthrottle` exists) at `BlastMed`, so hiss's shaper computes
-   `RiskBand: act_reversible` — under `tier-1`'s `autoBand` ceiling, so this
-   doesn't hold for a human. `Decision.Verdict: approved`,
-   `grantedBand: act_reversible`, `floorApplied: 0.75` stamped onto the audit
-   record.
+   topology — `cephobjectstore`/`rook-operator` both `healthy`), calls read-only
+   telemetry tools (`metrics`, `loki`, `kube`, `whir`) for live metrics, forms
+   hypotheses (e.g. `osd_capacity_loss` or `rgw_backend_saturation`), and
+   proposes ranked candidates (e.g. `hold-rebalance` at confidence 0.9 or
+   `disable-product-catalog-failure`) with `predictedImpact.severityReductionPct`
+   stamped from the authored catalog baseline, along with a `reversalPath`.
+3. **The gate passes.** `budgetOK`, `dedupeOK`, `evidenceOK` are all true —
+   at least one live citation clears the forced-live-telemetry defense (defence
+   5); the set was never at risk of getting through on historical alignment
+   alone.
+4. **hiss governs.** Policy's confidence floor evaluates the proposal; when it
+   clears the floor and carries a valid reversal path, hiss's shaper assigns
+   `RiskBand: act_reversible`. If under the policy auto-fire ceiling, it
+   approves without holding for a human. `Decision.Verdict: approved`,
+   `grantedBand: act_reversible`, and policy thresholds are stamped onto the
+   audit record.
 5. **thump acts.** In dry-run mode (the default — see below) it renders the
    order and stops: `Outcome{mode: dry_run, result: rendered}`. In live mode,
-   the same `Decision` would actually throttle anonymous RGW requests, then
-   watch `latency_p99` against the 10-minute success window and auto-reverse
-   through `unthrottle` if it doesn't converge.
+   the same `Decision` executes the catalog mutation via `client-go`, then
+   watches metrics against the success window and auto-reverses through the
+   defined reversal path if it doesn't converge.
 
 Every step above is one JSON/YAML object with the same `signalRef` threaded
 through it. That thread — `Detection.Fingerprint` →
@@ -171,13 +172,12 @@ answer "why did it do that."
 
 ## Standing it up locally
 
-thump runs against three cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
-`ceph-lab` (default), `rook-gke`, `rook-gce-k3s` — all rook/Ceph clusters,
-because that's the rig this repo builds and chaos-tests against, not because
-thump requires one. Bring one up, then:
+thump runs against four cluster profiles (`Tiltfile`'s `CLUSTERS` dict):
+`ceph-lab` (default), `rook-gke`, `rook-gce-k3s`, and `thump-test` (the test rig
+combining Ceph and the OTel demo domain). Bring one up, then:
 
 ```sh
-tilt up -- --cluster=rook-gce-k3s   # or ceph-lab, rook-gke
+tilt up -- --cluster=thump-test   # or ceph-lab, rook-gke, rook-gce-k3s
 ```
 
 **Dry-run is the default, and you have to opt into anything else.**
@@ -190,7 +190,7 @@ is optional — leave it unset and thump just doesn't page anyone on a hold or a
 settle.
 
 Check `internal/config/config.go` for the full environment variable list
-before arming anything for real.
+(`Clank`, `Hiss`, `Rattle`, `Thump` typed structs) before arming anything for real.
 
 ---
 
@@ -209,12 +209,13 @@ book this is built against. Numbered so a review can cite one directly
    (is this input trustworthy?) is rattle's; hypothesis confidence (how sure
    is this diagnosis?) is clank's, computed from the first plus corroboration
    — not vibed.
-3. **Policy lives only in Governance.** If clank grows an
-   `if confidence < 0.8`, policy has become invisible and unauditable. hiss is
+3. **Policy lives only in Governance.** If clank grew an
+   `if confidence < 0.8`, policy would become invisible and unauditable. hiss is
    the only policy holder.
 4. **The catalog is the autonomy boundary.** Blast radius is bounded by a
    declared action's scope and reversal, never by the reasoner's judgment. A
-   candidate outside the catalog is a hard error, not a soft ignore.
+   candidate outside the catalog is a hard error (`ErrOutsideCatalog`,
+   `internal/contract/contract.go`), not a soft ignore.
 5. **Gate ≠ shaper.** The readiness gate is a strict conjunction of minimums
    — `budget ∧ dedup ∧ evidence` — never a weighted sum. A high score on one
    axis cannot buy passage on a failed minimum.
@@ -251,14 +252,13 @@ book this is built against. Numbered so a review can cite one directly
     fingerprint, never on transport metadata like a filename or sequence
     number.
 15. **The operator surface is read-only or evidence-producing — it never
-    disposes.** A human interface onto the engine may read emitted state or
-    emit an ack event, and nothing else; it may never write a decision,
-    execute an action, or touch the kill switch. The one declared exception
-    is a break-glass "force" path: a human, never the automated surface,
-    disposing in Governance's place — attributed, audited, and rendered
-    visibly `forced`, still kill-switch-gated. (This is the newest invariant
-    and the interface it governs — `squawk`/`trim` — is designed, not built;
-    see [Known-open](#known-open).)
+    disposes.** The `trim` CLI (`cmd/trim`, `internal/trim`) projectively
+    reads stream state and allows human interaction (emitting `thump.approvals`
+    for held actions or displaying incident status). It never directly executes
+    actions or writes decisions. The sole declared break-glass exception is
+    `trim force <fp>`, which lets an authorized human issue a forced,
+    operator-attributed `Governed` decision (`Forced: true`) to
+    `thump.decisions`, which remains kill-switch gated and fully audited.
 
 ---
 
@@ -267,11 +267,8 @@ book this is built against. Numbered so a review can cite one directly
 Told straight, because "decline out loud instead of guessing quietly" applies
 to this project's own status page too, not just its runtime behavior:
 
-- **The operator surface (`squawk`/`trim`) is designed, not built.** There's a
-  full design for a read-only reporting CLI plus a governed-write approval
-  path for anything hiss holds for a human — it's a real gap today (a held
-  action currently just re-pages on every dedupe window with no way to ack
-  it), but no code exists yet. See the vault's `operator-surface-design.md`.
+- **The `trim` operator CLI is built for stream reading and approvals, while full interactive UX continues to evolve.**
+  The `trim` binary (`cmd/trim`, `internal/trim`) provides stream projection views (`trim incidents`), human approval emission (`trim approve`), and break-glass forced overrides (`trim force`). Interactive TUI/GUI enhancements and notification ack flows remain active design areas.
 - **The model-modulates-the-prior multiplier isn't built.** The authored
   `SeverityReductionPct` baseline is stamped and measured today; the
   SAO/topology-aware adjustment on top of it is still just the plan.
@@ -280,6 +277,8 @@ to this project's own status page too, not just its runtime behavior:
   against — not a config mistake on our side, confirmed against upstream.
   Until that's fixed or worked around, one signal class (OSD I/O latency
   injected at the FUSE layer) can't be chaos-tested end to end.
+- **Rook operator CR reconciliation overrides live OSD backfill tuning (D-10).**
+  On live clusters, Rook's operator reconciles `osd_max_backfills` and `osd_recovery_max_active` back to CR defaults within ~29ms of a merge-patch landing, requiring the Rook operator to be scaled down for certain live backfill tests.
 - **thump's own `ServiceMonitor` gaps have bitten us before.** A missing
   scrape target made a fully-working pipeline look broken from the outside
   more than once. If a live run looks dead, check Prometheus targets before
@@ -294,12 +293,13 @@ Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`) — run
 
 | Command | What it does |
 |---|---|
-| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` | Run one beat |
-| `task build` | Build all four beats to `bin/` |
+| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` / `run:trim` | Run a beat or CLI tool |
+| `task build` | Build all five binaries (`clank`, `rattle`, `hiss`, `thump`, `trim`) to `bin/` |
 | `task ci` | Full local CI: fmt-check → vet → lint → vulncheck → chart-lint → race → build |
 | `task test` / `task race` | Tests, with `-race` |
 | `task coverage` | Coverage profile + total |
 | `task vulncheck` | govulncheck over deps |
+| `task chart-lint` | Helm template & strict kubeconform validation |
 | `task eval` | The reasoner eval against the production catalog — key-gated, not part of `task ci` |
 | `go test ./internal/clank -run TestGate -v` | Run a single test |
 | `gotestdox ./...` | Read test names back as a spec |
@@ -346,7 +346,7 @@ vault, not here — this README summarizes; the vault is authoritative:
 - `beat-roadmap.md` — build sequencing; what's open, what's next.
 - `thump-running-notes.md` — the dated investigation journal: bugs found on
   real clusters, decisions made, gotchas worth not re-discovering.
-- `operator-surface-design.md` — the `squawk`/`trim` design referenced in
+- `operator-surface-design.md` — the `trim` design referenced in
   [Known-open](#known-open).
 
 Sourced from *Agentic Reliability Engineering* (the four-plane architecture,
