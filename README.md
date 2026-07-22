@@ -1,5 +1,11 @@
 # thump
 
+[![CI](https://github.com/IanEff/thump/actions/workflows/ci.yml/badge.svg)](https://github.com/IanEff/thump/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/IanEff/thump?logo=go)](https://go.dev)
+[![Go Reference](https://pkg.go.dev/badge/github.com/IanEff/thump.svg)](https://pkg.go.dev/github.com/IanEff/thump)
+[![Go Report Card](https://goreportcard.com/badge/github.com/IanEff/thump)](https://goreportcard.com/report/github.com/IanEff/thump)
+[![License](https://img.shields.io/github/license/IanEff/thump)](LICENSE)
+
 thump is a general-purpose, DRAL-based agentic SRE for a Kubernetes cluster —
 a multidimensional thermostat that watches reliability signals, reasons about
 them with an LLM, and executes an authored, catalog-bound action when policy
