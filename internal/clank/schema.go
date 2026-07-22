@@ -40,7 +40,8 @@ type proposeInput struct {
 // the ranker's, or deferred, so it is deliberately absent from what the model may
 // author. The json tags mirror proposal.Candidate's, so it decodes straight into one.
 type proposeCandidate struct {
-	ID          string  `json:"id,omitempty"`
-	ContractRef string  `json:"contractRef" jsonschema:"required"`
-	Confidence  float64 `json:"confidence,omitempty"`
+	ID          string   `json:"id,omitempty"`
+	ContractRef string   `json:"contractRef" jsonschema:"required"`
+	Confidence  float64  `json:"confidence,omitempty"`
+	Citations   []string `json:"citations" jsonschema:"required"`
 }

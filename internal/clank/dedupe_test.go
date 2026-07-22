@@ -20,7 +20,7 @@ func TestPropose_ReleasesDedupeOnceTheWindowElapses(t *testing.T) {
 				{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 				{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 					FailureClass: proposal.ClassDependencySaturation,
-					Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89}},
+					Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89, Citations: []string{`{"q":"x"}`}}},
 				})}}},
 			}}
 		}

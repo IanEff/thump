@@ -24,7 +24,7 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -44,22 +44,25 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 
 // TestPropose_GateDeclineSurfacesReason pins the other half of the "mute
 // decline" bug: a model that DOES propose (unlike the insufficient-evidence
-// path TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason exercises) but
-// gathers no live evidence first still gets declined by the readiness gate
-// — and that decline must say why (Status.Reason), not just what
-// (Status.Phase).
+// path TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason exercises) and
+// cites evidence it actually gathered — so the citation check clears — but
+// that evidence is never Live, so the readiness gate itself declines. That
+// decline must say why (Status.Reason), not just what (Status.Phase).
 func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	t.Parallel()
+	tool := fakeTool{name: "logs", digest: "no live signal", ref: "loki:xyz", live: false, query: "log_scan"}
 	model := &fakeModel{script: []clank.Completion{
-		// turn 1: propose straight away, no evidence-gathering tool call first
+		// turn 1: gather evidence that is never Live
+		{ToolCalls: []clank.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"log_scan"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{"log_scan"}}},
 		})}}},
 	}}
 
 	e, sink := newTestEngine(model)
+	e.Tools = map[string]clank.Tool{"logs": tool}
 	got, err := e.Propose(context.Background(), sigBurnAccel())
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
@@ -90,7 +93,7 @@ func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			// bare — no ReversalPath, no GovernanceLevel, exactly what production omits
-			Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -133,7 +136,7 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -164,7 +167,7 @@ func TestPropose_StampsPredictedImpactFromTheCatalog(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "redundancy_degraded", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.82}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.82, Citations: []string{`{"q":"ceph_health"}`}}},
 		})}}},
 	}}
 
@@ -203,7 +206,7 @@ func TestPropose_UnforecastContractLeavesPredictedImpactNil(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9, Citations: []string{`{"q":"latency_p99"}`}}},
 		})}}},
 	}}
 
@@ -344,10 +347,11 @@ type fakeTool struct {
 	digest string
 	ref    string
 	live   bool
+	query  string
 }
 
 func (f fakeTool) Run(_ context.Context, _ json.RawMessage) (proposal.EvidenceRef, error) {
-	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live}, nil
+	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live, Query: f.query}, nil
 }
 
 func (f fakeTool) Spec() clank.ToolSpec {
@@ -594,6 +598,69 @@ func TestPropose_ClassMismatchBecomesAnAuditableDecline(t *testing.T) {
 	}
 }
 
+func TestPropose_RecordsTheCitationsEachCandidateCarries(t *testing.T) {
+	t.Parallel()
+
+	// The citation list must survive the round trip untouched: what the model
+	// cited is what the audit trail carries — the gate and the confidence
+	// function read this list, so a dropped or reordered citation would change
+	// what the machine believes it verified.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
+				Citations: []string{`{"q":"latency_p99"}`},
+			}},
+		})}}},
+	}}
+
+	eng, _ := newTestEngine(model)
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{`{"q":"latency_p99"}`}
+	if diff := cmp.Diff(want, got.Proposals[0].Citations); diff != "" {
+		t.Error("candidate citations did not survive the round trip (-want +got)\n", diff)
+	}
+}
+
+func TestPropose_DeclinesACandidateCitingEvidenceTheRunNeverGathered(t *testing.T) {
+	t.Parallel()
+
+	// A citation naming a query the loop never issued is a causal claim with
+	// no inspectable basis — the run must end as an auditable no_action, never
+	// a delivered set. This is the same refusal shape as a class-mismatched
+	// contract ref: recorded and loud, not silent.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
+				Citations: []string{`{"q":"a_query_never_issued"}`},
+			}},
+		})}}},
+	}}
+
+	eng, sink := newTestEngine(model)
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Status.Phase != proposal.PhaseNoAction {
+		t.Errorf("an ungrounded citation must decline, got phase %q (reason %q)", got.Status.Phase, got.Status.Reason)
+	}
+	if len(sink.Delivered) != 0 {
+		t.Error("an ungrounded citation must never be delivered", cmp.Diff(0, len(sink.Delivered)))
+	}
+}
+
 func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -602,7 +669,7 @@ func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89, Citations: []string{`{"q":"x"}`}}},
 		})}}},
 	}}
 	e, sink := newTestEngine(model)
@@ -628,7 +695,7 @@ func TestPropose_FreezesTheSAOIntoTheSet(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Citations: []string{`{"q":"x"}`}}},
 		})}}},
 	}}
 	e, _ := newTestEngine(model)
@@ -648,7 +715,7 @@ func TestPropose_AttachesCausalScoresToTheSet(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths"}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Citations: []string{`{"q":"x"}`}}},
 		})}}},
 	}}
 	e, _ := newTestEngine(model)

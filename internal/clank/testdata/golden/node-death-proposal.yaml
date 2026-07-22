@@ -16,6 +16,8 @@ hypotheses:
 name: ceph-cluster-burn-accel
 proposals:
 - blastTier: med
+  citations:
+  - ceph_health
   confidence: 0.9
   contractRef: hold-rebalance
   governanceLevel:

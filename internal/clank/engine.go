@@ -20,6 +20,20 @@ import (
 	"github.com/ianeff/thump/internal/publish"
 )
 
+// errClassMismatch marks a proposed ContractRef that IS a real catalogued
+// action, just not applicable to the FailureClass the model itself
+// declared — a plausible-but-mislabelled proposal, not an invented one.
+// Propose turns this into an auditable no_action decline; only a
+// ContractRef naming no catalogued action at all (contract.ErrOutsideCatalog)
+// halts the run.
+var errClassMismatch = errors.New("candidate not applicable to declared failure class")
+
+// errUngroundedCitation marks a proposed candidate citing evidence the run
+// never gathered, or citing nothing at all — a causal claim with no
+// inspectable basis. It declines auditably rather than halting: the model
+// made a checkable mistake, not an out-of-catalog escape.
+var errUngroundedCitation = errors.New("candidate cites evidence the run did not gather")
+
 // Engine runs the bounded reason loop — one signal.Detection in, one
 // proposal.Set out. It owns every seam the loop composes: the LLM, the
 // read-only tools, the action catalog, the ranker, the readiness gate, the
@@ -240,6 +254,19 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		return set, nil
 	}
 
+	if err := e.enforceCitations(set); err != nil {
+		if !errors.Is(err, errUngroundedCitation) {
+			return proposal.Set{}, err
+		}
+
+		set.Status.Phase = proposal.PhaseNoAction
+		set.Status.Reason = err.Error()
+		if err := e.Ledger.Record(ctx, set); err != nil {
+			return proposal.Set{}, fmt.Errorf("record: %w", err)
+		}
+		return set, nil
+	}
+
 	enrichFromCatalog(e.Catalog, set.Proposals)
 
 	_ = beat.Stage(ctx, e.tracer(), e.Stages, "causal_score", func(context.Context) error {
@@ -295,14 +322,6 @@ func (e *Engine) toolSpecs() []ToolSpec {
 	return append(specs, ProposeToolSpec(), InsufficientToolSpec())
 }
 
-// errClassMismatch marks a proposed ContractRef that IS a real catalogued
-// action, just not applicable to the FailureClass the model itself
-// declared — a plausible-but-mislabelled proposal, not an invented one.
-// Propose turns this into an auditable no_action decline; only a
-// ContractRef naming no catalogued action at all (contract.ErrOutsideCatalog)
-// halts the run.
-var errClassMismatch = errors.New("candidate not applicable to declared failure class")
-
 func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 	allowed := make(map[string]bool)
 	for _, c := range e.Catalog.Applicable(set.FailureClass, set.ServiceTier, sao) {
@@ -313,9 +332,31 @@ func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 			continue
 		}
 		if _, ok := e.Catalog.ByName(cand.ContractRef); ok {
-			return fmt.Errorf("%w: %q does not apply to declared class %q", errClassMismatch, cand.ContractRef, set.FailureClass)
+			return fmt.Errorf("enforce: %q does not apply to declared class %q: %w", cand.ContractRef, set.FailureClass, errClassMismatch)
 		}
 		return fmt.Errorf("%w: %q", contract.ErrOutsideCatalog, cand.ContractRef)
+	}
+	return nil
+}
+
+func (e *Engine) enforceCitations(set proposal.Set) error {
+	gathered := make(map[string]bool, len(set.Evidence))
+	for _, ev := range set.Evidence {
+		if ev.Query != "" {
+			gathered[ev.Query] = true
+		}
+	}
+
+	for _, cand := range set.Proposals {
+		if len(cand.Citations) == 0 {
+			return fmt.Errorf("enforce: candidate %q carries no citations: %w", cand.ID, errUngroundedCitation)
+		}
+
+		for _, cite := range cand.Citations {
+			if !gathered[cite] {
+				return fmt.Errorf("enforce: %q: %w", cite, errUngroundedCitation)
+			}
+		}
 	}
 	return nil
 }

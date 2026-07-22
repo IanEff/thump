@@ -68,7 +68,7 @@ func TestSeam_RattleDetectionDrivesClankToADeliveredProposal(t *testing.T) {
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation, // must be in newTestEngine's catalog
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
-			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
+			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"burn"}`}}},
 		})}}},
 	}}
 
@@ -105,6 +105,7 @@ func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
+				Citations: []string{`{"q":"burn"}`},
 				ReversalPath: &proposal.ReversalPath{ // trap 1: without this, hiss's I-12 veto fires
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},
@@ -183,6 +184,7 @@ func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
+				Citations: []string{`{"q":"burn"}`},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},

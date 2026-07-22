@@ -55,6 +55,7 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"ceph_health"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -202,6 +203,7 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"osds_down", "pgs_backfilling"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -320,6 +322,7 @@ func TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification(t *testin
 			Hypotheses:   []proposal.Hypothesis{{Name: "noisy_neighbor_misattribution", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"product_catalog_error_ratio"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -379,6 +382,7 @@ func TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "rook_operator_cascade", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"product_catalog_error_ratio", "rook_operator_health"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -431,6 +435,7 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"osds_down", "pgs_backfilling"},
 				// bare — no ReversalPath, no GovernanceLevel
 			}},
 		})}}},
@@ -501,6 +506,7 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
+				Citations: []string{"ceph_health"},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
