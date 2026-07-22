@@ -221,6 +221,131 @@ func TestPropose_UnforecastContractLeavesPredictedImpactNil(t *testing.T) {
 	}
 }
 
+func TestScoreConfidence_TableOverGroundingClasses(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		signalConf   float64
+		corroborated int // citations resolving to live, in-topology refs
+		selfReport   float64
+		want         float64
+	}{
+		"scoreConfidence caps an uncorroborated candidate well below its self-report": {
+			signalConf: 0.9, corroborated: 0, selfReport: 0.95, want: 0.27,
+		},
+		"scoreConfidence lets two corroborated citations carry the signal confidence through": {
+			signalConf: 0.9, corroborated: 2, selfReport: 0.95, want: 0.9,
+		},
+		"scoreConfidence honors a self-report lower than the computed grounding": {
+			signalConf: 0.9, corroborated: 2, selfReport: 0.6, want: 0.6,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := clank.ScoreConfidenceForTest(tc.signalConf, tc.corroborated, tc.selfReport)
+
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong computed confidence (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
+// noChangeIntake builds an Intake with an empty ChangeSnapshot, so
+// scoreConfidence's causal term drops out entirely (LikelihoodOK false) —
+// isolating a test to the citation-grounding term alone, the way a real
+// production run does today (noopChange{}, CLAUDE.md § rattle).
+func noChangeIntake() *clank.Intake {
+	return clank.NewIntake(
+		fakeTopo{snap: proposal.TopologySnapshot{
+			Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},
+		}},
+		fakeChange{snap: proposal.ChangeSnapshot{}},
+	)
+}
+
+func TestPropose_AnUncorroboratedCandidateCannotKeepItsSelfReportedConfidence(t *testing.T) {
+	t.Parallel()
+
+	// The model asserts 0.95 while citing a real evidence ref the run
+	// gathered (so K1's "cite something you actually looked at" check
+	// passes) — but that ref is not Live, e.g. a case-base/historical
+	// lookup rather than fresh telemetry. Whatever the coefficients, a
+	// self-report with no inspectable grounding must be pulled below
+	// itself — otherwise the emitted number is the model's opinion wearing
+	// the audit trail's clothes.
+	const selfReported = 0.95
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "history", Args: json.RawMessage(`{"q":"past_incidents"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: selfReported,
+				Citations: []string{"past_incidents"},
+			}},
+		})}}},
+	}}
+
+	eng, _ := newTestEngine(model)
+	eng.Intake = noChangeIntake()
+	eng.Tools["history"] = fakeTool{name: "history", digest: "3 similar incidents on file", live: false, query: "past_incidents"}
+
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conf := got.ConfidenceFor(got.Recommended)
+	if conf >= selfReported {
+		t.Errorf("uncorroborated candidate kept its self-report: got %v, want < %v", conf, selfReported)
+	}
+}
+
+func TestPropose_ASelfReportLowersButNeverRaisesTheComputedConfidence(t *testing.T) {
+	t.Parallel()
+
+	// Two runs, identical grounding (one Live, in-topology citation, no
+	// change events), only the self-report differs: 0.99 and 0.30. A
+	// self-report above the computed grounding can't push the emitted
+	// number past it; a self-report below it still pulls the number down.
+	run := func(selfReported float64) float64 {
+		model := &fakeModel{script: []clank.Completion{
+			{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+			{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+				FailureClass: proposal.ClassDependencySaturation,
+				Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+				Proposals: []proposal.Candidate{{
+					ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: selfReported,
+					Citations: []string{`{"q":"latency_p99"}`},
+				}},
+			})}}},
+		}}
+		eng, _ := newTestEngine(model)
+		eng.Intake = noChangeIntake()
+
+		got, err := eng.Propose(context.Background(), sigBurnAccel())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.ConfidenceFor(got.Recommended)
+	}
+
+	// The grounding ceiling: one corroborated citation, no self-report
+	// low enough to constrain it (1.0 clears anything scoreConfidence
+	// could compute here) — the same pure function K3's table test locks.
+	ceiling := clank.ScoreConfidenceForTest(0.9, 1, 1.0)
+
+	if diff := cmp.Diff(ceiling, run(0.99)); diff != "" {
+		t.Error("a self-report above the computed grounding must not raise it (-want +got)\n", diff)
+	}
+	if diff := cmp.Diff(0.30, run(0.30)); diff != "" {
+		t.Error("a self-report below the computed grounding must still lower it (-want +got)\n", diff)
+	}
+}
+
 type fakeModel struct {
 	script        []clank.Completion
 	err           error // when set, Complete fails on every call regardless of script — simulates a Model outage
@@ -299,7 +424,19 @@ func newTestEngine(model clank.Model) (*clank.Engine, *publishtest.CapturePublis
 		Ledger:       clank.NewMemProposalLog(),
 		Pub:          pub,
 		MaxSteps:     8,
+		Weights:      testWeights(),
 	}, pub
+}
+
+// testWeights layers scoreConfidence's grounding tiers onto uniformWeights
+// (causal_test.go) — every engine test that runs the full Propose loop gets
+// a real, nonzero CausalScore for its fixture's one fake change event,
+// instead of an unconfigured 0 silently zeroing out every candidate's
+// emitted confidence.
+func testWeights() clank.ScoringWeights {
+	w := uniformWeights()
+	w.GroundingNone, w.GroundingOne, w.GroundingMany = 0.3, 0.7, 1.0
+	return w
 }
 
 func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
@@ -324,6 +461,7 @@ func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*
 		Ledger:       clank.NewMemProposalLog(),
 		Pub:          pub,
 		MaxSteps:     8,
+		Weights:      testWeights(),
 	}, pub
 }
 

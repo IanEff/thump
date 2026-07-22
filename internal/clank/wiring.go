@@ -35,6 +35,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 		Ranker:         NewRanker(),
 		Store:          store,
 		Scorer:         &CausalScorerImpl{Prior: cases}, // scorer reads THIS case base
+		Prior:          cases,                           // scoreConfidence reads the same case base
 		DedupeWindow:   dedupeWindow,
 		Ledger:         ledger, // engine records into THIS ledger
 		Pub:            &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
@@ -67,6 +68,7 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 		Ranker:         NewRanker(),
 		Store:          store,
 		Scorer:         &CausalScorerImpl{Prior: cases},
+		Prior:          cases,
 		DedupeWindow:   dedupeWindow,
 		Ledger:         ledger,
 		Pub:            pub,

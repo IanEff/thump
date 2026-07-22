@@ -50,6 +50,7 @@ type Engine struct {
 	Gate           ReadinessGate                     // budget ∧ dedup ∧ evidence, evaluated once on the formed set
 	Store          Store                             // loop memory: one checkpoint per turn, a different lifetime from Ledger
 	Scorer         CausalScorer                      // rates each change event's likelihood of causing the signal
+	Prior          Prior                             // scoreConfidence's corroboration read — the same case base CausalScorerImpl.Prior points at; Engine needs its own reference because CausalScorer never exposes the one it holds
 	DedupeWindow   time.Duration                     // how far back Ledger.Open looks for a live set on the same fingerprint
 	Ledger         *MemProposalLog                   // every Propose run is recorded here, gated or not — the audit trail
 	Pub            publish.Publisher[proposal.Set]   // delivery — only called when the gate passes
@@ -271,6 +272,11 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 
 	_ = beat.Stage(ctx, e.tracer(), e.Stages, "causal_score", func(context.Context) error {
 		set.CausalScores = e.Scorer.Score(set.SignalRef, sao.Change, sao.Topology, e.Weights)
+		return nil
+	})
+
+	_ = beat.Stage(ctx, e.tracer(), e.Stages, "score_confidence", func(context.Context) error {
+		scoreConfidences(&set, sao, e.Prior, sig.Fingerprint, e.Weights)
 		return nil
 	})
 

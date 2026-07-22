@@ -15,16 +15,19 @@ import (
 
 func TestSeam_ClankDeliveryGovernsToAnApprovedDecision(t *testing.T) {
 	t.Parallel()
-	// scripted model: step 1 investigate (live evidence clears the gate),
-	// step 2 propose a catalogued, REVERSIBLE candidate (the seam trap, dodged).
+	// scripted model: step 1 investigate — TWO live citations, so
+	// scoreConfidence's grounding clears hiss's floor the way a real
+	// well-corroborated run does, not just K1's gate; step 2 propose a
+	// catalogued, REVERSIBLE candidate (the seam trap, dodged).
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation, // in newTestEngine's catalog
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				Citations: []string{`{"q":"burn"}`},
+				Citations: []string{`{"q":"burn"}`, `{"q":"latency_p99"}`},
 				ReversalPath: &proposal.ReversalPath{ // without this, Claim 5 vetoes the seam
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},
@@ -33,6 +36,7 @@ func TestSeam_ClankDeliveryGovernsToAnApprovedDecision(t *testing.T) {
 	}}
 
 	eng, sink := newTestEngine(model) // the EXACT engine the clank tests use
+	eng.Intake = noChangeIntake()     // isolate confidence to citation-grounding, not the fixture's incidental fake change event
 	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
 		t.Fatal("clank leg of the seam errored:", err)
 	}

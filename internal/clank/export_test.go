@@ -53,3 +53,15 @@ func (cb *CaseBase) SetCasesForTest(cases []Case) {
 	defer cb.mu.Unlock()
 	cb.cases = cases
 }
+
+// ScoreConfidenceForTest exposes scoreConfidence to clank_test with the
+// grounding tiers this build settled on — 0.3 uncorroborated, 0.7 for one
+// citation, 1.0 for two or more — the same table that locks those
+// coefficients as a regression, not a tunable default.
+func ScoreConfidenceForTest(signalConf float64, corroborated int, selfReported float64) float64 {
+	return scoreConfidence(confidenceInputs{
+		SignalConfidence: signalConf,
+		Corroborated:     corroborated,
+		SelfReported:     selfReported,
+	}, ScoringWeights{GroundingNone: 0.3, GroundingOne: 0.7, GroundingMany: 1.0})
+}
