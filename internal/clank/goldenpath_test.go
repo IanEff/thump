@@ -492,6 +492,62 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	}
 }
 
+func TestGoldenPath_InTopologyFillerCantCarryAnOutOfDomainAction(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	det := loadDetectionFixtureExt(t, "argocd-sync-burn.yaml")
+
+	// Both refs are real and live. The in-topology one (rook-operator) backs
+	// nothing the model proposes; the action's sole support is the OTel demo's
+	// metric, from a domain this signal has no declared relationship to. The
+	// recommendation's own grounding is what the gate must read — filler in
+	// the evidence list can't stand in for it.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rook_operator_health"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassServiceFailure,
+			Hypotheses:   []proposal.Hypothesis{{Name: "cross_domain_bridge", Weight: 0.9}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "disable-product-catalog-failure", Confidence: 0.95,
+				Citations: []string{"product_catalog_error_ratio"},
+			}},
+		})}}},
+	}}
+
+	ts := goldenPrometheusServer(t)
+	defer ts.Close()
+	tools := map[string]clank.Tool{
+		"metrics": &clank.MetricsTool{
+			BaseURL: ts.URL,
+			Queries: map[string]string{
+				"rook_operator_health":        "rook_operator_health_status",
+				"product_catalog_error_ratio": "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))",
+			},
+			Subjects: map[string]string{
+				"rook_operator_health":        "rook-operator",
+				"product_catalog_error_ratio": "product-catalog",
+			},
+		},
+	}
+
+	eng, sink := goldenEngine(model, tools)
+	set, err := eng.Propose(ctx, det)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if set.Gate == nil || set.Gate.Passed {
+		t.Fatalf("an action grounded only in another domain's evidence must fail the gate: gate=%+v", set.Gate)
+	}
+	if set.Gate.Reason != "evidence" {
+		t.Error("the veto must land on the evidence minimum", cmp.Diff("evidence", set.Gate.Reason))
+	}
+	if len(sink.Delivered) != 0 {
+		t.Error("a declined set delivers nothing", cmp.Diff(0, len(sink.Delivered)))
+	}
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────
 
 // goldenNodeDeathModel is the node-death propose script, minted fresh per

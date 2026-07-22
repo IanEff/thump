@@ -31,7 +31,7 @@ type ReadinessGate struct{}
 func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateResult {
 	budgetOK := true
 	dedupeOK := len(openDupes) == 0
-	evidenceOK := anyCoherentLive(ps.Evidence, ps.SAOSnapshot)
+	evidenceOK := anyCoherentLive(recommendedEvidence(ps), ps.SAOSnapshot)
 
 	passed := budgetOK && dedupeOK && evidenceOK
 	reason := ""
@@ -88,4 +88,34 @@ func inTopology(subject string, sao *proposal.SAO) bool {
 		}
 	}
 	return false
+}
+
+func recommendedEvidence(ps proposal.Set) []proposal.EvidenceRef {
+	// fall back to ps.Evidence if no recommendations exist.
+	if ps.Recommended == "" && len(ps.Proposals) == 0 {
+		return ps.Evidence
+	}
+	var rec *proposal.Candidate
+	for i := range ps.Proposals {
+		if ps.Proposals[i].ID == ps.Recommended {
+			rec = &ps.Proposals[i]
+			break
+		}
+	}
+	if rec == nil || len(rec.Citations) == 0 {
+		return nil
+	}
+
+	cited := make(map[string]bool, len(rec.Citations))
+	for _, c := range rec.Citations {
+		cited[c] = true
+	}
+
+	var result []proposal.EvidenceRef
+	for _, ref := range ps.Evidence {
+		if cited[ref.Query] {
+			result = append(result, ref)
+		}
+	}
+	return result
 }

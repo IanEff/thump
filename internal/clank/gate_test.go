@@ -72,6 +72,62 @@ func TestGate(t *testing.T) {
 	}
 }
 
+func TestGate_EvidenceMinimumReadsTheRecommendedCandidatesCitations(t *testing.T) {
+	t.Parallel()
+
+	sao := &proposal.SAO{Version: 1, Topology: proposal.TopologySnapshot{
+		Upstream: []proposal.NodeState{{Name: "rook-operator", State: "degraded"}},
+	}}
+	inTopo := proposal.EvidenceRef{Query: "rook_operator_health", Live: true, Subject: "rook-operator"}
+	crossDomain := proposal.EvidenceRef{Query: "product_catalog_error_ratio", Live: true, Subject: "product-catalog"}
+	stale := proposal.EvidenceRef{Query: "rook_operator_health", Live: false, Subject: "rook-operator"}
+
+	cases := map[string]struct {
+		evidence  []proposal.EvidenceRef
+		citations []string
+		wantOK    bool
+	}{
+		"Evaluate passes a recommendation citing a live in-topology ref": {
+			evidence:  []proposal.EvidenceRef{inTopo, crossDomain},
+			citations: []string{"rook_operator_health", "product_catalog_error_ratio"},
+			wantOK:    true,
+		},
+		"Evaluate fails a recommendation whose citations are all cross-domain even when in-topology filler sits uncited in the set": {
+			evidence:  []proposal.EvidenceRef{inTopo, crossDomain},
+			citations: []string{"product_catalog_error_ratio"},
+			wantOK:    false,
+		},
+		"Evaluate fails a recommendation citing only a non-live ref": {
+			evidence:  []proposal.EvidenceRef{stale},
+			citations: []string{"rook_operator_health"},
+			wantOK:    false,
+		},
+		"Evaluate fails a recommendation carrying no citations at all": {
+			evidence:  []proposal.EvidenceRef{inTopo},
+			citations: nil,
+			wantOK:    false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ps := proposal.Set{
+				SAOSnapshot: sao,
+				Evidence:    tc.evidence,
+				Recommended: "p1",
+				Proposals:   []proposal.Candidate{{ID: "p1", Rank: 1, Citations: tc.citations}},
+			}
+
+			got := clank.ReadinessGate{}.Evaluate(ps, nil)
+
+			if got.EvidenceOK != tc.wantOK {
+				t.Error("wrong evidence verdict", cmp.Diff(tc.wantOK, got.EvidenceOK))
+			}
+		})
+	}
+}
+
 func psWithLiveEvidence() proposal.Set {
 	return proposal.Set{Name: "live_evidence", Evidence: []proposal.EvidenceRef{{Live: true}}}
 }
