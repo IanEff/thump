@@ -4,6 +4,18 @@
   "properties": {
     "reason": {
       "type": "string"
+    },
+    "failureClass": {
+      "type": "string",
+      "enum": [
+        "dependency_saturation",
+        "traffic_shift",
+        "resource_exhaustion",
+        "unknown",
+        "redundancy_degraded",
+        "service_failure"
+      ],
+      "description": "the failure class your evidence supports, if you reached a diagnosis — recorded even though no action is proposed"
     }
   },
   "additionalProperties": false,

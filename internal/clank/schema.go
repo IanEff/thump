@@ -27,9 +27,12 @@ func SchemaOf[T any]() json.RawMessage {
 // the single source for both the tool's input schema and — once the engine is
 // wired — the json.Unmarshal target, so the two can't disagree.
 type proposeInput struct {
-	// The enum mirrors the proposal.FailureClass constants; the
+	// The enum mirrors the proposal.FailureClass constants minus "unknown" —
+	// diagnosable, never proposable: no catalogued action may list it, so its
+	// only terminal is the insufficient tool, and offering the token here
+	// hands the model a string with no legal use in a propose call. The
 	// propose_schema.json golden pins the emitted shape.
-	FailureClass proposal.FailureClass `json:"failureClass" jsonschema:"required,enum=dependency_saturation,enum=traffic_shift,enum=resource_exhaustion,enum=unknown,enum=redundancy_degraded,enum=service_failure"`
+	FailureClass proposal.FailureClass `json:"failureClass" jsonschema:"required,enum=dependency_saturation,enum=traffic_shift,enum=resource_exhaustion,enum=redundancy_degraded,enum=service_failure"`
 	Hypotheses   []proposal.Hypothesis `json:"hypotheses,omitempty"`
 	Proposals    []proposeCandidate    `json:"proposals" jsonschema:"required"`
 }
@@ -40,8 +43,11 @@ type proposeInput struct {
 // the ranker's, or deferred, so it is deliberately absent from what the model may
 // author. The json tags mirror proposal.Candidate's, so it decodes straight into one.
 type proposeCandidate struct {
-	ID          string   `json:"id,omitempty"`
-	ContractRef string   `json:"contractRef" jsonschema:"required"`
-	Confidence  float64  `json:"confidence,omitempty"`
-	Citations   []string `json:"citations" jsonschema:"required"`
+	ID          string  `json:"id,omitempty"`
+	ContractRef string  `json:"contractRef" jsonschema:"required"`
+	Confidence  float64 `json:"confidence,omitempty"`
+	// Citations must repeat cite keys verbatim — the engine validates them by
+	// exact string match against the keys it showed, so a paraphrase or a
+	// description of the value is an auditable decline, not a near miss.
+	Citations []string `json:"citations" jsonschema:"required,description=the evidence backing this candidate: the exact keys shown as [cite: <key>] in this run's tool results\\, repeated verbatim — never a description or paraphrase of the value"`
 }
