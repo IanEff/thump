@@ -8,7 +8,6 @@
         "dependency_saturation",
         "traffic_shift",
         "resource_exhaustion",
-        "unknown",
         "redundancy_degraded",
         "service_failure"
       ]
@@ -48,7 +47,8 @@
             "items": {
               "type": "string"
             },
-            "type": "array"
+            "type": "array",
+            "description": "the evidence backing this candidate: the exact keys shown as [cite: \u003ckey\u003e] in this run's tool results, repeated verbatim — never a description or paraphrase of the value"
           }
         },
         "additionalProperties": false,

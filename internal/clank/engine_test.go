@@ -545,6 +545,30 @@ func TestPropose_WhenModelDeclines_YieldsNoAction(t *testing.T) {
 	}
 }
 
+func TestPropose_InsufficientRecordsTheDiagnosedClass(t *testing.T) {
+	t.Parallel()
+
+	// A correct diagnosis with no catalogued remedy must survive as audit
+	// data, not vanish into a bare decline — which classes accumulate
+	// insufficient calls is the evidence any catalog addition waits on.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{
+			Name: "insufficient",
+			Args: json.RawMessage(`{"reason":"no catalogued action lists this class","failureClass":"dependency_saturation"}`),
+		}}},
+	}}
+	eng, _ := newTestEngine(model)
+
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff(proposal.ClassDependencySaturation, got.FailureClass); diff != "" {
+		t.Error("insufficient decline dropped the diagnosed class (-want +got)\n", diff)
+	}
+}
+
 func TestPropose_StopsAtMaxSteps_YieldsBudgetExhausted(t *testing.T) {
 	t.Parallel()
 	metrics := clank.Completion{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}}
@@ -631,6 +655,49 @@ func TestPropose_WhenModelEndsTurnWithoutATool_YieldsSyntheticReason(t *testing.
 	}
 }
 
+func TestPropose_ToolMessagesCarryTheCitableKeyVerbatim(t *testing.T) {
+	t.Parallel()
+
+	// enforceCitations grades a candidate's citations against EvidenceRef.Query
+	// by exact string equality, so every gathered ref's Query must appear
+	// verbatim in a tool message the model received — a key the engine
+	// validates but never showed is a check the model can only pass by luck.
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+	}}
+	eng, _ := newTestEngine(model)
+
+	got, err := eng.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Evidence) == 0 {
+		t.Fatal("run gathered no evidence — the claim needs at least one ref to check")
+	}
+
+	final := model.received[len(model.received)-1]
+	for _, ref := range got.Evidence {
+		if ref.Query == "" {
+			continue
+		}
+		if !receivedToolContent(final, ref.Query) {
+			t.Errorf("citable key %q never reached the conversation:\n%+v", ref.Query, final)
+		}
+	}
+}
+
+// receivedToolContent reports whether any tool-role message in one conversation
+// snapshot contains the key verbatim — substring, not equality, because the key
+// rides inside the digest line rather than replacing it.
+func receivedToolContent(msgs []clank.Message, key string) bool {
+	for _, m := range msgs {
+		if m.Role == "tool" && strings.Contains(m.Content, key) {
+			return true
+		}
+	}
+	return false
+}
+
 // receivedToolDigest reports whether any message snapshot shown to the model
 // carries the digest as a tool-role message — i.e. the engine forwarded the
 // one-line EvidenceRef.Summary into the conversation.
@@ -690,9 +757,15 @@ func TestPropose_RejectsACandidateOutsideTheCatalog(t *testing.T) {
 	}}
 
 	e, sink := newTestEngine(model)
-	_, err := e.Propose(context.Background(), sigBurnAccel())
-	if !errors.Is(err, contract.ErrOutsideCatalog) {
-		t.Fatalf("a contract the catalog doesn't list must be rejected: got %v", err)
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatalf("an off-catalog ref must decline the run, not error it: got %v", err)
+	}
+	if diff := cmp.Diff("no_action", got.Status.Phase); diff != "" {
+		t.Error("an off-catalog ref must end as a recorded decline (-want +got)\n", diff)
+	}
+	if got.Status.Reason == "" {
+		t.Fatal("an off-catalog decline is mute: Status.Reason is empty")
 	}
 	if len(sink.Delivered) != 0 {
 		t.Errorf("a rejected set must never be delivered: %d", len(sink.Delivered))
@@ -897,6 +970,25 @@ func TestSeedPrompt_StatesTheEvidenceStandardWithoutNamingAnyApp(t *testing.T) {
 		if strings.Contains(seed, banned) {
 			t.Errorf("seed prompt names an app (%q) — rig knowledge belongs in config, not code:\n%s", banned, seed)
 		}
+	}
+}
+
+func TestSeedPrompt_StatesTheNoRemedyRule(t *testing.T) {
+	t.Parallel()
+
+	// The mislabel guard alone covers only one direction (don't force a class
+	// because an action exists for it); the mirror case — correct class, no
+	// catalogued action — needs its own stated terminal, or the model reaches
+	// for the nearest action instead of declining.
+	model := &fakeModel{}
+	eng, _ := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+	seed := model.received[0][0].Content
+
+	if !strings.Contains(seed, "if no catalogued action lists your diagnosed failure class, call insufficient") {
+		t.Errorf("seed prompt is missing the no-remedy rule:\n%s", seed)
 	}
 }
 

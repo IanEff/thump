@@ -200,6 +200,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 					return proposal.Set{}, fmt.Errorf("decode insufficient: %w", err)
 				}
 				set.Status.Reason = in.Reason
+				// A decline may still carry a diagnosis — recorded so the
+				// ledger shows which classes accumulate no-remedy declines.
+				set.FailureClass = in.FailureClass
 
 				declined, done = true, true
 			default:
@@ -213,7 +216,15 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 					return proposal.Set{}, fmt.Errorf("tool %q: %w", call.Name, err)
 				}
 				evidence = append(evidence, ref)
-				msgs = append(msgs, Message{Role: "tool", Content: ref.Summary})
+				// The digest carries its citable key visibly: enforceCitations
+				// grades citations against EvidenceRef.Query by exact match, so
+				// the conversation must show the model the exact string it will
+				// be graded on — a summary alone leaves the key unguessable.
+				content := ref.Summary
+				if ref.Query != "" {
+					content = fmt.Sprintf("%s [cite: %s]", ref.Summary, ref.Query)
+				}
+				msgs = append(msgs, Message{Role: "tool", Content: content})
 			}
 			if done {
 				break
@@ -244,7 +255,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	}
 
 	if err := e.enforceCatalog(set, sao); err != nil {
-		if !errors.Is(err, errClassMismatch) {
+		// Both refusal shapes — a real action mismatched to the declared class
+		// and a ref the catalog has never heard of — decline auditably: the
+		// autonomy boundary still holds (nothing is delivered), but the refusal
+		// lands in the ledger instead of erroring the run into an unrecorded
+		// hole dedup can't see.
+		if !errors.Is(err, errClassMismatch) && !errors.Is(err, contract.ErrOutsideCatalog) {
 			return proposal.Set{}, err
 		}
 		set.Status.Phase = proposal.PhaseNoAction
@@ -403,6 +419,7 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 
 	b.WriteString("evidence & confidence rules:\n")
 	b.WriteString("- to propose an action, cite at least one LIVE telemetry result about the affected service, or a node in its declared topology.\n")
+	b.WriteString("- a citation is the exact key shown as [cite: <key>] in a tool result, repeated verbatim — never a description of the value.\n")
 	b.WriteString("- a live metric is sufficient in corroboration on its own; log lines can corroborate but are never required.\n")
 	b.WriteString("- your stated confidence can lower the emitted number, but never raise it-- it is computed from your citations' grounding.\n")
 
@@ -430,6 +447,7 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 			fmt.Fprintf(&b, "- %s (applies to: %s)\n", c.Name, strings.Join(classNames, ", "))
 		}
 	}
+	b.WriteString("if no catalogued action lists your diagnosed failure class, call insufficient and name the class — never reach for the nearest action.")
 	return b.String()
 }
 
