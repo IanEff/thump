@@ -30,7 +30,10 @@ func (s seamSource) BurnSamples(context.Context, rattle.SLO) ([]rattle.Sample, e
 // actual seam output, not a hand-built signal.Detection.
 func seamDetection(t *testing.T) signal.Detection {
 	t.Helper()
-	base := time.Unix(0, 0)
+	// base sits 700s before the fixture's fixed "house instant" (1000s, see
+	// the other time.Unix(1000, 0) call sites in this package) so the newest
+	// sample lands 120s before it — inside the 5-minute FreshnessBound below.
+	base := time.Unix(700, 0)
 	burn := []rattle.Sample{ // 1,2,4,8 → accelerating → fires the acceleration detector
 		{T: base, BurnRate: 1},
 		{T: base.Add(time.Minute), BurnRate: 2},
@@ -45,7 +48,16 @@ func seamDetection(t *testing.T) signal.Detection {
 		Source:   seamSource{samples: burn},
 		Detector: rattle.AccelerationDetector{Threshold: 0.5},
 		Debounce: rattle.NewDebouncer(10 * time.Minute),
-		Now:      func() time.Time { return time.Unix(1000, 0) },
+		// Mirrors rattle.go's newReconciler — the constructor Main actually
+		// calls always wires a Contract, so a bare Reconciler{} here (no
+		// Contract) silently left Divergence.Confidence at 0 forever. That
+		// zero, not clank's weights, is what was still zeroing this seam's
+		// confidence after M1's wiring landed.
+		Contract: &rattle.SignalContract{
+			FreshnessBound:  5 * time.Minute,
+			ConfidenceFloor: 0.5,
+		},
+		Now: func() time.Time { return time.Unix(1000, 0) },
 	}
 	dets, err := r.Reconcile(context.Background())
 	if err != nil {

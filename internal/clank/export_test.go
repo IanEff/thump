@@ -63,5 +63,5 @@ func ScoreConfidenceForTest(signalConf float64, corroborated int, selfReported f
 		SignalConfidence: signalConf,
 		Corroborated:     corroborated,
 		SelfReported:     selfReported,
-	}, ScoringWeights{GroundingNone: 0.3, GroundingOne: 0.7, GroundingMany: 1.0})
+	}, DefaultScoringWeights())
 }
