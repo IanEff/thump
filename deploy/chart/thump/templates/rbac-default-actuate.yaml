@@ -1,0 +1,28 @@
+# Scope matches exactly the default-namespace binding in
+# internal/actuate/runner.go (throttle-non-critical-paths's scaleOp,
+# forward and reverse both patch replicas on the same Deployment) —
+# nothing broader.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-default-actuate
+  namespace: default
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]
+    resourceNames: ["s3-traffic-generator"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-default-actuate
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: Role
+  name: thump-default-actuate
+  apiGroup: rbac.authorization.k8s.io
