@@ -124,7 +124,7 @@ func (f flagVariantOp) do(ctx context.Context, k Kube) error {
 // but wrong" second remedy (Wave 7): it recycles cart's pods, which does
 // nothing for a flagd-controlled fault, so it never actually clears
 // cartFailure — see restart-cart-pod's low authored SeverityReductionPct in
-// internal/contract/authored.go.
+// config/actions/catalog.yaml.
 type restartOp struct {
 	namespace, deployment string
 }

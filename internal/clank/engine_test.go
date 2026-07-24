@@ -172,7 +172,7 @@ func TestPropose_StampsPredictedImpactFromTheCatalog(t *testing.T) {
 		})}}},
 	}}
 
-	e, _ := newTestEngineWithCatalog(model, contract.Default())
+	e, _ := newTestEngineWithCatalog(model, clank.ShippedCatalogForTest())
 	got, err := e.Propose(context.Background(), sigBurnAccel())
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)

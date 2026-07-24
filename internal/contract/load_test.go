@@ -11,17 +11,16 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 )
 
-// TestLoadCatalog_RoundTripsDefaultData is the loader's drift guard: marshal
-// the compiled Default() catalog to YAML and reload it, and every data field
-// must come back identical. Only Precondition.OK is excluded — it's
-// yaml:"-" by construction and never round-trips; Load rebinds it from a
-// registry instead of the wire, proven separately below.
-func TestLoadCatalog_RoundTripsDefaultData(t *testing.T) {
-	want := contract.Default().Contracts()
-
+// TestLoadCatalog_RoundTripsShippedData is the codec's guard: marshal the
+// shipped catalog back to YAML and reload it, and every data field must come
+// back identical. Only Precondition.OK is excluded — it's yaml:"-" by
+// construction and never round-trips; Load rebinds it from a registry
+// instead of the wire, proven separately below.
+func TestLoadCatalog_RoundTripsShippedData(t *testing.T) {
+	want := loadShippedCatalog(t).Contracts()
 	raw, err := yaml.Marshal(want)
 	if err != nil {
-		t.Fatalf("marshal Default(): %v", err)
+		t.Fatalf("marshal shipped catalog: %v", err)
 	}
 
 	got, err := contract.Load(raw, contract.PreconditionRegistry{})
@@ -30,7 +29,7 @@ func TestLoadCatalog_RoundTripsDefaultData(t *testing.T) {
 	}
 
 	if diff := cmp.Diff(want, got.Contracts(), cmpopts.IgnoreFields(contract.Precondition{}, "OK")); diff != "" {
-		t.Errorf("catalog round-trip (-want +got):\n%s", diff)
+		t.Error("catalog round-trip lost or changed a field", diff)
 	}
 }
 
@@ -85,33 +84,17 @@ func TestLoadCatalog_UnknownPrecondition_Errors(t *testing.T) {
 	}
 }
 
-// TestShippedCatalogMatchesAuthoredDefault is C3's drift guard, the same
-// shape as C2's TestCephLabWatch_MatchesTheLabContract: the checked-in
-// config/actions/catalog.yaml — not a compiled-in literal anymore — must
-// still declare exactly the authored action set. If this goes red after
-// hand-editing the YAML, that's the guard working.
-func TestShippedCatalogMatchesAuthoredDefault(t *testing.T) {
-	got, err := contract.LoadCatalogFile("../../config/actions/catalog.yaml", contract.Preconditions)
-	if err != nil {
-		t.Fatalf("LoadCatalogFile: %v", err)
-	}
+// TestShippedCatalog_RedundancyDegradedOffersHoldRebalanceWithAForecast pins
+// that hold-rebalance is reachable under redundancy_degraded rather than
+// resource_exhaustion, and that it carries the SeverityQuery/
+// SeverityReductionPct pair recordEffectiveness needs — a contract with no
+// SeverityReductionPct feeds the effectiveness delta no forecast to score
+// against. redundancy_degraded offers two independently reversible remedies,
+// the same discrimination shape dependency_saturation has.
+func TestShippedCatalog_RedundancyDegradedOffersHoldRebalanceWithAForecast(t *testing.T) {
+	cat := loadShippedCatalog(t)
 
-	want := contract.Default().Contracts()
-	if diff := cmp.Diff(want, got.Contracts(), cmpopts.IgnoreFields(contract.Precondition{}, "OK")); diff != "" {
-		t.Errorf("config/actions/catalog.yaml drifted from contract.Default() (-want +got):\n%s", diff)
-	}
-}
-
-// TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast pins I2's
-// realignment: hold-rebalance is reachable under redundancy_degraded
-// (relabeled off resource_exhaustion, thump-running-notes.md 2026-07-17 part
-// 9), and it carries the SeverityQuery/SeverityReductionPct pair
-// recordEffectiveness needs — a contract with no SeverityReductionPct feeds
-// the effectiveness delta no forecast to score against. redundancy_degraded
-// now offers two independently reversible remedies, the same discrimination
-// shape dependency_saturation has above.
-func TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast(t *testing.T) {
-	got := contract.Default().Applicable(proposal.ClassRedundancyDegraded, "tier-1", proposal.SAO{})
+	got := cat.Applicable(proposal.ClassRedundancyDegraded, "tier-1", proposal.SAO{})
 
 	var names []string
 	for _, c := range got {
@@ -119,10 +102,10 @@ func TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast(t *testing.T
 	}
 	want := []string{"hold-rebalance", "accelerate-recovery"}
 	if diff := cmp.Diff(want, names); diff != "" {
-		t.Errorf("redundancy_degraded's applicable actions (-want +got):\n%s", diff)
+		t.Error("redundancy_degraded's applicable actions", diff)
 	}
 
-	holdRebalance, ok := contract.Default().ByName("hold-rebalance")
+	holdRebalance, ok := cat.ByName("hold-rebalance")
 	if !ok {
 		t.Fatal("hold-rebalance is not in the catalog")
 	}
@@ -134,46 +117,22 @@ func TestDefault_RedundancyDegradedOffersHoldRebalanceWithAForecast(t *testing.T
 	}
 }
 
-// TestShippedFailureClassesMatchesAuthoredDefault is the failure-class
-// definitions' drift guard, the same shape as
-// TestShippedCatalogMatchesAuthoredDefault: the checked-in
-// config/actions/failure-classes.yaml must still declare exactly the
-// authored set clank's seedPrompt renders to the model.
-func TestShippedFailureClassesMatchesAuthoredDefault(t *testing.T) {
-	got, err := contract.LoadFailureClassesFile("../../config/actions/failure-classes.yaml")
-	if err != nil {
-		t.Fatalf("LoadFailureClassesFile: %v", err)
-	}
+// TestShippedFailureClasses_DefineEveryFailureClass is the completeness
+// guard on what clank's seed prompt tells the model: a class the model may
+// declare but was never given the meaning of is a class it will guess at.
+func TestShippedFailureClasses_DefineEveryFailureClass(t *testing.T) {
+	t.Parallel()
 
-	if diff := cmp.Diff(contract.DefaultFailureClasses(), got); diff != "" {
-		t.Errorf("config/actions/failure-classes.yaml drifted from contract.DefaultFailureClasses() (-want +got):\n%s", diff)
-	}
-}
-
-// TestDefaultFailureClasses_CoversEveryFailureClass is the completeness
-// guard: proposal.FailureClass is a closed enum, but Go can't enumerate a
-// type's consts by reflection, so this test hardcodes the canonical set
-// once and fails loudly if DefaultFailureClasses() and this list ever
-// disagree — exactly the failure mode a future added-but-undefined class
-// would otherwise hit silently (a class the model can declare but was never
-// told the meaning of).
-func TestDefaultFailureClasses_CoversEveryFailureClass(t *testing.T) {
-	want := map[proposal.FailureClass]bool{
-		proposal.ClassDependencySaturation: true,
-		proposal.ClassTrafficShift:         true,
-		proposal.ClassResourceExhaustion:   true,
-		proposal.ClassRedundancyDegraded:   true,
-		proposal.ClassServiceFailure:       true,
-		proposal.ClassUnknown:              true,
-	}
+	want := canonicalFailureClasses()
 	got := map[proposal.FailureClass]bool{}
-	for _, d := range contract.DefaultFailureClasses() {
+	for _, d := range loadShippedFailureClasses(t) {
 		if d.Description == "" {
-			t.Errorf("%q has an empty Description", d.Class)
+			t.Errorf("%q has an empty description — the model is told the class exists, not what it means", d.Class)
 		}
 		got[d.Class] = true
 	}
+
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("DefaultFailureClasses() does not cover exactly proposal's FailureClass consts (-want +got):\n%s", diff)
+		t.Error("config/actions/failure-classes.yaml does not define exactly proposal's FailureClass consts", diff)
 	}
 }

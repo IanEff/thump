@@ -1,20 +1,25 @@
-# The authored action catalog (phase C · C3) — the actions clank may
-# propose and thump may execute, not a per-site fact (that's why this lives
-# at config/actions/, not under a config/<site>/ profile).
+# The authored action catalog — the actions clank may propose and thump may
+# execute, not a per-site fact (that's why this lives at config/actions/, not
+# under a config/<site>/ profile). This file IS the catalog: there is no Go
+# copy behind it, so an action added here is proposable with no Go edit, and
+# an action deleted here can no longer be proposed or executed by anything.
 #
 # contract.LoadCatalogFile binds each Precondition.OK by looking its Name up
-# in a compiled contract.PreconditionRegistry — neither contract below
-# declares one, so the registry stays empty until an authored contract
-# actually needs one.
+# in a compiled contract.PreconditionRegistry — no contract below declares
+# one, so the registry stays empty until an authored contract actually needs
+# one.
 #
-# This file is pinned to contract.Default() by
-# TestShippedCatalogMatchesAuthoredDefault (internal/contract/load_test.go).
-# If that test goes red after you hand-edit this file, that's the guard
-# working — either fix the YAML back or update Default() deliberately.
+# A typo here fails silently — an unrecognized failure class or blast tier
+# unmarshals clean and leaves the action unreachable, so every contract is
+# checked for reachability by TestShippedCatalog_EveryContractIsWellFormed
+# (internal/contract/shipped_test.go). Executability is a separate claim:
+# TestShippedCatalog_EveryCatalogedActionIsActuatorBound goes red for an
+# action with no binding in internal/actuate.
 - name: hold-rebalance
-  # unknown deliberately NOT listed here — see authored.go's comment on this
-  # same contract: mapping "unknown" to an action gave the model an out to
-  # act instead of declining.
+  # unknown deliberately NOT listed: mapping "I don't know" to a real action
+  # gave the model an escape hatch to act instead of declining. A mismatch
+  # between the declared class and the proposed action is now an auditable
+  # decline (engine.go's errClassMismatch), not silence.
   applicableFailureClasses:
     - redundancy_degraded
   applicableTiers:

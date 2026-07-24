@@ -587,7 +587,7 @@ func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine
 		Intake:       clank.NewIntake(fakeTopo{}, fakeChange{}),
 		Model:        model,
 		Tools:        tools,
-		Catalog:      clank.DefaultCatalogForTest(),
+		Catalog:      clank.ShippedCatalogForTest(),
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},
 		Store:        clank.NewMemStore(),
@@ -618,11 +618,11 @@ func goldenPolicy() hiss.Policy {
 }
 
 // goldenCatalog is thump's leg's catalog. thump resolves the granted
-// ContractRef from its OWN compiled-in copy, which clank.go:161-164 mandates
-// is byte-identical to clank's — so reusing the production catalog here is
-// exactly what a correct thump would resolve against.
+// ContractRef by loading the same config/actions/catalog.yaml clank loads, so
+// reusing the shipped catalog here is exactly what a correct thump would
+// resolve against.
 func goldenCatalog() *contract.StaticCatalog {
-	return clank.DefaultCatalogForTest()
+	return clank.ShippedCatalogForTest()
 }
 
 func loadDetectionFixtureExt(t *testing.T, name string) signal.Detection {

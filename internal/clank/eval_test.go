@@ -16,13 +16,12 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/contract"
 	"sigs.k8s.io/yaml"
 )
 
 // evalCase is one row of the eval table: a committed fixture and the
 // disposition a healthy reasoner should reach against the PRODUCTION
-// catalog (contract.Default(), the same one Main wires). Unlike the
+// catalog (config/actions/catalog.yaml, the same one Main loads). Unlike the
 // golden-path suite (Stage 4, a scripted model), this drives the REAL
 // Model — it's a score, not a proof, and it never runs in `task ci`.
 type evalCase struct {
@@ -326,8 +325,8 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),
 				NewAnthropicModel(apiKey), tools,
 				NewIntake(noopTopology{}, noopChange{}),
-				contract.Default(),
-				contract.DefaultFailureClasses(),
+				shippedCatalog(),
+				shippedClasses(),
 				NewDirStore(transcripts),
 				time.Hour, noop.Tracer{}, nil)
 
