@@ -254,6 +254,29 @@ func TestScoreConfidence_TableOverGroundingClasses(t *testing.T) {
 	}
 }
 
+func TestCoherentLiveCitations_CountsASelfSubjectCitationTowardGrounding(t *testing.T) {
+	t.Parallel()
+
+	// The same shape gate_test.go's "admits a live citation about the
+	// affected service itself" pins: the sole citation is tagged to the
+	// signal's own OriginService, absent from every topology list. The gate
+	// and the confidence scorer must agree this citation grounds — this is
+	// the twin that pins they moved together off the shared predicate.
+	sao := &proposal.SAO{
+		Signal: proposal.SignalSnapshot{OriginService: "product-catalog"},
+		Topology: proposal.TopologySnapshot{
+			Upstream: []proposal.NodeState{{Name: "frontend", State: "healthy"}},
+		},
+	}
+	cand := proposal.Candidate{Citations: []string{"self_check"}}
+	evidence := []proposal.EvidenceRef{{Query: "self_check", Live: true, Subject: "product-catalog"}}
+
+	got := clank.CoherentLiveCitationsForTest(cand, evidence, sao)
+	if diff := cmp.Diff(1, got); diff != "" {
+		t.Error("wrong corroboration count for a self-subject live citation (-want +got)\n", diff)
+	}
+}
+
 // noChangeIntake builds an Intake with an empty ChangeSnapshot, so
 // scoreConfidence's causal term drops out entirely (LikelihoodOK false) —
 // isolating a test to the citation-grounding term alone, the way a real
