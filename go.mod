@@ -20,13 +20,53 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
-	go.yaml.in/yaml/v2 v2.4.3
+	go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/init v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/sdk/trace v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/trace v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/client v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/server v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/log v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/log/slog v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/net/http/client v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/net/http/server v0.0.0-00010101000000-000000000000
+	go.opentelemetry.io/otelc/instrumentation/runtime v0.0.0-00010101000000-000000000000
+	go.yaml.in/yaml/v2 v2.4.4
 	golang.org/x/sync v0.21.0
 	google.golang.org/genai v1.62.0
 	k8s.io/api v0.36.2
 	k8s.io/apimachinery v0.36.2
 	k8s.io/client-go v0.36.2
 	sigs.k8s.io/yaml v1.6.0
+)
+
+require (
+	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
+	github.com/dave/dst v0.27.4 // indirect
+	github.com/gofrs/flock v0.13.0 // indirect
+	github.com/prometheus/otlptranslator v1.0.0 // indirect
+	github.com/urfave/cli/v3 v3.10.1 // indirect
+	github.com/valyala/bytebufferpool v1.0.0 // indirect
+	github.com/valyala/fasttemplate v1.2.2 // indirect
+	go.opentelemetry.io/contrib/bridges/prometheus v0.69.0 // indirect
+	go.opentelemetry.io/contrib/exporters/autoexport v0.69.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/runtime v0.69.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.20.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.20.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/prometheus v0.66.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.20.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.44.0 // indirect
+	go.opentelemetry.io/otel/log v0.20.0 // indirect
+	go.opentelemetry.io/otel/sdk/log v0.20.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
+	go.opentelemetry.io/otelc/instrumentation v0.0.0-00010101000000-000000000000 // indirect
+	go.opentelemetry.io/otelc/pkg v0.0.0 // indirect
+	go.opentelemetry.io/otelc/pkg/runtime v0.0.0-00010101000000-000000000000 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 )
 
 require (
@@ -94,8 +134,8 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.66.1 // indirect
-	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/prometheus/common v0.67.5 // indirect
+	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
@@ -109,6 +149,7 @@ require (
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
+	go.opentelemetry.io/otelc v1.0.1 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.shabbyrobe.org/gocovmerge v0.0.0-20230507111327-fa4f82cfbf4d // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
@@ -123,7 +164,7 @@ require (
 	golang.org/x/tools v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/grpc v1.81.1 // indirect
+	google.golang.org/grpc v1.82.0 // indirect
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -136,3 +177,33 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 )
+
+tool go.opentelemetry.io/otelc/tool/cmd/otelc
+
+replace go.opentelemetry.io/otelc/instrumentation/runtime => /Users/ian/projects/go/thump/.otelc-build/instrumentation/runtime
+
+replace go.opentelemetry.io/otelc/instrumentation/net/http/server => /Users/ian/projects/go/thump/.otelc-build/instrumentation/net/http/server
+
+replace go.opentelemetry.io/otelc/instrumentation/net/http/client => /Users/ian/projects/go/thump/.otelc-build/instrumentation/net/http/client
+
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/trace => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel/trace
+
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel
+
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/init => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel/init
+
+replace go.opentelemetry.io/otelc/instrumentation/log => /Users/ian/projects/go/thump/.otelc-build/instrumentation/log
+
+replace go.opentelemetry.io/otelc/instrumentation/log/slog => /Users/ian/projects/go/thump/.otelc-build/instrumentation/log/slog
+
+replace go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/client => /Users/ian/projects/go/thump/.otelc-build/instrumentation/google.golang.org/grpc/client
+
+replace go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/server => /Users/ian/projects/go/thump/.otelc-build/instrumentation/google.golang.org/grpc/server
+
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/sdk/trace => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel/sdk/trace
+
+replace go.opentelemetry.io/otelc/pkg => /Users/ian/projects/go/thump/.otelc-build/pkg
+
+replace go.opentelemetry.io/otelc/pkg/runtime => /Users/ian/projects/go/thump/.otelc-build/pkg/runtime
+
+replace go.opentelemetry.io/otelc/instrumentation => /Users/ian/projects/go/thump/.otelc-build/instrumentation

@@ -11,7 +11,9 @@ ARG DATE=unknown
 ARG TARGETOS
 ARG TARGETARCH
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w \
+# Install otelc for compile-time instrumentation
+RUN go install go.opentelemetry.io/otelc/tool/cmd/otelc@latest
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH otelc go build -ldflags "-s -w \
     -X main.version=${VERSION} \
     -X main.commit=${COMMIT} \
     -X main.date=${DATE}" -o /out/${BEAT} ./cmd/${BEAT}

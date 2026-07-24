@@ -21,6 +21,7 @@ builds:
     binary: clank
     env:
       - CGO_ENABLED=0
+      - GOFLAGS='-toolexec=otelc toolexec'
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags:
@@ -32,6 +33,7 @@ builds:
     binary: rattle
     env:
       - CGO_ENABLED=0
+      - GOFLAGS='-toolexec=otelc toolexec'
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags:
@@ -43,6 +45,7 @@ builds:
     binary: hiss
     env:
       - CGO_ENABLED=0
+      - GOFLAGS='-toolexec=otelc toolexec'
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags:
@@ -54,6 +57,7 @@ builds:
     binary: thump
     env:
       - CGO_ENABLED=0
+      - GOFLAGS='-toolexec=otelc toolexec'
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags:
@@ -65,6 +69,7 @@ builds:
     binary: trim
     env:
       - CGO_ENABLED=0
+      - GOFLAGS='-toolexec=otelc toolexec'
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags:

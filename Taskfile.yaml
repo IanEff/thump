@@ -105,7 +105,9 @@ tasks:
       - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
   build:
-    desc: Build all four beats to bin/ (version/commit/date ldflags, -trimpath)
+    desc: Build all five beats to bin/ (version/commit/date ldflags, -trimpath, otelc-instrumented)
+    env:
+      GOFLAGS: "'-toolexec=otelc toolexec'"
     cmds:
       - mkdir -p bin
       - for beat in {{.BEATS}}; do go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/$beat ./cmd/$beat || exit 1; done
