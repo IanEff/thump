@@ -10,7 +10,6 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/hiss"
 )
 
@@ -87,11 +86,10 @@ func newApprovableTestLoop(t *testing.T) testLoop {
 			}},
 		})}}},
 	}}
-	// TODO(rig): build intake/tools/catalog to match seamCatalog(); the throttle
-	// entry needs Reversal + SuccessCriteria so hiss's I-12 veto doesn't fire.
-	// Wire through NewLoopForTest exactly as newTestLoop does, then drop this skip.
-	_ = model
-	_ = contract.Default
-	t.Skip("skeleton — complete alongside rig confirmation")
-	return testLoop{}
+
+	tools := map[string]clank.Tool{"metrics": metricsTool{}}
+	store := clank.NewMemStore()
+
+	l := clank.NewLoopForTest(model, tools, noChangeIntake(), seamCatalog(), t.TempDir(), t.TempDir(), store)
+	return testLoop{Engine: l.Engine, ReturnEdge: l.ReturnEdge, Cases: l.Cases, OutcomeInbox: l.OutcomeInbox}
 }
