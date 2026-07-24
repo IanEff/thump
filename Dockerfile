@@ -1,6 +1,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.26 AS deps
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY go.mod go.sum otel.instrumentation.go ./
+COPY .otelc-build/ .otelc-build/
 RUN go mod download
 
 FROM deps AS build
