@@ -66,11 +66,27 @@ func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateR
 // ref already grounds) but can't be the sole citation that clears the gate.
 func anyCoherentLive(refs []proposal.EvidenceRef, sao *proposal.SAO) bool {
 	for _, ref := range refs {
-		if ref.Live && (ref.Subject == "" || inTopology(ref.Subject, sao)) {
+		if ref.Live && coherentSubject(ref, sao) {
 			return true
 		}
 	}
 	return false
+}
+
+// coherentSubject reports whether ref's topology claim is one the SAO can
+// confirm: no claim at all, the signal's own affected service, or a node in
+// the frozen Topology snapshot. The self clause exists because no service
+// appears in its own dependency list — without it, evidence about the
+// affected service itself could never ground a proposal on its own. A nil
+// sao confirms nothing and fails closed.
+func coherentSubject(ref proposal.EvidenceRef, sao *proposal.SAO) bool {
+	if ref.Subject == "" {
+		return true
+	}
+	if sao == nil {
+		return false
+	}
+	return ref.Subject == sao.Signal.OriginService || inTopology(ref.Subject, sao)
 }
 
 // inTopology reports whether subject names a node in sao's frozen

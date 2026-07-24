@@ -63,5 +63,13 @@ func ScoreConfidenceForTest(signalConf float64, corroborated int, selfReported f
 		SignalConfidence: signalConf,
 		Corroborated:     corroborated,
 		SelfReported:     selfReported,
-	}, ScoringWeights{GroundingNone: 0.3, GroundingOne: 0.7, GroundingMany: 1.0})
+	}, DefaultScoringWeights())
+}
+
+// CoherentLiveCitationsForTest exposes coherentLiveCitations to clank_test —
+// the corroboration count scoreConfidences feeds into the grounding tiers,
+// so a test can pin what counts as coherent without going through a full
+// Propose run.
+func CoherentLiveCitationsForTest(cand proposal.Candidate, evidence []proposal.EvidenceRef, sao *proposal.SAO) int {
+	return coherentLiveCitations(cand, evidence, sao)
 }

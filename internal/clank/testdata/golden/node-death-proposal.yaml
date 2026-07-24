@@ -47,6 +47,7 @@ saoSnapshot:
       DownstreamConsumers: 0
       Velocity: ""
     confidence: 1
+    originService: ceph-cluster
     severity:
       DegradationPct: 1
       Trajectory: accelerating

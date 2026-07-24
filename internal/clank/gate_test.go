@@ -57,6 +57,10 @@ func TestGate(t *testing.T) {
 			ps:   psWithSubjectTaggedLiveEvidenceNoSAO(),
 			want: verdict{Passed: false, Reason: "evidence"},
 		},
+		"Gate admits a live citation about the affected service itself": {
+			ps:   psWithSelfSubjectLiveEvidence(),
+			want: verdict{Passed: true, Reason: ""},
+		},
 	}
 
 	var gate clank.ReadinessGate
@@ -201,5 +205,26 @@ func psWithSubjectTaggedLiveEvidenceNoSAO() proposal.Set {
 	return proposal.Set{
 		Name:     "subject_tagged_no_sao",
 		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "rook-operator"}},
+	}
+}
+
+// psWithSelfSubjectLiveEvidence is the live-run shape that could never pass:
+// the sole live citation is tagged to the signal's own affected service —
+// the first evidence the seed prompt asks for, and the one node no topology
+// list will ever contain.
+func psWithSelfSubjectLiveEvidence() proposal.Set {
+	return proposal.Set{
+		Name: "self_subject",
+		SAOSnapshot: &proposal.SAO{
+			Version: 1,
+			Signal:  proposal.SignalSnapshot{OriginService: "product-catalog"},
+			Topology: proposal.TopologySnapshot{
+				Upstream: []proposal.NodeState{
+					{Name: "frontend", State: "healthy"},
+					{Name: "flagd", State: "healthy"},
+				},
+			},
+		},
+		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "product-catalog"}},
 	}
 }

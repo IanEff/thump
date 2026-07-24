@@ -30,10 +30,11 @@ type SAO struct {
 // the tags on this struct's own fields stop those from drifting, but
 // Severity/BlastRadius stay a landmine if a second codec ever touches them.
 type SignalSnapshot struct {
-	Confidence  float64            `json:"confidence,omitempty" yaml:"confidence,omitempty"`
-	Metric      string             `json:"metric,omitempty" yaml:"metric,omitempty"`
-	Severity    signal.Severity    `json:"severity,omitempty" yaml:"severity,omitempty"`
-	BlastRadius signal.BlastRadius `json:"blastRadius,omitempty" yaml:"blastRadius,omitempty"`
+	Confidence    float64            `json:"confidence,omitempty" yaml:"confidence,omitempty"`
+	Metric        string             `json:"metric,omitempty" yaml:"metric,omitempty"`
+	Severity      signal.Severity    `json:"severity,omitempty" yaml:"severity,omitempty"`
+	BlastRadius   signal.BlastRadius `json:"blastRadius,omitempty" yaml:"blastRadius,omitempty"`
+	OriginService string             `json:"originService,omitempty" yaml:"originService,omitempty"` // the affected service
 }
 
 // TopologySnapshot is the dependency graph clank's intake read at assembly

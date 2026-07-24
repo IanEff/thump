@@ -121,6 +121,25 @@ func TestMain_TheEngineAndReturnEdgeShareOneLedgerAndCaseBase(t *testing.T) {
 	}
 }
 
+func TestLoop_DeliversNonZeroConfidenceThroughProductionWiring(t *testing.T) {
+	t.Parallel()
+
+	// Every test engine sets Weights by hand, so only a run through the
+	// constructors Main actually calls can prove the tuning ships. The
+	// scripted run is well-grounded (one live citation, catalogued action,
+	// self-reported 0.87) — if that emits 0, the wiring dropped the weights.
+	loop := newTestLoop(t)
+
+	set, err := loop.Engine.Propose(context.Background(), seamDetection(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if set.Proposals[0].Confidence <= 0 {
+		t.Errorf("production wiring emits zero confidence for a grounded candidate:\n%+v", set.Proposals[0])
+	}
+}
+
 // testLoop mirrors clank's unexported `loop` type field-for-field. We can't
 // name that type here (it's unexported, in package clank) — but newTestLoop
 // CAN hold a value of it via `:=` (Go lets you hold what you can't name), and

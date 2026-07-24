@@ -53,7 +53,7 @@ func coherentLiveCitations(cand proposal.Candidate, evidence []proposal.Evidence
 
 	n := 0
 	for _, ref := range evidence {
-		if cited[ref.Query] && ref.Live && (ref.Subject == "" || inTopology(ref.Subject, sao)) {
+		if cited[ref.Query] && ref.Live && coherentSubject(ref, sao) {
 			n++
 		}
 	}

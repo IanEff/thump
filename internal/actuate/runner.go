@@ -217,6 +217,10 @@ func bindingSet() map[string]binding {
 			forward: restartOp{namespace: flagdNamespace, deployment: "cart"},
 			reverse: restartOp{namespace: flagdNamespace, deployment: "cart"},
 		},
+		"throttle-non-critical-paths": {
+			forward: scaleOp{namespace: "default", deployment: "s3-traffic-generator", replicas: 2},
+			reverse: scaleOp{namespace: "default", deployment: "s3-traffic-generator", replicas: 10},
+		},
 	}
 }
 
@@ -242,4 +246,23 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 // execute, sorted for a stable test.
 func BoundRefs() []string {
 	return slices.Sorted(maps.Keys(bindingSet()))
+}
+
+// scaleOp merge-patches a Deployment's spec.replicas to a fixed count — the
+// same Patch primitive restartOp uses. Forward and reverse are both
+// authored as literal replica counts (see bindingSet), not a delta, so the
+// reversal is deterministic rather than remembered.
+type scaleOp struct {
+	namespace, deployment string
+	replicas              int
+}
+
+func (s scaleOp) do(ctx context.Context, k Kube) error {
+	patch, err := json.Marshal(map[string]any{
+		"spec": map[string]any{"replicas": s.replicas},
+	})
+	if err != nil {
+		return fmt.Errorf("build merge patch for %s/%s scale: %w", s.namespace, s.deployment, err)
+	}
+	return k.Patch(ctx, "apps", "v1", "deployments", s.namespace, s.deployment, patch)
 }

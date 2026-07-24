@@ -23,3 +23,18 @@ func TestEngine_CarriesNoFloorPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultScoringWeights_LeavesNoFieldAtZero(t *testing.T) {
+	t.Parallel()
+
+	// A ScoringWeights field left at zero doesn't degrade gracefully — it
+	// multiplies a whole scoring term out of existence. Walking the fields
+	// by reflection means a field added to the struct but forgotten in the
+	// defaults fails here instead of shipping as a dead term.
+	v := reflect.ValueOf(clank.DefaultScoringWeights())
+	for _, f := range reflect.VisibleFields(v.Type()) {
+		if v.FieldByIndex(f.Index).IsZero() {
+			t.Errorf("DefaultScoringWeights().%s is zero — a dead scoring term", f.Name)
+		}
+	}
+}

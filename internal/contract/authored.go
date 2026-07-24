@@ -167,5 +167,28 @@ func Default() *StaticCatalog {
 				SeverityReductionPct: 0.1,
 			},
 		},
+		{
+			Name:                     "throttle-non-critical-paths",
+			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
+			ApplicableTiers:          []string{"tier-1"},
+			Action: ActionSpec{
+				Description: "Scale the non-critical s3-traffic-generator deployment down " +
+					"to a floor, shedding synthetic load from the saturated RGW path; " +
+					"reversible by restoring the baseline replica count.",
+				ScopeParameters: map[string]Range{"throttle_replicas": {Max: 5, Default: 2}},
+			},
+			BlastTier: proposal.BlastMed,
+			Reversal: Reversal{
+				Method:   "restore-traffic-baseline",
+				Fallback: "page-oncall",
+			},
+			SuccessCriteria: SuccessCriteria{
+				Metric:               "rgw_get_put_latency_ms",
+				Target:               "rgw_get_put_latency_ms < 150",
+				Window:               10 * time.Minute,
+				SeverityQuery:        "severity_rgw_saturation",
+				SeverityReductionPct: 0.7,
+			},
+		},
 	})
 }
