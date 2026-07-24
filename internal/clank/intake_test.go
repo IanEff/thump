@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
@@ -19,6 +20,18 @@ func TestIntake_AssemblesAVersionedSAO(t *testing.T) {
 	}
 	if sao.Version != 1 || len(sao.Change.Events) == 0 {
 		t.Errorf("intake should assemble a v1 SAO with change events: %+v", sao)
+	}
+}
+
+func TestIntake_SnapshotsTheOriginService(t *testing.T) {
+	t.Parallel()
+	in := clank.NewIntake(fakeTopologySource(), fakeChangeSource())
+	sao, err := in.Assemble(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff("checkout", sao.Signal.OriginService); diff != "" {
+		t.Errorf("wrong SAO origin service (-want +got)\n%s", diff)
 	}
 }
 
