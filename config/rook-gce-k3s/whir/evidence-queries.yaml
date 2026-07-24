@@ -141,8 +141,9 @@ queries:
   # fraction (burn_rate × error_budget), clamp_max'd to 0..1. The 5m window is the
   # freshest Sloth records — right for a post-window "did it settle?" read, not the
   # onset-detection sensitivity the SLI's internal 1m sub-window chases.
-  # ⚠️ Match sloth_id to the SLO this action is meant to fix (throttle targets the
-  # RGW anonymous-ratelimit / availability path — see rgw-failure-injection).
+  # ⚠️ Match sloth_id to the SLO the triggering action is meant to fix — this
+  # one reads the availability SLI, not the saturation SLI severity_rgw_saturation
+  # reads below.
   - name: severity_rgw_availability
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-availability"}
 
@@ -152,7 +153,7 @@ queries:
   - name: severity_ceph_redundancy
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-redundancy"}
 
-  # scale-out-rgw-gateways' success metric is rgw_get_put_latency_ms — the
+  # throttle-non-critical-paths' success metric is rgw_get_put_latency_ms — the
   # SATURATION SLI's raw value — so its post-action severity reads the saturation
   # SLO, NOT availability: a latency fault drives slow-but-successful ops, which
   # move ceph-rgw-saturation and never touch the availability SLI's rejection count.

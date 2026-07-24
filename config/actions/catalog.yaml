@@ -146,3 +146,33 @@
     window: 300000000000 # 5 * time.Minute, in nanoseconds
     severityQuery: severity_cart_availability
     severityReductionPct: 0.1
+
+- name: throttle-non-critical-paths
+  # The first remedy for dependency_saturation — every prior signal in this
+  # class could only decline. Sheds the rig's designated non-critical load
+  # (the s3 traffic generators) so the saturated RGW path recovers headroom;
+  # reversible by restoring the declared baseline replica count.
+  applicableFailureClasses:
+    - dependency_saturation
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Scale the non-critical s3-traffic-generator deployment down to a
+      floor, shedding synthetic load from the saturated RGW path;
+      reversible by restoring the baseline replica count.
+    scopeParameters:
+      throttle_replicas:
+        min: 0
+        max: 5
+        default: 2
+  blastTier: med
+  reversal:
+    method: restore-traffic-baseline
+    fallback: page-oncall
+  successCriteria:
+    metric: rgw_get_put_latency_ms
+    target: "rgw_get_put_latency_ms < 150"
+    window: 600000000000 # 10 * time.Minute, in nanoseconds
+    severityQuery: severity_rgw_saturation
+    severityReductionPct: 0.7
