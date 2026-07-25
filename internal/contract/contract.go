@@ -129,10 +129,10 @@ type ActionSpec struct {
 
 // Execution is the mechanism half of an authored action — the steps that
 // actually mutate the cluster, as against Reversal's audit label for the same
-// undo. Both lists are required: internal/actuate refuses to bind a contract
-// with no Reverse, so an irreversible action cannot be authored at all.
+// undo. Neither list may be empty: internal/actuate refuses to bind a contract
+// missing either half, so an irreversible action cannot be authored at all.
 type Execution struct {
-	Forward []Step `json:"forward,omitempty" yaml:"forward,omitempty"` // the mutation the action performs
+	Forward []Step `json:"forward,omitempty" yaml:"forward,omitempty"` // the mutation the action performs — empty is ErrUnbindable at load, so a catalogued action is never a no-op
 	Reverse []Step `json:"reverse,omitempty" yaml:"reverse,omitempty"` // the mutation that undoes it, authored beside it so the two can't drift apart
 }
 
