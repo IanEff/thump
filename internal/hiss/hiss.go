@@ -147,7 +147,7 @@ func LoadPolicy(path string) (Policy, error) {
 	if path == "" {
 		return Policy{}, errors.New("policy path is required")
 	}
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config path, not user input
+	raw, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
 		return Policy{}, fmt.Errorf("read policy file: %w", err)
 	}
