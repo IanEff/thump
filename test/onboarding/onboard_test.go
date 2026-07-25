@@ -115,7 +115,7 @@ func proposeArgs(t *testing.T, ps proposal.Set) json.RawMessage {
 	return b
 }
 
-// TestOperator_OnboardsANewDomainInConfigAlone is Phase O's acceptance claim:
+// TestOperator_OnboardsANewDomainInConfigAlone pins the onboarding claim:
 // seven authored YAML files are enough to make a new domain detectable,
 // reasoned about, governable, and executable. Nothing below constructs a
 // domain fact in Go — every action, class, threshold, topology edge, and

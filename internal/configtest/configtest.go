@@ -6,30 +6,48 @@
 package configtest
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/ianeff/thump/internal/contract"
 )
 
-// shippedPath resolves a config/actions file from any test directory two
-// levels below the repo root — internal/<pkg> and test/<pkg> both qualify.
-func shippedPath(name string) string {
-	return filepath.Join("..", "..", "config", "actions", name)
+// shippedPath resolves a config/actions file against the repo root, located by
+// walking up from the test's working directory to the enclosing go.mod. How
+// deep the calling package sits is therefore irrelevant — a test nested below
+// internal/<pkg> reads the same shipped config as one beside it, instead of a
+// relative path that silently resolves outside the repo.
+func shippedPath(t *testing.T, name string) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("resolve working directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "config", "actions", name)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod above %s: cannot locate the repo root holding config/actions/%s", dir, name)
+		}
+		dir = parent
+	}
 }
 
 // ShippedCatalog loads the action catalog production runs on. An action
 // absent from here can be neither proposed nor executed by anything.
 func ShippedCatalog(t *testing.T) *contract.StaticCatalog {
 	t.Helper()
-	return CatalogAt(t, shippedPath("catalog.yaml"))
+	return CatalogAt(t, shippedPath(t, "catalog.yaml"))
 }
 
 // ShippedFailureClasses loads the authored class definitions production
 // renders into the reason loop's prompt.
 func ShippedFailureClasses(t *testing.T) []contract.FailureClassDefinition {
 	t.Helper()
-	return FailureClassesAt(t, shippedPath("failure-classes.yaml"))
+	return FailureClassesAt(t, shippedPath(t, "failure-classes.yaml"))
 }
 
 // CatalogAt loads an authored catalog from an arbitrary path — the seam a
