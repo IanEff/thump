@@ -1,0 +1,37 @@
+# acme's action catalog — the autonomy boundary. This file IS the catalog:
+# an action here is proposable and executable with no Go edit, and an action
+# deleted here can no longer be proposed or executed by anything.
+#
+# `execution` names a bounded mechanism the actuator compiles (scale,
+# restart, flagVariant, exec) and its target. Config picks a mechanism and
+# points it at something; it never describes a new one. A verb the actuator
+# has no mechanism for fails at load, not on the first approval.
+- name: acme-shed-load
+  applicableFailureClasses:
+    - service_failure
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Shed load by scaling acme-api down to its minimum serving replicas,
+      trading throughput for stability while the fault clears; reversible.
+    scopeParameters:
+      serving_replicas:
+        min: 1
+        max: 10
+        default: 2
+  blastTier: low
+  reversal:
+    method: restore-acme-capacity
+    fallback: page-oncall
+  execution:
+    forward:
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 2}
+    reverse:
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 10}
+  successCriteria:
+    metric: acme_api_error_ratio
+    target: "acme_api_error_ratio < 0.01"
+    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    severityQuery: acme_api_error_ratio
+    severityReductionPct: 0.8

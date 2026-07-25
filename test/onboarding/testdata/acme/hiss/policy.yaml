@@ -1,0 +1,13 @@
+# acme's governance policy — the only place a threshold lives. Every actuatable
+# (tier, class) pair needs a floor: a pair with no entry clears the
+# confidence-floor veto on any nonzero confidence at all, leaning on the
+# reasoner's judgment instead of a real minimum.
+version: acme-v1
+floors:
+  tier-1:
+    service_failure: 0.75
+maxBand:
+  tier-1: act_reversible
+autoBand:
+  tier-1: act_reversible
+requireReversal: true

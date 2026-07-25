@@ -1,0 +1,16 @@
+# acme's steady-state contract — the SLOs rattle polls, and the dependencies
+# whose health must be trustworthy before a divergence on them is believed.
+# Dependency names must match a metadata.name in whir/catalog-info.yaml
+# exactly; whir strips the resource:/component: prefix before comparing.
+version: v1
+slos:
+  - id: acme-api-availability
+    object: acme-api
+    tier: tier-1
+    objective: 0.99
+    contractRef: acme-api-availability:v1
+    dependencies:
+      - name: acme-db
+        role: blocking
+      - name: acme-cache
+        role: optional
