@@ -71,7 +71,10 @@ func TestRunner_DispatchesExactExecForHoldRebalance(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			k := &recordKube{}
-			r := actuate.NewWith(k)
+			r, err := actuate.NewWith(k, shippedCatalog(t))
+			if err != nil {
+				t.Fatalf("build runner from shipped catalog: %v", err)
+			}
 
 			if err := r.Run(context.Background(), "hold-rebalance", tc.reverse, nil); err != nil {
 				t.Fatalf("Run(hold-rebalance) returned error: %v", err)
@@ -88,8 +91,11 @@ func TestRunner_DispatchesExactExecForHoldRebalance(t *testing.T) {
 
 func TestRunner_UnboundRefIsAnError(t *testing.T) {
 	t.Parallel()
-	r := actuate.NewWith(&recordKube{})
-	err := r.Run(context.Background(), "no-such-action", false, nil)
+	r, err := actuate.NewWith(&recordKube{}, shippedCatalog(t))
+	if err != nil {
+		t.Fatalf("build runner from shipped catalog: %v", err)
+	}
+	err = r.Run(context.Background(), "no-such-action", false, nil)
 	if err == nil {
 		t.Fatal("an unbound ref must error, not silently no-op")
 	}
@@ -97,7 +103,10 @@ func TestRunner_UnboundRefIsAnError(t *testing.T) {
 
 func TestRunner_PropagatesKubeFailure(t *testing.T) {
 	t.Parallel()
-	r := actuate.NewWith(&recordKube{err: errors.New("connection refused")})
+	r, err := actuate.NewWith(&recordKube{err: errors.New("connection refused")}, shippedCatalog(t))
+	if err != nil {
+		t.Fatalf("build runner from shipped catalog: %v", err)
+	}
 	if err := r.Run(context.Background(), "hold-rebalance", false, nil); err == nil {
 		t.Fatal("a failing mutation must surface as an error")
 	}
@@ -117,7 +126,10 @@ func TestRunner_DispatchesFlagVariantPatchForDisableProductCatalogFailure(t *tes
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			k := &recordKube{}
-			r := actuate.NewWith(k)
+			r, err := actuate.NewWith(k, shippedCatalog(t))
+			if err != nil {
+				t.Fatalf("build runner from shipped catalog: %v", err)
+			}
 
 			if err := r.Run(context.Background(), "disable-product-catalog-failure", tc.reverse, nil); err != nil {
 				t.Fatalf("Run returned error: %v", err)
@@ -161,7 +173,10 @@ func TestRunner_DispatchesDeploymentPatchForRestartCartPod(t *testing.T) {
 	t.Parallel()
 	for _, reverse := range []bool{false, true} {
 		k := &recordKube{}
-		r := actuate.NewWith(k)
+		r, err := actuate.NewWith(k, shippedCatalog(t))
+		if err != nil {
+			t.Fatalf("build runner from shipped catalog: %v", err)
+		}
 
 		if err := r.Run(context.Background(), "restart-cart-pod", reverse, nil); err != nil {
 			t.Fatalf("Run(restart-cart-pod, reverse=%v) returned error: %v", reverse, err)
@@ -193,9 +208,12 @@ func TestRunner_DispatchesDeploymentPatchForRestartCartPod(t *testing.T) {
 func TestRunner_FlagVariantOp_UnknownFlagIsAnError(t *testing.T) {
 	t.Parallel()
 	k := &recordKube{getReturn: `{"flags":{"someOtherFlag":{"defaultVariant":"on"}}}`}
-	r := actuate.NewWith(k)
+	r, err := actuate.NewWith(k, shippedCatalog(t))
+	if err != nil {
+		t.Fatalf("build runner from shipped catalog: %v", err)
+	}
 
-	err := r.Run(context.Background(), "disable-cart-failure", false, nil)
+	err = r.Run(context.Background(), "disable-cart-failure", false, nil)
 	if err == nil {
 		t.Fatal("a flagd blob missing the target flag must error, not silently patch")
 	}

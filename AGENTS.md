@@ -31,6 +31,10 @@ project architecture, scope, and history, see `CLAUDE.md` and the package docs u
   Go's modernizers, on the same analysis framework as `go vet`) can bulk-rewrite old idioms
   to current ones. Run it as a proposal to review, not a pre-commit step — a mechanical
   rewrite across every package is still a diff a human should read before it lands.
+- **`//nolint:gosec` stays bare.** No trailing reason comment (`// G304: ...`) — most
+  existing call sites (`whir.go`, `resolve.go`, `clank/transport.go`, `click.go`,
+  `hiss/transport.go`) use the bare form, and the reason-comment form has tripped local
+  checks before. Only add reason text if the bare form doesn't clear lint.
 
 ## Comments and doc comments
 
@@ -169,6 +173,11 @@ source.
 - **Golden files** are useful for large struct outputs (`os.ReadFile("testdata/x.golden")`).
   Never add an `-update` flag that rewrites goldens automatically — updates are hand-rolled
   and deliberately reviewed.
+- **Golden-file gosec trip.** Reading/writing a golden fires gosec G304 (variable path) on
+  the `os.ReadFile` and G306 (file perms) on the `os.WriteFile`. Fix: `0o600` perms on the
+  write, plus a bare `//nolint:gosec` (no reason text — see the Go house rules note above)
+  on the read. This bit the propose-schema golden once: it silently red-lined CI on `main`
+  for days before anyone noticed lint was failing while `go test` stayed green.
 
 ### 6. The red-green loop
 

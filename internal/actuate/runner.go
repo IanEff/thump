@@ -15,9 +15,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
-	"slices"
 	"time"
+
+	"github.com/ianeff/thump/internal/contract"
 )
 
 // Kube is the impure seam actuate reaches the cluster through — exec a
@@ -61,20 +61,6 @@ type execOp struct {
 
 func (e execOp) do(ctx context.Context, k Kube) error {
 	return k.Exec(ctx, e.namespace, e.selector, e.command)
-}
-
-// execSeqOp runs several toolbox commands in order, stopping at the first
-// failure — for a mutation ceph splits across calls (configure, then
-// enable) that a single execOp can't express.
-type execSeqOp []execOp
-
-func (s execSeqOp) do(ctx context.Context, k Kube) error {
-	for _, e := range s {
-		if err := e.do(ctx, k); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // flagVariantOp flips one flagd flag's defaultVariant by reading the target
@@ -161,67 +147,14 @@ type Runner struct {
 }
 
 // newWith is the seam constructor shared by production (New, over a
-// liveKube) and tests (NewWith, over a fake). The binding map is the one
-// place in the system that knows a contract ref's concrete mutation.
-func newWith(k Kube) *Runner {
-	return &Runner{kube: k, bindings: bindingSet()}
-}
-
-// bindingSet is the one place in the system that knos a contract
-// ref's concrete mutation and it's undo.  Every Runner shares it,
-// and BoundRefs reads its keys without needing a live Kube.
-func bindingSet() map[string]binding {
-	const rookCeph = "rook-ceph"
-	toolbox := func(argv ...string) execOp {
-		return execOp{
-			namespace: rookCeph,
-			selector:  "app=rook-ceph-tools",
-			command:   argv,
-		}
+// liveKube) and tests (NewWith, over a fake). Every ref a Runner can execute
+// is bound from cat, so nothing outside the authored catalog is reachable.
+func newWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) {
+	b, err := bind(cat)
+	if err != nil {
+		return nil, err
 	}
-	// flagd flips the thump-test rig's OTel demo faults — the flagd-config
-	// ConfigMap lives in otel-demo, keyed by demo.flagd.json (matches
-	// chaos/_flagd.sh in the rig repo exactly). forward disables the named
-	// failure (variant "off", the fix); reverse re-arms it (variant "on").
-	const flagdNamespace, flagdConfigMap, flagdDataKey = "otel-demo", "flagd-config", "demo.flagd.json"
-	flagd := func(flag string) binding {
-		return binding{
-			forward: flagVariantOp{namespace: flagdNamespace, configMap: flagdConfigMap, dataKey: flagdDataKey, flag: flag, variant: "off"},
-			reverse: flagVariantOp{namespace: flagdNamespace, configMap: flagdConfigMap, dataKey: flagdDataKey, flag: flag, variant: "on"},
-		}
-	}
-	return map[string]binding{
-		"hold-rebalance": {
-			forward: toolbox("ceph", "osd", "set", "noout"),
-			reverse: toolbox("ceph", "osd", "unset", "noout"),
-		},
-		// forward raises recovery concurrency far above Ceph's defaults (1
-		// backfill, 3 recovery ops); reverse removes the overrides so the
-		// cluster returns to its compiled defaults, not a guessed number.
-		"accelerate-recovery": {
-			forward: execSeqOp{
-				toolbox("ceph", "config", "set", "osd", "osd_max_backfills", "16"),
-				toolbox("ceph", "config", "set", "osd", "osd_recovery_max_active", "16"),
-			},
-			reverse: execSeqOp{
-				toolbox("ceph", "config", "rm", "osd", "osd_max_backfills"),
-				toolbox("ceph", "config", "rm", "osd", "osd_recovery_max_active"),
-			},
-		},
-		"disable-product-catalog-failure": flagd("productCatalogFailure"),
-		"disable-cart-failure":            flagd("cartFailure"),
-		// restarting a pod has no real inverse — repeating it is the
-		// honest "undo" (harmless, idempotent in effect), same posture a
-		// human takes when asked to roll back a restart.
-		"restart-cart-pod": {
-			forward: restartOp{namespace: flagdNamespace, deployment: "cart"},
-			reverse: restartOp{namespace: flagdNamespace, deployment: "cart"},
-		},
-		"throttle-non-critical-paths": {
-			forward: scaleOp{namespace: "default", deployment: "s3-traffic-generator", replicas: 2},
-			reverse: scaleOp{namespace: "default", deployment: "s3-traffic-generator", replicas: 10},
-		},
-	}
+	return &Runner{kube: k, bindings: b}, nil
 }
 
 // Run dispatches ref's forward (or reverse) mutation through the Kube seam.
@@ -242,16 +175,10 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 	return nil
 }
 
-// BoundRefs returns the contract refs the actuator can actually
-// execute, sorted for a stable test.
-func BoundRefs() []string {
-	return slices.Sorted(maps.Keys(bindingSet()))
-}
-
 // scaleOp merge-patches a Deployment's spec.replicas to a fixed count — the
-// same Patch primitive restartOp uses. Forward and reverse are both
-// authored as literal replica counts (see bindingSet), not a delta, so the
-// reversal is deterministic rather than remembered.
+// same Patch primitive restartOp uses. Forward and reverse are both authored
+// as literal replica counts, not a delta, so the reversal is deterministic
+// rather than remembered.
 type scaleOp struct {
 	namespace, deployment string
 	replicas              int
@@ -265,4 +192,18 @@ func (s scaleOp) do(ctx context.Context, k Kube) error {
 		return fmt.Errorf("build merge patch for %s/%s scale: %w", s.namespace, s.deployment, err)
 	}
 	return k.Patch(ctx, "apps", "v1", "deployments", s.namespace, s.deployment, patch)
+}
+
+// seqOp runs its operations in order, stopping at the first failure —
+// sequencing is a property of the authored step list, so a multi-step remedy
+// needs no verb of its own.
+type seqOp []operation
+
+func (s seqOp) do(ctx context.Context, k Kube) error {
+	for _, op := range s {
+		if err := op.do(ctx, k); err != nil {
+			return err
+		}
+	}
+	return nil
 }

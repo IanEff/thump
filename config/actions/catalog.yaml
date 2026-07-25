@@ -13,8 +13,9 @@
 # unmarshals clean and leaves the action unreachable, so every contract is
 # checked for reachability by TestShippedCatalog_EveryContractIsWellFormed
 # (internal/contract/shipped_test.go). Executability is a separate claim:
-# TestShippedCatalog_EveryCatalogedActionIsActuatorBound goes red for an
-# action with no binding in internal/actuate.
+# every contract's execution block must name a verb internal/actuate compiles
+# a mechanism for, or the process refuses to start —
+# TestShippedCatalog_EveryCatalogedActionIsActuatorBound goes red first.
 - name: hold-rebalance
   # unknown deliberately NOT listed: mapping "I don't know" to a real action
   # gave the model an escape hatch to act instead of declining. A mismatch
@@ -37,6 +38,11 @@
   reversal:
     method: release-rebalance
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, osd, set, noout]}
+    reverse:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, osd, unset, noout]}
   successCriteria:
     metric: ceph_health
     target: HEALTH_OK
@@ -68,6 +74,13 @@
   reversal:
     method: restore-recovery-defaults
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_max_backfills, "16"]}
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_recovery_max_active, "16"]}
+    reverse:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_max_backfills]}
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_recovery_max_active]}
   successCriteria:
     metric: pgs_degraded
     target: "pgs_degraded == 0"
@@ -94,6 +107,11 @@
   reversal:
     method: enable-product-catalog-failure
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: productCatalogFailure, variant: "off"}
+    reverse:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: productCatalogFailure, variant: "on"}
   successCriteria:
     metric: product_catalog_error_ratio
     target: "product_catalog_error_ratio == 0"
@@ -118,6 +136,11 @@
   reversal:
     method: enable-cart-failure
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: cartFailure, variant: "off"}
+    reverse:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: cartFailure, variant: "on"}
   successCriteria:
     metric: cart_error_ratio
     target: "cart_error_ratio == 0"
@@ -145,6 +168,11 @@
   reversal:
     method: restart-cart-pod
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: restart, namespace: otel-demo, deployment: cart}
+    reverse:
+      - {verb: restart, namespace: otel-demo, deployment: cart}
   successCriteria:
     metric: cart_error_ratio
     target: "cart_error_ratio == 0"
@@ -175,6 +203,11 @@
   reversal:
     method: restore-traffic-baseline
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: scale, namespace: default, deployment: s3-traffic-generator, replicas: 2}
+    reverse:
+      - {verb: scale, namespace: default, deployment: s3-traffic-generator, replicas: 10}
   successCriteria:
     metric: rgw_get_put_latency_ms
     target: "rgw_get_put_latency_ms < 150"

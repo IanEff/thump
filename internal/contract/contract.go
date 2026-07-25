@@ -118,12 +118,38 @@ type ActionContract struct {
 	Preconditions            []Precondition          `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
 	Action                   ActionSpec              `json:"action,omitempty" yaml:"action,omitempty"`
 	Reversal                 Reversal                `json:"reversal,omitempty" yaml:"reversal,omitempty"`
+	Execution                Execution               `json:"execution,omitempty" yaml:"execution,omitempty"`
 	SuccessCriteria          SuccessCriteria         `json:"successCriteria,omitempty" yaml:"successCriteria,omitempty"`
 }
 
 type ActionSpec struct {
 	Description     string           `json:"description,omitempty" yaml:"description,omitempty"`
 	ScopeParameters map[string]Range `json:"scopeParameters,omitempty" yaml:"scopeParameters,omitempty"`
+}
+
+// Execution is the authored binding between a contract and a bounded
+// mutation that carries it out.  Undo is authored next to the action
+// it undoes, so a reversal can't drift.
+type Execution struct {
+	Forward []Step `json:"forward,omitempty" yaml:"forward,omitempty"`
+	Reverse []Step `json:"reverse,omitempty" yaml:"reverse,omitempty"`
+}
+
+// Step names one bounded mechanism and its target.  Verb selects from
+// a closed set compiled into the actuator.
+type Step struct {
+	Verb       string   `json:"verb,omitempty" yaml:"verb,omitempty"`
+	Namespace  string   `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Selector   string   `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Command    []string `json:"command,omitempty" yaml:"command,omitempty"`
+	Deployment string   `json:"deployment,omitempty" yaml:"deployment,omitempty"`
+	// Replicas is a pointer so a scale-to-zero stays distinguishable from
+	// an omitted count — a plain int decodes a missing key as a silent 0.
+	Replicas  *int   `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+	ConfigMap string `json:"configMap,omitempty" yaml:"configMap,omitempty"`
+	DataKey   string `json:"dataKey,omitempty" yaml:"dataKey,omitempty"`
+	Flag      string `json:"flag,omitempty" yaml:"flag,omitempty"`
+	Variant   string `json:"variant,omitempty" yaml:"variant,omitempty"`
 }
 
 type Range struct {

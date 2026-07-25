@@ -24,8 +24,13 @@ func TestPolicy_FloorsCoverEveryActuatableClass(t *testing.T) {
 	pol := loadShippedPolicy(t)
 	cat := loadShippedCatalog(t)
 
+	bound, err := actuate.BoundRefs(cat)
+	if err != nil {
+		t.Fatalf("the shipped catalog holds an action with no executable mechanism: %v", err)
+	}
+
 	var missing []string
-	for _, ref := range actuate.BoundRefs() {
+	for _, ref := range bound {
 		c, ok := cat.ByName(ref)
 		if !ok {
 			t.Fatalf("actuate.BoundRefs names %q, but the shipped catalog has no such contract", ref)
