@@ -129,8 +129,7 @@ source.
   non-deterministic iteration order is a free detector for order-dependent bugs.
 - **ACE names.** Each table key (and thus each `t.Run` subtest name) is a full **Action,
   Condition, Expectation** sentence, e.g. `"FormatProposal returns valid JSON for empty
-  input"`. If the name isn't a complete sentence, it's missing context. `gotestdox ./...`
-  should read the suite back as a spec.
+  input"`. If the name isn't a complete sentence, it's missing context.
 - **One behavior per test.** A function can have many behaviors; a test asserts one claim.
 - **No `tc := tc` capture boilerplate** — Go 1.22+ loop variables are per-iteration; don't
   reintroduce the old workaround.
