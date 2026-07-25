@@ -1,0 +1,34 @@
+# acme's topology — one dependsOn edge per dependency named in
+# rattle/watch.yaml. Edges are one-directional: a service declares what it
+# depends on, never who depends on it.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: acme-api
+  description: acme's public API. Subject of the acme-api-availability SLO.
+spec:
+  type: service
+  lifecycle: production
+  owner: acme
+  dependsOn:
+    - resource:default/acme-db
+    - component:default/acme-cache
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: acme-db
+  description: acme's primary datastore.
+spec:
+  type: database
+  owner: acme
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: acme-cache
+  description: acme's read-through cache. Optional — a miss costs latency, not correctness.
+spec:
+  type: service
+  lifecycle: production
+  owner: acme
