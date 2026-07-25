@@ -9,20 +9,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
+	"github.com/ianeff/thump/internal/configtest"
 	"github.com/ianeff/thump/internal/contract"
 )
-
-// shippedCatalog loads the catalog production runs on, so an actuator test
-// asserting an exact mutation is asserting what the deployed ConfigMap says,
-// not what a fixture wishes it said.
-func shippedCatalog(t *testing.T) *contract.StaticCatalog {
-	t.Helper()
-	cat, err := contract.LoadCatalogFile(filepath.Join("..", "..", "config", "actions", "catalog.yaml"), contract.Preconditions)
-	if err != nil {
-		t.Fatalf("load shipped catalog: %v", err)
-	}
-	return cat
-}
 
 func TestRunner_ExecutesAnActionBoundOnlyInConfig(t *testing.T) {
 	t.Parallel()
@@ -41,10 +30,7 @@ func TestRunner_ExecutesAnActionBoundOnlyInConfig(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			cat, err := contract.LoadCatalogFile(filepath.Join("testdata", "acme-catalog.yaml"), contract.Preconditions)
-			if err != nil {
-				t.Fatalf("load acme catalog: %v", err)
-			}
+			cat := configtest.CatalogAt(t, filepath.Join("testdata", "acme-catalog.yaml"))
 			k := &recordKube{}
 			r, err := actuate.NewWith(k, cat)
 			if err != nil {

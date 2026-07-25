@@ -18,7 +18,7 @@ type Window struct {
 }
 
 // Policy is loaded straight off a human-authored HISS_POLICY YAML file
-// (see loadPolicy in hiss.go) — the tags below ARE that file's schema. It is
+// (see LoadPolicy in hiss.go) — the tags below ARE that file's schema. It is
 // hiss's whole authority: everything Evaluate checks is a lookup into one of
 // these fields, never a computed threshold.
 type Policy struct {

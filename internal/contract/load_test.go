@@ -8,6 +8,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/configtest"
 	"github.com/ianeff/thump/internal/contract"
 )
 
@@ -17,7 +18,7 @@ import (
 // construction and never round-trips; Load rebinds it from a registry
 // instead of the wire, proven separately below.
 func TestLoadCatalog_RoundTripsShippedData(t *testing.T) {
-	want := loadShippedCatalog(t).Contracts()
+	want := configtest.ShippedCatalog(t).Contracts()
 	raw, err := yaml.Marshal(want)
 	if err != nil {
 		t.Fatalf("marshal shipped catalog: %v", err)
@@ -92,7 +93,7 @@ func TestLoadCatalog_UnknownPrecondition_Errors(t *testing.T) {
 // against. redundancy_degraded offers two independently reversible remedies,
 // the same discrimination shape dependency_saturation has.
 func TestShippedCatalog_RedundancyDegradedOffersHoldRebalanceWithAForecast(t *testing.T) {
-	cat := loadShippedCatalog(t)
+	cat := configtest.ShippedCatalog(t)
 
 	got := cat.Applicable(proposal.ClassRedundancyDegraded, "tier-1", proposal.SAO{})
 
@@ -125,7 +126,7 @@ func TestShippedFailureClasses_DefineEveryFailureClass(t *testing.T) {
 
 	want := canonicalFailureClasses()
 	got := map[proposal.FailureClass]bool{}
-	for _, d := range loadShippedFailureClasses(t) {
+	for _, d := range configtest.ShippedFailureClasses(t) {
 		if d.Description == "" {
 			t.Errorf("%q has an empty description — the model is told the class exists, not what it means", d.Class)
 		}

@@ -5,11 +5,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
+	"github.com/ianeff/thump/internal/configtest"
 )
 
 func TestShippedCatalog_EveryActuatableActionHasABlastTier(t *testing.T) {
 	t.Parallel()
-	cat := loadShippedCatalog(t)
+	cat := configtest.ShippedCatalog(t)
 	bound, err := actuate.BoundRefs(cat)
 	if err != nil {
 		t.Fatalf("the shipped catalog holds an action with no executable mechanism: %v", err)

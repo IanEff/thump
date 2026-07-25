@@ -6,11 +6,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
+	"github.com/ianeff/thump/internal/configtest"
 )
 
 func TestShippedCatalog_EveryCatalogedActionIsActuatorBound(t *testing.T) {
 	t.Parallel()
-	cat := loadShippedCatalog(t)
+	cat := configtest.ShippedCatalog(t)
 
 	var want []string
 	for _, c := range cat.Contracts() {

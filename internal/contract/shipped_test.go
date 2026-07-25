@@ -3,37 +3,12 @@ package contract_test
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/configtest"
 	"github.com/ianeff/thump/internal/contract"
 )
-
-// shippedPath resolves a config/actions file from any internal/<pkg> test
-// directory — tests read the same file the beats load in production, so a
-// hand-edit that would break a running clank cannot pass CI.
-func shippedPath(name string) string {
-	return filepath.Join("..", "..", "config", "actions", name)
-}
-
-func loadShippedCatalog(t *testing.T) *contract.StaticCatalog {
-	t.Helper()
-	cat, err := contract.LoadCatalogFile(shippedPath("catalog.yaml"), contract.Preconditions)
-	if err != nil {
-		t.Fatalf("load shipped catalog: %v", err)
-	}
-	return cat
-}
-
-func loadShippedFailureClasses(t *testing.T) []contract.FailureClassDefinition {
-	t.Helper()
-	defs, err := contract.LoadFailureClassesFile(shippedPath("failure-classes.yaml"))
-	if err != nil {
-		t.Fatalf("load shipped failure classes: %v", err)
-	}
-	return defs
-}
 
 // canonicalFailureClasses is the closed FailureClass enum written out once —
 // Go can't enumerate a string type's consts by reflection, so this list is
@@ -114,7 +89,7 @@ func catalogInvariants() map[string]func(contract.ActionContract) error {
 func TestShippedCatalog_EveryContractIsWellFormed(t *testing.T) {
 	t.Parallel()
 
-	contracts := loadShippedCatalog(t).Contracts()
+	contracts := configtest.ShippedCatalog(t).Contracts()
 	if len(contracts) == 0 {
 		t.Fatal("config/actions/catalog.yaml loaded zero contracts — clank can propose nothing")
 	}

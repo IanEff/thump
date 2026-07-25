@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
+	"github.com/ianeff/thump/internal/configtest"
 )
 
 // recordKube is a fake actuate.Kube: it records the single request it was
@@ -71,7 +72,7 @@ func TestRunner_DispatchesExactExecForHoldRebalance(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			k := &recordKube{}
-			r, err := actuate.NewWith(k, shippedCatalog(t))
+			r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
 			if err != nil {
 				t.Fatalf("build runner from shipped catalog: %v", err)
 			}
@@ -91,7 +92,7 @@ func TestRunner_DispatchesExactExecForHoldRebalance(t *testing.T) {
 
 func TestRunner_UnboundRefIsAnError(t *testing.T) {
 	t.Parallel()
-	r, err := actuate.NewWith(&recordKube{}, shippedCatalog(t))
+	r, err := actuate.NewWith(&recordKube{}, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestRunner_UnboundRefIsAnError(t *testing.T) {
 
 func TestRunner_PropagatesKubeFailure(t *testing.T) {
 	t.Parallel()
-	r, err := actuate.NewWith(&recordKube{err: errors.New("connection refused")}, shippedCatalog(t))
+	r, err := actuate.NewWith(&recordKube{err: errors.New("connection refused")}, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestRunner_DispatchesFlagVariantPatchForDisableProductCatalogFailure(t *tes
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			k := &recordKube{}
-			r, err := actuate.NewWith(k, shippedCatalog(t))
+			r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
 			if err != nil {
 				t.Fatalf("build runner from shipped catalog: %v", err)
 			}
@@ -173,7 +174,7 @@ func TestRunner_DispatchesDeploymentPatchForRestartCartPod(t *testing.T) {
 	t.Parallel()
 	for _, reverse := range []bool{false, true} {
 		k := &recordKube{}
-		r, err := actuate.NewWith(k, shippedCatalog(t))
+		r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
 		if err != nil {
 			t.Fatalf("build runner from shipped catalog: %v", err)
 		}
@@ -208,7 +209,7 @@ func TestRunner_DispatchesDeploymentPatchForRestartCartPod(t *testing.T) {
 func TestRunner_FlagVariantOp_UnknownFlagIsAnError(t *testing.T) {
 	t.Parallel()
 	k := &recordKube{getReturn: `{"flags":{"someOtherFlag":{"defaultVariant":"on"}}}`}
-	r, err := actuate.NewWith(k, shippedCatalog(t))
+	r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
