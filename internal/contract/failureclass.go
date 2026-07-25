@@ -20,48 +20,6 @@ type FailureClassDefinition struct {
 	Description string                `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
-// DefaultFailureClasses is the compiled-in authored default — the single
-// source config/actions/failure-classes.yaml is pinned against
-// (TestShippedFailureClassesMatchesAuthoredDefault), same discipline as
-// Default() and catalog.yaml.
-func DefaultFailureClasses() []FailureClassDefinition {
-	return []FailureClassDefinition{
-		{
-			Class: proposal.ClassDependencySaturation,
-			Description: "an upstream/downstream dependency is overloaded — the resource itself is fine; " +
-				"cite request-rate/failure-rate or upstream latency evidence, not just elevated latency on the resource.",
-		},
-		{
-			Class: proposal.ClassResourceExhaustion,
-			Description: "the resource ITSELF is out of headroom — cite capacity evidence (e.g. utilization/fullness). " +
-				"Ongoing recovery/backfill activity with healthy capacity is NOT resource_exhaustion.",
-		},
-		{
-			Class: proposal.ClassRedundancyDegraded,
-			Description: "the cluster is running below its configured replication — placement groups are degraded or " +
-				"undersized, so stored data is at elevated loss risk until recovery restores the full replica count. " +
-				"Cite degraded/undersized PG evidence, not capacity fullness (resource_exhaustion) or request/failure " +
-				"rate (dependency_saturation).",
-		},
-		{
-			Class:       proposal.ClassTrafficShift,
-			Description: "a legitimate change in load pattern, not a failure.",
-		},
-		{
-			Class: proposal.ClassServiceFailure,
-			Description: "a service is returning errors on its own request or RPC path independent of load or " +
-				"capacity — an injected fault or bad config, not a dependency being overloaded (dependency_saturation) " +
-				"or a resource running out of headroom (resource_exhaustion). Cite the service's own error-rate " +
-				"evidence; the fix is disabling the fault, not scaling or waiting.",
-		},
-		{
-			Class: proposal.ClassUnknown,
-			Description: "the evidence doesn't clearly support any of the above — call insufficient rather than " +
-				"forcing a label just because an action exists for it.",
-		},
-	}
-}
-
 // LoadFailureClasses parses a raw YAML document holding
 // []FailureClassDefinition.
 func LoadFailureClasses(raw []byte) ([]FailureClassDefinition, error) {

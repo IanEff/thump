@@ -78,7 +78,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// OUTBOX are this path's env, not the process's — checked here, not above,
 	// so broker mode never has to satisfy them (mirrors rattle.go's NATS_URL-
 	// first branch).
-	exec, sw, err := buildExecutor(cfg)
+	exec, sw, err := buildExecutor(cfg, cat)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
 		return 1
@@ -169,7 +169,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	defer func() { _ = declinePub.WAL.Drain(ctx, sink) }()
 	defer func() { _ = heldPub.WAL.Drain(ctx, sink) }()
 
-	exec, sw, err := buildExecutor(cfg)
+	exec, sw, err := buildExecutor(cfg, cat)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
 		return 1
@@ -227,11 +227,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 // renders; live wraps a real actuate.Runner in a GatedExecutor so an armed
 // kill-switch is required before anything touches infrastructure. The
 // returned *FileSwitch is nil in dry mode — nothing to reload.
-func buildExecutor(cfg config.Thump) (Executor, *FileSwitch, error) {
+func buildExecutor(cfg config.Thump, cat *contract.StaticCatalog) (Executor, *FileSwitch, error) {
 	if cfg.Executor != "live" {
 		return DryRun{}, nil, nil
 	}
-	runner, err := actuate.New()
+	runner, err := actuate.New(cat)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build live executor: %w", err)
 	}

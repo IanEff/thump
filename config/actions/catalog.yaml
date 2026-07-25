@@ -1,20 +1,26 @@
-# The authored action catalog (phase C · C3) — the actions clank may
-# propose and thump may execute, not a per-site fact (that's why this lives
-# at config/actions/, not under a config/<site>/ profile).
+# The authored action catalog — the actions clank may propose and thump may
+# execute, not a per-site fact (that's why this lives at config/actions/, not
+# under a config/<site>/ profile). This file IS the catalog: there is no Go
+# copy behind it, so an action added here is proposable with no Go edit, and
+# an action deleted here can no longer be proposed or executed by anything.
 #
 # contract.LoadCatalogFile binds each Precondition.OK by looking its Name up
-# in a compiled contract.PreconditionRegistry — neither contract below
-# declares one, so the registry stays empty until an authored contract
-# actually needs one.
+# in a compiled contract.PreconditionRegistry — no contract below declares
+# one, so the registry stays empty until an authored contract actually needs
+# one.
 #
-# This file is pinned to contract.Default() by
-# TestShippedCatalogMatchesAuthoredDefault (internal/contract/load_test.go).
-# If that test goes red after you hand-edit this file, that's the guard
-# working — either fix the YAML back or update Default() deliberately.
+# A typo here fails silently — an unrecognized failure class or blast tier
+# unmarshals clean and leaves the action unreachable, so every contract is
+# checked for reachability by TestShippedCatalog_EveryContractIsWellFormed
+# (internal/contract/shipped_test.go). Executability is a separate claim:
+# every contract's execution block must name a verb internal/actuate compiles
+# a mechanism for, or the process refuses to start —
+# TestShippedCatalog_EveryCatalogedActionIsActuatorBound goes red first.
 - name: hold-rebalance
-  # unknown deliberately NOT listed here — see authored.go's comment on this
-  # same contract: mapping "unknown" to an action gave the model an out to
-  # act instead of declining.
+  # unknown deliberately NOT listed: mapping "I don't know" to a real action
+  # gave the model an escape hatch to act instead of declining. A mismatch
+  # between the declared class and the proposed action is now an auditable
+  # decline (engine.go's errClassMismatch), not silence.
   applicableFailureClasses:
     - redundancy_degraded
   applicableTiers:
@@ -32,6 +38,11 @@
   reversal:
     method: release-rebalance
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, osd, set, noout]}
+    reverse:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, osd, unset, noout]}
   successCriteria:
     metric: ceph_health
     target: HEALTH_OK
@@ -63,6 +74,13 @@
   reversal:
     method: restore-recovery-defaults
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_max_backfills, "16"]}
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_recovery_max_active, "16"]}
+    reverse:
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_max_backfills]}
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_recovery_max_active]}
   successCriteria:
     metric: pgs_degraded
     target: "pgs_degraded == 0"
@@ -89,6 +107,11 @@
   reversal:
     method: enable-product-catalog-failure
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: productCatalogFailure, variant: "off"}
+    reverse:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: productCatalogFailure, variant: "on"}
   successCriteria:
     metric: product_catalog_error_ratio
     target: "product_catalog_error_ratio == 0"
@@ -113,6 +136,11 @@
   reversal:
     method: enable-cart-failure
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: cartFailure, variant: "off"}
+    reverse:
+      - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: cartFailure, variant: "on"}
   successCriteria:
     metric: cart_error_ratio
     target: "cart_error_ratio == 0"
@@ -140,6 +168,11 @@
   reversal:
     method: restart-cart-pod
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: restart, namespace: otel-demo, deployment: cart}
+    reverse:
+      - {verb: restart, namespace: otel-demo, deployment: cart}
   successCriteria:
     metric: cart_error_ratio
     target: "cart_error_ratio == 0"
@@ -170,6 +203,11 @@
   reversal:
     method: restore-traffic-baseline
     fallback: page-oncall
+  execution:
+    forward:
+      - {verb: scale, namespace: default, deployment: s3-traffic-generator, replicas: 2}
+    reverse:
+      - {verb: scale, namespace: default, deployment: s3-traffic-generator, replicas: 10}
   successCriteria:
     metric: rgw_get_put_latency_ms
     target: "rgw_get_put_latency_ms < 150"

@@ -16,6 +16,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
+
+	"github.com/ianeff/thump/internal/contract"
 )
 
 // liveKube is the production Kube seam — every client-go call in the package
@@ -29,11 +31,13 @@ type liveKube struct {
 	cfg *rest.Config
 }
 
-// New returns a production Runner backed by the in-cluster ServiceAccount.
-// It fails rather than silently degrading when there's no in-cluster config
-// — a live executor that can't reach the apiserver should refuse to start,
-// not render every action a failure at runtime.
-func New() (*Runner, error) {
+// New returns a production Runner backed by the in-cluster ServiceAccount,
+// executing the mutations cat authors. It fails rather than silently
+// degrading when there's no in-cluster config, or when cat holds an action
+// naming no reachable mechanism — a live executor that can't carry out its
+// own catalog should refuse to start, not render every action a failure at
+// runtime.
+func New(cat *contract.StaticCatalog) (*Runner, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("actuate: in-cluster config: %w", err)
@@ -46,7 +50,7 @@ func New() (*Runner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("actuate: dynamic client: %w", err)
 	}
-	return newWith(liveKube{cs: cs, dyn: dyn, cfg: cfg}), nil
+	return newWith(liveKube{cs: cs, dyn: dyn, cfg: cfg}, cat)
 }
 
 // Exec streams command into the first Running pod matching selector, over

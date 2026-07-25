@@ -13,7 +13,6 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
-	"github.com/ianeff/thump/internal/contract"
 )
 
 // update regenerates the golden files instead of asserting against them:
@@ -78,7 +77,7 @@ func failureClassEnum(t *testing.T, schema json.RawMessage) []string {
 }
 
 // TestProposeToolSpec_FailureClassEnumCoversEveryProposableFailureClass pins the
-// propose schema's failureClass enum against contract.DefaultFailureClasses —
+// propose schema's failureClass enum against the shipped class definitions —
 // the model can only ever declare a class this enum lists, so a class present
 // in the catalog's prompt but absent here is one the real model can never
 // name, no matter what seedPrompt tells it. The one exclusion is "unknown":
@@ -88,8 +87,9 @@ func failureClassEnum(t *testing.T, schema json.RawMessage) []string {
 func TestProposeToolSpec_FailureClassEnumCoversEveryProposableFailureClass(t *testing.T) {
 	got := failureClassEnum(t, clank.ProposeToolSpec().InputSchema)
 
-	want := make([]string, 0, len(contract.DefaultFailureClasses()))
-	for _, def := range contract.DefaultFailureClasses() {
+	classes := clank.ShippedFailureClassesForTest()
+	want := make([]string, 0, len(classes))
+	for _, def := range classes {
 		if def.Class == proposal.ClassUnknown {
 			continue
 		}
@@ -98,7 +98,7 @@ func TestProposeToolSpec_FailureClassEnumCoversEveryProposableFailureClass(t *te
 	sort.Strings(want)
 
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Error("propose schema's failureClass enum disagrees with the proposable DefaultFailureClasses", cmp.Diff(want, got))
+		t.Error("propose schema's failureClass enum disagrees with the shipped failure classes", diff)
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 // comparisonRe pulls the operator and numeric threshold out of a "< N" or
 // "== N" comparison in a SuccessCriteria.Target prose string ("p99 < 250ms",
 // "cart_error_ratio == 0"). Only "<" and "==" are authored today
-// (authored.go) — anything else is refused, not guessed at.
+// (config/actions/catalog.yaml) — anything else is refused, not guessed at.
 var comparisonRe = regexp.MustCompile(`(<|==)\s*([\d.]+)`)
 
 // parseTarget turns target's prose into a comparator ("<"/"==", or "=="

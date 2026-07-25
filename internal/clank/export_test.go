@@ -1,6 +1,8 @@
 package clank
 
 import (
+	"path/filepath"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/trace/noop"
@@ -18,20 +20,28 @@ import (
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
 func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
-	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, contract.DefaultFailureClasses(), store, time.Hour, noop.Tracer{}, nil)
+	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil)
 }
 
-// DefaultCatalogForTest exposes the production catalog (the one Main wires)
+// ShippedCatalogForTest exposes the production catalog (the one Main wires)
 // to clank_test, so the golden-path suite proves the loop against the SAME
 // actions clank actually ships — not a bespoke test catalog that begs the
 // question. Test-only, like the rest of this file.
-func DefaultCatalogForTest() *contract.StaticCatalog {
-	return contract.Default()
+func ShippedCatalogForTest() *contract.StaticCatalog {
+	return shippedCatalog()
+}
+
+// ShippedFailureClassesForTest exposes the class definitions seedPrompt
+// renders, for the same reason ShippedCatalogForTest exposes the catalog: a
+// test that asserts against its own list proves only that the list agrees
+// with itself.
+func ShippedFailureClassesForTest() []contract.FailureClassDefinition {
+	return shippedClasses()
 }
 
 // NewBrokerEngineForTest exposes the broker-mode Engine construction to tests.
 func NewBrokerEngineForTest(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase) *Engine {
-	return newBrokerEngine(model, intake, store, tools, cat, contract.DefaultFailureClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil)
+	return newBrokerEngine(model, intake, store, tools, cat, shippedClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil)
 }
 
 // TODO: These are a gooney workaround and this stuff should probably go elsewhere or be relagated to the dustbin of bad ideas.
@@ -73,3 +83,29 @@ func ScoreConfidenceForTest(signalConf float64, corroborated int, selfReported f
 func CoherentLiveCitationsForTest(cand proposal.Candidate, evidence []proposal.EvidenceRef, sao *proposal.SAO) int {
 	return coherentLiveCitations(cand, evidence, sao)
 }
+
+// shippedCatalog and shippedClasses load the config the production binary
+// loads, so the suite proves the loop against the actions clank actually
+// ships rather than a bespoke fixture that begs the question. A failure here
+// is a broken checked-in config, not a test condition — it panics rather
+// than handing every caller an error it can't act on.
+var shippedCatalog = sync.OnceValue(func() *contract.StaticCatalog {
+	cat, err := contract.LoadCatalogFile(
+		filepath.Join("..", "..", "config", "actions", "catalog.yaml"),
+		contract.Preconditions,
+	)
+	if err != nil {
+		panic("clank test kit: " + err.Error())
+	}
+	return cat
+})
+
+var shippedClasses = sync.OnceValue(func() []contract.FailureClassDefinition {
+	defs, err := contract.LoadFailureClassesFile(
+		filepath.Join("..", "..", "config", "actions", "failure-classes.yaml"),
+	)
+	if err != nil {
+		panic("clank test kit: " + err.Error())
+	}
+	return defs
+})

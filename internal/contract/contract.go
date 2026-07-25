@@ -118,6 +118,7 @@ type ActionContract struct {
 	Preconditions            []Precondition          `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
 	Action                   ActionSpec              `json:"action,omitempty" yaml:"action,omitempty"`
 	Reversal                 Reversal                `json:"reversal,omitempty" yaml:"reversal,omitempty"`
+	Execution                Execution               `json:"execution,omitempty" yaml:"execution,omitempty"`
 	SuccessCriteria          SuccessCriteria         `json:"successCriteria,omitempty" yaml:"successCriteria,omitempty"`
 }
 
@@ -126,15 +127,46 @@ type ActionSpec struct {
 	ScopeParameters map[string]Range `json:"scopeParameters,omitempty" yaml:"scopeParameters,omitempty"`
 }
 
+// Execution is the mechanism half of an authored action — the steps that
+// actually mutate the cluster, as against Reversal's audit label for the same
+// undo. Neither list may be empty: internal/actuate refuses to bind a contract
+// missing either half, so an irreversible action cannot be authored at all.
+type Execution struct {
+	Forward []Step `json:"forward,omitempty" yaml:"forward,omitempty"` // the mutation the action performs — empty is ErrUnbindable at load, so a catalogued action is never a no-op
+	Reverse []Step `json:"reverse,omitempty" yaml:"reverse,omitempty"` // the mutation that undoes it, authored beside it so the two can't drift apart
+}
+
+// Step names one bounded mechanism and its target.  Verb selects from
+// a closed set compiled into the actuator.
+type Step struct {
+	Verb       string   `json:"verb,omitempty" yaml:"verb,omitempty"`
+	Namespace  string   `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Selector   string   `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Command    []string `json:"command,omitempty" yaml:"command,omitempty"`
+	Deployment string   `json:"deployment,omitempty" yaml:"deployment,omitempty"`
+	// Replicas is a pointer so a scale-to-zero stays distinguishable from
+	// an omitted count — a plain int decodes a missing key as a silent 0.
+	Replicas  *int   `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+	ConfigMap string `json:"configMap,omitempty" yaml:"configMap,omitempty"`
+	DataKey   string `json:"dataKey,omitempty" yaml:"dataKey,omitempty"`
+	Flag      string `json:"flag,omitempty" yaml:"flag,omitempty"`
+	Variant   string `json:"variant,omitempty" yaml:"variant,omitempty"`
+}
+
 type Range struct {
 	Min     float64 `json:"min,omitempty" yaml:"min,omitempty"`
 	Max     float64 `json:"max,omitempty" yaml:"max,omitempty"`
 	Default float64 `json:"default,omitempty" yaml:"default,omitempty"`
 }
 
+// Reversal is the label half of an authored undo — what the audit trail and
+// an operator call it, never how it runs. The mutation itself is
+// Execution.Reverse; nothing checks that the two describe each other, so a
+// Method naming something Execution.Reverse doesn't do is a config error no
+// loader will catch.
 type Reversal struct {
-	Method   string `json:"method,omitempty" yaml:"method,omitempty"`
-	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+	Method   string `json:"method,omitempty" yaml:"method,omitempty"`     // operator-facing name for the undo; reaches the audit trail as Order.Reversal.Method and the Candidate's ReversalPath
+	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"` // what to do when the undo itself fails — hiss escalates rather than retrying
 }
 
 type SuccessCriteria struct {

@@ -1,0 +1,27 @@
+# A synthetic domain no Go file has ever heard of — the fixture exists to
+# prove an action authored purely in config is executable, so it must never
+# name a service the engine has special-cased anywhere.
+- name: acme-shed-load
+  applicableFailureClasses:
+    - service_failure
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Shed load by scaling acme-api down to its minimum serving replicas,
+      trading throughput for stability while the fault clears; reversible.
+  blastTier: low
+  reversal:
+    method: restore-acme-capacity
+    fallback: page-oncall
+  execution:
+    forward:
+      - verb: scale
+        namespace: acme
+        deployment: acme-api
+        replicas: 2
+    reverse:
+      - verb: scale
+        namespace: acme
+        deployment: acme-api
+        replicas: 10
