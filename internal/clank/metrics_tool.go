@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/httpx"
 	"sigs.k8s.io/yaml"
 )
 
@@ -94,7 +95,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 
 	client := m.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Client(httpx.DefaultBackendTimeout)
 	}
 
 	resp, err := client.Do(req)

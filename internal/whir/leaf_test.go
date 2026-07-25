@@ -13,5 +13,6 @@ func TestWhirIsALeafPackage(t *testing.T) {
 	leaftest.AssertLeaf(t,
 		"bytes", "context", "encoding/json", "fmt", "net/http", "net/url",
 		"os", "strconv", "strings", "sigs.k8s.io/yaml",
+		"github.com/ianeff/thump/internal/httpx",
 	)
 }

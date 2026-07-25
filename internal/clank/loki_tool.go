@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/httpx"
 )
 
 type lokiInput struct {
@@ -93,7 +94,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 
 	client := l.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Client(httpx.DefaultBackendTimeout)
 	}
 
 	resp, err := client.Do(req)

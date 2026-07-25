@@ -4,10 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
+
+// modelRequestTimeout bounds one call to the model. Longer than
+// httpx.DefaultBackendTimeout on purpose — a Haiku completion carrying tool
+// results legitimately runs longer than a PromQL query, and this is the
+// reason loop's own call, not a telemetry read.
+const modelRequestTimeout = 120 * time.Second
 
 // AnthropicModel is the production Model: Claude Haiku behind the Messages
 // API, the cheapest model on record for this loop. It's the adaptor Main
@@ -20,7 +27,7 @@ type AnthropicModel struct {
 // NewAnthropicModel builds an AnthropicModel authenticated with apiKey.
 func NewAnthropicModel(apiKey string) *AnthropicModel {
 	return &AnthropicModel{
-		client: anthropic.NewClient(option.WithAPIKey(apiKey)),
+		client: anthropic.NewClient(option.WithAPIKey(apiKey), option.WithRequestTimeout(modelRequestTimeout)),
 	}
 }
 

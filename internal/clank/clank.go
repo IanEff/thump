@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/whir"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -66,13 +66,14 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			BaseURL:  cfg.PromURL,
 			Queries:  queries,
 			Subjects: subjects,
+			Client:   httpx.Client(httpx.DefaultBackendTimeout),
 		}
 	}
 
 	if cfg.LokiURL == "" {
 		slog.Warn("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action")
 	} else {
-		tools["loki"] = &LokiTool{BaseURL: cfg.LokiURL}
+		tools["loki"] = &LokiTool{BaseURL: cfg.LokiURL, Client: httpx.Client(httpx.DefaultBackendTimeout)}
 	}
 
 	restConfig, err := rest.InClusterConfig()
@@ -106,7 +107,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 		intake = NewIntake(WhirTopology{
 			Catalog:  cat,
-			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: http.DefaultClient, Queries: queries},
+			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout), Queries: queries},
 		}, noopChange{})
 	}
 
@@ -180,6 +181,6 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Base:          5 * time.Second,
 		Cap:           5 * time.Minute,
 		JitterDivisor: 4,
-	}}, tick)
+	}, Timeout: 20 * time.Second}, tick)
 	return 0
 }

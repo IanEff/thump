@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/ianeff/thump/internal/httpx"
 )
 
 // PromSource fetches burn-rate windows from a Sloth-instrumented
@@ -21,9 +23,9 @@ type PromSource struct {
 }
 
 // NewPromSource returns a PromSource with the default 1-minute step, 15-minute
-// window, and http.DefaultClient.
+// window, and httpx.Client(httpx.DefaultBackendTimeout).
 func NewPromSource(baseURL string) *PromSource {
-	return &PromSource{BaseURL: baseURL, Client: http.DefaultClient, Step: time.Minute, Window: 15 * time.Minute}
+	return &PromSource{BaseURL: baseURL, Client: httpx.Client(httpx.DefaultBackendTimeout), Step: time.Minute, Window: 15 * time.Minute}
 }
 
 type promRangeResponse struct {
@@ -73,7 +75,7 @@ func (p *PromSource) BurnSamples(ctx context.Context, slo SLO) ([]Sample, error)
 	}
 	client := p.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Client(httpx.DefaultBackendTimeout)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

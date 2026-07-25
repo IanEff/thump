@@ -14,6 +14,9 @@ import (
 type PollConfig struct {
 	Interval time.Duration
 	Backoff  *BackoffConfig
+	// Timeout bounds one tick. A zero value leaves the tick unbounded — every
+	// call site must choose a number rather than silently inheriting one.
+	Timeout time.Duration
 }
 
 // BackoffConfig is the growth schedule for a failing poll loop: start at Base,
@@ -27,13 +30,31 @@ type BackoffConfig struct {
 
 // PollLoop drives tick on the configured cadence until ctx is cancelled,
 // logging (never returning) a tick error. It is the offline transport: broker
-// mode uses RunConsumer instead.
+// mode uses RunConsumer instead. Single-threaded by construction — tick N+1
+// never starts until tick N returns, so cfg.Timeout is what keeps one slow
+// tick from stacking up behind the next.
 func PollLoop(ctx context.Context, cfg PollConfig, tick func(context.Context) error) {
+	tick = WithTimeout(cfg.Timeout, tick)
 	if cfg.Backoff == nil {
 		pollFixed(ctx, cfg.Interval, tick)
 		return
 	}
 	pollBackoff(ctx, *cfg.Backoff, tick)
+}
+
+// WithTimeout wraps tick so each call gets its own deadline. A beat's own
+// context only cancels on SIGTERM, so without this a tick that makes N
+// sequential backend calls can run N times the per-call bound and overlap the
+// next tick. A zero d returns tick unchanged.
+func WithTimeout(d time.Duration, tick func(context.Context) error) func(context.Context) error {
+	if d == 0 {
+		return tick
+	}
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, d)
+		defer cancel()
+		return tick(ctx)
+	}
 }
 
 func pollFixed(ctx context.Context, interval time.Duration, tick func(context.Context) error) {
