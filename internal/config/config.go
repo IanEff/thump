@@ -75,7 +75,7 @@ func LoadClank(broker bool) (Clank, error) {
 }
 
 // Hiss is hiss's environment. Policy is HISS_POLICY's raw path — hiss.go's
-// own loadPolicy reads and parses it into a Policy struct; config stops at
+// own LoadPolicy reads and parses it into a Policy struct; config stops at
 // the validated string, the same division whir/contract draw between
 // "where's the file" (env) and "what's in it" (the beat's own YAML parse).
 type Hiss struct {

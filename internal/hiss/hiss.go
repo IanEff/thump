@@ -47,7 +47,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	pol, err := loadPolicy(cfg.Policy)
+	pol, err := LoadPolicy(cfg.Policy)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "failed to load policy: %v\n", err)
 		return 1
@@ -136,14 +136,16 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	return beat.ExitOnError(ctx, g.Wait())
 }
 
-// loadPolicy reads HISS_POLICY as a YAML file and unmarshals it into a
-// Policy. A missing path, an unreadable file, and a malformed file all
-// fail the same way: a governor that started with a zero-value Policy
-// would fail *closed* (MaxBand empty everywhere ⇒ everything escalates)
-// but silently — refusing to start and saying why beats that.
-func loadPolicy(path string) (Policy, error) {
+// LoadPolicy reads path as a YAML file and unmarshals it into a Policy — the
+// only decoder for the governance surface, so a test asserting what policy
+// says is reading what hiss will actually govern under. A missing path, an
+// unreadable file, and a malformed file all fail the same way: a governor
+// that started with a zero-value Policy would fail *closed* (MaxBand empty
+// everywhere ⇒ everything escalates) but silently — refusing to start and
+// saying why beats that.
+func LoadPolicy(path string) (Policy, error) {
 	if path == "" {
-		return Policy{}, errors.New("HISS_POLICY is required")
+		return Policy{}, errors.New("policy path is required")
 	}
 	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config path, not user input
 	if err != nil {
