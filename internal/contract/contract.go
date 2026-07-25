@@ -127,12 +127,13 @@ type ActionSpec struct {
 	ScopeParameters map[string]Range `json:"scopeParameters,omitempty" yaml:"scopeParameters,omitempty"`
 }
 
-// Execution is the authored binding between a contract and a bounded
-// mutation that carries it out.  Undo is authored next to the action
-// it undoes, so a reversal can't drift.
+// Execution is the mechanism half of an authored action — the steps that
+// actually mutate the cluster, as against Reversal's audit label for the same
+// undo. Neither list may be empty: internal/actuate refuses to bind a contract
+// missing either half, so an irreversible action cannot be authored at all.
 type Execution struct {
-	Forward []Step `json:"forward,omitempty" yaml:"forward,omitempty"`
-	Reverse []Step `json:"reverse,omitempty" yaml:"reverse,omitempty"`
+	Forward []Step `json:"forward,omitempty" yaml:"forward,omitempty"` // the mutation the action performs — empty is ErrUnbindable at load, so a catalogued action is never a no-op
+	Reverse []Step `json:"reverse,omitempty" yaml:"reverse,omitempty"` // the mutation that undoes it, authored beside it so the two can't drift apart
 }
 
 // Step names one bounded mechanism and its target.  Verb selects from
@@ -158,9 +159,14 @@ type Range struct {
 	Default float64 `json:"default,omitempty" yaml:"default,omitempty"`
 }
 
+// Reversal is the label half of an authored undo — what the audit trail and
+// an operator call it, never how it runs. The mutation itself is
+// Execution.Reverse; nothing checks that the two describe each other, so a
+// Method naming something Execution.Reverse doesn't do is a config error no
+// loader will catch.
 type Reversal struct {
-	Method   string `json:"method,omitempty" yaml:"method,omitempty"`
-	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+	Method   string `json:"method,omitempty" yaml:"method,omitempty"`     // operator-facing name for the undo; reaches the audit trail as Order.Reversal.Method and the Candidate's ReversalPath
+	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"` // what to do when the undo itself fails — hiss escalates rather than retrying
 }
 
 type SuccessCriteria struct {
