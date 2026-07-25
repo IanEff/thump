@@ -58,7 +58,7 @@ The boundary objects are the real design surface — the planes are whatever cod
 sits on either side of them. **One producer per object**; consumers read it and
 never reach into the producer's internals.
 
-`internal/signal` is the model to copy: a leaf package importing only `time`,
+`api/v1/signal` is the model to copy: a leaf package importing only `time`,
 and the sole thing rattle and clank share.
 
 | Boundary object | Our type | Producer → Consumer |
