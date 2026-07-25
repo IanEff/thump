@@ -376,8 +376,11 @@ Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`) — run
 | `go test ./internal/clank -run TestGate -v` | Run a single test |
 | `gotestdox ./...` | Read test names back as a spec — **silently prints nothing on Go 1.26**; use `go test -v` |
 
-`task ci` green is the definition of done — it's also GitHub's gate, so
-passing tests locally isn't the same claim as a green `task ci`.
+`task ci` green is the definition of done. GitHub runs fmt-check, vet, lint,
+vulncheck, chart-lint, and test on every push — but not `-race`, since that
+doubles build time and CI minutes cost money. **Run `task ci` locally before
+opening a PR**; a green `go test` on GitHub is not the same claim as a green
+`task ci`.
 
 ---
 

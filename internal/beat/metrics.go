@@ -2,6 +2,8 @@ package beat
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -42,7 +44,15 @@ func Metrics(beatName string) (prometheus.Registerer, *Health, Shutdown) {
 		ReadHeaderTimeout: metricsReadHeaderTimeout,
 	}
 	go func() {
-		_ = srv.ListenAndServe()
+		if err := srv.ListenAndServe(); !listenerStopWasClean(err) {
+			slog.Error("metrics listener stopped", "addr", addr, "err", err)
+		}
 	}()
 	return wrapped, health, srv.Shutdown
+}
+
+// listenerStopWasClean is kind of a hacky way of reporting whether
+// the return was from a deliberate shutdown.
+func listenerStopWasClean(err error) bool {
+	return err == nil || errors.Is(err, http.ErrServerClosed)
 }
