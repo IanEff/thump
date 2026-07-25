@@ -15,9 +15,12 @@ Read `README.md` first for what thump is. This file is about how to work here.
   partner); the commit itself is always the owner's to make. Open a PR, or hand
   over a diff.
 - **`task ci` green is the definition of done.** That chain is
-  fmt-check → vet → **lint** → vulncheck → chart-lint → race → build. Lint is
-  GitHub's gate too, so `go test` passing is *not* the same claim — a red lint
-  with green tests has silently broken `main` here before.
+  fmt-check → vet → **lint** → vulncheck → chart-lint → race → build. GitHub
+  runs everything up to `test`, but not `race` — doubling every CI run's
+  build time to catch data races costs money we'd rather not spend on every
+  push. **Run `task ci` locally before opening a PR**; a green `go test` on
+  GitHub is *not* the same claim — a red lint with green tests has silently
+  broken `main` here before, and the race detector is the same story.
 - **Red→green is the default shape, held loosely.** Write the test for new
   behavior first and watch it fail for the reason you predicted. It's a spine to
   work from, not a ritual to enforce on every change; sometimes a spike comes
