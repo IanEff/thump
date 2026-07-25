@@ -22,10 +22,11 @@ this README is mostly about the shape of it: a fixed catalog of actions, a
 governance pass that's structurally incapable of re-reasoning, a kill switch,
 and a habit of declining out loud instead of guessing quietly.
 
-If you want the load-bearing detail behind any of this — the full invariant
-list, the conscious divergences from the book it's built from, the exact
-file:line for every claim below — that's `docs/decision-engine-scope.md`'s
-job eventually and the vault's job today; see [Source of truth](#source-of-truth).
+If you want the load-bearing detail behind any of this — the beats and their
+seams, the full invariant list, the smell test a design review runs — that's
+`docs/architecture.md` and `docs/invariants.md`. Both are provisional ports of
+the working design docs and still read like working notes; see
+[Source of truth](#source-of-truth).
 
 ---
 
@@ -34,6 +35,7 @@ job eventually and the vault's job today; see [Source of truth](#source-of-truth
 - [Authority model & guardrails](#authority-model--guardrails)
 - [The five beats](#the-five-beats)
 - [A golden path, worked end to end](#a-golden-path-worked-end-to-end)
+- [Onboard your own domain](#onboard-your-own-domain)
 - [Standing it up locally](#standing-it-up-locally)
 - [Invariants (read as law)](#invariants-read-as-law)
 - [Known-open](#known-open)
@@ -46,15 +48,18 @@ job eventually and the vault's job today; see [Source of truth](#source-of-truth
 ## Authority model & guardrails
 
 **The model proposes magnitude, it never invents it.** Every catalogued action
-carries an authored `SeverityReductionPct` — in today's rook/Ceph catalog,
-`throttle-non-critical-paths` is authored at 0.5, `scale-out-rgw-gateways` at
-0.6, `accelerate-recovery` at 0.8 (`internal/contract/authored.go`). Whatever
-runbook gets added next authors its own number the same way. The LLM picks
-which action and how confident it is in the diagnosis; it does not get to
-decide that *this* incident's throttle will cut severity by 73%. When an
-action has no authored number (`hold-rebalance` doesn't), the forecast comes
-back `nil`, not `0` — an unforecast action must never look like a forecast of
-no effect.
+carries an authored `SeverityReductionPct` — in today's catalog,
+`throttle-non-critical-paths` is authored at 0.7, `accelerate-recovery` at 0.8,
+and `restart-cart-pod` at 0.1 (`config/actions/catalog.yaml`). That last one is
+the interesting case: restarting the cart pod is a real, reversible, low-blast
+action that clears the readiness gate on its own merits, and the honest 0.1 is
+what discriminates it from the action that actually fixes the fault — the fault
+is flagd flag state, not pod state. The LLM picks which action and how confident
+it is in the diagnosis; it does not get to decide that *this* incident's
+throttle will cut severity by 73%. An action authored with no number at all
+forecasts `nil`, not `0` — an unforecast action must never look like a forecast
+of no effect — though every action in the catalog today carries one, so that
+path isn't exercised by the shipped config.
 
 **Modulates, never replaces.** The authored number above is a *prior*. The
 design (in progress, not finished — see [Known-open](#known-open)) is for a
@@ -128,38 +133,48 @@ allow/hold/deny).
 
 ## A golden path, worked end to end
 
-The engine is general-purpose; the worked example below is just whatever
-happens to be in the catalog today. This is a real fixture
-(`internal/clank/testdata/golden/rgw-saturation-*.yaml`), not a hypothetical.
+The engine is general-purpose, so the worked example below deliberately uses a
+service the engine has never heard of: `acme`, authored entirely in YAML. This
+is not a hypothetical — it's
+`test/onboarding/onboard_test.go`'s `TestOperator_OnboardsANewDomainInConfigAlone`,
+which runs in `task ci` with no API key and no cluster. Read it back with
+`go test ./test/onboarding -v`.
 
-1. **rattle detects.** RGW latency and request-rate diverge from baseline —
-   `severity.DegradationPct: 0.2`, trajectory `accelerating`. rattle fingerprints
-   it `slo_burn:ceph-rgw` and hands off a `SignalDetection`. clank never
-   recomputes this — it trusts the fingerprint and the confidence rattle
-   assigned.
-2. **clank reasons.** It assembles the SAO (the signal snapshot above, plus
-   topology — `cephobjectstore`/`rook-operator` both `healthy`), calls the
-   `metrics` tool twice for `rgw_get_put_latency_ms` and `rgw_request_rate`
-   (both come back live, both get cited), forms the hypothesis
-   `rgw_backend_saturation` at weight 0.85, and proposes
-   `throttle-non-critical-paths` at confidence 0.85 — `blastTier: med`,
-   `predictedImpact.severityReductionPct: 0.5` (the authored baseline, not a
-   model guess), a `reversalPath` (`unthrottle`, triggered on `p99 < 250ms`).
-3. **The gate passes.** `budgetOK`, `dedupeOK`, `evidenceOK` are all true — two
-   live citations clear the forced-live-telemetry defense; the set was never
-   at risk of getting through on historical alignment alone.
-4. **hiss governs.** Policy's `tier-1` floor for `dependency_saturation` is
-   0.75; the proposal's confidence (0.85) clears it. The action is reversible
-   (`unthrottle` exists) at `BlastMed`, so hiss's shaper computes
-   `RiskBand: act_reversible` — under `tier-1`'s `autoBand` ceiling, so this
-   doesn't hold for a human. `Decision.Verdict: approved`,
-   `grantedBand: act_reversible`, `floorApplied: 0.75` stamped onto the audit
-   record.
-5. **thump acts.** In dry-run mode (the default — see below) it renders the
-   order and stops: `Outcome{mode: dry_run, result: rendered}`. In live mode,
-   the same `Decision` would actually throttle anonymous RGW requests, then
-   watch `latency_p99` against the 10-minute success window and auto-reverse
-   through `unthrottle` if it doesn't converge.
+1. **rattle detects.** `acme_api_error_ratio` diverges from baseline — observed
+   0.42 against a 0.001 baseline, `severity.DegradationPct: 0.42`, trajectory
+   `accelerating`. rattle fingerprints it `fp-acme-api-availability-001` and
+   hands off a `SignalDetection`. clank never recomputes this — it trusts the
+   fingerprint and the confidence (0.9) rattle assigned.
+2. **clank reasons.** It assembles the SAO: the signal snapshot, plus topology
+   resolved from the authored dependency graph (`acme-db` and `acme-cache`, both
+   `healthy` per their authored state queries). It calls the `metrics` tool for
+   `acme_api_error_ratio` and `acme_db_connections_saturation`, cites both, and
+   proposes `acme-shed-load` — `blastTier: low`, a `reversalPath`
+   (`restore-acme-capacity`), and `serving_replicas: 2`, the authored default
+   from the action's own scope range, not a number the model picked.
+3. **The gate passes.** `budgetOK`, `dedupeOK`, `evidenceOK` all true — two live,
+   topologically coherent citations clear the forced-live-telemetry defense, so
+   confidence computes to 0.9 (rattle's 0.9 × full corroboration grounding,
+   capped by the model's own self-report). The set was never at risk of getting
+   through on historical alignment alone.
+4. **hiss governs.** The authored policy's `tier-1` floor for `service_failure`
+   is 0.75; 0.9 clears it. The action is reversible at `BlastLow`, so the shaper
+   computes `RiskBand: act_reversible` — inside `tier-1`'s `autoBand` ceiling, so
+   it doesn't hold for a human. `Decision.Verdict: approved`,
+   `policyVersion: acme-v1`, `floorApplied: 0.75` stamped onto the audit record.
+5. **thump acts.** In dry-run mode (the default — see below) it renders the order
+   and stops: `Outcome{mode: dry_run, result: rendered}`. In live mode the same
+   `Decision` would scale `acme-api` to its authored floor, then watch
+   `acme_api_error_ratio` against the 5-minute success window and auto-reverse
+   through the authored `execution.reverse` if it doesn't converge.
+
+**Declines are the more common shape, and they're captured too.**
+`internal/clank/testdata/detections/ceph-rgw-saturation.yaml` is a raw
+JetStream capture off a live rig where the reasoner read healthy upstream and
+capacity evidence, ruled out the classes that didn't fit, landed on
+`traffic_shift`, and proposed **nothing** — no catalog action maps there. hiss
+caught it downstream as `ReasonUngatedInput` and thump declined to act. That
+fixture is pinned as a decision boundary, not a regression.
 
 Every step above is one JSON/YAML object with the same `signalRef` threaded
 through it. That thread — `Detection.Fingerprint` →
@@ -169,15 +184,70 @@ answer "why did it do that."
 
 ---
 
+## Onboard your own domain
+
+**Onboarding a system to thump takes no Go.** Signals, evidence, topology,
+failure-class meanings, the action catalog, *and* how each action executes are
+all operator-authored YAML. That claim is a test, not a promise —
+`test/onboarding/` onboards a synthetic `acme` service from seven files and
+drives it through all five beats in `task ci`. Copy that directory as a
+starting point.
+
+| File | What it owns |
+|---|---|
+| `rattle/watch.yaml` | the SLOs to poll, and the dependencies whose health gates trusting a divergence |
+| `whir/catalog-info.yaml` | the dependency graph (Backstage `catalog-info` shape) |
+| `whir/state-queries.yaml` | per-dependency "is it healthy right now" PromQL |
+| `whir/evidence-queries.yaml` | the read-only PromQL the reasoner may cite, and what each result is *about* |
+| `actions/failure-classes.yaml` | what each failure class means for your domain |
+| `actions/catalog.yaml` | the actions that may be proposed, and how each one executes |
+| `hiss/policy.yaml` | confidence floors, blast-tier ceilings, freeze windows |
+
+An action's `execution` block names a **bounded mechanism** the actuator
+compiles and points it at your resources:
+
+```yaml
+- name: acme-shed-load
+  applicableFailureClasses: [service_failure]
+  applicableTiers: [tier-1]
+  blastTier: low
+  reversal: {method: restore-acme-capacity, fallback: page-oncall}
+  execution:
+    forward: [{verb: scale, namespace: acme, deployment: acme-api, replicas: 2}]
+    reverse: [{verb: scale, namespace: acme, deployment: acme-api, replicas: 10}]
+```
+
+The verb set is closed — `scale`, `restart`, `flagVariant`, `exec` — and
+checked at **startup**, not on first approval: a verb with no compiled
+mechanism, a missing target, or a forward step with no `reverse` refuses to
+load. Config *picks* a mechanism and names its targets; it never *describes* a
+new one.
+
+**The honest 5%.** A genuinely new *kind* of cluster mutation needs a new
+mechanism in `internal/actuate` plus a test. That's the autonomy boundary
+earning its keep, not a gap to apologize for — the bounded vocabulary is why
+the catalog can be trusted as the blast-radius bound.
+
+> ⚠️ **A catalog PR is an execution-surface PR.** The `exec` verb takes argv,
+> so whoever can merge `config/actions/catalog.yaml` can run a command in any
+> pod thump's ServiceAccount can reach. What bounds this is RBAC (`pods/exec`,
+> scoped per namespace), the kill switch, and hiss's policy — *not* the verb
+> list. Review catalog changes accordingly; see `CONTRIBUTING.md`.
+
+---
+
 ## Standing it up locally
 
-thump runs against three cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
-`ceph-lab` (default), `rook-gke`, `rook-gce-k3s` — all rook/Ceph clusters,
-because that's the rig this repo builds and chaos-tests against, not because
-thump requires one. Bring one up, then:
+thump runs against four cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
+`ceph-lab` (default), `rook-gke`, `rook-gce-k3s`, and `thump-test` — all
+rook/Ceph clusters, because that's the rig this repo builds and chaos-tests
+against, not because thump requires one. (`thump-test` additionally runs the
+OpenTelemetry Astronomy Shop demo alongside Ceph — a second, orthogonal domain
+on one cluster, sharing no signal, failure class, or catalog action with the
+first.) Bring one up, then:
 
 ```sh
-tilt up -- --cluster=rook-gce-k3s   # or ceph-lab, rook-gke
+tilt up -- --cluster=rook-gce-k3s   # or ceph-lab, rook-gke, thump-test
 ```
 
 **Dry-run is the default, and you have to opt into anything else.**
@@ -244,8 +314,9 @@ book this is built against. Numbered so a review can cite one directly
     Governance, action contracts with automatic reversal, signal contracts
     with declared guarantees, and calibrated confidence are *all four*
     simultaneously operational. Three of four doesn't count.
-13. **Every wave stays red→green.** No untested seam crosses into the next
-    beat.
+13. **Every wave stays red→green, and every commit is reviewed.** No untested
+    seam crosses into the next beat. Agents and contributors may edit and test;
+    the repo owner reviews and lands every commit.
 14. **Delivery is at-least-once; identity is the fingerprint.** Every
     transport may redeliver; every consumer dedupes on the producer-assigned
     fingerprint, never on transport metadata like a filename or sequence
@@ -301,8 +372,9 @@ Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`) — run
 | `task coverage` | Coverage profile + total |
 | `task vulncheck` | govulncheck over deps |
 | `task eval` | The reasoner eval against the production catalog — key-gated, not part of `task ci` |
+| `go test ./test/onboarding -v` | The whole engine over a domain authored in config alone — no key, no cluster |
 | `go test ./internal/clank -run TestGate -v` | Run a single test |
-| `gotestdox ./...` | Read test names back as a spec |
+| `gotestdox ./...` | Read test names back as a spec — **silently prints nothing on Go 1.26**; use `go test -v` |
 
 `task ci` green is the definition of done — it's also GitHub's gate, so
 passing tests locally isn't the same claim as a green `task ci`.
@@ -326,15 +398,30 @@ fluent in Go, and the working agreement reflects that:
   above — these are the regressions that matter most, more than any bug in
   business logic.
 
-Go conventions, comment style, and testing standards live in `AGENTS.md` —
-read it before touching any `.go` file.
+Full contributor guide — including the one review rule that isn't obvious (a
+catalog change is an execution-surface change) — is in `CONTRIBUTING.md`. Go
+conventions, comment style, and testing standards live in `AGENTS.md`; read it
+before touching any `.go` file.
 
 ---
 
 ## Source of truth
 
-The canonical architecture, invariants, and build plan live in the Obsidian
-vault, not here — this README summarizes; the vault is authoritative:
+**In this repo** (provisional ports — accurate, but written for people already
+holding the context; a public-facing rewrite is still owed):
+
+- `docs/architecture.md` — the five beats, the four planes, and the
+  producer-owned boundary objects between them.
+- `docs/invariants.md` — all fifteen invariants, plus the four-question smell
+  test run at every design review.
+- `docs/onboarding.md` — authoring a domain in config, at more length than the
+  README section above.
+- `AGENTS.md` — Go conventions, comment voice, testing standards.
+- `CONTRIBUTING.md` — how to work here, and what gets reviewed hardest.
+
+**Outside this repo:** the dated design journal, the per-wave build plans, and
+the conscious-divergences ledger live in the author's Obsidian vault. Where the
+two disagree, the vault is newer:
 
 - `thump-charter.md` — the adherence contract: every invariant above, sourced
   and dated, plus the full conscious-divergences ledger.
