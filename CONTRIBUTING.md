@@ -65,6 +65,8 @@ The regressions that matter most are the ones that erode a never-clause:
   point to exactly one boundary object.
 
 `docs/invariants.md` has the full list and the four-question smell test.
+Found an actual vulnerability rather than a design question? See
+`SECURITY.md` for how to report it privately instead of opening a PR.
 
 **3 · Domain knowledge leaking into the engine.** No Ceph, flagd, cart, or
 OpenTelemetry-specific branch belongs in engine code. App knowledge goes in
