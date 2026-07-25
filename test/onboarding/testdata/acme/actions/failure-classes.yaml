@@ -1,0 +1,30 @@
+# What each failure class means for acme. The six class identifiers are the
+# engine's reasoning vocabulary, not a domain fact — an operator authors what
+# a class means here and which actions serve it, never a seventh class. Every
+# identifier the model may declare must appear with a non-empty description: a
+# class it can name but was never given the meaning of is a class it guesses at.
+- class: service_failure
+  description: >-
+    acme-api is returning errors on its own request path independent of load
+    or capacity — a bad deploy or config, not a dependency being overloaded
+    (dependency_saturation) or a resource out of headroom
+    (resource_exhaustion). Cite acme-api's own error-ratio evidence; the fix
+    is shedding load off the failing path, not scaling the datastore.
+- class: dependency_saturation
+  description: >-
+    acme-db or acme-cache is overloaded — acme-api itself is fine; cite the
+    dependency's saturation evidence, not just elevated error ratio on the API.
+- class: resource_exhaustion
+  description: >-
+    the resource ITSELF is out of headroom — cite capacity evidence, not
+    request or failure rate.
+- class: traffic_shift
+  description: a legitimate change in load pattern, not a failure.
+- class: redundancy_degraded
+  description: >-
+    acme is running below its configured replication, so stored data is at
+    elevated loss risk until recovery restores the full replica count.
+- class: unknown
+  description: >-
+    the evidence doesn't clearly support any of the above — call insufficient
+    rather than forcing a label just because an action exists for it.

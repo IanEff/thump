@@ -1,0 +1,16 @@
+# The read-only PromQL the clank `metrics` tool exposes for acme. The model
+# calls metrics with {"q":"<name>"} and cites the result by that name; the
+# tool never returns the raw series, only a one-line digest.
+#
+# `subject` names the whir catalog-info.yaml entity a query's result is about.
+# A citation whose subject is neither the signal's own service nor a node in
+# the frozen topology is incoherent and doesn't corroborate — omitting the
+# tag makes no topology claim at all.
+version: v1
+queries:
+  - name: acme_api_error_ratio
+    query: 'sum(rate(acme_api_requests_total{status=~"5.."}[5m])) / sum(rate(acme_api_requests_total[5m]))'
+    subject: acme-api
+  - name: acme_db_connections_saturation
+    query: 'max(acme_db_connections_active) / max(acme_db_connections_max)'
+    subject: acme-db

@@ -1,0 +1,10 @@
+# Per-dependency "is it healthy right now" queries for whir's Resolver.
+# `dependency` must match a metadata.name in catalog-info.yaml exactly. Each
+# query is an instant PromQL whose result means: value > 0 => healthy,
+# value = 0 => degraded, no result / error => unknown (a state, not an error).
+version: v1
+queries:
+  - dependency: acme-db
+    query: 'max(up{job="acme-db"})'
+  - dependency: acme-cache
+    query: 'max(up{job="acme-cache"})'
