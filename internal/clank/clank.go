@@ -177,10 +177,16 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 		return tickErr
 	}
-	beat.PollLoop(ctx, beat.PollConfig{Backoff: &beat.BackoffConfig{
-		Base:          5 * time.Second,
-		Cap:           5 * time.Minute,
-		JitterDivisor: 4,
-	}, Timeout: 20 * time.Second}, tick)
+	beat.PollLoop(ctx, beat.PollConfig{
+		Backoff: &beat.BackoffConfig{
+			Base:          5 * time.Second,
+			Cap:           5 * time.Minute,
+			JitterDivisor: 4,
+		},
+		// Longer than modelRequestTimeout — a shorter tick timeout would fire
+		// first on every call, and the model's own 120s budget would never be
+		// reached.
+		Timeout: modelRequestTimeout + 30*time.Second,
+	}, tick)
 	return 0
 }
