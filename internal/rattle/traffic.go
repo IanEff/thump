@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ianeff/thump/internal/httpx"
 	"sigs.k8s.io/yaml"
 )
 
@@ -98,7 +99,7 @@ func (h *HubbleTrafficSource) instant(ctx context.Context, query string) (*float
 	}
 	client := h.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Client(httpx.DefaultBackendTimeout)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

@@ -23,6 +23,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/converge"
+	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/publish"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -115,9 +116,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Stages:   stages,
 	}
 	if sw != nil {
-		go beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, sw.Reload)
+		go beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, sw.Reload)
 	}
-	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, tr.Tick)
+	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
 	return 0
 }
 
@@ -196,7 +197,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	g, gctx := errgroup.WithContext(ctx)
 	if sw != nil {
 		g.Go(func() error {
-			beat.PollLoop(gctx, beat.PollConfig{Interval: 5 * time.Second}, sw.Reload)
+			beat.PollLoop(gctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, sw.Reload)
 			return nil
 		})
 	}
@@ -251,7 +252,7 @@ func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load evidence queries: %w", err)
 	}
-	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries}
+	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries, Client: httpx.Client(httpx.DefaultBackendTimeout)}
 	return &ReversalWatcher{Probe: PrometheusConverger{Probe: prober}}, nil
 }
 

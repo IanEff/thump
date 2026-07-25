@@ -42,8 +42,13 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// (metric, target strings), never Order, so this stays a one-directional
 		// import with no cycle back through thump. See PrometheusConverger.
 		`"github.com/ianeff/thump/internal/converge"`: true,
-		`"github.com/nats-io/nats.go"`:                true,
-		`"github.com/nats-io/nats.go/jetstream"`:      true,
+		// The one place an outbound HTTP client is built (net/http + time
+		// only, stdlib per its own leaf tripwire). thump.go injects it into
+		// converge.Prober so that call is bounded too — building a client
+		// isn't a new capability the way exec or a live actuator would be.
+		`"github.com/ianeff/thump/internal/httpx"`: true,
+		`"github.com/nats-io/nats.go"`:             true,
+		`"github.com/nats-io/nats.go/jetstream"`:   true,
 		// the runtime kit: process lifecycle + the same broker/publish
 		// transports already allowed above. Its own leaf tripwire forbids it
 		// from ever importing a beat package (rattle/clank/hiss/thump), not

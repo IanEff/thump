@@ -98,7 +98,7 @@ func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKe
 // errgroup alongside a beat's consumer loop, same shape as
 // clank/broker.go's two-subscriber composition.
 func RunShipper(ctx context.Context, wal *publish.WAL, sink publish.SegmentSink) {
-	PollLoop(ctx, PollConfig{Interval: ShipInterval}, func(ctx context.Context) error {
+	PollLoop(ctx, PollConfig{Interval: ShipInterval, Timeout: 4 * ShipInterval}, func(ctx context.Context) error {
 		return wal.Ship(ctx, sink)
 	})
 }

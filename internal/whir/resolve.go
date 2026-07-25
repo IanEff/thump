@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/ianeff/thump/internal/httpx"
 	"sigs.k8s.io/yaml"
 )
 
@@ -27,7 +28,7 @@ type StateQuery struct {
 type Resolver struct {
 	BaseURL string
 	// Client is the HTTP client State issues queries with. Defaults to
-	// http.DefaultClient when nil.
+	// httpx.Client(httpx.DefaultBackendTimeout) when nil.
 	Client *http.Client
 	// Queries maps a dependency name to its instant-query expression, as
 	// loaded by LoadStateQueries.
@@ -57,7 +58,7 @@ func (r *Resolver) State(ctx context.Context, dependency string) string {
 	}
 	client := r.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Client(httpx.DefaultBackendTimeout)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
+	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/tracing"
 	"github.com/ianeff/thump/internal/whir"
@@ -61,7 +61,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		}
 		topo = &WhirTopologySource{Resolver: &whir.Resolver{
 			BaseURL: cfg.PromURL,
-			Client:  http.DefaultClient,
+			Client:  httpx.Client(httpx.DefaultBackendTimeout),
 			Queries: queries,
 		}}
 	}
@@ -73,7 +73,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			_, _ = fmt.Fprintf(stderr, "load traffic queries: %v\n", err)
 			return 1
 		}
-		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: http.DefaultClient, Queries: queries}
+		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout), Queries: queries}
 	}
 
 	_, health, shutdownMetrics := beat.Metrics("rattle")
@@ -165,16 +165,29 @@ func newReconciler(promURL string, slos []SLO, topo TopologySource, traffic Traf
 	}
 }
 
+// reconcileTimeout bounds one tick against its own one-minute cadence: a
+// stalled backend must not outlive the cadence it's supposed to keep up
+// with, or ticks overlap and the beat queues nothing but dead work.
+const reconcileTimeout = 45 * time.Second
+
 // runLoop reconciles once a minute until ctx is cancelled, logging and
 // publishing every detection. A Reconcile error is logged and the tick
 // skipped, never fatal — the next tick tries again rather than exiting the
-// process over one failed scrape.
+// process over one failed scrape. Single-threaded by construction — tick N+1
+// never starts until tick N returns, which is why reconcileTimeout exists:
+// without it, one stalled Prometheus call hangs every SLO's detection until
+// SIGTERM.
 func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection], tracer trace.Tracer) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {
-		detections, err := r.Reconcile(ctx)
+		var detections []signal.Detection
+		err := beat.WithTimeout(reconcileTimeout, func(ctx context.Context) error {
+			var rErr error
+			detections, rErr = r.Reconcile(ctx)
+			return rErr
+		})(ctx)
 		if err != nil {
 			log.Error("reconcile failed", "error", err)
 		} else {

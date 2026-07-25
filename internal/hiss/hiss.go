@@ -85,7 +85,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Tracer: tracer,
 		Stages: stages,
 	}
-	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second}, tr.Tick)
+	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
 	return 0
 }
 
