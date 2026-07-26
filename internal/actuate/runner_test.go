@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
 	"github.com/ianeff/thump/internal/configtest"
+	"k8s.io/client-go/rest"
 )
 
 // recordKube is a fake actuate.Kube: it records the single request it was
@@ -23,6 +24,8 @@ type recordKube struct {
 	execNS       string
 	execSelector string
 	execCommand  []string
+	// execs accumulates every exec dispatched, in order
+	execs [][]string
 
 	// patch
 	patchGVR           [3]string // group, version, resource
@@ -38,6 +41,7 @@ type recordKube struct {
 
 func (k *recordKube) Exec(_ context.Context, namespace, selector string, command []string) error {
 	k.execNS, k.execSelector, k.execCommand = namespace, selector, command
+	k.execs = append(k.execs, command)
 	return k.err
 }
 
@@ -220,5 +224,48 @@ func TestRunner_FlagVariantOp_UnknownFlagIsAnError(t *testing.T) {
 	}
 	if k.patchName != "" {
 		t.Error("must not patch when the target flag isn't in the blob")
+	}
+}
+
+func TestNew_RefusesRatherThanHalfBuildingARunnerOffCluster(t *testing.T) {
+	if _, err := actuate.New(configtest.ShippedCatalog(t)); !errors.Is(err, rest.ErrNotInCluster) {
+		t.Errorf("New must refuse without in-cluster config, got %v", err)
+	}
+}
+
+func TestRunner_DispatchesEveryStepOfAMultiStepForwardInAuthoredOrder(t *testing.T) {
+	t.Parallel()
+	k := &recordKube{}
+	r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+	if err != nil {
+		t.Fatalf("build runner from shipped catalog: %v", err)
+	}
+
+	if err := r.Run(context.Background(), "accelerate-recovery", false, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	want := [][]string{
+		{"ceph", "config", "set", "osd", "osd_max_backfills", "16"},
+		{"ceph", "config", "set", "osd", "osd_recovery_max_active", "16"},
+	}
+	if diff := cmp.Diff(want, k.execs); diff != "" {
+		t.Error("multi-step forward drifted from the authored step list", diff)
+	}
+}
+
+func TestRunner_AMultiStepForwardStopsAtTheFirstFailingStep(t *testing.T) {
+	t.Parallel()
+	k := &recordKube{err: errors.New("connection refused")}
+	r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+	if err != nil {
+		t.Fatalf("build runner from shipped catalog: %v", err)
+	}
+
+	if err := r.Run(context.Background(), "accelerate-recovery", false, nil); err == nil {
+		t.Fatal("a failing step must surface as an error")
+	}
+	if len(k.execs) != 1 {
+		t.Errorf("ran %d steps after the first failed, want 1", len(k.execs))
 	}
 }
