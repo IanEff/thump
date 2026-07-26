@@ -84,8 +84,8 @@
   execution:
     forward:
       # Rook's operator reconciles ceph config back to its CR-declared values
-      # within milliseconds of the mutation landing (D-10) — pausing it is
-      # what makes the two ceph config set steps below stick for the window.
+      # within milliseconds of the mutation landing — pausing it is what
+      # makes the two ceph config set steps below stick for the window.
       - {verb: scale, namespace: rook-ceph, deployment: rook-ceph-operator, replicas: 0}
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_max_backfills, "16"]}
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_recovery_max_active, "16"]}

@@ -151,13 +151,13 @@ func richCatalog() *contract.StaticCatalog {
 			Target:          "p99 < 250ms",
 			Window:          10 * time.Minute,
 			AbortConditions: []string{"error_rate > 2%"},
-			SeverityQuery:   "severity_rgw_availability", // the authored 0..1 severity read, H2's watchAndSettle
+			SeverityQuery:   "severity_rgw_availability", // the authored 0..1 severity read watchAndSettle uses
 		},
 	}})
 }
 
 // restoringCatalog is richCatalog with RestoreOnSuccess authored true on the
-// throttle contract — the fixture for Q3's guarantee that a win still runs
+// throttle contract — the fixture for the guarantee that a win still runs
 // the authored undo when the catalog declares the forward mutation temporary.
 func restoringCatalog(t *testing.T) *contract.StaticCatalog {
 	t.Helper()

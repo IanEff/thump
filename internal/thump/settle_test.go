@@ -85,3 +85,38 @@ func TestWatchAndSettle_EmitsAConvergenceOutcomeAfterTheWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestWatchAndSettle_RecordsNothingWhenCtxIsCancelledMidWindow(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		inbox, outbox := t.TempDir(), t.TempDir()
+		writeGovernedYAML(t, inbox, "gov-001.yaml", approvedGoverned())
+
+		runner := &fakeRunner{}
+		tr := newTestTransport(inbox, outbox)
+		tr.Exec = thump.Live{Runner: runner}
+		tr.Reversal = &thump.ReversalWatcher{
+			Probe: thump.PrometheusConverger{Probe: &fakeProbe{answer: false, severity: 0.8, severityOK: true}},
+			Now:   frozenNow,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		if err := tr.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait() // settle goroutine reaches its timer block
+		cancel()        // shutdown mid-watch, before the success window elapses
+		synctest.Wait() // settle goroutine observes ctx.Done and returns
+
+		// A shutdown mid-watch is not a convergence read — it must not fabricate
+		// a partial_non_converging outcome, nor fire the undo.
+		if n := len(tr.Log.ByResult(outcome.ResultPartialNonConverging)); n != 0 {
+			t.Errorf("ctx-cancelled watch recorded %d partial_non_converging outcomes, want 0", n)
+		}
+		if n := len(tr.Log.ByResult(outcome.ResultSuccess)); n != 0 {
+			t.Errorf("ctx-cancelled watch recorded %d success outcomes, want 0", n)
+		}
+		if runner.gotReverse {
+			t.Error("ctx-cancelled watch fired the undo, want no-op")
+		}
+	})
+}

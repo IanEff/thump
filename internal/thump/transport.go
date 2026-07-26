@@ -208,6 +208,9 @@ func (tr *Transport) disposition(path, sub string) error {
 // shutdown.
 func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 	settlement := tr.Reversal.Watch(ctx, order)
+	if ctx.Err() != nil {
+		return // shutdown mid-watch, not a real convergence read — nothing to settle
+	}
 
 	conv := outcome.Outcome{
 		ID:               fmt.Sprintf("out:%s:conv:%d", order.SignalRef, tr.now().Unix()),
