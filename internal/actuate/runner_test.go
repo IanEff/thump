@@ -256,6 +256,7 @@ func TestRunner_DispatchesEveryStepOfAMultiStepForwardInAuthoredOrder(t *testing
 		t.Errorf("leading step scaled to %q, want the operator paused at zero replicas", k.patchBody)
 	}
 	want := [][]string{
+		{"ceph", "config", "set", "osd", "osd_mclock_override_recovery_settings", "true"},
 		{"ceph", "config", "set", "osd", "osd_max_backfills", "16"},
 		{"ceph", "config", "set", "osd", "osd_recovery_max_active", "16"},
 	}
