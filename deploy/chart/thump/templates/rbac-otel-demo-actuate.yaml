@@ -2,6 +2,10 @@
 # internal/actuate/runner.go (flagd() and restart-cart-pod) — nothing
 # broader. No paired rbac-otel-demo-read.yaml exists because nothing in
 # this domain is read through the Kube seam; state comes from Prometheus.
+#
+# Gated on domains.otelDemo.enabled: the otel-demo namespace only exists on
+# the thump-test cluster profile — see values.yaml's domains comment.
+{{- if .Values.domains.otelDemo.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -30,3 +34,4 @@ roleRef:
   kind: Role
   name: thump-otel-demo-actuate
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
