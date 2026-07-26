@@ -53,29 +53,28 @@ func New(cat *contract.StaticCatalog) (*Runner, error) {
 	return newWith(liveKube{cs: cs, dyn: dyn, cfg: cfg}, cat)
 }
 
-// Exec streams command into the first Running pod matching selector, over
-// the apiserver's pods/exec subresource — the same mechanism `kubectl exec`
-// uses. The command runs in the pod's first container (the toolbox is
-// single-container), so no container name is hardcoded. A non-zero exit or
-// transport error surfaces with the captured stderr attached.
-func (l liveKube) Exec(ctx context.Context, namespace, selector string, command []string) error {
+// execTarget resolves selector to one concrete (pod, container) pair --
+// the half of an exec decidable without a stream.
+func (l liveKube) execTarget(ctx context.Context, namespace, selector string) (pod, container string, err error) {
 	pods, err := l.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
-		return fmt.Errorf("list pods %q in %s: %w", selector, namespace, err)
+		return "", "", fmt.Errorf("list pods %q in %s: %w", selector, namespace, err)
 	}
-	pod, container, err := firstRunning(pods.Items)
+	return firstRunning(pods.Items)
+}
+
+func (l liveKube) Exec(ctx context.Context, namespace, selector string, command []string) error {
+	pod, container, err := l.execTarget(ctx, namespace, selector)
 	if err != nil {
 		return fmt.Errorf("no pod for %q in %s: %w", selector, namespace, err)
 	}
 
-	req := l.cs.CoreV1().RESTClient().Post().
-		Resource("pods").Name(pod).Namespace(namespace).SubResource("exec").
-		VersionedParams(&corev1.PodExecOptions{
-			Container: container,
-			Command:   command,
-			Stdout:    true,
-			Stderr:    true,
-		}, scheme.ParameterCodec)
+	req := l.cs.CoreV1().RESTClient().Post().Resource("pods").Name(pod).Namespace(namespace).SubResource("exec").VersionedParams(&corev1.PodExecOptions{
+		Container: container,
+		Command:   command,
+		Stdout:    true,
+		Stdin:     true,
+	}, scheme.ParameterCodec)
 
 	exec, err := remotecommand.NewSPDYExecutor(l.cfg, "POST", req.URL())
 	if err != nil {
