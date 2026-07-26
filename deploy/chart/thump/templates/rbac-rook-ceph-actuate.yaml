@@ -1,8 +1,12 @@
 # Additive to rbac-rook-ceph-read.yaml, kept in its own file so the diff
 # granting write access is reviewable on its own. Scope matches exactly the
-# two bindings in internal/actuate/runner.go — nothing broader. pods/exec
+# bindings in internal/actuate/runner.go — nothing broader. pods/exec
 # can't be pinned to one pod name across rollouts (the name isn't stable),
-# so this grants exec at namespace scope, not pod scope.
+# so this grants exec at namespace scope, not pod scope. The rook-ceph-operator
+# deployments rule is accelerate-recovery's operator-pause step (its forward
+# scales the operator to 0 so its own reconciler can't undo the ceph config
+# set that follows; the reverse scales it back) — pinned to that one
+# Deployment name, not every Deployment in the namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -16,6 +20,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]
+    resourceNames: ["rook-ceph-operator"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
