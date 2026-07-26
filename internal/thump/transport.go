@@ -199,14 +199,18 @@ func (tr *Transport) disposition(path, sub string) error {
 
 // watchAndSettle blocks for order's success window, reads convergence once,
 // and emits the terminal convergence Outcome — success when the SLO
-// recovered, partial_non_converging when it did not. On non-convergence it
-// also fires the authored reversal (unchanged from the old watchAndReverse),
-// because the undo was part of the grant hiss already approved. One window,
-// one probe read, two effects. Runs in its own goroutine so handle returns
-// immediately; ctx is the same long-lived ctx the poll loop or consumer runs
-// under, cancelled only at shutdown.
+// recovered, partial_non_converging when it did not. It then fires Undo when
+// the Settlement says to: on non-convergence always, on a win only when the
+// contract authored a restore — because either way the undo was part of the
+// grant hiss already approved. One window, one probe read, two effects. Runs
+// in its own goroutine so handle returns immediately; ctx is the same
+// long-lived ctx the poll loop or consumer runs under, cancelled only at
+// shutdown.
 func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
-	reversal, fired, severity := tr.Reversal.Watch(ctx, order)
+	settlement := tr.Reversal.Watch(ctx, order)
+	if ctx.Err() != nil {
+		return // shutdown mid-watch, not a real convergence read — nothing to settle
+	}
 
 	conv := outcome.Outcome{
 		ID:               fmt.Sprintf("out:%s:conv:%d", order.SignalRef, tr.now().Unix()),
@@ -214,9 +218,9 @@ func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 		SignalRef:        order.SignalRef,
 		ContractRef:      order.ContractRef,
 		Mode:             outcome.ModeLive,
-		Result:           settleResult(fired),
-		ObservedSeverity: severity, // nil stays nil — unmeasured never becomes a fabricated 0.0
-		Error:            settleError(fired, order.Success.Target),
+		Result:           settleResult(settlement.Converged),
+		ObservedSeverity: settlement.Severity, // nil stays nil — unmeasured never becomes a fabricated 0.0
+		Error:            settleError(settlement.Converged, order.Success.Target),
 		ExecutedAt:       tr.now(),
 	}
 	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", conv); err != nil {
@@ -224,20 +228,21 @@ func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 	}
 	tr.Log.Record(conv)
 	slog.Info("settled", "signalRef", order.SignalRef, "contractRef", order.ContractRef,
-		"result", conv.Result, "observedSeverity", logSeverity(severity), "reversed", fired)
+		"result", conv.Result, "observedSeverity", logSeverity(settlement.Severity), "fired", settlement.Fire)
 
-	if !fired {
+	if !settlement.Fire {
 		return
 	}
-	oc := tr.Exec.Execute(ctx, reversal, tr.now())
-	if err := tr.OrderPub.Publish(ctx, "thump.orders", reversal); err != nil {
-		slog.Error("publish reversal order", "signalRef", reversal.SignalRef, "err", err)
+	undo := settlement.Undo
+	oc := tr.Exec.Execute(ctx, undo, tr.now())
+	if err := tr.OrderPub.Publish(ctx, "thump.orders", undo); err != nil {
+		slog.Error("publish undo order", "signalRef", undo.SignalRef, "err", err)
 	}
 	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", oc); err != nil {
-		slog.Error("publish reversal outcome", "signalRef", reversal.SignalRef, "err", err)
+		slog.Error("publish undo outcome", "signalRef", undo.SignalRef, "err", err)
 	}
 	tr.Log.Record(oc)
-	slog.Info("outcome", "signalRef", reversal.SignalRef, "contractRef", oc.ContractRef, "acted", true, "reversal", true)
+	slog.Info("outcome", "signalRef", undo.SignalRef, "contractRef", oc.ContractRef, "acted", true, "reversal", true)
 }
 
 // logSeverity renders a nil severity as "unmeasured" for the slog line rather than
@@ -249,20 +254,20 @@ func logSeverity(s *float64) any {
 	return *s
 }
 
-// settleResult maps the watcher's did-it-reverse bool to the terminal result:
-// a fired reversal means the window elapsed unmet.
-func settleResult(fired bool) outcome.Result {
-	if fired {
-		return outcome.ResultPartialNonConverging
+// settleResult maps the Settlement's convergence verdict to the terminal
+// result — Fire plays no part, so a restored win still settles as success.
+func settleResult(converged bool) outcome.Result {
+	if converged {
+		return outcome.ResultSuccess
 	}
-	return outcome.ResultSuccess
+	return outcome.ResultPartialNonConverging
 }
 
 // settleError gives a partial the error text Auditable() demands — silence on a
 // non-convergence is exactly the accountability gap I-6 defence 4 exists to close.
-func settleError(fired bool, target string) string {
-	if fired {
-		return fmt.Sprintf("success window elapsed without meeting %q", target)
+func settleError(converged bool, target string) string {
+	if converged {
+		return ""
 	}
-	return ""
+	return fmt.Sprintf("success window elapsed without meeting %q", target)
 }

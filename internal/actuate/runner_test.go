@@ -15,10 +15,13 @@ import (
 // recordKube is a fake actuate.Kube: it records the single request it was
 // asked to make (exec, patch, or configmap read) so a test can assert the
 // exact mutation each binding dispatches, and never touches an apiserver.
-// err, when set, is returned so the failure-propagation test can force a
-// failure.
+// err, when set, is returned by Exec and GetConfigMapKey so the
+// failure-propagation tests can force a failure; patchErr is separate so a
+// multi-step forward's scale-then-exec sequence can fail mid-sequence rather
+// than always failing at the leading patch step.
 type recordKube struct {
-	err error
+	err      error
+	patchErr error
 
 	// exec
 	execNS       string
@@ -48,7 +51,7 @@ func (k *recordKube) Exec(_ context.Context, namespace, selector string, command
 func (k *recordKube) Patch(_ context.Context, group, version, resource, namespace, name string, mergePatch []byte) error {
 	k.patchGVR = [3]string{group, version, resource}
 	k.patchNS, k.patchName, k.patchBody = namespace, name, string(mergePatch)
-	return k.err
+	return k.patchErr
 }
 
 func (k *recordKube) GetConfigMapKey(_ context.Context, namespace, name, key string) (string, error) {
@@ -245,6 +248,13 @@ func TestRunner_DispatchesEveryStepOfAMultiStepForwardInAuthoredOrder(t *testing
 		t.Fatal(err)
 	}
 
+	wantGVR := [3]string{"apps", "v1", "deployments"}
+	if k.patchGVR != wantGVR || k.patchNS != "rook-ceph" || k.patchName != "rook-ceph-operator" {
+		t.Errorf("leading step patched %v %s/%s, want %v rook-ceph/rook-ceph-operator", k.patchGVR, k.patchNS, k.patchName, wantGVR)
+	}
+	if k.patchBody != `{"spec":{"replicas":0}}` {
+		t.Errorf("leading step scaled to %q, want the operator paused at zero replicas", k.patchBody)
+	}
 	want := [][]string{
 		{"ceph", "config", "set", "osd", "osd_max_backfills", "16"},
 		{"ceph", "config", "set", "osd", "osd_recovery_max_active", "16"},
@@ -265,7 +275,10 @@ func TestRunner_AMultiStepForwardStopsAtTheFirstFailingStep(t *testing.T) {
 	if err := r.Run(context.Background(), "accelerate-recovery", false, nil); err == nil {
 		t.Fatal("a failing step must surface as an error")
 	}
+	if k.patchName == "" {
+		t.Error("the leading scale step must still run before the failing exec step")
+	}
 	if len(k.execs) != 1 {
-		t.Errorf("ran %d steps after the first failed, want 1", len(k.execs))
+		t.Errorf("ran %d exec steps after the first failed, want 1", len(k.execs))
 	}
 }
