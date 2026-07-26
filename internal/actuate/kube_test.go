@@ -55,7 +55,18 @@ func TestFirstRunning_ChoosesAnExecTargetOrRefuses(t *testing.T) {
 			pods: []corev1.Pod{running("toolbox-a", "ceph-tools")},
 			want: [2]string{"toolbox-a", "ceph-tools"},
 		},
-		// ...the rest of the plan's table...
+		"firstRunning refuses when the pod list is empty": {
+			pods:    []corev1.Pod{},
+			wantErr: true,
+		},
+		"firstRunning refuses when no pod is Running": {
+			pods:    []corev1.Pod{phase("toolbox-a", corev1.PodPending, "ceph-tools")},
+			wantErr: true,
+		},
+		"firstRunning refuses when the Running pod has no containers": {
+			pods:    []corev1.Pod{running("toolbox-a")},
+			wantErr: true,
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

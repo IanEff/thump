@@ -73,7 +73,7 @@ func (l liveKube) Exec(ctx context.Context, namespace, selector string, command 
 		Container: container,
 		Command:   command,
 		Stdout:    true,
-		Stdin:     true,
+		Stderr:    true,
 	}, scheme.ParameterCodec)
 
 	exec, err := remotecommand.NewSPDYExecutor(l.cfg, "POST", req.URL())
