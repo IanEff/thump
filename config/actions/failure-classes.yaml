@@ -35,8 +35,10 @@
     a service is returning errors on its own request or RPC path independent of load or
     capacity — an injected fault or bad config, not a dependency being overloaded
     (dependency_saturation) or a resource running out of headroom (resource_exhaustion). Cite
-    the service's own error-rate evidence; the fix is disabling the fault, not scaling or
-    waiting.
+    the service's own error-rate evidence. The fix is whatever the domain's own catalog offers
+    for this class — disabling an injected fault (OTel demo) or shedding load off the failing
+    path (acme) — never scaling or waiting on a dependency or resource, since that would be
+    dependency_saturation or resource_exhaustion instead.
 - class: unknown
   description: >-
     the evidence doesn't clearly support any of the above — call

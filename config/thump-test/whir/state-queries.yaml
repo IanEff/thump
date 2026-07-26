@@ -49,3 +49,14 @@ queries:
     query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="checkout"})'
   - dependency: flagd
     query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="flagd"})'
+
+  # ── acme domain (docs/onboarding.md operator walkthrough, live) ─────────
+  # acme-db/acme-cache are separate Services fronting the SAME synthetic pod
+  # as acme-api, each scraped under its own ServiceMonitor with a forced
+  # `job` relabel — so up{job="acme-db"}/up{job="acme-cache"} are Prometheus's
+  # own per-target scrape-health series, not anything acme's /metrics body
+  # emits itself. VERIFIED live 2026-07-26.
+  - dependency: acme-db
+    query: 'max(up{job="acme-db"})'
+  - dependency: acme-cache
+    query: 'max(up{job="acme-cache"})'

@@ -233,3 +233,37 @@
     window: 600000000000 # 10 * time.Minute, in nanoseconds
     severityQuery: severity_rgw_saturation
     severityReductionPct: 0.7
+
+# The acme domain (docs/onboarding.md operator walkthrough, live) — a
+# synthetic third domain, orthogonal to Ceph and OTel demo, standing in for
+# "someone who has never onboarded a domain" following the doc's own example
+# verbatim (test/onboarding/testdata/acme/actions/catalog.yaml).
+- name: acme-shed-load
+  applicableFailureClasses:
+    - service_failure
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Shed load by scaling acme-api down to its minimum serving replicas,
+      trading throughput for stability while the fault clears; reversible.
+    scopeParameters:
+      serving_replicas:
+        min: 1
+        max: 10
+        default: 1
+  blastTier: low
+  reversal:
+    method: restore-acme-capacity
+    fallback: page-oncall
+  execution:
+    forward:
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 1}
+    reverse:
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 2}
+  successCriteria:
+    metric: acme_api_error_ratio
+    target: "acme_api_error_ratio < 0.01"
+    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    severityQuery: acme_api_error_ratio
+    severityReductionPct: 0.1
