@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/configtest"
 	"github.com/ianeff/thump/internal/contract"
@@ -79,6 +81,32 @@ func catalogInvariants() map[string]func(contract.ActionContract) error {
 			}
 			return nil
 		},
+	}
+}
+
+// TestShippedCatalog_RestoreOnSuccessMatchesEachActionsAuthoredIntent pins
+// restoreOnSuccess per action so the judgment call stays visible in a diff
+// rather than silent in YAML: true only for a temporary tuning knob or hold
+// whose authored default is the steady state, false everywhere the win
+// itself is the remediation.
+func TestShippedCatalog_RestoreOnSuccessMatchesEachActionsAuthoredIntent(t *testing.T) {
+	t.Parallel()
+	want := map[string]bool{
+		"hold-rebalance":                  true,
+		"accelerate-recovery":             true,
+		"disable-product-catalog-failure": false,
+		"disable-cart-failure":            false,
+		"restart-cart-pod":                false,
+		"throttle-non-critical-paths":     false,
+	}
+
+	contracts := configtest.ShippedCatalog(t).Contracts()
+	got := make(map[string]bool, len(contracts))
+	for _, c := range contracts {
+		got[c.Name] = c.Reversal.RestoreOnSuccess
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("restoreOnSuccess drifted from the authored per-action intent (-want +got)", diff)
 	}
 }
 

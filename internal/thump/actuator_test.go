@@ -118,3 +118,20 @@ func TestRender_GoldenPath_RendersTheWholeOrder(t *testing.T) {
 		t.Error("rendered order drifted from the golden fixture (-want +got)", diff)
 	}
 }
+
+func TestRender_CarriesRestoreOnSuccessWhenTheCandidateProposedNoReversalPath(t *testing.T) {
+	t.Parallel()
+	// RestoreOnSuccess is the catalog's fact, not the model's. A Candidate that
+	// proposed no ReversalPath must not be able to leave the Rook operator
+	// scaled to zero.
+	g := approvedGoverned()
+	g.Set.Proposals[0].ReversalPath = nil
+
+	got, err := (thump.Actuator{}).Render(g, restoringCatalog(t), frozenNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Reversal.RestoreOnSuccess {
+		t.Error("Render dropped a catalog-authored restore because clank proposed no reversal path")
+	}
+}

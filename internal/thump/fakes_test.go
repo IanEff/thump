@@ -156,6 +156,19 @@ func richCatalog() *contract.StaticCatalog {
 	}})
 }
 
+// restoringCatalog is richCatalog with RestoreOnSuccess authored true on the
+// throttle contract — the fixture for Q3's guarantee that a win still runs
+// the authored undo when the catalog declares the forward mutation temporary.
+func restoringCatalog(t *testing.T) *contract.StaticCatalog {
+	t.Helper()
+	ct, ok := richCatalog().ByName("throttle-non-critical-paths")
+	if !ok {
+		t.Fatal("richCatalog missing throttle-non-critical-paths")
+	}
+	ct.Reversal.RestoreOnSuccess = true
+	return contract.NewStaticCatalog([]contract.ActionContract{ct})
+}
+
 func goldenOrder() thump.Order {
 	return thump.Order{
 		ID:          "ord:slo_burn:ceph-rgw:1000",

@@ -38,12 +38,14 @@ const (
 )
 
 // ReversalPlan is how to undo an Order, carried over from the granted
-// Candidate's ReversalPath plus the ActionContract's authored Fallback. A
-// Candidate with no ReversalPath renders a zero-value ReversalPlan — Render
-// does not invent one.
+// Candidate's ReversalPath plus the ActionContract's authored Reversal. A
+// Candidate with no ReversalPath still carries Fallback and RestoreOnSuccess
+// — those two are the catalog's facts, never the model's, so Render does not
+// gate them behind whether clank proposed a path.
 type ReversalPlan struct {
-	Method   string `json:"method,omitempty" yaml:"method,omitempty"`     // candidate.ReversalPath.Method — how to reverse the action
-	Watching string `json:"watching,omitempty" yaml:"watching,omitempty"` // candidate.ReversalPath.Watching — the signal that says a reversal is needed
-	Trigger  string `json:"trigger,omitempty" yaml:"trigger,omitempty"`   // candidate.ReversalPath.Trigger — the condition on that signal that fires the reversal
-	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"` // contract.Reversal.Fallback — the authored fallback if the reversal method itself fails
+	Method           string `json:"method,omitempty" yaml:"method,omitempty"`                     // candidate.ReversalPath.Method — how to reverse the action
+	Watching         string `json:"watching,omitempty" yaml:"watching,omitempty"`                 // candidate.ReversalPath.Watching — the signal that says a reversal is needed
+	Trigger          string `json:"trigger,omitempty" yaml:"trigger,omitempty"`                   // candidate.ReversalPath.Trigger — the condition on that signal that fires the reversal
+	Fallback         string `json:"fallback,omitempty" yaml:"fallback,omitempty"`                 // contract.Reversal.Fallback — the authored fallback if the reversal method itself fails
+	RestoreOnSuccess bool   `json:"restoreOnSuccess,omitempty" yaml:"restoreOnSuccess,omitempty"` // contract.Reversal.RestoreOnSuccess — the catalog's declaration, never derived from the Candidate
 }

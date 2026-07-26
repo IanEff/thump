@@ -165,8 +165,9 @@ type Range struct {
 // Method naming something Execution.Reverse doesn't do is a config error no
 // loader will catch.
 type Reversal struct {
-	Method   string `json:"method,omitempty" yaml:"method,omitempty"`     // operator-facing name for the undo; reaches the audit trail as Order.Reversal.Method and the Candidate's ReversalPath
-	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"` // what to do when the undo itself fails — hiss escalates rather than retrying
+	Method           string `json:"method,omitempty" yaml:"method,omitempty"`                     // operator-facing name for the undo; reaches the audit trail as Order.Reversal.Method and the Candidate's ReversalPath
+	Fallback         string `json:"fallback,omitempty" yaml:"fallback,omitempty"`                 // what to do when the undo itself fails — hiss escalates rather than retrying
+	RestoreOnSuccess bool   `json:"restoreOnSuccess,omitempty" yaml:"restoreOnSuccess,omitempty"` // the forward mutation is temporary — a met success window still runs Execution.Reverse, false leaves a win applied
 }
 
 type SuccessCriteria struct {

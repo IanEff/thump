@@ -11,17 +11,58 @@ import (
 	"github.com/ianeff/thump/internal/thump"
 )
 
-func TestReversalWatcher_FiresAReversalWhenTheWindowElapsesWithCriteriaUnmet(t *testing.T) {
+func TestWatch_FiresTheUndoOnALossOrOnAnAuthoredRestore(t *testing.T) {
+	cases := map[string]struct {
+		probe            thump.Converger
+		restoreOnSuccess bool
+		wantConverged    bool
+		wantFire         bool
+	}{
+		"Watch fires the undo after a met window when the contract authored a restore": {
+			probe: alwaysConverges{}, restoreOnSuccess: true,
+			wantConverged: true, wantFire: true,
+		},
+		"Watch leaves a met window alone when no restore is authored": {
+			probe: alwaysConverges{}, restoreOnSuccess: false,
+			wantConverged: true, wantFire: false,
+		},
+		"Watch fires the reversal after an unmet window whatever the restore flag says": {
+			probe: neverConverges{}, restoreOnSuccess: false,
+			wantConverged: false, wantFire: true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				o := goldenOrder()
+				o.Reversal.RestoreOnSuccess = tc.restoreOnSuccess
+				w := thump.ReversalWatcher{Probe: tc.probe, Now: frozenNow}
+
+				got := w.Watch(context.Background(), o)
+
+				if diff := cmp.Diff(tc.wantConverged, got.Converged); diff != "" {
+					t.Error("wrong convergence verdict", diff)
+				}
+				if diff := cmp.Diff(tc.wantFire, got.Fire); diff != "" {
+					t.Error("wrong undo decision", diff)
+				}
+				if tc.wantFire && got.Undo.Kind != thump.OrderReversal {
+					t.Errorf("an undo must be Kind=%q so a disarmed kill-switch still lets it through, got %q",
+						thump.OrderReversal, got.Undo.Kind)
+				}
+			})
+		})
+	}
+}
+
+func TestWatch_RendersTheUndoOrderFromTheForwardsAuthoredReversal(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := thump.ReversalWatcher{Probe: neverConverges{}, Now: frozenNow}
 
-		got, fired, severity := w.Watch(context.Background(), goldenOrder())
+		got := w.Watch(context.Background(), goldenOrder())
 
-		if !fired {
-			t.Fatal("an unmet success window must fire a reversal")
-		}
-		if severity == nil || *severity != 0.9 {
-			t.Errorf("Watch must hand back the probe's severity reading, got %v", severity)
+		if got.Severity == nil || *got.Severity != 0.9 {
+			t.Errorf("Watch must hand back the probe's severity reading, got %v", got.Severity)
 		}
 		want := thump.Order{
 			ID:          "rev:slo_burn:ceph-rgw:1000",
@@ -33,23 +74,20 @@ func TestReversalWatcher_FiresAReversalWhenTheWindowElapsesWithCriteriaUnmet(t *
 			Reversal:    goldenOrder().Reversal,
 			RenderedAt:  frozenNow(),
 		}
-		if diff := cmp.Diff(want, got); diff != "" {
-			t.Error("reversal order drifted from the golden fixture (-want +got)", diff)
+		if diff := cmp.Diff(want, got.Undo); diff != "" {
+			t.Error("undo order drifted from the golden fixture (-want +got)", diff)
 		}
 	})
 }
 
-func TestReversalWatcher_HoldsWhenTheCriteriaAreMet(t *testing.T) {
+func TestWatch_HandsBackTheProbesSeverityReadingEvenWhenConverged(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := thump.ReversalWatcher{Probe: alwaysConverges{}, Now: frozenNow}
 
-		got, fired, severity := w.Watch(context.Background(), goldenOrder())
+		got := w.Watch(context.Background(), goldenOrder())
 
-		if fired {
-			t.Errorf("a met success window must fire no reversal, got %+v", got)
-		}
-		if severity == nil || *severity != 0.05 {
-			t.Errorf("Watch must hand back the probe's severity reading even when converged, got %v", severity)
+		if got.Severity == nil || *got.Severity != 0.05 {
+			t.Errorf("Watch must hand back the probe's severity reading even when converged, got %v", got.Severity)
 		}
 	})
 }
@@ -57,15 +95,15 @@ func TestReversalWatcher_HoldsWhenTheCriteriaAreMet(t *testing.T) {
 func TestReversalWatcher_AReversalSurvivesADisarmedKillSwitch(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := thump.ReversalWatcher{Probe: neverConverges{}, Now: frozenNow}
-		reversal, fired, _ := w.Watch(context.Background(), goldenOrder())
-		if !fired {
+		settlement := w.Watch(context.Background(), goldenOrder())
+		if !settlement.Fire {
 			t.Fatal("setup: expected a reversal to fire")
 		}
 
 		spy := &spyExecutor{inner: thump.DryRun{}}
 		gated := thump.GatedExecutor{Inner: spy, Switch: fakeSwitch(false)} // disarmed
 
-		got := gated.Execute(context.Background(), reversal, frozenNow())
+		got := gated.Execute(context.Background(), settlement.Undo, frozenNow())
 
 		if !spy.called {
 			t.Error("a disarmed kill-switch must still let an approved reversal through — blocking cleanup strands infrastructure half-changed")

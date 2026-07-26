@@ -24,20 +24,34 @@ type ReversalWatcher struct {
 	Now   func() time.Time // overridable clock for the reversal Order's timestamp; nil means time.Now
 }
 
-// Watch blocks for o's success Window, then returns the reversal Order if o
-// still hasn't converged, or (Order{}, false) if it has — a cancelled ctx
-// fires nothing.
-func (w ReversalWatcher) Watch(ctx context.Context, o Order) (Order, bool, *float64) {
+// Settlement is what one post-window probe read decided: whether the success
+// criteria were met, and the undo Order to run — a restore after a win or a
+// reversal after a loss. Converged and Fire are separate fields because a
+// restore is a success: collapsing them records a met window as a
+// non-convergence.
+type Settlement struct {
+	Converged bool     // the terminal outcome's input — success vs partial_non_converging
+	Fire      bool     // whether Undo runs at all; true on non-convergence, or on a win the contract authored a restore for
+	Undo      Order    // the reversal Order, zero when Fire is false
+	Severity  *float64 // nil stays nil — unmeasured never becomes a fabricated 0.0
+}
+
+// Watch blocks for o's success Window, then reports what one post-window
+// probe read decided. Fire is true on a loss whatever o.Reversal declares,
+// and on a win only when o.Reversal.RestoreOnSuccess is authored true — a
+// cancelled ctx fires nothing.
+func (w ReversalWatcher) Watch(ctx context.Context, o Order) Settlement {
 	select {
 	case <-ctx.Done():
-		return Order{}, false, nil
+		return Settlement{}
 	case <-time.After(o.Success.Window):
 	}
 	converged, severity := w.Probe.Settle(ctx, o)
-	if converged {
-		return Order{}, false, severity
+	fire := !converged || o.Reversal.RestoreOnSuccess
+	if !fire {
+		return Settlement{Converged: converged, Severity: severity}
 	}
-	return reversalOf(o, w.now()), true, severity
+	return Settlement{Converged: converged, Fire: true, Undo: reversalOf(o, w.now()), Severity: severity}
 }
 
 func (w ReversalWatcher) now() time.Time {

@@ -38,6 +38,9 @@
   reversal:
     method: release-rebalance
     fallback: page-oncall
+    # noout is a hold, not a fix — left set after a win, it suppresses every
+    # future OSD-out, so a met window still has to release it.
+    restoreOnSuccess: true
   execution:
     forward:
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, osd, set, noout]}
@@ -74,13 +77,24 @@
   reversal:
     method: restore-recovery-defaults
     fallback: page-oncall
+    # The tuning is temporary by nature — the authored ceph defaults are the
+    # steady state, and a win that left the storage operator scaled to zero
+    # would be worse than the no-op this replaces.
+    restoreOnSuccess: true
   execution:
     forward:
+      # Rook's operator reconciles ceph config back to its CR-declared values
+      # within milliseconds of the mutation landing (D-10) — pausing it is
+      # what makes the two ceph config set steps below stick for the window.
+      - {verb: scale, namespace: rook-ceph, deployment: rook-ceph-operator, replicas: 0}
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_max_backfills, "16"]}
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_recovery_max_active, "16"]}
     reverse:
-      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_max_backfills]}
+      # Restore the knobs first, unpause the operator last, so Rook comes
+      # back to find its declared values already in place.
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_recovery_max_active]}
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_max_backfills]}
+      - {verb: scale, namespace: rook-ceph, deployment: rook-ceph-operator, replicas: 1}
   successCriteria:
     metric: pgs_degraded
     target: "pgs_degraded == 0"
