@@ -98,6 +98,7 @@ func TestShippedCatalog_RestoreOnSuccessMatchesEachActionsAuthoredIntent(t *test
 		"disable-cart-failure":            false,
 		"restart-cart-pod":                false,
 		"throttle-non-critical-paths":     false,
+		"acme-shed-load":                  false,
 	}
 
 	contracts := configtest.ShippedCatalog(t).Contracts()

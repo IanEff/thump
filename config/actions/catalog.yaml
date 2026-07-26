@@ -85,8 +85,12 @@
     forward:
       # Rook's operator reconciles ceph config back to its CR-declared values
       # within milliseconds of the mutation landing — pausing it is what
-      # makes the two ceph config set steps below stick for the window.
+      # makes the ceph config set steps below stick for the window.
       - {verb: scale, namespace: rook-ceph, deployment: rook-ceph-operator, replicas: 0}
+      # This cluster's default osd_op_queue=mclock_scheduler silently ignores
+      # osd_max_backfills/osd_recovery_max_active unless this override is set
+      # first — without it, the two sets below return exit 0 but never stick.
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_mclock_override_recovery_settings, "true"]}
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_max_backfills, "16"]}
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_recovery_max_active, "16"]}
     reverse:
@@ -94,6 +98,7 @@
       # back to find its declared values already in place.
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_recovery_max_active]}
       - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, rm, osd, osd_max_backfills]}
+      - {verb: exec, namespace: rook-ceph, selector: app=rook-ceph-tools, command: [ceph, config, set, osd, osd_mclock_override_recovery_settings, "false"]}
       - {verb: scale, namespace: rook-ceph, deployment: rook-ceph-operator, replicas: 1}
   successCriteria:
     metric: pgs_degraded
@@ -228,3 +233,37 @@
     window: 600000000000 # 10 * time.Minute, in nanoseconds
     severityQuery: severity_rgw_saturation
     severityReductionPct: 0.7
+
+# The acme domain (docs/onboarding.md operator walkthrough, live) — a
+# synthetic third domain, orthogonal to Ceph and OTel demo, standing in for
+# "someone who has never onboarded a domain" following the doc's own example
+# verbatim (test/onboarding/testdata/acme/actions/catalog.yaml).
+- name: acme-shed-load
+  applicableFailureClasses:
+    - service_failure
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Shed load by scaling acme-api down to its minimum serving replicas,
+      trading throughput for stability while the fault clears; reversible.
+    scopeParameters:
+      serving_replicas:
+        min: 1
+        max: 10
+        default: 1
+  blastTier: low
+  reversal:
+    method: restore-acme-capacity
+    fallback: page-oncall
+  execution:
+    forward:
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 1}
+    reverse:
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 2}
+  successCriteria:
+    metric: acme_api_error_ratio
+    target: "acme_api_error_ratio < 0.01"
+    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    severityQuery: severity_acme_api_availability
+    severityReductionPct: 0.1

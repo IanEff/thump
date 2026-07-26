@@ -71,6 +71,21 @@ thump:
   killSwitch:
     armed: false
 
+# otel-demo and acme are per-cluster-profile domains, not universal ones —
+# only thump-test has those namespaces. Their RBAC (Role/RoleBinding) targets
+# a fixed namespace with resourceNames pinned to that domain's app; unlike
+# serviceMonitor/cilium below, chart-lint can't catch a mismatch here (the
+# template is schema-valid whether or not the namespace exists) — it fails at
+# apply time, on a live cluster, the first time you deploy this chart to a
+# profile that lacks the domain. Off by default so ceph-lab/rook-gke/
+# rook-gce-k3s still deploy clean; enable per-cluster in that profile's
+# tilt-values file only when the domain is actually present.
+domains:
+  otelDemo:
+    enabled: false
+  acme:
+    enabled: false
+
 # Cilium clusters give the kube-apiserver a reserved security identity that a
 # plain NetworkPolicy ipBlock rule cannot match — so a live thump can't reach
 # the apiserver to actuate (its client-go calls time out) unless a

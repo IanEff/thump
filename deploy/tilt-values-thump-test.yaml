@@ -37,6 +37,14 @@ image:
 
 configProfile: thump-test
 
+# Both domains live only on this profile — see values.yaml's domains
+# comment for why this can't just render unconditionally everywhere.
+domains:
+  otelDemo:
+    enabled: true
+  acme:
+    enabled: true
+
 prometheus:
   url: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
 

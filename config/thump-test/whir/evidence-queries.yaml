@@ -144,3 +144,21 @@ queries:
   # would overclaim which node it's actually about.
   - name: demo_pods_not_running
     query: count(kube_pod_status_phase{namespace="otel-demo",phase!="Running"} == 1) or vector(0)
+
+  # ── group 9 · acme domain (docs/onboarding.md operator walkthrough, live) ─
+  # acme_api_requests_total{status} is the synthetic pod's own in-memory
+  # counter (no job filter needed — acme-api/acme-db/acme-cache all scrape
+  # identical /metrics content, so summing across jobs triples numerator and
+  # denominator equally and the ratio is unaffected). VERIFIED live 2026-07-26.
+  - name: acme_api_error_ratio
+    query: sum(rate(acme_api_requests_total{status="500"}[5m])) / sum(rate(acme_api_requests_total[5m]))
+    subject: acme-api
+  - name: acme_db_connections_saturation
+    query: max(acme_db_connections_active) / max(acme_db_connections_max)
+    subject: acme-db
+  - name: slo_burn_acme_api
+    query: slo:current_burn_rate:ratio{sloth_id="acme-api-availability"}
+    subject: acme-api
+  - name: severity_acme_api_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="acme-api-availability"}
+    subject: acme-api

@@ -124,3 +124,27 @@ slos:
         role: blocking
       - name: flagd
         role: blocking
+
+  # ── acme domain (docs/onboarding.md operator walkthrough, live) ─────────
+  # Third orthogonal domain, additive per the same convention as OTel demo:
+  # shares no signal, failure class instance, or catalog action target with
+  # Ceph or OTel demo. Fault control is a ConfigMap-mounted flag file
+  # (acme-fault-flag/target, "/" or "/fail") the synthetic acme-api pod
+  # polls — see the ad-hoc manifest applied for this walkthrough, not part
+  # of this repo's GitOps tree. Backed by a hand-authored Sloth
+  # PrometheusServiceLevel (service "acme-api", name "availability" ->
+  # sloth_id "acme-api-availability", matching this id exactly) applied
+  # directly to the monitoring namespace under its own PrometheusRule name
+  # (acme-generated-rules) rather than folding into
+  # applications/infrastructure/sloth/ in the rig repo, since this domain is
+  # a walkthrough fixture, not a durable addition to the rig.
+  - id: acme-api-availability
+    object: acme-api
+    tier: tier-1
+    objective: 0.99
+    contractRef: acme-api-availability:v1
+    dependencies:
+      - name: acme-db
+        role: blocking
+      - name: acme-cache
+        role: optional

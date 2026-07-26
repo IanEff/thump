@@ -1,0 +1,32 @@
+# Scope matches exactly acme-shed-load's execution block
+# (config/actions/catalog.yaml) — nothing broader. acme is the synthetic
+# third domain from the docs/onboarding.md operator walkthrough.
+#
+# Gated on domains.acme.enabled: the acme namespace only exists on the
+# thump-test cluster profile — see values.yaml's domains comment.
+{{- if .Values.domains.acme.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-acme-actuate
+  namespace: acme
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]
+    resourceNames: ["acme-api"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-acme-actuate
+  namespace: acme
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: Role
+  name: thump-acme-actuate
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
