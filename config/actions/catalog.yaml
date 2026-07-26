@@ -265,5 +265,5 @@
     metric: acme_api_error_ratio
     target: "acme_api_error_ratio < 0.01"
     window: 300000000000 # 5 * time.Minute, in nanoseconds
-    severityQuery: acme_api_error_ratio
+    severityQuery: severity_acme_api_availability
     severityReductionPct: 0.1
