@@ -10,6 +10,31 @@ it. (GitHub also generates a commit-based release changelog per tag; that's
 a different artifact — see `.goreleaser.yml`'s `changelog:` block — and
 doesn't replace this one.)
 
+## [Unreleased]
+
+### Changed
+
+- **The public docs are rewritten for a reader with no internal context.**
+  `docs/architecture.md`, `docs/invariants.md`, and `docs/onboarding.md` were
+  provisional ports from the author's private design notes, banners and all;
+  they're now written for outside developers and users. The provisional banners
+  are gone because the rewrite is done, not because someone forgot to remove
+  them. `docs/invariants.md` regains the per-rule sourcing the port dropped —
+  which is the property that makes "nothing here is vibes" checkable rather than
+  asserted — plus, for each rule, the test that would go red.
+- **New: `docs/design-decisions.md`** — the public record of where this project
+  knowingly departs from the book it's built from, what it does instead, and
+  why, including the entries that are parked and the ones that were declined
+  with reasons. The dated working journal stays private; everything
+  load-bearing from it is here.
+- `README.md` reorganized around the question an outside reader actually
+  arrives with — *what stops this from doing something stupid to my cluster* —
+  and corrected where it had drifted: the operator surface (`trim`) is built,
+  not just designed; the kill switch's reversal exemption is stated rather than
+  glossed; the undo's success-restore trigger is described.
+- Removed `docs/phase-k-live-rig-test-plan.md`, the last internal working
+  document in the public tree.
+
 ## [0.1.0] — first tagged build
 
 The first release a stranger can download and run without a Go toolchain.

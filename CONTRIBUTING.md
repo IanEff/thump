@@ -64,7 +64,13 @@ The regressions that matter most are the ones that erode a never-clause:
 - a new noun that isn't already in the vocabulary — every piece of state should
   point to exactly one boundary object.
 
-`docs/invariants.md` has the full list and the four-question smell test.
+`docs/invariants.md` has the full list, the four-question smell test, and the
+test that would go red for each rule. If you're about to argue that a rule
+should bend, check `docs/design-decisions.md` first — it records every place
+this project already decided to depart from the book it's built from, what it
+does instead, and why. A departure that isn't written down is drift, and the
+entry goes in *before* the change, not after someone notices.
+
 Found an actual vulnerability rather than a design question? See
 `SECURITY.md` for how to report it privately instead of opening a PR.
 
