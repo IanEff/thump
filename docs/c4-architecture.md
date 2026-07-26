@@ -1,6 +1,12 @@
-# C4 Architecture Model: `thump` Agentic SRE Engine
+# thump — C4 diagrams
 
-> **System Overview**: `thump` is a general-purpose, DRAL-based (Detect, Reason, Authorize/Govern, Act, Learn) agentic SRE system designed for Kubernetes clusters (testing against Rook/Ceph). It implements a 5-beat pipeline (`rattle` → `clank` → `hiss` → `thump` → `click`) governed by strict safety invariants (C4 / Autonomy boundaries, hard kill switch, multi-source evidence floors, and reversible contracts).
+The same architecture `architecture.md` describes in prose, drawn at four levels
+of zoom: system context, containers, components, and a golden-path sequence.
+Diagrams are rendered SVGs with their Mermaid (and D2) source inline, so you can
+edit the source rather than the image.
+
+**Read `architecture.md` first** — it explains *why* the boundaries fall where
+they do. These are the map, not the argument.
 
 ---
 
