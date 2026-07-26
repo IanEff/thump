@@ -4,6 +4,10 @@ vars:
   PROJECT: thump
   REGISTRY: '{{.REGISTRY | default "ghcr.io/ianeff"}}'
   BEATS: "clank rattle hiss thump trim"
+  # The four long-running services that actually run as cluster pods. trim is
+  # an operator-run CLI — no internal/beat runtime, no Helm Deployment — and
+  # ships only as a binary (build/goreleaser), never as a container image.
+  SERVICE_BEATS: "clank rattle hiss thump"
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo dev
   COMMIT:
@@ -105,7 +109,7 @@ tasks:
       - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
   build:
-    desc: Build all four beats to bin/ (version/commit/date ldflags, -trimpath)
+    desc: Build all five beats to bin/ (version/commit/date ldflags, -trimpath)
     cmds:
       - mkdir -p bin
       - for beat in {{.BEATS}}; do go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/$beat ./cmd/$beat || exit 1; done
@@ -121,11 +125,11 @@ tasks:
   # pin and verify by digest, a tag is a pointer, not an identity).
   # Override the destination with `task images REGISTRY=ghcr.io/whoever`.
   images:
-    desc: Multi-arch (linux/amd64,linux/arm64) container per beat, SBOM + provenance, pushed to REGISTRY
+    desc: Multi-arch (linux/amd64,linux/arm64) container per service, SBOM + provenance, pushed to REGISTRY
     cmds:
       - mkdir -p bin/metadata
       - |
-        for beat in {{.BEATS}}; do
+        for beat in {{.SERVICE_BEATS}}; do
           echo "building {{.REGISTRY}}/thump-$beat:{{.COMMIT}} (linux/amd64,linux/arm64)"
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -161,7 +165,7 @@ tasks:
     deps: [images]
     cmds:
       - |
-        for beat in {{.BEATS}}; do
+        for beat in {{.SERVICE_BEATS}}; do
           digest=$(jq -r '."containerimage.digest"' bin/metadata/$beat.json)
           echo "signing {{.REGISTRY}}/thump-$beat@$digest"
           timeout 120 go run github.com/sigstore/cosign/v2/cmd/cosign@latest sign --yes \

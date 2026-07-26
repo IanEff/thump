@@ -57,12 +57,14 @@ execution binding — onboards entirely as operator-authored YAML, no Go
 required. `test/onboarding` drives a synthetic domain through all five
 beats hermetically, with no live cluster and no API key, as the proof.
 
-**Operational hardening.** Container images are built multi-arch
-(linux/amd64, linux/arm64) with SBOM and provenance attestation and signed
-keylessly via Sigstore/cosign; every container runs with a hardened
-security context and liveness/readiness endpoints; Cilium network
-policies scope egress per container; Renovate keeps `go.mod`,
-`Dockerfile`, and GitHub Actions dependencies current.
+**Operational hardening.** The four long-running beats' container images
+are built multi-arch (linux/amd64, linux/arm64) with SBOM and provenance
+attestation and signed keylessly via Sigstore/cosign, each running with a
+hardened security context and liveness/readiness endpoints; Cilium
+network policies scope egress per container. `trim` ships as a plain
+downloadable binary instead — it's an operator-run CLI, not a cluster
+service. Renovate keeps `go.mod`, `Dockerfile`, and GitHub Actions
+dependencies current.
 
 **A gated CI chain** (`task ci`): fmt-check → vet → lint → vulncheck →
 Helm chart-lint → race-enabled tests → build, plus a printed (not gated)
