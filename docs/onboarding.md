@@ -1,8 +1,9 @@
 # Onboarding a domain to thump
 
-**The claim:** making thump watch, reason about, govern, and remediate a system
-it has never heard of takes **no Go**. Seven authored YAML files are the whole
-surface.
+**The claim:** making thump reason about, govern, and remediate a system it has
+never heard of takes **no Go**. Seven authored YAML files are the whole
+surface for that. Detection is one further requirement, live-only and outside
+those seven files — see the note at the end of §3.1.
 
 **The proof:** `test/onboarding/onboard_test.go`'s
 `TestOperator_OnboardsANewDomainInConfigAlone` onboards a synthetic service
@@ -116,6 +117,20 @@ slos:
   a healthy system look identical from downstream, and that's the failure mode
   the whole engine is organized against.
 
+> **An 8th requirement, outside these seven files: a live burn-rate source.**
+> `rattle`'s `PromSource.BurnSamples` (`internal/rattle/source.go`) queries
+> Prometheus for `slo:current_burn_rate:ratio{sloth_id=%q}`, keyed by **this
+> file's `id` field** — not `contractRef`, which is a pass-through string with
+> no code linkage to Prometheus; it only resolves the action-catalog entry.
+> Nothing in the seven authored files produces that series. You need a Sloth
+> `PrometheusServiceLevel` CR rendered with `sloth generate` (service + name
+> concatenated as `{service}-{name}` must equal this `id` exactly), or an
+> equivalent hand-written recording rule, applied to the cluster. Skip this
+> and every other file can be authored correctly and rattle will still never
+> detect anything — dry run and `task ci` won't catch the gap either, since
+> the onboarding proof test fabricates a `signal.Detection` directly rather
+> than exercising `rattle.Reconcile`.
+
 ### 3.2 · `whir/catalog-info.yaml` — the dependency graph
 
 Backstage `catalog-info` shape, so you can likely reuse what you already have.
@@ -186,6 +201,16 @@ The six class identifiers are the engine's reasoning vocabulary:
 **You author what each one means in your domain and which actions serve it — not
 a seventh class.** Every identifier needs a non-empty description. A class the
 model can name but was never given the meaning of is a class it will guess at.
+
+**This file is global, shared across every onboarded domain — not yours to
+author from a blank slate.** A class's description has to stay true for every
+action filed under it, in every domain, not just the one you're adding. Read
+the existing description before you widen it; if your new action's fix shape
+doesn't match what's already written there, either the description needs
+broadening (name both fix shapes explicitly) or your action belongs under a
+different class. A description that quietly contradicts one of its own
+actions is exactly the mislabel risk the discriminator advice above warns
+about, just introduced by the file being edited instead of by the model.
 
 Write the *discriminator* explicitly. Not "the dependency is saturated" but "cite
 the dependency's own saturation evidence, not just elevated error ratio on the
