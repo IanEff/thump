@@ -1,5 +1,5 @@
-//go:build integration
-// +build integration
+//go:build eval
+// +build eval
 
 package integration_test
 

@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration_test
 
 import (
@@ -41,8 +39,36 @@ func (s staticChange) Changes(_ context.Context, _ signal.Detection) (proposal.C
 	return s.snap, nil
 }
 
-// newLiveEngine wires the full engine with the REAL model and fake everything else.
-func newLiveEngine(t *testing.T, tool clank.Tool, catalog *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+// scriptedModel replays a fixed Completion sequence, so the reason loop runs
+// deterministically and with no API key. It stands in for the provider only —
+// Tools and Intake are still faked separately, by recordingTool/staticTopo/staticChange.
+type scriptedModel struct {
+	script []clank.Completion
+	i      int
+}
+
+func (m *scriptedModel) Complete(_ context.Context, _ []clank.Message, _ []clank.ToolSpec) (clank.Completion, error) {
+	if m.i >= len(m.script) {
+		return clank.Completion{}, nil
+	}
+	c := m.script[m.i]
+	m.i++
+	return c, nil
+}
+
+func proposeArgs(t *testing.T, ps proposal.Set) json.RawMessage {
+	t.Helper()
+	b, err := json.Marshal(ps)
+	if err != nil {
+		t.Fatalf("marshal propose args: %v", err)
+	}
+	return b
+}
+
+// newEngine wires the full engine around model, faking Tools/Intake either way —
+// model may be a scripted double or the real provider, shared by the hermetic
+// and eval-gated live tests alike.
+func newEngine(t *testing.T, model clank.Model, tool clank.Tool, catalog *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
 	t.Helper()
 	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
@@ -54,7 +80,7 @@ func newLiveEngine(t *testing.T, tool clank.Tool, catalog *contract.StaticCatalo
 				{ID: "c1", Type: "deploy", Target: "payments-db", Age: 5 * time.Minute},
 			}}},
 		),
-		Model:        clank.NewAnthropicModel(apiKey(t)),
+		Model:        model,
 		Tools:        map[string]clank.Tool{tool.Spec().Name: tool},
 		Catalog:      catalog,
 		Ranker:       clank.NewRanker(),
@@ -85,22 +111,30 @@ func goldenSignal() signal.Detection {
 func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 	metrics := &recordingTool{
 		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
-		ref:  proposal.EvidenceRef{Tool: "metrics", Summary: "payments-db CPU pinned at 99%, connection pool exhausted", Ref: "metrics://payments-db/cpu", Live: true},
-	}
-	// Broadly applicable on purpose: this test exercises the LOOP, not Haiku's
-	// taste in failure-class labels. Whatever class it picks, the action stays
-	// in-catalog, so the test fails only for real wiring reasons.
-	catalog := contract.NewStaticCatalog([]contract.ActionContract{{
-		Name: "throttle-non-critical-paths",
-		ApplicableFailureClasses: []proposal.FailureClass{
-			proposal.ClassDependencySaturation, proposal.ClassResourceExhaustion,
-			proposal.ClassTrafficShift, proposal.ClassUnknown,
+		ref: proposal.EvidenceRef{
+			Tool: "metrics", Query: "payments-db-cpu",
+			Summary: "payments-db CPU pinned at 99%, connection pool exhausted",
+			Ref:     "metrics://payments-db/cpu", Live: true,
 		},
-		ApplicableTiers: []string{"tier-1"},
+	}
+	catalog := contract.NewStaticCatalog([]contract.ActionContract{{
+		Name:                     "throttle-non-critical-paths",
+		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassResourceExhaustion},
+		ApplicableTiers:          []string{"tier-1"},
 	}})
+	model := &scriptedModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassResourceExhaustion,
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
+				Citations: []string{"payments-db-cpu"},
+			}},
+		})}}},
+	}}
 
-	e, sink := newLiveEngine(t, metrics, catalog)
-	set, err := e.Propose(callCtx(t), goldenSignal())
+	e, sink := newEngine(t, model, metrics, catalog)
+	set, err := e.Propose(t.Context(), goldenSignal())
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
 	}
@@ -119,7 +153,9 @@ func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 	if len(set.Proposals) == 0 {
 		t.Fatal("a passed set must carry at least one proposal")
 	}
-	// Autonomy boundary, behavioural, against the REAL model.
+	// The catalog carries exactly one contract, so this is a decode/plumbing
+	// check on enforceCatalog, not a behavioural proof against a real model —
+	// that proof lives in internal/clank's production-catalog eval.
 	for _, c := range set.Proposals {
 		if c.ContractRef != "throttle-non-critical-paths" {
 			t.Errorf("proposed an action outside the catalog: %q", c.ContractRef)
@@ -139,21 +175,29 @@ func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 func TestEngine_ThinEvidence_YieldsNoActionAndDeliversNothing(t *testing.T) {
 	metrics := &recordingTool{
 		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
-		ref:  proposal.EvidenceRef{Tool: "metrics", Summary: "all services nominal; no anomaly on payments-db", Ref: "metrics://payments-db/cpu", Live: true},
+		ref:  proposal.EvidenceRef{Tool: "metrics", Query: "payments-db-cpu", Summary: "all services nominal; no anomaly on payments-db", Ref: "metrics://payments-db/cpu", Live: true},
 	}
 	catalog := contract.NewStaticCatalog([]contract.ActionContract{{
 		Name:                     "throttle-non-critical-paths",
 		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
 		ApplicableTiers:          []string{"tier-1"},
 	}})
+	// The script runs out after the metrics call, so Complete's next turn
+	// returns an empty Completion — the engine reads that as a decline. This
+	// pins the engine's plumbing on a decline, not whether a real model would
+	// judge "all nominal" evidence as actionable; that judgment stays with the
+	// eval harness, where only a real model's output can prove it.
+	model := &scriptedModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{}`)}}},
+	}}
 
-	e, sink := newLiveEngine(t, metrics, catalog)
-	set, err := e.Propose(callCtx(t), goldenSignal())
+	e, sink := newEngine(t, model, metrics, catalog)
+	set, err := e.Propose(t.Context(), goldenSignal())
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
 	}
 	if set.Status.Phase == "proposed" {
-		t.Errorf("evidence saying \"all nominal\" should not reach a proposal: %+v", set)
+		t.Errorf("a declined turn should not reach a proposal: %+v", set)
 	}
 	if len(sink.Delivered) != 0 {
 		t.Errorf("a non-proposed set must deliver nothing; delivered %d", len(sink.Delivered))
