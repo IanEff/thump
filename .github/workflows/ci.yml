@@ -48,5 +48,9 @@ jobs:
       - name: test
         run: task test
 
+      - name: coverage
+        run: task coverage
+        continue-on-error: true
+
       - name: build
         run: task build
