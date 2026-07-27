@@ -8,6 +8,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 )
@@ -61,7 +62,7 @@ func LoadClank(broker bool) (Clank, error) {
 		c.Outcomes = l.Optional("CLANK_OUTCOMES")
 		c.Declines = l.Optional("CLANK_DECLINES")
 		c.WALDir = l.Require("WAL_DIR")
-		c.S3Endpoint = l.Require("S3_ENDPOINT")
+		c.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		c.S3Bucket = l.Require("S3_BUCKET")
 		c.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		c.S3SecretKey = l.Require("S3_SECRET_KEY")
@@ -105,7 +106,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 		h.Inbox = l.Optional("HISS_INBOX")
 		h.Outbox = l.Optional("HISS_OUTBOX")
 		h.WALDir = l.Require("WAL_DIR")
-		h.S3Endpoint = l.Require("S3_ENDPOINT")
+		h.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		h.S3Bucket = l.Require("S3_BUCKET")
 		h.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		h.S3SecretKey = l.Require("S3_SECRET_KEY")
@@ -150,7 +151,7 @@ func LoadRattle(broker bool) (Rattle, error) {
 	}
 	if broker {
 		r.WALDir = l.Require("WAL_DIR")
-		r.S3Endpoint = l.Require("S3_ENDPOINT")
+		r.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		r.S3Bucket = l.Require("S3_BUCKET")
 		r.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		r.S3SecretKey = l.Require("S3_SECRET_KEY")
@@ -194,7 +195,7 @@ func LoadThump(broker bool) (Thump, error) {
 		t.Inbox = l.Optional("THUMP_INBOX")
 		t.Outbox = l.Optional("THUMP_OUTBOX")
 		t.WALDir = l.Require("WAL_DIR")
-		t.S3Endpoint = l.Require("S3_ENDPOINT")
+		t.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		t.S3Bucket = l.Require("S3_BUCKET")
 		t.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		t.S3SecretKey = l.Require("S3_SECRET_KEY")
@@ -238,6 +239,43 @@ func (l *loader) OptionalDuration(name string, def time.Duration) time.Duration 
 		return def
 	}
 	return d
+}
+
+// RequireURL reads name like Require, then rejects a scheme outside
+// allowed — a plaintext WAL endpoint fails at load time instead of shipping
+// transcripts over the wire in the clear.
+func (l *loader) RequireURL(name string, allowed ...string) string {
+	v := l.Require(name)
+	if v == "" {
+		return v
+	}
+	l.checkScheme(name, v, allowed)
+	return v
+}
+
+// OptionalURL is RequireURL for a URL whose absence is legal.
+func (l *loader) OptionalURL(name string, allowed ...string) string {
+	v := l.Optional(name)
+	if v == "" {
+		return v
+	}
+	l.checkScheme(name, v, allowed)
+	return v
+}
+
+// checkScheme appends an error naming name if v's scheme isn't one of
+// allowed — including no scheme at all, which would otherwise let the SDK
+// choose the wire.
+func (l *loader) checkScheme(name, v string, allowed []string) {
+	u, err := url.Parse(v)
+	if err == nil {
+		for _, scheme := range allowed {
+			if u.Scheme == scheme {
+				return
+			}
+		}
+	}
+	l.errs = append(l.errs, fmt.Errorf("%s: scheme must be one of %v, got %q", name, allowed, v))
 }
 
 func (l *loader) err() error {

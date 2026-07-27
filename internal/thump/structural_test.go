@@ -22,7 +22,7 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"github.com/ianeff/thump/api/v1/decision"`:   true,
 		`"github.com/ianeff/thump/api/v1/proposal"`:   true,
 		`"github.com/ianeff/thump/internal/contract"`: true,
-		// C1: typed env loading. Its own leaftest pins it to errors/fmt/os
+		// C1: typed env loading. Its own leaftest pins it to errors/fmt/net/url/os
 		// only — reads and validates strings, touches nothing outside the
 		// process. Same risk profile as contract above, not a widening.
 		`"github.com/ianeff/thump/internal/config"`: true,
