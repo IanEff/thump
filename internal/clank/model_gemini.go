@@ -11,7 +11,9 @@ import (
 // GeminiModel is a second Model adaptor: Gemini 2.5 Flash Lite behind the
 // genai SDK, the cheapest Gemini model on record. It satisfies the same
 // Model interface as AnthropicModel, so the reason loop cannot tell which
-// provider it's talking to.
+// provider it's talking to. It has never completed a call against a live
+// backend: Main does not select it and no test exercises it, so treat it as
+// a second implementation of the interface, not a proven second provider.
 type GeminiModel struct {
 	client *genai.Client
 }
@@ -53,21 +55,40 @@ func (m *GeminiModel) Complete(ctx context.Context, msgs []Message, tools []Tool
 		if err != nil {
 			return Completion{}, fmt.Errorf("gemini marshal tool args: %w", err)
 		}
-		comp.ToolCalls = append(comp.ToolCalls, ToolCall{Name: fc.Name, Args: args})
+		comp.ToolCalls = append(comp.ToolCalls, ToolCall{ID: fc.ID, Name: fc.Name, Args: args})
 	}
 	return comp, nil
 }
 
-// toGeminiContents mirrors toAnthropicMessageParams: only "assistant" turns are the
-// model's own, everything else (user, tool results) rides back in as a user turn.
 func toGeminiContents(msgs []Message) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(msgs))
 	for _, msg := range msgs {
-		var role genai.Role = genai.RoleUser
+		var parts []*genai.Part
+		if msg.Content != "" {
+			parts = append(parts, genai.NewPartFromText(msg.Content))
+		}
+		for _, c := range msg.ToolCalls {
+			var args map[string]any
+			if err := json.Unmarshal(c.Args, &args); err != nil {
+				args = map[string]any{}
+			}
+			parts = append(parts, &genai.Part{FunctionCall: &genai.FunctionCall{
+				ID: c.ID, Name: c.Name, Args: args,
+			}})
+		}
+		for _, r := range msg.ToolResults {
+			parts = append(parts, &genai.Part{FunctionResponse: &genai.FunctionResponse{
+				ID: r.CallID, Name: r.Name, Response: map[string]any{"output": r.Digest},
+			}})
+		}
+		if len(parts) == 0 {
+			continue
+		}
+		role := genai.Role(genai.RoleUser)
 		if msg.Role == "assistant" {
 			role = genai.RoleModel
 		}
-		contents = append(contents, genai.NewContentFromText(msg.Content, role))
+		contents = append(contents, genai.NewContentFromParts(parts, role))
 	}
 	return contents
 }

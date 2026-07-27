@@ -19,7 +19,11 @@ import (
 func TestEngine_GoldenPathAgainstRealModel_SignalToDeliveredProposalSet(t *testing.T) {
 	metrics := &recordingTool{
 		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
-		ref:  proposal.EvidenceRef{Tool: "metrics", Summary: "payments-db CPU pinned at 99%, connection pool exhausted", Ref: "metrics://payments-db/cpu", Live: true},
+		ref: proposal.EvidenceRef{
+			Tool: "metrics", Query: "payments-db-cpu",
+			Summary: "payments-db CPU pinned at 99%, connection pool exhausted",
+			Ref:     "metrics://payments-db/cpu", Live: true,
+		},
 	}
 	// Broadly applicable on purpose: this test exercises the LOOP, not Haiku's
 	// taste in failure-class labels. Whatever class it picks, the action stays

@@ -55,6 +55,7 @@ func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []T
 			comp.Message.Content += b.Text
 		case anthropic.ToolUseBlock:
 			comp.ToolCalls = append(comp.ToolCalls, ToolCall{
+				ID:   b.ID,
 				Name: b.Name,
 				Args: json.RawMessage(b.JSON.Input.Raw()),
 			})
@@ -63,18 +64,44 @@ func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []T
 	return comp, nil
 }
 
+// toAnthropicMessageParams renders msgs into the SDK's wire shape. Role
+// follows the API's turn model, not Message.Role directly — a tool turn
+// carries a tool_result block, and tool_result is defined as a user block, so
+// "tool" renders as MessageParamRoleUser alongside plain "user" turns.
 func toAnthropicMessageParams(msgs []Message) []anthropic.MessageParam {
 	params := make([]anthropic.MessageParam, 0, len(msgs))
 	for _, msg := range msgs {
-		block := anthropic.NewTextBlock(msg.Content)
-		switch msg.Role {
-		case "assistant":
-			params = append(params, anthropic.NewAssistantMessage(block))
-		default: // "user", "tool"
-			params = append(params, anthropic.NewUserMessage(block))
+		var blocks []anthropic.ContentBlockParamUnion
+		if msg.Content != "" {
+			blocks = append(blocks, anthropic.NewTextBlock(msg.Content))
+		}
+		for _, c := range msg.ToolCalls {
+			blocks = append(blocks, anthropic.NewToolUseBlock(c.ID, toolInput(c.Args), c.Name))
+		}
+		for _, r := range msg.ToolResults {
+			blocks = append(blocks, anthropic.NewToolResultBlock(r.CallID, r.Digest, r.IsError))
+		}
+		if len(blocks) == 0 {
+			continue
+		}
+		if msg.Role == "assistant" {
+			params = append(params, anthropic.NewAssistantMessage(blocks...))
+		} else {
+			params = append(params, anthropic.NewUserMessage(blocks...))
 		}
 	}
 	return params
+}
+
+// toolInput decodes a call's raw args for the SDK, falling back to an empty
+// object rather than nil — Input is a required field and a nil value is
+// omitted from the request entirely.
+func toolInput(args json.RawMessage) any {
+	var input any
+	if len(args) == 0 || json.Unmarshal(args, &input) != nil {
+		return map[string]any{}
+	}
+	return input
 }
 
 func toAnthropicToolParams(tools []ToolSpec) []anthropic.ToolUnionParam {

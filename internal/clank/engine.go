@@ -165,6 +165,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		}); err != nil {
 			return proposal.Set{}, fmt.Errorf("model complete (step %d): %w", step, err)
 		}
+		comp.Message.ToolCalls = withCallIDs(comp.ToolCalls, step)
 		msgs = append(msgs, comp.Message)
 
 		if err := e.Store.Checkpoint(ctx, Turn{RunID: runID, Step: step, Msgs: msgs}); err != nil {
@@ -178,6 +179,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		}
 
 		done := false
+		var results []ToolResult
 		for _, call := range comp.ToolCalls {
 			// One "tool_call" line per dispatched call — including the
 			// terminal propose/insufficient calls, not just evidence tools
@@ -208,7 +210,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			default:
 				tool, ok := e.Tools[call.Name]
 				if !ok {
-					msgs = append(msgs, Message{Role: "tool", Content: fmt.Sprintf("unknown tool %q", call.Name)})
+					results = append(results, ToolResult{
+						CallID:  call.ID,
+						Name:    call.Name,
+						Digest:  fmt.Sprintf("unknown tool %q", call.Name),
+						IsError: true,
+					})
 					continue
 				}
 				ref, err := tool.Run(ctx, call.Args)
@@ -224,11 +231,17 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 				if ref.Query != "" {
 					content = fmt.Sprintf("%s [cite: %s]", ref.Summary, ref.Query)
 				}
-				msgs = append(msgs, Message{Role: "tool", Content: content})
+				results = append(results, ToolResult{CallID: call.ID, Name: call.Name, Digest: content})
 			}
 			if done {
 				break
 			}
+		}
+		// One message per turn, never one per call: splitting a parallel turn's
+		// results across messages teaches the model to stop making parallel
+		// calls, and every live turn so far has issued two to five.
+		if len(results) > 0 {
+			msgs = append(msgs, Message{Role: "tool", ToolResults: results})
 		}
 		if done {
 			break
@@ -479,4 +492,15 @@ func enrichFromCatalog(cat *contract.StaticCatalog, proposals []proposal.Candida
 			proposals[i].GovernanceLevel = &proposal.GovernanceLevel{Band: string(decision.BandActDisruptive)}
 		}
 	}
+}
+
+// withCallIDs guarantees every call in a turn has an identifier its
+// result can name.
+func withCallIDs(calls []ToolCall, step int) []ToolCall {
+	for i := range calls {
+		if calls[i].ID == "" {
+			calls[i].ID = fmt.Sprintf("call_%d_%d", step, i)
+		}
+	}
+	return calls
 }

@@ -714,8 +714,13 @@ func TestPropose_ToolMessagesCarryTheCitableKeyVerbatim(t *testing.T) {
 // rides inside the digest line rather than replacing it.
 func receivedToolContent(msgs []clank.Message, key string) bool {
 	for _, m := range msgs {
-		if m.Role == "tool" && strings.Contains(m.Content, key) {
-			return true
+		if m.Role != "tool" {
+			continue
+		}
+		for _, r := range m.ToolResults {
+			if strings.Contains(r.Digest, key) {
+				return true
+			}
 		}
 	}
 	return false
@@ -727,8 +732,13 @@ func receivedToolContent(msgs []clank.Message, key string) bool {
 func receivedToolDigest(snapshots [][]clank.Message, digest string) bool {
 	for _, msgs := range snapshots {
 		for _, m := range msgs {
-			if m.Role == "tool" && m.Content == digest {
-				return true
+			if m.Role != "tool" {
+				continue
+			}
+			for _, r := range m.ToolResults {
+				if r.Digest == digest {
+					return true
+				}
 			}
 		}
 	}
