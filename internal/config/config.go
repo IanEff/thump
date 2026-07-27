@@ -6,6 +6,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -39,6 +40,7 @@ type Clank struct {
 	TLSCertFile      string        // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
 	TLSKeyFile       string        // TLS_KEY_FILE — required only in the broker path
 	TLSCAFile        string        // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
+	SealKey          []byte        // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments and transcripts before they reach the bucket
 }
 
 // LoadClank reads clank's environment once. broker is whether Main resolved
@@ -74,6 +76,7 @@ func LoadClank(broker bool) (Clank, error) {
 		c.TLSCertFile = l.Require("TLS_CERT_FILE")
 		c.TLSKeyFile = l.Require("TLS_KEY_FILE")
 		c.TLSCAFile = l.Require("TLS_CA_FILE")
+		c.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
 	} else {
 		c.Inbox = l.Require("CLANK_INBOX")
 		c.Outbox = l.Require("CLANK_OUTBOX")
@@ -100,6 +103,7 @@ type Hiss struct {
 	TLSCertFile string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
 	TLSKeyFile  string // TLS_KEY_FILE — required only in the broker path
 	TLSCAFile   string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
+	SealKey     []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
 }
 
 // LoadHiss reads hiss's environment once. broker is whether Main resolved a
@@ -126,6 +130,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 		h.TLSCertFile = l.Require("TLS_CERT_FILE")
 		h.TLSKeyFile = l.Require("TLS_KEY_FILE")
 		h.TLSCAFile = l.Require("TLS_CA_FILE")
+		h.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
 	} else {
 		h.Inbox = l.Require("HISS_INBOX")
 		h.Outbox = l.Require("HISS_OUTBOX")
@@ -153,6 +158,7 @@ type Rattle struct {
 	TLSCertFile      string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
 	TLSKeyFile       string // TLS_KEY_FILE — required only in the broker path
 	TLSCAFile        string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
+	SealKey          []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
 }
 
 // LoadRattle reads rattle's environment once. broker is whether Main
@@ -179,6 +185,7 @@ func LoadRattle(broker bool) (Rattle, error) {
 		r.TLSCertFile = l.Require("TLS_CERT_FILE")
 		r.TLSKeyFile = l.Require("TLS_KEY_FILE")
 		r.TLSCAFile = l.Require("TLS_CA_FILE")
+		r.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
 	}
 	return r, l.err()
 }
@@ -204,6 +211,7 @@ type Thump struct {
 	TLSCertFile     string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
 	TLSKeyFile      string // TLS_KEY_FILE — required only in the broker path
 	TLSCAFile       string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
+	SealKey         []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
 }
 
 // LoadThump reads thump's environment once. broker is whether Main resolved
@@ -231,6 +239,7 @@ func LoadThump(broker bool) (Thump, error) {
 		t.TLSCertFile = l.Require("TLS_CERT_FILE")
 		t.TLSKeyFile = l.Require("TLS_KEY_FILE")
 		t.TLSCAFile = l.Require("TLS_CA_FILE")
+		t.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
 	} else {
 		t.Inbox = l.Require("THUMP_INBOX")
 		t.Outbox = l.Require("THUMP_OUTBOX")
@@ -331,6 +340,26 @@ func (l *loader) checkScheme(name, v string, allowed []string) {
 		}
 	}
 	l.errs = append(l.errs, fmt.Errorf("%s: scheme must be one of %v, got %q", name, allowed, v))
+}
+
+// RequireBase64Key reads name as base64 and requires it decode to exactly n
+// bytes — decode failure or wrong length is a configuration error, same as a
+// missing Require, not a runtime surprise inside sealbox.
+func (l *loader) RequireBase64Key(name string, n int) []byte {
+	v := l.Require(name)
+	if v == "" {
+		return nil
+	}
+	b, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		l.errs = append(l.errs, fmt.Errorf("%s: invalid base64: %w", name, err))
+		return nil
+	}
+	if len(b) != n {
+		l.errs = append(l.errs, fmt.Errorf("%s: want %d bytes, got %d", name, n, len(b)))
+		return nil
+	}
+	return b
 }
 
 func (l *loader) err() error {
