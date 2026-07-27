@@ -17,6 +17,8 @@ data:
       # nats-server -t).
       max_memory_store: {{ .Values.nats.jetstream.maxMemory }}
       max_file_store:   {{ .Values.nats.jetstream.maxFile }}
+      cipher: chachapoly
+      key: $JS_KEY
     }
     tls {
       cert_file: "/etc/nats/tls/tls.crt"
@@ -154,6 +156,15 @@ spec:
         - name: nats
           image: "nats:{{ .Values.nats.image.tag }}"
           args: ["-c", "/etc/nats/nats.conf"]
+          env:
+            # nats-server's config lexer interpolates $JS_KEY into the
+            # jetstream{} block's `key:` line at startup — the value never
+            # touches the ConfigMap, only the Secret this env var reads.
+            - name: JS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.jetstream.secretName }}
+                  key: key
           ports:
             - { containerPort: 4222, name: client }
             - { containerPort: 8222, name: monitor }

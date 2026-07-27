@@ -159,6 +159,14 @@ nats:
   jetstream:
     maxMemory: 256Mi
     maxFile: 2Gi
+    # $JS_KEY, interpolated into nats.conf's jetstream{} block (R9a) — the
+    # AES/ChaCha20 key JetStream seals message blocks and stream/consumer
+    # metadata under on disk. Same out-of-band posture as s3/anthropic/seal
+    # above: production expects secretName to already exist; create/key are a
+    # --set-only escape hatch, never a committed values file.
+    secretName: nats-js-key
+    create: false
+    key: ""
   resources:
     requests:
       cpu: 50m
