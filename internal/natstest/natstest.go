@@ -5,6 +5,7 @@ package natstest
 
 import (
 	"crypto/tls"
+	"net"
 	"testing"
 	"time"
 
@@ -12,6 +13,71 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
+
+// Bouncer is an embedded server pinned to one port across restarts, so a test
+// can drop it and let the client's own reconnect logic bring the connection
+// back. URL's randomly-ported server cannot express that: a client reconnects
+// to the address it dialed, and a restart on a fresh port is a different
+// broker.
+type Bouncer struct {
+	t        *testing.T
+	port     int
+	url      string
+	storeDir string
+	srv      *natssrv.Server
+}
+
+// Restartable starts a Bouncer and stops it at test end. The JetStream store
+// directory outlives each restart, so stream state survives the bounce the way
+// a real broker's volume does.
+func Restartable(t *testing.T) *Bouncer {
+	t.Helper()
+	b := &Bouncer{t: t, storeDir: t.TempDir(), port: -1}
+	b.Start()
+	addr, ok := b.srv.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatal("embedded nats: listener is not TCP")
+	}
+	b.port, b.url = addr.Port, b.srv.ClientURL()
+	t.Cleanup(b.Stop)
+	return b
+}
+
+// URL is stable across restarts.
+func (b *Bouncer) URL() string { return b.url }
+
+// Start is a no-op if the server is already running.
+func (b *Bouncer) Start() {
+	b.t.Helper()
+	if b.srv != nil {
+		return
+	}
+	srv, err := natssrv.NewServer(&natssrv.Options{
+		Host:      "127.0.0.1",
+		Port:      b.port,
+		JetStream: true,
+		StoreDir:  b.storeDir,
+	})
+	if err != nil {
+		b.t.Fatal("embedded nats:", err)
+	}
+	go srv.Start()
+	if !srv.ReadyForConnections(10 * time.Second) {
+		b.t.Fatal("embedded nats not ready")
+	}
+	b.srv = srv
+}
+
+// Stop drops every client connection and waits for the listener to close, so a
+// following Start can rebind the same port.
+func (b *Bouncer) Stop() {
+	if b.srv == nil {
+		return
+	}
+	b.srv.Shutdown()
+	b.srv.WaitForShutdown()
+	b.srv = nil
+}
 
 // New starts an embedded NATS server with JetStream enabled inside the test
 // process (no Docker, no network, no key) and returns a ready JetStream
