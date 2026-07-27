@@ -212,6 +212,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 				if !ok {
 					results = append(results, ToolResult{
 						CallID:  call.ID,
+						Name:    call.Name,
 						Digest:  fmt.Sprintf("unknown tool %q", call.Name),
 						IsError: true,
 					})
@@ -230,7 +231,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 				if ref.Query != "" {
 					content = fmt.Sprintf("%s [cite: %s]", ref.Summary, ref.Query)
 				}
-				results = append(results, ToolResult{CallID: call.ID, Digest: content})
+				results = append(results, ToolResult{CallID: call.ID, Name: call.Name, Digest: content})
 			}
 			if done {
 				break

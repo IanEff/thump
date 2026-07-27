@@ -267,5 +267,6 @@ type ToolCall struct {
 type ToolResult struct {
 	CallID  string
 	Digest  string
-	IsError bool `json:"IsError,omitempty"`
+	Name    string `json:"Name,omitempty"`
+	IsError bool   `json:"IsError,omitempty"`
 }

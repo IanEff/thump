@@ -58,16 +58,35 @@ func (m *GeminiModel) Complete(ctx context.Context, msgs []Message, tools []Tool
 	return comp, nil
 }
 
-// toGeminiContents mirrors toAnthropicMessageParams: only "assistant" turns are the
-// model's own, everything else (user, tool results) rides back in as a user turn.
 func toGeminiContents(msgs []Message) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(msgs))
 	for _, msg := range msgs {
-		var role genai.Role = genai.RoleUser
+		var parts []*genai.Part
+		if msg.Content != "" {
+			parts = append(parts, genai.NewPartFromText(msg.Content))
+		}
+		for _, c := range msg.ToolCalls {
+			var args map[string]any
+			if err := json.Unmarshal(c.Args, &args); err != nil {
+				args = map[string]any{}
+			}
+			parts = append(parts, &genai.Part{FunctionCall: &genai.FunctionCall{
+				ID: c.ID, Name: c.Name, Args: args,
+			}})
+		}
+		for _, r := range msg.ToolResults {
+			parts = append(parts, &genai.Part{FunctionResponse: &genai.FunctionResponse{
+				ID: r.CallID, Name: r.Name, Response: map[string]any{"output": r.Digest},
+			}})
+		}
+		if len(parts) == 0 {
+			continue
+		}
+		role := genai.Role(genai.RoleUser)
 		if msg.Role == "assistant" {
 			role = genai.RoleModel
 		}
-		contents = append(contents, genai.NewContentFromText(msg.Content, role))
+		contents = append(contents, genai.NewContentFromParts(parts, role))
 	}
 	return contents
 }
