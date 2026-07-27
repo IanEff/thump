@@ -46,7 +46,13 @@ spec:
             - name: METRICS_ADDR
               value: ":{{ .Values.metrics.port }}"
             - name: NATS_URL
-              value: "nats://nats.thump.svc:4222"
+              value: "tls://nats.thump.svc:4222"
+            - name: TLS_CERT_FILE
+              value: /etc/thump/tls/tls.crt
+            - name: TLS_KEY_FILE
+              value: /etc/thump/tls/tls.key
+            - name: TLS_CA_FILE
+              value: /etc/thump/tls/ca.crt
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.tracing.endpoint | quote }}
             - name: WAL_DIR
@@ -88,6 +94,8 @@ spec:
               mountPath: /etc/thump/whir
             - name: rattle-config
               mountPath: /etc/thump/rattle
+            - name: tls
+              mountPath: /etc/thump/tls
           resources: {{- toYaml .Values.beats.rattle.resources | nindent 12 }}
       volumes:
         - name: wal
@@ -98,3 +106,6 @@ spec:
         - name: rattle-config
           configMap:
             name: thump-rattle
+        - name: tls
+          secret:
+            secretName: rattle-tls

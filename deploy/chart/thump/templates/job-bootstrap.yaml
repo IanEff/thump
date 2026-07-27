@@ -1,0 +1,62 @@
+# The one-shot broker-bootstrap Job (R6c) — the only thing in this
+# deployment that calls broker.ConnectAndEnsure, and therefore the only
+# identity that holds $JS.API.> in nats.conf's authorization block. Every
+# beat's own broker.Connect never creates or updates the shared JetStream
+# stream/consumers; this Job does it once, before any beat starts.
+#
+# A pre-install/pre-upgrade hook, weighted after bootstrap-tls's own
+# Certificate hook (certificates.yaml) so cert-manager has a head start on
+# issuing into bootstrap-tls before this pod tries to mount it — and Helm
+# waits for this Job to reach Succeeded before applying the beats'
+# Deployments (the main, non-hook part of the release), so a beat never
+# races a topology that doesn't exist yet.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: thump-bootstrap
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: thump
+        app.kubernetes.io/component: bootstrap
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bootstrap
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          image: "{{ .Values.image.registry }}/thump-bootstrap:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: NATS_URL
+              value: "tls://nats.thump.svc:4222"
+            - name: TLS_CERT_FILE
+              value: /etc/thump/tls/tls.crt
+            - name: TLS_KEY_FILE
+              value: /etc/thump/tls/tls.key
+            - name: TLS_CA_FILE
+              value: /etc/thump/tls/ca.crt
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/thump/tls
+          resources: {{- toYaml .Values.bootstrap.resources | nindent 12 }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: bootstrap-tls

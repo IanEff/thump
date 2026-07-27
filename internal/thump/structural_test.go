@@ -49,6 +49,11 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		`"github.com/ianeff/thump/internal/httpx"`: true,
 		`"github.com/nats-io/nats.go"`:             true,
 		`"github.com/nats-io/nats.go/jetstream"`:   true,
+		// R6: the client-side half of thump's own mTLS leg to NATS —
+		// constructs a *tls.Config from three file paths, presents this
+		// beat's leaf, and verifies the broker's. No new reach: it's the
+		// credential for the transport already allowed above, not a new one.
+		`"github.com/ianeff/thump/internal/tlsx"`: true,
 		// the runtime kit: process lifecycle + the same broker/publish
 		// transports already allowed above. Its own leaf tripwire forbids it
 		// from ever importing a beat package (rattle/clank/hiss/thump), not

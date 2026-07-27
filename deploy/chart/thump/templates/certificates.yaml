@@ -1,0 +1,85 @@
+# Every leaf this rig's private PKI issues (R5's thump-ca ClusterIssuer,
+# already live) — the NATS server, the four beats, and the broker-bootstrap
+# Job. Each carries commonName: <identity> and emailAddresses:
+# ["<identity>@thump.svc"] — R6b's nats.conf maps a connecting client's
+# identity on the SAN email, checked before the Subject DN.
+#
+# bootstrap-tls is the one exception to "just a regular resource": the
+# bootstrap Job (job-bootstrap.yaml) is a pre-install/pre-upgrade hook, and
+# Helm only waits on Job/Pod hooks — a Certificate hook is considered
+# "ready" the moment the API server accepts it, not once cert-manager has
+# actually issued into its Secret. So bootstrap-tls is hooked in at an
+# earlier weight than the Job, giving cert-manager a head start; the Job
+# pod's Secret volume mount blocks gracefully (ContainerCreating, not a
+# failure) for the remaining moment cert-manager needs to finish issuing.
+# The other five Certificates need no such dance: they're regular resources
+# applied in the same batch as their Deployments/StatefulSet, and the same
+# graceful-block behavior covers the ordinary race between "cert issued" and
+# "pod started."
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nats-tls
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  secretName: nats-tls
+  commonName: nats
+  emailAddresses: ["nats@thump.svc"]
+  usages: ["server auth"]
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: {{ .Values.tls.duration | quote }}
+  renewBefore: {{ .Values.tls.renewBefore | quote }}
+  issuerRef:
+    name: {{ .Values.tls.issuerName }}
+    kind: ClusterIssuer
+---
+{{- range list "rattle" "clank" "hiss" "thump" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ . }}-tls
+  namespace: thump
+  labels: {{- include "thump.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ . }}-tls
+  commonName: {{ . }}
+  emailAddresses: ["{{ . }}@thump.svc"]
+  # client auth: dials NATS today. server auth: R7a's /metrics reuses this
+  # same leaf rather than minting a second one per beat.
+  usages: ["client auth", "server auth"]
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: {{ $.Values.tls.duration | quote }}
+  renewBefore: {{ $.Values.tls.renewBefore | quote }}
+  issuerRef:
+    name: {{ $.Values.tls.issuerName }}
+    kind: ClusterIssuer
+---
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: bootstrap-tls
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  secretName: bootstrap-tls
+  commonName: bootstrap
+  emailAddresses: ["bootstrap@thump.svc"]
+  usages: ["client auth"]
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: {{ .Values.tls.duration | quote }}
+  renewBefore: {{ .Values.tls.renewBefore | quote }}
+  issuerRef:
+    name: {{ .Values.tls.issuerName }}
+    kind: ClusterIssuer

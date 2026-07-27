@@ -128,6 +128,9 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
 	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
 	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES", "CLANK_DECLINES"} {
 		t.Setenv(name, "")
 	}
@@ -219,6 +222,9 @@ func TestLoadHiss_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
 	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
 	for _, name := range []string{"HISS_INBOX", "HISS_OUTBOX"} {
 		t.Setenv(name, "")
 	}
@@ -354,8 +360,8 @@ func setThumpEnv(t *testing.T) {
 }
 
 // setThumpBrokerEnv sets the vars LoadThump additionally requires in the
-// broker path (broker=true) — WAL_DIR and the S3 quartet — on top of
-// setThumpEnv's offline set.
+// broker path (broker=true) — WAL_DIR, the S3 quartet, and the TLS triple —
+// on top of setThumpEnv's offline set.
 func setThumpBrokerEnv(t *testing.T) {
 	t.Helper()
 	for name, val := range map[string]string{
@@ -364,6 +370,9 @@ func setThumpBrokerEnv(t *testing.T) {
 		"S3_BUCKET":     "thump-wal",
 		"S3_ACCESS_KEY": "test-access-key",
 		"S3_SECRET_KEY": "test-secret-key",
+		"TLS_CERT_FILE": "/etc/thump/tls/tls.crt",
+		"TLS_KEY_FILE":  "/etc/thump/tls/tls.key",
+		"TLS_CA_FILE":   "/etc/thump/tls/ca.crt",
 	} {
 		t.Setenv(name, val)
 	}
@@ -439,6 +448,9 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
 	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
 	for _, name := range []string{"THUMP_INBOX", "THUMP_OUTBOX"} {
 		t.Setenv(name, "")
 	}
@@ -634,6 +646,74 @@ func TestEveryLoader_RefusesAPlaintextNATSURLNotJustClanks(t *testing.T) {
 
 			if err := tc.load(false); err == nil {
 				t.Error("every beat dials the same broker — validating one loader and not  in front of it")
+			}
+		})
+	}
+}
+
+func TestLoadBootstrap_MissingRequired_ReportsAllAtOnce(t *testing.T) {
+	for _, name := range []string{"NATS_URL", "TLS_CERT_FILE", "TLS_KEY_FILE", "TLS_CA_FILE"} {
+		t.Setenv(name, "")
+	}
+
+	_, err := config.LoadBootstrap()
+	if err == nil {
+		t.Fatal("LoadBootstrap: want an error, got nil")
+	}
+	for _, want := range []string{"NATS_URL", "TLS_CERT_FILE", "TLS_KEY_FILE", "TLS_CA_FILE"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadBootstrap error %q does not mention %s", err, want)
+		}
+	}
+}
+
+func TestLoadBootstrap_Valid_PopulatesStruct(t *testing.T) {
+	t.Setenv("NATS_URL", "tls://nats.thump.svc:4222")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+
+	got, err := config.LoadBootstrap()
+	if err != nil {
+		t.Fatalf("LoadBootstrap: %v", err)
+	}
+	want := config.Bootstrap{
+		NATSURL:     "tls://nats.thump.svc:4222",
+		TLSCertFile: "/etc/thump/tls/tls.crt",
+		TLSKeyFile:  "/etc/thump/tls/tls.key",
+		TLSCAFile:   "/etc/thump/tls/ca.crt",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("LoadBootstrap (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadBootstrap_RefusesAPlaintextNATSURL(t *testing.T) {
+	t.Setenv("NATS_URL", "http://nats.thump.svc:4222")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+
+	if _, err := config.LoadBootstrap(); err == nil {
+		t.Error("LoadBootstrap must refuse a plaintext NATS_URL — the Job dials the same broker every beat does")
+	}
+}
+
+func TestEveryBrokerLoader_RequiresTLSFilesNotJustClanks(t *testing.T) {
+	cases := map[string]struct {
+		load func(bool) error
+		env  func(*testing.T)
+	}{
+		"LoadClank requires TLS_CERT_FILE in the broker path":  {load: func(b bool) error { _, err := config.LoadClank(b); return err }, env: setClankEnv},
+		"LoadHiss requires TLS_CERT_FILE in the broker path":   {load: func(b bool) error { _, err := config.LoadHiss(b); return err }, env: setHissEnv},
+		"LoadRattle requires TLS_CERT_FILE in the broker path": {load: func(b bool) error { _, err := config.LoadRattle(b); return err }, env: setRattleEnv},
+		"LoadThump requires TLS_CERT_FILE in the broker path":  {load: func(b bool) error { _, err := config.LoadThump(b); return err }, env: setThumpEnv},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.env(t)
+			if err := tc.load(true); err == nil || !strings.Contains(err.Error(), "TLS_CERT_FILE") {
+				t.Error("every beat's NATS leg needs a cert — hardening one loader and not the rest is a hole with a test in front of it")
 			}
 		})
 	}

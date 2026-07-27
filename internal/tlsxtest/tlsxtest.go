@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,6 +82,16 @@ func Expired() LeafOption {
 func SANEmail(addrs ...string) LeafOption {
 	return func(c *x509.Certificate) {
 		c.EmailAddresses = addrs
+	}
+}
+
+// IPSAN sets the leaf's IP Subject Alternative Names — a server leaf dialed
+// by loopback address (an embedded test server has no DNS name) needs one,
+// because x509 verification checks a dialed IP against IPAddresses and never
+// falls back to DNSNames the way it does for a hostname.
+func IPSAN(ips ...net.IP) LeafOption {
+	return func(c *x509.Certificate) {
+		c.IPAddresses = ips
 	}
 }
 

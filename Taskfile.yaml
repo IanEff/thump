@@ -3,11 +3,17 @@ version: "3"
 vars:
   PROJECT: thump
   REGISTRY: '{{.REGISTRY | default "ghcr.io/ianeff"}}'
-  BEATS: "clank rattle hiss thump trim"
+  BEATS: "clank rattle hiss thump trim bootstrap"
   # The four long-running services that actually run as cluster pods. trim is
   # an operator-run CLI — no internal/beat runtime, no Helm Deployment — and
   # ships only as a binary (build/goreleaser), never as a container image.
   SERVICE_BEATS: "clank rattle hiss thump"
+  # bootstrap (R6c) is neither: it's a one-shot Kubernetes Job, not a
+  # long-running service, but unlike trim it runs in-cluster and needs a
+  # container image. IMAGE_BEATS is the union that actually gets built/
+  # pushed/signed; SERVICE_BEATS keeps its own meaning of "has a Deployment."
+  JOB_BEATS: "bootstrap"
+  IMAGE_BEATS: "{{.SERVICE_BEATS}} {{.JOB_BEATS}}"
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo dev
   COMMIT:
@@ -73,7 +79,14 @@ tasks:
   chart-lint:
     desc: helm template | kubeconform, strict
     cmds:
-      - helm template deploy/chart/thump | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary
+      # -schema-location default alone doesn't know any CRD (cert-manager's
+      # Certificate, Cilium's *NetworkPolicy) — the second flag adds Datree's
+      # community-maintained CRDs-catalog, kubeconform's own documented way
+      # to validate those rather than skipping them.
+      - |
+        helm template deploy/chart/thump | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary \
+          -schema-location default \
+          -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
 
   test:
     desc: go test ./...
@@ -129,7 +142,7 @@ tasks:
     cmds:
       - mkdir -p bin/metadata
       - |
-        for beat in {{.SERVICE_BEATS}}; do
+        for beat in {{.IMAGE_BEATS}}; do
           echo "building {{.REGISTRY}}/thump-$beat:{{.COMMIT}} (linux/amd64,linux/arm64)"
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -165,7 +178,7 @@ tasks:
     deps: [images]
     cmds:
       - |
-        for beat in {{.SERVICE_BEATS}}; do
+        for beat in {{.IMAGE_BEATS}}; do
           digest=$(jq -r '."containerimage.digest"' bin/metadata/$beat.json)
           echo "signing {{.REGISTRY}}/thump-$beat@$digest"
           timeout 120 go run github.com/sigstore/cosign/v2/cmd/cosign@latest sign --yes \

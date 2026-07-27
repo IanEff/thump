@@ -36,6 +36,9 @@ type Clank struct {
 	S3Bucket         string        // S3_BUCKET — required only in the broker path
 	S3AccessKey      string        // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey      string        // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile      string        // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile       string        // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile        string        // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadClank reads clank's environment once. broker is whether Main resolved
@@ -68,6 +71,9 @@ func LoadClank(broker bool) (Clank, error) {
 		c.S3Bucket = l.Require("S3_BUCKET")
 		c.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		c.S3SecretKey = l.Require("S3_SECRET_KEY")
+		c.TLSCertFile = l.Require("TLS_CERT_FILE")
+		c.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		c.TLSCAFile = l.Require("TLS_CA_FILE")
 	} else {
 		c.Inbox = l.Require("CLANK_INBOX")
 		c.Outbox = l.Require("CLANK_OUTBOX")
@@ -91,6 +97,9 @@ type Hiss struct {
 	S3Bucket    string // S3_BUCKET — required only in the broker path
 	S3AccessKey string // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile  string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile   string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadHiss reads hiss's environment once. broker is whether Main resolved a
@@ -114,6 +123,9 @@ func LoadHiss(broker bool) (Hiss, error) {
 		h.S3Bucket = l.Require("S3_BUCKET")
 		h.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		h.S3SecretKey = l.Require("S3_SECRET_KEY")
+		h.TLSCertFile = l.Require("TLS_CERT_FILE")
+		h.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		h.TLSCAFile = l.Require("TLS_CA_FILE")
 	} else {
 		h.Inbox = l.Require("HISS_INBOX")
 		h.Outbox = l.Require("HISS_OUTBOX")
@@ -138,6 +150,9 @@ type Rattle struct {
 	S3Bucket         string // S3_BUCKET — required only in the broker path
 	S3AccessKey      string // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey      string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile      string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile       string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile        string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadRattle reads rattle's environment once. broker is whether Main
@@ -161,6 +176,9 @@ func LoadRattle(broker bool) (Rattle, error) {
 		r.S3Bucket = l.Require("S3_BUCKET")
 		r.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		r.S3SecretKey = l.Require("S3_SECRET_KEY")
+		r.TLSCertFile = l.Require("TLS_CERT_FILE")
+		r.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		r.TLSCAFile = l.Require("TLS_CA_FILE")
 	}
 	return r, l.err()
 }
@@ -183,6 +201,9 @@ type Thump struct {
 	S3Bucket        string // S3_BUCKET — required only in the broker path
 	S3AccessKey     string // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey     string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile     string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile      string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile       string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadThump reads thump's environment once. broker is whether Main resolved
@@ -207,11 +228,37 @@ func LoadThump(broker bool) (Thump, error) {
 		t.S3Bucket = l.Require("S3_BUCKET")
 		t.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		t.S3SecretKey = l.Require("S3_SECRET_KEY")
+		t.TLSCertFile = l.Require("TLS_CERT_FILE")
+		t.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		t.TLSCAFile = l.Require("TLS_CA_FILE")
 	} else {
 		t.Inbox = l.Require("THUMP_INBOX")
 		t.Outbox = l.Require("THUMP_OUTBOX")
 	}
 	return t, l.err()
+}
+
+// Bootstrap is the one-shot broker-bootstrap Job's environment (R6c) — its
+// own NATS_URL and TLS triple, all required unconditionally. There's no
+// offline path: this binary has exactly one job, and it's unreachable
+// without a broker to reach.
+type Bootstrap struct {
+	NATSURL     string // NATS_URL — required
+	TLSCertFile string // TLS_CERT_FILE — required; the Job's own leaf, distinct from every beat's — it alone holds $JS.API.> in nats.conf
+	TLSKeyFile  string // TLS_KEY_FILE — required
+	TLSCAFile   string // TLS_CA_FILE — required
+}
+
+// LoadBootstrap reads the broker-bootstrap Job's environment once.
+func LoadBootstrap() (Bootstrap, error) {
+	l := &loader{}
+	c := Bootstrap{
+		NATSURL:     l.RequireURL("NATS_URL", "nats", "tls"),
+		TLSCertFile: l.Require("TLS_CERT_FILE"),
+		TLSKeyFile:  l.Require("TLS_KEY_FILE"),
+		TLSCAFile:   l.Require("TLS_CA_FILE"),
+	}
+	return c, l.err()
 }
 
 // loader accumulates every missing-required var instead of stopping at the
