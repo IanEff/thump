@@ -79,3 +79,65 @@ func isNetHTTP(x ast.Expr) bool {
 	id, ok := x.(*ast.Ident)
 	return ok && id.Name == "http"
 }
+
+// declaredPlaintext maps each non-test file allowed to name an
+// insecure-transport option to the reason that leg runs in the clear. A hit
+// anywhere else is a leg nobody decided about; adding a row is a design
+// review, not a convenience.
+var declaredPlaintext = map[string]string{
+	"internal/beat/trace.go": "OTLP to an in-cluster collector — the wire is Cilium WireGuard's job, and the scheme is authored in OTEL_EXPORTER_OTLP_ENDPOINT",
+}
+
+func TestOnlyDeclaredFilesAskForAnInsecureTransport(t *testing.T) {
+	t.Parallel()
+	repoRoot, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+
+	err = filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != repoRoot && (strings.HasPrefix(d.Name(), ".") || d.Name() == "bin") {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			return err
+		}
+		if _, declared := declaredPlaintext[filepath.ToSlash(rel)]; declared {
+			return nil
+		}
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			switch sel.Sel.Name {
+			case "WithInsecure":
+				t.Errorf("%s:%d names WithInsecure — a plaintext leg needs a row in declaredPlaintext carrying the reason",
+					rel, fset.Position(sel.Pos()).Line)
+			case "InsecureSkipVerify":
+				t.Errorf("%s:%d sets InsecureSkipVerify — that is not a plaintext exception, it is an unauthenticated TLS session",
+					rel, fset.Position(sel.Pos()).Line)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
