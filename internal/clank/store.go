@@ -234,10 +234,10 @@ type Turn struct {
 	Msgs  []Message
 }
 
-// Message is one turn of the conversation fed to Model.Complete — a role
-// (user, assistant, or tool) and its content. There is no structured content
-// field: a tool result is folded into Content as a one-line digest, never a
-// raw payload.
+// Message is one turn of the conversation fed to Model.Complete. Content is
+// prose; ToolCalls and ToolResults carry the structure a provider needs to
+// pair a call with its answer — a result is always a one-line digest, never a
+// raw payload, so there is no field a raw payload could travel in.
 type Message struct {
 	Role        string
 	Content     string
@@ -262,11 +262,12 @@ type ToolCall struct {
 	Args json.RawMessage
 }
 
-// ToolResult is one digest answering one ToolCall.  IsError marks a tool
-// that failed, which the model is told about.
+// ToolResult is one digest answering one ToolCall. CallID pairs it to the
+// call; IsError marks a tool that failed, which the model is told about
+// rather than shielded from.
 type ToolResult struct {
 	CallID  string
 	Digest  string
-	Name    string `json:"Name,omitempty"`
+	Name    string `json:"Name,omitempty"` // the tool the call named; required by the Gemini wire format, ignored by Anthropic's
 	IsError bool   `json:"IsError,omitempty"`
 }

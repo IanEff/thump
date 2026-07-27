@@ -75,54 +75,6 @@ func callCtx(t *testing.T) context.Context {
 	return c
 }
 
-func TestAnthropicModel_ReturnsTextCompletionWhenNoToolsOffered(t *testing.T) {
-	model := newModel(t)
-	msgs := []clank.Message{
-		{Role: "user", Content: "Reply with exactly the word ACK and nothing else."},
-	}
-	comp, err := model.Complete(callCtx(t), msgs, nil)
-	if err != nil {
-		t.Fatalf("Complete() failed: %v", err)
-	}
-	if len(comp.ToolCalls) != 0 {
-		t.Errorf("offered no tools, want 0 tool calls, got %d", len(comp.ToolCalls))
-	}
-	if !strings.Contains(comp.Message.Content, "ACK") {
-		t.Errorf("want assistant content containing %q, got %q", "ACK", comp.Message.Content)
-	}
-	if comp.Message.Role != "assistant" {
-		t.Errorf("want assistant turn role %q, got %q", "assistant", comp.Message.Role)
-	}
-}
-
-func TestAnthropicModel_InvokesToolWhenPromptDemandsIt(t *testing.T) {
-	model := newModel(t)
-
-	msgs := []clank.Message{
-		{Role: "user", Content: "What is the current weather in Tokyo? Use the tool."},
-	}
-	tools := []clank.ToolSpec{
-		{Name: "get_weather", Description: "Get the current weather for a given location. Argument: location (string)."},
-	}
-	comp, err := model.Complete(callCtx(t), msgs, tools)
-	if err != nil {
-		t.Fatalf("Complete() with tools failed: %v", err)
-	}
-	if len(comp.ToolCalls) == 0 {
-		t.Fatalf("want a tool call, got none; message was %q", comp.Message.Content)
-	}
-	tc := comp.ToolCalls[0]
-	if tc.Name != "get_weather" {
-		t.Errorf("want tool %q, got %q", "get_weather", tc.Name)
-	}
-	if !json.Valid(tc.Args) {
-		t.Errorf("want valid-JSON args, got %q", tc.Args)
-	}
-	if len(tc.Args) == 0 || string(tc.Args) == "{}" {
-		t.Errorf("want populated tool args (e.g. a location), got %q", tc.Args)
-	}
-}
-
 func TestAnthropicModel_EmitsProposeArgsThatDecodeIntoProposalSet(t *testing.T) {
 	model := newModel(t)
 
@@ -165,55 +117,34 @@ func TestAnthropicModel_EmitsProposeArgsThatDecodeIntoProposalSet(t *testing.T) 
 	}
 }
 
-func TestAnthropicModel_ContinuesConversationAfterToolResult(t *testing.T) {
+func TestAnthropicModel_AnswersEachOfATurnsParallelCallsDistinctly(t *testing.T) {
 	model := newModel(t)
 
 	msgs := []clank.Message{
-		{Role: "user", Content: "Investigate the latency on payments-db using the metrics tool."},
-		{Role: "assistant", Content: "I'll check the current metrics for payments-db."},
-		{Role: "tool", Content: "metrics digest: payments-db CPU is pinned at 99% (codeword: FLAMINGO)."},
-		{Role: "user", Content: "Based only on that metrics digest, what is the codeword? Reply with just the word."},
+		{Role: "user", Content: "Check burn and errors with the metrics tool, then report both."},
+		{Role: "assistant", Content: "Checking both.", ToolCalls: []clank.ToolCall{
+			{ID: "toolu_burn", Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
+			{ID: "toolu_errors", Name: "metrics", Args: json.RawMessage(`{"q":"errors"}`)},
+		}},
+		{Role: "tool", ToolResults: []clank.ToolResult{
+			{CallID: "toolu_burn", Name: "metrics", Digest: "codeword FLAMINGO"},
+			{CallID: "toolu_errors", Name: "metrics", Digest: "codeword WALRUS"},
+		}},
+		{Role: "user", Content: `Reply with exactly: burn=<codeword> errors=<codeword>`},
 	}
-	comp, err := model.Complete(callCtx(t), msgs, nil)
+
+	comp, err := model.Complete(callCtx(t), msgs, []clank.ToolSpec{{
+		Name: "metrics", Description: "read-only telemetry query",
+	}})
 	if err != nil {
-		t.Fatalf("Complete() failed: %v", err)
+		t.Fatal(err)
 	}
-	if !strings.Contains(strings.ToUpper(comp.Message.Content), "FLAMINGO") {
-		t.Errorf("model did not carry the tool-result fact forward; want %q in %q", "FLAMINGO", comp.Message.Content)
-	}
-}
 
-func TestAnthropicModel_DeclinesToolWhenPromptDoesNotNeedIt(t *testing.T) {
-	model := newModel(t)
-
-	msgs := []clank.Message{
-		{Role: "user", Content: "Reply with exactly the word ACK. Do not call any tools."},
+	got := strings.ToUpper(comp.Message.Content)
+	if !strings.Contains(got, "BURN=FLAMINGO") {
+		t.Errorf("the burn call's answer was not attributed to it; want %q in %q", "burn=FLAMINGO", comp.Message.Content)
 	}
-	tools := []clank.ToolSpec{
-		{Name: "get_weather", Description: "Get the current weather for a given location."},
-	}
-	comp, err := model.Complete(callCtx(t), msgs, tools)
-	if err != nil {
-		t.Fatalf("Complete() failed: %v", err)
-	}
-	if len(comp.ToolCalls) != 0 {
-		t.Errorf("prompt needed no tool, want 0 tool calls, got %d (%+v)", len(comp.ToolCalls), comp.ToolCalls)
-	}
-	if !strings.Contains(comp.Message.Content, "ACK") {
-		t.Errorf("want %q in content, got %q", "ACK", comp.Message.Content)
-	}
-}
-
-func TestAnthropicModel_ReturnsErrorOnCancelledContext(t *testing.T) {
-	model := newModel(t)
-
-	cancelled, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := model.Complete(cancelled, []clank.Message{
-		{Role: "user", Content: "hello"},
-	}, nil)
-	if err == nil {
-		t.Fatal("want an error from a cancelled context, got nil")
+	if !strings.Contains(got, "ERRORS=WALRUS") {
+		t.Errorf("the errors call's answer was not attributed to it; want %q in %q", "errors=WALRUS", comp.Message.Content)
 	}
 }

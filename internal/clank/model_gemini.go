@@ -11,7 +11,9 @@ import (
 // GeminiModel is a second Model adaptor: Gemini 2.5 Flash Lite behind the
 // genai SDK, the cheapest Gemini model on record. It satisfies the same
 // Model interface as AnthropicModel, so the reason loop cannot tell which
-// provider it's talking to.
+// provider it's talking to. It has never completed a call against a live
+// backend: Main does not select it and no test exercises it, so treat it as
+// a second implementation of the interface, not a proven second provider.
 type GeminiModel struct {
 	client *genai.Client
 }

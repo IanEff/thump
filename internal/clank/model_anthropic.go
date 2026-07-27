@@ -93,8 +93,9 @@ func toAnthropicMessageParams(msgs []Message) []anthropic.MessageParam {
 	return params
 }
 
-// toolInput decodes a call's raw args for the sdk, falling back on
-// an empty object rather'n nil.
+// toolInput decodes a call's raw args for the SDK, falling back to an empty
+// object rather than nil — Input is a required field and a nil value is
+// omitted from the request entirely.
 func toolInput(args json.RawMessage) any {
 	var input any
 	if len(args) == 0 || json.Unmarshal(args, &input) != nil {
