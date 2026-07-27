@@ -1,6 +1,7 @@
 package clank_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/s3test"
+	"github.com/ianeff/thump/internal/sealbox"
 )
 
 func TestStore_PendingReturnsACheckpointedTurn(t *testing.T) {
@@ -146,25 +148,18 @@ func TestS3Store_CheckpointThenPersists(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	client, bucket := s3test.New(t)
-	store := clank.NewS3Store(client, bucket)
+	key := newTestSealKey(t)
+	store := clank.NewS3Store(client, bucket, key)
 
 	want := clank.Turn{RunID: "r1", Step: 0, Msgs: []clank.Message{{Role: "user", Content: "investigate"}}}
 	if err := store.Checkpoint(ctx, want); err != nil {
 		t.Fatal(err)
 	}
 
-	out, err := client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String("transcripts/r1/0.json"),
-	})
+	sealed := getObject(ctx, t, client, bucket, "transcripts/r1/0.json")
+	raw, err := key.Open(sealed)
 	if err != nil {
-		t.Fatalf("get persisted turn: %v", err)
-	}
-	defer func() { _ = out.Body.Close() }()
-
-	raw, err := io.ReadAll(out.Body)
-	if err != nil {
-		t.Fatalf("read persisted turn: %v", err)
+		t.Fatalf("open persisted turn: %v", err)
 	}
 	var got clank.Turn
 	if err := json.Unmarshal(raw, &got); err != nil {
@@ -174,6 +169,60 @@ func TestS3Store_CheckpointThenPersists(t *testing.T) {
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("checkpointed turn didn't round-trip (-want +got):\n%s", diff)
 	}
+}
+
+func TestS3Store_SealsTranscriptsBeforePersisting(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client, bucket := s3test.New(t)
+	key := newTestSealKey(t)
+	store := clank.NewS3Store(client, bucket, key)
+
+	turn := clank.Turn{RunID: "r1", Step: 0, Msgs: []clank.Message{{Role: "user", Content: "investigate"}}}
+	if err := store.Checkpoint(ctx, turn); err != nil {
+		t.Fatal(err)
+	}
+
+	sealed := getObject(ctx, t, client, bucket, "transcripts/r1/0.json")
+	plaintext, err := json.Marshal(turn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, plaintext) || json.Valid(sealed) {
+		t.Error("the object at transcripts/r1/0.json is readable plaintext JSON, want sealed bytes")
+	}
+
+	wrongKey := newTestSealKey(t)
+	wrongKey[0] ^= 0xFF
+	if _, err := wrongKey.Open(sealed); err == nil {
+		t.Error("a different key opened the sealed transcript, want it refused")
+	}
+}
+
+func getObject(ctx context.Context, t *testing.T, client *s3.Client, bucket, key string) []byte {
+	t.Helper()
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		t.Fatalf("get object %s: %v", key, err)
+	}
+	defer func() { _ = out.Body.Close() }()
+	raw, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("read object %s: %v", key, err)
+	}
+	return raw
+}
+
+func newTestSealKey(t *testing.T) sealbox.Key {
+	t.Helper()
+	var k sealbox.Key
+	for i := range k {
+		k[i] = byte(i)
+	}
+	return k
 }
 
 func readLines(t *testing.T, path string) []string {

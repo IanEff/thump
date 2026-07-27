@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/ianeff/thump/internal/sealbox"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
@@ -167,11 +169,13 @@ var _ Store = (*S3Store)(nil)
 type S3Store struct {
 	Client *s3.Client
 	Bucket string
+	Key    sealbox.Key
 }
 
-// NewS3Store returns an S3Store writing objects to bucket via client.
-func NewS3Store(client *s3.Client, bucket string) *S3Store {
-	return &S3Store{Client: client, Bucket: bucket}
+// NewS3Store returns an S3Store writing objects to bucket via client, sealed
+// under key before each PutObject.
+func NewS3Store(client *s3.Client, bucket string, key sealbox.Key) *S3Store {
+	return &S3Store{Client: client, Bucket: bucket, Key: key}
 }
 
 // Checkpoint puts t as its own object at transcripts/<RunID>/<Step>.json.
@@ -202,10 +206,14 @@ func (s *S3Store) putJSON(ctx context.Context, key string, v any) error {
 	if err != nil {
 		return fmt.Errorf("s3 store: marshal: %w", err)
 	}
+	sealed, err := s.Key.Seal(b)
+	if err != nil {
+		return fmt.Errorf("s3 store: seal %s: %w", key, err)
+	}
 	_, err = s.Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(key),
-		Body:   bytes.NewReader(b),
+		Body:   bytes.NewReader(sealed),
 	})
 	if err != nil {
 		return fmt.Errorf("s3 store: put %s: %w", key, err)

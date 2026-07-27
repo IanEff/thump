@@ -13,6 +13,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/whir"
 	"k8s.io/client-go/kubernetes"
@@ -143,7 +144,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			_, _ = fmt.Fprintf(stderr, "transcripts s3 client: %v\n", err)
 			return 1
 		}
-		store = NewS3Store(client, cfg.S3Bucket)
+		store = NewS3Store(client, cfg.S3Bucket, sealbox.Key(cfg.SealKey))
 	case cfg.Transcripts != "":
 		if err := os.MkdirAll(cfg.Transcripts, 0o750); err != nil { //nolint:gosec
 			_, _ = fmt.Fprintf(stderr, "mkdir transcripts: %v", err)
