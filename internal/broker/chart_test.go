@@ -3,6 +3,7 @@ package broker_test
 import (
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -13,6 +14,20 @@ import (
 
 	"github.com/ianeff/thump/internal/broker"
 )
+
+// TestMain supplies a dummy $JS_KEY because nats-server's conf parser
+// resolves variable references against the process environment and fails the
+// whole parse when one is missing. In the cluster the real key arrives via
+// envFrom; these tests read the permission table, never the key, so the value
+// only has to lex as a single token — the parser reads a variable's value as
+// config text, so anything with a space in it fails a second time and more
+// confusingly than the first.
+func TestMain(m *testing.M) {
+	if err := os.Setenv("JS_KEY", "dummyjetstreamkey"); err != nil {
+		panic(err)
+	}
+	os.Exit(m.Run())
+}
 
 // renderNATSConf runs the real chart through `helm template --show-only`
 // (already a task ci dependency via chart-lint) and returns the thump-nats
