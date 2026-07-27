@@ -2,6 +2,7 @@ package trim
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/sealbox"
 )
 
 // shiftPositional pulls the leading fingerprint argument off args so a
@@ -43,6 +45,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return runApprove(args[1:], stdout, stderr)
 	case "force":
 		return runForce(args[1:], stdout, stderr)
+	case "unseal":
+		return runUnseal(args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "trim: unknown command: %q\n", args[0])
 		return 2
@@ -176,4 +180,59 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintf(stdout, "FORCED %s by %s — bypassed hiss's risk gate\n", fp, *operator)
 	return 0
+}
+
+// runUnseal reads a WAL segment or transcript downloaded from the bucket
+// (gcloud storage cat/cp) and writes its plaintext to stdout — a read of
+// already-emitted state, reaching no executor and no NATS subject, so it
+// carries none of force's operator-surface weight.
+func runUnseal(args []string, stdout, stderr io.Writer) int {
+	usage := "usage: trim unseal <file>"
+	path, rest, ok := shiftPositional(args)
+	if !ok || len(rest) != 0 {
+		_, _ = fmt.Fprintln(stderr, usage)
+		return 2
+	}
+
+	key, err := sealKeyFromEnv()
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
+	}
+
+	sealed, err := os.ReadFile(path) //nolint:gosec
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
+	}
+	plain, err := key.Open(sealed)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
+	}
+	if _, err := stdout.Write(plain); err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
+	}
+	return 0
+}
+
+// sealKeyFromEnv decodes THUMP_SEAL_KEY the same way config.loader's
+// RequireBase64Key does — trim reads it directly rather than depending on
+// internal/config for four lines of base64 decoding.
+func sealKeyFromEnv() (sealbox.Key, error) {
+	var key sealbox.Key
+	v := os.Getenv("THUMP_SEAL_KEY")
+	if v == "" {
+		return key, fmt.Errorf("THUMP_SEAL_KEY is required")
+	}
+	b, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return key, fmt.Errorf("THUMP_SEAL_KEY: invalid base64: %w", err)
+	}
+	if len(b) != len(key) {
+		return key, fmt.Errorf("THUMP_SEAL_KEY: want %d bytes, got %d", len(key), len(b))
+	}
+	copy(key[:], b)
+	return key, nil
 }

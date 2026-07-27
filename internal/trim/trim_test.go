@@ -2,6 +2,7 @@ package trim_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/trim"
 	"sigs.k8s.io/yaml"
 )
@@ -207,5 +209,92 @@ func TestMain_ForceFailsWhenTheFingerprintIsNotCurrentlyHeld(t *testing.T) {
 	}
 	if stderr.String() == "" {
 		t.Error("want an explanatory message on stderr, got none")
+	}
+}
+
+// testSealKeyB64 is a 32-byte AES-256 key, base64-encoded — the same value
+// internal/config's own tests use, standing in for THUMP_SEAL_KEY.
+const testSealKeyB64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+
+func sealFile(t *testing.T, plaintext []byte) string {
+	t.Helper()
+	raw, err := base64.StdEncoding.DecodeString(testSealKeyB64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var key sealbox.Key
+	copy(key[:], raw)
+	sealed, err := key.Seal(plaintext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "segment.sealed")
+	if err := os.WriteFile(path, sealed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestMain_UnsealDecryptsAFileSealedWithTheConfiguredKey(t *testing.T) {
+	// Not t.Parallel(): t.Setenv panics alongside t.Parallel.
+	plaintext := []byte(`{"fingerprint":"fp-1"}`)
+	path := sealFile(t, plaintext)
+	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
+
+	var stdout, stderr bytes.Buffer
+	code := trim.Main([]string{"unseal", path}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	if diff := cmp.Diff(string(plaintext), stdout.String()); diff != "" {
+		t.Error("unsealed stdout didn't match the original plaintext", diff)
+	}
+}
+
+func TestMain_UnsealFailsWithoutTHUMPSealKeySet(t *testing.T) {
+	path := sealFile(t, []byte("payload"))
+	t.Setenv("THUMP_SEAL_KEY", "")
+
+	var stdout, stderr bytes.Buffer
+	code := trim.Main([]string{"unseal", path}, &stdout, &stderr)
+
+	if code == 0 {
+		t.Error("want a nonzero exit code with THUMP_SEAL_KEY unset, got 0")
+	}
+	if !strings.Contains(stderr.String(), "THUMP_SEAL_KEY") {
+		t.Errorf("want stderr to name the missing var, got %q", stderr.String())
+	}
+}
+
+func TestMain_UnsealFailsOnATamperedFile(t *testing.T) {
+	path := sealFile(t, []byte("payload"))
+	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
+
+	sealed, err := os.ReadFile(path) //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed[len(sealed)-1] ^= 0xFF
+	if err := os.WriteFile(path, sealed, 0o600); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := trim.Main([]string{"unseal", path}, &stdout, &stderr)
+
+	if code == 0 {
+		t.Error("want a nonzero exit code for a tampered file, got 0")
+	}
+}
+
+func TestMain_UnsealRequiresExactlyOneFileArgument(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+
+	code := trim.Main([]string{"unseal"}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Errorf("want exit code 2 for a missing file argument, got %d", code)
 	}
 }
