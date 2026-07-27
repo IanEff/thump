@@ -111,6 +111,9 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	_, health, shutdownMetrics := beat.Metrics("rattle", metricsTLS)
 	defer func() { _ = shutdownMetrics(ctx) }()
 
+	ctx, brokerLost := context.WithCancelCause(ctx)
+	defer brokerLost(nil)
+
 	var pub publish.Publisher[signal.Detection]
 	var walPub *publish.WALPublisher[signal.Detection]
 	if lc.NATSURL != "" {
@@ -118,7 +121,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			CertFile: cfg.TLSCertFile,
 			KeyFile:  cfg.TLSKeyFile,
 			CAFile:   cfg.TLSCAFile,
-		})
+		}, beat.BrokerHooks(health, "rattle", func() { brokerLost(beat.ErrBrokerClosed) }))
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1

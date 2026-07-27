@@ -146,11 +146,14 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
 func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+	ctx, brokerLost := context.WithCancelCause(ctx)
+	defer brokerLost(nil)
+
 	js, closeNC, err := broker.Connect(ctx, natsURL, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
-	})
+	}, beat.BrokerHooks(health, "thump", func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
