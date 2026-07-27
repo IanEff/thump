@@ -60,7 +60,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump")
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump", tlsx.Config{
+		CertFile: cfg.TLSCertFile,
+		KeyFile:  cfg.TLSKeyFile,
+		CAFile:   cfg.TLSCAFile,
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
 		return 1

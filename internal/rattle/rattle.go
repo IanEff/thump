@@ -132,7 +132,11 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	// entire readiness contract.
 	health.SetReady(true)
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle")
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle", tlsx.Config{
+		CertFile: cfg.TLSCertFile,
+		KeyFile:  cfg.TLSKeyFile,
+		CAFile:   cfg.TLSCAFile,
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
 		return 1

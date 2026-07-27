@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ianeff/thump/internal/tlsx"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -13,6 +14,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"google.golang.org/grpc/credentials"
 )
 
 // Shutdown releases whatever Tracer allocated — never nil, so a caller can
@@ -33,8 +35,12 @@ type exporterFactory func(ctx context.Context, endpoint string) (sdktrace.SpanEx
 // process-global default — internal/broker's and internal/publish's
 // propagation.TraceContext{} read that global, so they need no wiring of
 // their own.
-func Tracer(ctx context.Context, beatName string) (trace.Tracer, Shutdown, error) {
-	return newTracer(ctx, beatName, os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), newOTLPExporter)
+func Tracer(ctx context.Context, beatName string, tlsCfg tlsx.Config) (trace.Tracer, Shutdown, error) {
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	factory := func(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
+		return newOTLPExporter(ctx, endpoint, tlsCfg)
+	}
+	return newTracer(ctx, beatName, endpoint, factory)
 }
 
 func newTracer(ctx context.Context, beatName, endpoint string, newExporter exporterFactory) (trace.Tracer, Shutdown, error) {
@@ -67,7 +73,7 @@ func newTracer(ctx context.Context, beatName, endpoint string, newExporter expor
 	return tp.Tracer(beatName), tp.Shutdown, nil
 }
 
-func newOTLPExporter(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
+func newOTLPExporter(ctx context.Context, endpoint string, tlsCfg tlsx.Config) (sdktrace.SpanExporter, error) {
 	dial, err := otlpDialOptions(endpoint)
 	if err != nil {
 		return nil, err
@@ -75,6 +81,12 @@ func newOTLPExporter(ctx context.Context, endpoint string) (sdktrace.SpanExporte
 	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(dial.Host)}
 	if dial.Insecure {
 		opts = append(opts, otlptracegrpc.WithInsecure())
+	} else {
+		tc, err := tlsx.Client(tlsCfg)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tc)))
 	}
 	return otlptracegrpc.New(ctx, opts...)
 }
