@@ -53,7 +53,7 @@ func (m *GeminiModel) Complete(ctx context.Context, msgs []Message, tools []Tool
 		if err != nil {
 			return Completion{}, fmt.Errorf("gemini marshal tool args: %w", err)
 		}
-		comp.ToolCalls = append(comp.ToolCalls, ToolCall{Name: fc.Name, Args: args})
+		comp.ToolCalls = append(comp.ToolCalls, ToolCall{ID: fc.ID, Name: fc.Name, Args: args})
 	}
 	return comp, nil
 }

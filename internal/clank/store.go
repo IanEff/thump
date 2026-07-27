@@ -239,8 +239,10 @@ type Turn struct {
 // field: a tool result is folded into Content as a one-line digest, never a
 // raw payload.
 type Message struct {
-	Role    string
-	Content string
+	Role        string
+	Content     string
+	ToolCalls   []ToolCall   `json:"ToolCalls,omitempty"`
+	ToolResults []ToolResult `json:"ToolResults,omitempty"`
 }
 
 // Completion is one Model.Complete response: the assistant's Message plus
@@ -252,7 +254,18 @@ type Completion struct {
 
 // ToolCall is one tool invocation the model requested — the tool's name and
 // its raw JSON args, decoded by whichever engine branch dispatches that name.
+// ID is the provider's own identifier for the call, and is echoed back on the
+// matching ToolResult.
 type ToolCall struct {
+	ID   string `json:"ID,omitempty"`
 	Name string
 	Args json.RawMessage
+}
+
+// ToolResult is one digest answering one ToolCall.  IsError marks a tool
+// that failed, which the model is told about.
+type ToolResult struct {
+	CallID  string
+	Digest  string
+	IsError bool `json:"IsError,omitempty"`
 }

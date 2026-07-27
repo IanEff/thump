@@ -55,6 +55,7 @@ func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []T
 			comp.Message.Content += b.Text
 		case anthropic.ToolUseBlock:
 			comp.ToolCalls = append(comp.ToolCalls, ToolCall{
+				ID:   b.ID,
 				Name: b.Name,
 				Args: json.RawMessage(b.JSON.Input.Raw()),
 			})
