@@ -2,6 +2,7 @@ package beat
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -20,11 +21,15 @@ const metricsReadHeaderTimeout = 5 * time.Second
 // Metrics builds a fresh Registry, wrapped so every metric registered
 // through the returned Registerer carries a beat="<beatName>" label without
 // each beat's own metric declarations having to add it themselves, and
-// serves it over HTTP on METRICS_ADDR (":9090" style). Empty means
-// unconfigured — same "noop is a valid production state" discipline as
-// Tracer: a beat with no scraper pointed at it still runs, it just has
-// nothing to collect into.
-func Metrics(beatName string) (prometheus.Registerer, *Health, Shutdown) {
+// serves it over METRICS_ADDR (":9090" style). Empty means unconfigured —
+// same "noop is a valid production state" discipline as Tracer: a beat with
+// no scraper pointed at it still runs, it just has nothing to collect into.
+// A nil tlsCfg serves plaintext, the offline path's only option; a non-nil
+// one — built by the caller via tlsx.Server, never here, so this package
+// stays transport-only — serves ListenAndServeTLS("", ""), the empty
+// strings because the certificate comes from tlsCfg's own GetCertificate
+// callback, not a path this func would reread.
+func Metrics(beatName string, tlsCfg *tls.Config) (prometheus.Registerer, *Health, Shutdown) {
 	reg := prometheus.NewRegistry()
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{"beat": beatName}, reg)
 	health := &Health{}
@@ -42,9 +47,16 @@ func Metrics(beatName string) (prometheus.Registerer, *Health, Shutdown) {
 		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: metricsReadHeaderTimeout,
+		TLSConfig:         tlsCfg,
 	}
+
+	serve := srv.ListenAndServe
+	if tlsCfg != nil {
+		serve = func() error { return srv.ListenAndServeTLS("", "") }
+	}
+
 	go func() {
-		if err := srv.ListenAndServe(); !listenerStopWasClean(err) {
+		if err := serve(); !listenerStopWasClean(err) {
 			slog.Error("metrics listener stopped", "addr", addr, "err", err)
 		}
 	}()

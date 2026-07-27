@@ -176,7 +176,7 @@ func TestRunLoop_PublishesWithTraceContextKeyedByFingerprint(t *testing.T) {
 
 func TestNewReconciler_WiresTheContractSoConfidenceIsLive(t *testing.T) {
 	slo := rattle.SLO{ID: "ceph-rgw-availability"}
-	r := rattle.NewReconcilerForTest("http://unused", nil, nil, nil)
+	r := rattle.NewReconcilerForTest("http://unused", nil, nil, nil, nil)
 	r.SLOs = []rattle.SLO{slo}
 	r.Source = fakeSource{slo.ID: freshWindow(1, 2, 4, 8)} // recent timestamps, fires on acceleration
 
@@ -194,7 +194,7 @@ func TestNewReconciler_WiresTheContractSoConfidenceIsLive(t *testing.T) {
 
 func TestNewReconciler_WiresTheContractSoStaleWindowsAreSkipped(t *testing.T) {
 	slo := rattle.SLO{ID: "ceph-rgw-availability"}
-	r := rattle.NewReconcilerForTest("http://unused", nil, nil, nil)
+	r := rattle.NewReconcilerForTest("http://unused", nil, nil, nil, nil)
 	r.SLOs = []rattle.SLO{slo}
 	r.Source = fakeSource{slo.ID: window(1, 2, 4, 8)} // epoch-anchored — ancient by wall-clock
 

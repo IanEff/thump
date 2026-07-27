@@ -10,6 +10,7 @@ package thump
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -59,14 +60,30 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump")
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump", tlsx.Config{
+		CertFile: cfg.TLSCertFile,
+		KeyFile:  cfg.TLSKeyFile,
+		CAFile:   cfg.TLSCAFile,
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
 		return 1
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	reg, health, shutdownMetrics := beat.Metrics("thump")
+	var metricsTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		metricsTLS, err = tlsx.Server(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			return 1
+		}
+	}
+	reg, health, shutdownMetrics := beat.Metrics("thump", metricsTLS)
 	defer func() { _ = shutdownMetrics(ctx) }()
 	stages := beat.NewStageRecorder(reg)
 
@@ -248,7 +265,11 @@ func buildExecutor(cfg config.Thump, cat *contract.StaticCatalog) (Executor, *Fi
 	}, sw, nil
 }
 
-// buildReversalWatcher wires the automatic-undo probe from cfg.
+// buildReversalWatcher wires the automatic-undo probe from cfg. backendTLS is
+// nil in the offline path (cfg.TLSCertFile unset) and dials PROM_URL in the
+// clear, same as today — L4/L5's declared exception. In the broker path it's
+// the beat's own leaf, ready the day Prometheus starts serving TLS from the
+// cluster's private CA.
 func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 	if cfg.PromURL == "" {
 		return nil, nil
@@ -257,7 +278,18 @@ func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load evidence queries: %w", err)
 	}
-	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries, Client: httpx.Client(httpx.DefaultBackendTimeout)}
+	var backendTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		backendTLS, err = tlsx.Client(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("backend tls setup: %w", err)
+		}
+	}
+	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS)}
 	return &ReversalWatcher{Probe: PrometheusConverger{Probe: prober}}, nil
 }
 

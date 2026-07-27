@@ -2,6 +2,7 @@ package rattle
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
 
 	"github.com/ianeff/thump/api/v1/signal"
@@ -16,6 +17,6 @@ func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, pub pu
 // NewReconcilerForTest exposes Main's real Reconciler assembly so a test can
 // swap in a fake Source and prove Main's wiring, not just Reconciler's
 // behavior when a test hand-sets a field.
-func NewReconcilerForTest(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource) *Reconciler {
-	return newReconciler(promURL, slos, topo, traffic)
+func NewReconcilerForTest(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource, backendTLS *tls.Config) *Reconciler {
+	return newReconciler(promURL, slos, topo, traffic, backendTLS)
 }

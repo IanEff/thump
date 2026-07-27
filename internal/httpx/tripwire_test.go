@@ -158,7 +158,7 @@ func isCryptoTLS(x ast.Expr) bool {
 // anywhere else is a leg nobody decided about; adding a row is a design
 // review, not a convenience.
 var declaredPlaintext = map[string]string{
-	"internal/beat/trace.go": "OTLP to an in-cluster collector — the wire is Cilium WireGuard's job, and the scheme is authored in OTEL_EXPORTER_OTLP_ENDPOINT",
+	"internal/beat/trace.go": "the http:// branch of OTEL_EXPORTER_OTLP_ENDPOINT is an authored operator choice for a rig whose collector doesn't serve TLS, not a delegation to Cilium WireGuard — the https:// branch verifies the peer via tlsx.Client",
 }
 
 func TestOnlyDeclaredFilesAskForAnInsecureTransport(t *testing.T) {

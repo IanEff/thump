@@ -10,14 +10,18 @@ import (
 
 // TestBeatImportsNoBeat pins the kit's load-bearing invariant: internal/beat
 // may import stdlib, the shared transport infrastructure (broker, publish,
-// and the jetstream types they surface), the OTel tracing SDK (trace.go's
-// Tracer, which every beat's Main calls to build its span provider, and
-// stage.go's Stage, which every beat's loop stages run through), the
-// Prometheus client (metrics.go's Metrics, stage.go's StageRecorder), and
-// the AWS SDK plus its underlying smithy-go transport (objectstore.go's
-// NewS3SegmentSink, which builds the S3 client a WAL ships sealed segments
-// through, and the finalize middleware it installs to work around a GCS
-// signing quirk) — but NEVER a beat package.
+// and the jetstream types they surface), tlsx (trace.go's Tracer and
+// metrics.go's Metrics both build a *tls.Config from it rather than
+// constructing one inline), the OTel tracing SDK plus grpc/credentials
+// (trace.go's Tracer, which every beat's Main calls to build its span
+// provider — credentials.NewTLS is the adapter from tlsx's *tls.Config to
+// the credentials.TransportCredentials otlptracegrpc.WithTLSCredentials
+// requires — and stage.go's Stage, which every beat's loop stages run
+// through), the Prometheus client (metrics.go's Metrics, stage.go's
+// StageRecorder), and the AWS SDK plus its underlying smithy-go transport
+// (objectstore.go's NewS3SegmentSink, which builds the S3 client a WAL ships
+// sealed segments through, and the finalize middleware it installs to work
+// around a GCS signing quirk) — but NEVER a beat package.
 // A clank, rattle, hiss, or thump import appearing here means the runtime
 // kit has become a place where the planes mash together; this test is that
 // regression's tripwire. Widen the allowlist below when tracing, metrics,
@@ -45,6 +49,8 @@ func TestBeatImportsNoBeat(t *testing.T) {
 		`"github.com/aws/aws-sdk-go-v2/service/s3"`:                         true,
 		`"github.com/aws/smithy-go/middleware"`:                             true,
 		`"github.com/aws/smithy-go/transport/http"`:                         true,
+		`"github.com/ianeff/thump/internal/tlsx"`:                           true,
+		`"google.golang.org/grpc/credentials"`:                              true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

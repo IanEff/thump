@@ -2,6 +2,7 @@ package rattle
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -49,6 +50,23 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		return 1
 	}
 
+	// backendTLS is nil in the offline path (cfg.TLSCertFile unset) and dials
+	// PROM_URL in the clear, same as today — L4/L5's declared exception. In
+	// the broker path it's the beat's own leaf, ready the day Prometheus
+	// starts serving TLS from the cluster's private CA.
+	var backendTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		backendTLS, err = tlsx.Client(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "backend tls setup: %v\n", err)
+			return 1
+		}
+	}
+
 	var topo TopologySource
 	if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
 		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
@@ -62,7 +80,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		}
 		topo = &WhirTopologySource{Resolver: &whir.Resolver{
 			BaseURL: cfg.PromURL,
-			Client:  httpx.Client(httpx.DefaultBackendTimeout),
+			Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
 			Queries: queries,
 		}}
 	}
@@ -74,10 +92,22 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			_, _ = fmt.Fprintf(stderr, "load traffic queries: %v\n", err)
 			return 1
 		}
-		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout), Queries: queries}
+		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries}
 	}
 
-	_, health, shutdownMetrics := beat.Metrics("rattle")
+	var metricsTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		metricsTLS, err = tlsx.Server(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			return 1
+		}
+	}
+	_, health, shutdownMetrics := beat.Metrics("rattle", metricsTLS)
 	defer func() { _ = shutdownMetrics(ctx) }()
 
 	var pub publish.Publisher[signal.Detection]
@@ -119,14 +149,18 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	// entire readiness contract.
 	health.SetReady(true)
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle")
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle", tlsx.Config{
+		CertFile: cfg.TLSCertFile,
+		KeyFile:  cfg.TLSKeyFile,
+		CAFile:   cfg.TLSCAFile,
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
 		return 1
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	r := newReconciler(cfg.PromURL, slos, topo, traffic)
+	r := newReconciler(cfg.PromURL, slos, topo, traffic, backendTLS)
 
 	if walPub != nil {
 		sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
@@ -153,11 +187,17 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 
 // newReconciler assembles the Reconciler Main runs — pulled out of Main so a
 // test can drive it with a fake Source and prove the wiring is correct; Main
-// itself is only reachable with a live PROM_URL.
-func newReconciler(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource) *Reconciler {
+// itself is only reachable with a live PROM_URL. backendTLS is nil offline
+// and non-nil in the broker path (see Main) — NewPromSource's own client
+// only applies when it's nil.
+func newReconciler(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource, backendTLS *tls.Config) *Reconciler {
+	src := NewPromSource(promURL)
+	if backendTLS != nil {
+		src.Client = httpx.Client(httpx.DefaultBackendTimeout, backendTLS)
+	}
 	return &Reconciler{
 		SLOs:           slos,
-		Source:         NewPromSource(promURL),
+		Source:         src,
 		Detector:       AccelerationDetector{Threshold: 0.5},
 		Sustained:      &SustainedBurnDetector{Threshold: 1.0, MinSamples: 5},
 		Debounce:       NewDebouncer(10 * time.Minute),
