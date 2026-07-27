@@ -18,6 +18,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/tracing"
 	"github.com/ianeff/thump/internal/whir"
@@ -163,7 +164,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	r := newReconciler(cfg.PromURL, slos, topo, traffic, backendTLS)
 
 	if walPub != nil {
-		sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
+		sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1

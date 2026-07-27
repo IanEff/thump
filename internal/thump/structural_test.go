@@ -79,6 +79,11 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// pattern as every other seam on Transport.
 		`"go.opentelemetry.io/otel/trace"`:      true,
 		`"go.opentelemetry.io/otel/trace/noop"`: true,
+		// R8: AES-256-GCM sealing for WAL segments shipped to the bucket —
+		// crypto/aes, crypto/cipher, crypto/rand, fmt only per its own leaf
+		// tripwire. Same risk profile as ledger above: a data transform with
+		// no reach outside the process, not a new capability.
+		`"github.com/ianeff/thump/internal/sealbox"`: true,
 	}
 
 	entries, err := os.ReadDir(".")

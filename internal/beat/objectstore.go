@@ -1,11 +1,14 @@
 package beat
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/sealbox"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -82,13 +85,39 @@ func NewS3Client(ctx context.Context, endpoint, accessKey, secretKey string) (*s
 }
 
 // NewS3SegmentSink builds a publish.SegmentSink over an S3-compatible
-// endpoint from plain config values, via NewS3Client above.
-func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKey string) (publish.SegmentSink, error) {
+// endpoint from plain config values, via NewS3Client above, wrapped in an
+// EncryptingSink so every segment is sealed before it reaches the bucket.
+func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKey string, key sealbox.Key) (publish.SegmentSink, error) {
 	client, err := NewS3Client(ctx, endpoint, accessKey, secretKey)
 	if err != nil {
 		return nil, err
 	}
-	return publish.NewS3SegmentSink(client, bucket), nil
+	return &EncryptingSink{Inner: publish.NewS3SegmentSink(client, bucket), Key: key}, nil
+}
+
+// EncryptingSink seals a segment before handing it to Inner. The emptyDir
+// copy on the pod stays plaintext on purpose — it dies with the pod, and
+// it's what trim and the debug-transcript skill read during an incident. The
+// copy that outlives the cluster is the one this decorator seals.
+//
+// Put reads the whole segment into memory to seal it, bounded by the WAL's
+// 64 MiB seal threshold — if that cap is ever raised, this is the line that
+// turns into an OOM.
+type EncryptingSink struct {
+	Inner publish.SegmentSink
+	Key   sealbox.Key
+}
+
+func (s *EncryptingSink) Put(ctx context.Context, key string, r io.Reader) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("encrypting sink: read %s: %w", key, err)
+	}
+	sealed, err := s.Key.Seal(b)
+	if err != nil {
+		return fmt.Errorf("encrypting sink: seal %s: %w", key, err)
+	}
+	return s.Inner.Put(ctx, key, bytes.NewReader(sealed))
 }
 
 // RunShipper ships wal's sealed segments to sink on ShipInterval until ctx

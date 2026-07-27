@@ -15,6 +15,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -50,7 +51,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 		return 1
 	}
 
-	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey)
+	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1

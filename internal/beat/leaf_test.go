@@ -18,10 +18,12 @@ import (
 // the credentials.TransportCredentials otlptracegrpc.WithTLSCredentials
 // requires — and stage.go's Stage, which every beat's loop stages run
 // through), the Prometheus client (metrics.go's Metrics, stage.go's
-// StageRecorder), and the AWS SDK plus its underlying smithy-go transport
+// StageRecorder), the AWS SDK plus its underlying smithy-go transport
 // (objectstore.go's NewS3SegmentSink, which builds the S3 client a WAL ships
 // sealed segments through, and the finalize middleware it installs to work
-// around a GCS signing quirk) — but NEVER a beat package.
+// around a GCS signing quirk), and sealbox (objectstore.go's EncryptingSink,
+// which seals a segment before NewS3SegmentSink's inner sink ever sees it)
+// — but NEVER a beat package.
 // A clank, rattle, hiss, or thump import appearing here means the runtime
 // kit has become a place where the planes mash together; this test is that
 // regression's tripwire. Widen the allowlist below when tracing, metrics,
@@ -50,6 +52,7 @@ func TestBeatImportsNoBeat(t *testing.T) {
 		`"github.com/aws/smithy-go/middleware"`:                             true,
 		`"github.com/aws/smithy-go/transport/http"`:                         true,
 		`"github.com/ianeff/thump/internal/tlsx"`:                           true,
+		`"github.com/ianeff/thump/internal/sealbox"`:                        true,
 		`"google.golang.org/grpc/credentials"`:                              true,
 	}
 	entries, err := os.ReadDir(".")
