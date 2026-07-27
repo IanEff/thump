@@ -28,7 +28,7 @@ func (stallTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // the bubble is blocked.
 func TestClient_EndsACallTheBackendNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		c := httpx.Client(httpx.DefaultBackendTimeout)
+		c := httpx.Client(httpx.DefaultBackendTimeout, nil)
 		c.Transport = stallTransport{}
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
 			"http://stalled.invalid/api/v1/query", nil)

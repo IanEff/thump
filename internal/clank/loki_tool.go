@@ -94,7 +94,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 
 	client := l.Client
 	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout)
+		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
 	}
 
 	resp, err := client.Do(req)

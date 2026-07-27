@@ -28,7 +28,7 @@ type StateQuery struct {
 type Resolver struct {
 	BaseURL string
 	// Client is the HTTP client State issues queries with. Defaults to
-	// httpx.Client(httpx.DefaultBackendTimeout) when nil.
+	// httpx.Client(httpx.DefaultBackendTimeout, nil) when nil.
 	Client *http.Client
 	// Queries maps a dependency name to its instant-query expression, as
 	// loaded by LoadStateQueries.
@@ -58,7 +58,7 @@ func (r *Resolver) State(ctx context.Context, dependency string) string {
 	}
 	client := r.Client
 	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout)
+		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

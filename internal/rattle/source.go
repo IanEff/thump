@@ -22,10 +22,10 @@ type PromSource struct {
 	Window  time.Duration // how far back to query; BurnSamples defaults to 15m when zero
 }
 
-// NewPromSource returns a PromSource with the default 1-minute step, 15-minute
-// window, and httpx.Client(httpx.DefaultBackendTimeout).
+// NewPromSource returns a PromSource with the default 1-minute step,
+// 15-minute window, and httpx.Client(httpx.DefaultBackendTimeout, nil).
 func NewPromSource(baseURL string) *PromSource {
-	return &PromSource{BaseURL: baseURL, Client: httpx.Client(httpx.DefaultBackendTimeout), Step: time.Minute, Window: 15 * time.Minute}
+	return &PromSource{BaseURL: baseURL, Client: httpx.Client(httpx.DefaultBackendTimeout, nil), Step: time.Minute, Window: 15 * time.Minute}
 }
 
 type promRangeResponse struct {
@@ -75,7 +75,7 @@ func (p *PromSource) BurnSamples(ctx context.Context, slo SLO) ([]Sample, error)
 	}
 	client := p.Client
 	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout)
+		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

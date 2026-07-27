@@ -2,6 +2,7 @@
 package httpx
 
 import (
+	"crypto/tls"
 	"net/http"
 	"time"
 )
@@ -12,8 +13,14 @@ import (
 // beats waiting on it.
 const DefaultBackendTimeout = 10 * time.Second
 
-// Client returns a client whose every call is bounded by a timeout.
-// A zero timeout is not special-cased away.
-func Client(timeout time.Duration) *http.Client {
-	return &http.Client{Timeout: timeout}
+// Client returns a client whose every call is bounded by a timeout, dialing
+// over tlsCfg when it isn't nil. A zero timeout is not special-cased away.
+// A nil tlsCfg leaves the transport at its default, so a caller with no
+// private CA to verify a peer against keeps today's plaintext behavior.
+func Client(timeout time.Duration, tlsCfg *tls.Config) *http.Client {
+	c := &http.Client{Timeout: timeout}
+	if tlsCfg != nil {
+		c.Transport = &http.Transport{TLSClientConfig: tlsCfg}
+	}
+	return c
 }

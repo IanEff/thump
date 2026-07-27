@@ -55,6 +55,23 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
+	// backendTLS is nil in the offline path (cfg.TLSCertFile unset) and dials
+	// PROM_URL/LOKI_URL in the clear, same as today — L4/L5's declared
+	// exception. In the broker path it's the beat's own leaf, ready the day
+	// either backend starts serving TLS from the cluster's private CA.
+	var backendTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		backendTLS, err = tlsx.Client(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "backend tls setup: %v\n", err)
+			return 1
+		}
+	}
+
 	tools := map[string]Tool{}
 	if cfg.PromURL == "" {
 		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
@@ -68,14 +85,14 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			BaseURL:  cfg.PromURL,
 			Queries:  queries,
 			Subjects: subjects,
-			Client:   httpx.Client(httpx.DefaultBackendTimeout),
+			Client:   httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
 		}
 	}
 
 	if cfg.LokiURL == "" {
 		slog.Warn("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action")
 	} else {
-		tools["loki"] = &LokiTool{BaseURL: cfg.LokiURL, Client: httpx.Client(httpx.DefaultBackendTimeout)}
+		tools["loki"] = &LokiTool{BaseURL: cfg.LokiURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS)}
 	}
 
 	restConfig, err := rest.InClusterConfig()
@@ -109,7 +126,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 		intake = NewIntake(WhirTopology{
 			Catalog:  cat,
-			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout), Queries: queries},
+			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries},
 		}, noopChange{})
 	}
 

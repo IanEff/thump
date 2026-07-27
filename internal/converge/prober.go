@@ -19,7 +19,7 @@ import (
 )
 
 // Prober is thump's real Converger. BaseURL and Client behave exactly like
-// whir.Resolver's — Client defaults to httpx.Client(httpx.DefaultBackendTimeout)
+// whir.Resolver's — Client defaults to httpx.Client(httpx.DefaultBackendTimeout, nil)
 // when nil — and
 // Queries maps a SuccessCriteria.Metric name to the PromQL instant-query
 // expression that reports its live value.
@@ -74,7 +74,7 @@ func (p *Prober) query(ctx context.Context, query string) (float64, bool) {
 	}
 	client := p.Client
 	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout)
+		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

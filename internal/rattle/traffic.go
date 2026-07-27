@@ -99,7 +99,7 @@ func (h *HubbleTrafficSource) instant(ctx context.Context, query string) (*float
 	}
 	client := h.Client
 	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout)
+		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

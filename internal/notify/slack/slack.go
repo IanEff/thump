@@ -25,7 +25,7 @@ var ErrWebhookStatus = errors.New("slack: webhook returned non-2xx status")
 // Webhook posts a held action's digest to a Slack incoming-webhook URL.
 type Webhook struct {
 	URL    string       // the incoming-webhook endpoint — the whole secret; treat it like a credential
-	Client *http.Client // nil uses httpx.Client(httpx.DefaultBackendTimeout); inject one to point tests at an httptest server
+	Client *http.Client // nil uses httpx.Client(httpx.DefaultBackendTimeout, nil); inject one to point tests at an httptest server
 }
 
 // Notify posts the held action's digest to the webhook. A transport error or a
@@ -57,7 +57,7 @@ func (w *Webhook) client() *http.Client {
 	if w.Client != nil {
 		return w.Client
 	}
-	return httpx.Client(httpx.DefaultBackendTimeout)
+	return httpx.Client(httpx.DefaultBackendTimeout, nil)
 }
 
 // digest renders the single line a human reads to bless-or-kill: which action

@@ -265,7 +265,11 @@ func buildExecutor(cfg config.Thump, cat *contract.StaticCatalog) (Executor, *Fi
 	}, sw, nil
 }
 
-// buildReversalWatcher wires the automatic-undo probe from cfg.
+// buildReversalWatcher wires the automatic-undo probe from cfg. backendTLS is
+// nil in the offline path (cfg.TLSCertFile unset) and dials PROM_URL in the
+// clear, same as today — L4/L5's declared exception. In the broker path it's
+// the beat's own leaf, ready the day Prometheus starts serving TLS from the
+// cluster's private CA.
 func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 	if cfg.PromURL == "" {
 		return nil, nil
@@ -274,7 +278,18 @@ func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load evidence queries: %w", err)
 	}
-	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries, Client: httpx.Client(httpx.DefaultBackendTimeout)}
+	var backendTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		backendTLS, err = tlsx.Client(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("backend tls setup: %w", err)
+		}
+	}
+	prober := &converge.Prober{BaseURL: cfg.PromURL, Queries: queries, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS)}
 	return &ReversalWatcher{Probe: PrometheusConverger{Probe: prober}}, nil
 }
 
