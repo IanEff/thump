@@ -63,6 +63,17 @@ s3:
   accessKey: ""
   secretKey: ""
 
+# THUMP_SEAL_KEY — every beat's broker path Require()s this once NATS_URL is
+# set: the WAL shipper's EncryptingSink and clank's S3Store both seal under
+# it before a PutObject. A 32-byte AES-256 key, base64. Same out-of-band
+# posture as s3/anthropic above: production expects secretName to already
+# exist; create/key are a --set-only escape hatch, never a committed values
+# file.
+seal:
+  secretName: thump-seal
+  create: false
+  key: ""
+
 # executor unset defaults to dry — a thump deployed with no override renders
 # and never acts. killSwitch.armed only seeds the mounted switch file, which
 # is re-templated on every apply, so a redeploy always resets it to false.
