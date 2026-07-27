@@ -314,6 +314,39 @@ mode this file exists to catch.*
 
 ---
 
+## Departures from other source material
+
+The D-ledger above is indexed against one book, *Agentic Reliability
+Engineering* — that's what this file exists to track. But some packages in
+this repo are built directly off a different book's own chapter, and depart
+from *that* source too. Recorded here rather than in the numbered ledger,
+because folding a DRAL-divergence and a departure from an unrelated book into
+the same numbering would make "which book?" a question every citation had to
+answer.
+
+### `tlsx` · Two named constructors, not one overloaded function
+
+**The source says:** Travis Jeffery's *Distributed Services with Go*, ch. 5
+("Secure Your Services"), builds a single `SetupTLSConfig(TLSConfig{Server:
+bool})` that returns whichever `*tls.Config` the caller needs — client or
+server — depending on the bool. The chapter's own margin note already flags
+the shape as a wart: "one overloaded function instead of three
+constructors."
+
+**We do:** `internal/tlsx` exports two named constructors, `Client` and
+`Server`, each returning exactly the `*tls.Config` its name promises. Neither
+takes a parameter that reshapes what comes back.
+
+**Why:** a bool that changes what a function returns is two functions wearing
+one name — the caller has to read the argument to know what they're getting,
+and a wrong bool at the call site still type-checks; it just builds the wrong
+config. Two named constructors make that mistake unwritable: a caller that
+wants a server config calls `Server`, full stop. This isn't a departure from
+a well-considered choice so much as taking the side of the book's own
+footnote — the chapter already named the fix, `tlsx` just took it.
+
+---
+
 ## Declined, with reasons
 
 Kept so they don't get re-derived from scratch.
