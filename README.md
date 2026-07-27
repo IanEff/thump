@@ -447,12 +447,15 @@ this project's own status page and not just its runtime behavior.
   by a test, and it hasn't yet decided anything wrong, but it is narrower than
   the composite score the design calls for. See
   [`docs/design-decisions.md`](docs/design-decisions.md), D-3.
-- **D-10's fix is landed but not yet proven on a live cluster.**
-  `accelerate-recovery` now pauses the Rook operator so its tunables stick.
-  That's green in tests and reasoned from a measured ~29ms reconcile. I still
-  owe the empirical confirmation that Rook honors the pause for a full
-  observation window, and if it fails, the declined `patch`-verb route reopens
-  with evidence in hand.
+- **`accelerate-recovery` assumes nothing else is reconciling the operator it
+  pauses.** The action scales `rook-ceph-operator` to zero so its Ceph tunables
+  survive the recovery window. That's proven live now — knobs read back `16`/`16`
+  mid-flight, window settled `success`, reversal clean. It only holds here
+  because our ArgoCD was taught to ignore `spec/replicas` on that Deployment;
+  the first live attempt had self-heal putting the operator back in about a
+  second. Run this under your own reconciler and you get that failure back, and
+  there's no field in `catalog.yaml` that would warn you. See
+  [`docs/design-decisions.md`](docs/design-decisions.md), D-10.
 - **A chaos-mesh v2.8.3 bug blocks one class of live test.** `toda`, the IOChaos
   fault injector, panics on startup on every OSD we've tried it against. Not a
   config mistake on our side — confirmed against upstream. Until that's fixed or
