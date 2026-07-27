@@ -159,3 +159,66 @@ func TestNewTracer_TagsSpansWithTheBeatsServiceName(t *testing.T) {
 		t.Error("recorded span's service.name must be the beatName newTracer was given (-want +got)\n", diff)
 	}
 }
+
+// failingExporter is an exporterFactory that panics if invoked — for cases
+// where newTracer is supposed to refuse before any exporter gets built, so a
+// dial being attempted at all is the failure, not a wrong return value.
+func failingExporter(context.Context, string) (sdktrace.SpanExporter, error) {
+	panic("exporter factory must not be called for an endpoint whose scheme can't be resolved")
+}
+
+func TestOTLPDialOptions_ReadsTheWireFromTheEndpointScheme(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		endpoint string
+		want     otlpDial
+		wantErr  bool
+	}{
+		"otlpDialOptions keeps the plaintext default for the bare host:port the chart ships": {
+			endpoint: "tempo.tracing.svc.cluster.local:4317",
+			want:     otlpDial{Host: "tempo.tracing.svc.cluster.local:4317", Insecure: true},
+		},
+		"otlpDialOptions strips an https scheme and asks for TLS": {
+			endpoint: "https://tempo.tracing.svc.cluster.local:4317",
+			want:     otlpDial{Host: "tempo.tracing.svc.cluster.local:4317"},
+		},
+		"otlpDialOptions strips an http scheme and stays plaintext": {
+			endpoint: "http://tempo.tracing.svc.cluster.local:4317",
+			want:     otlpDial{Host: "tempo.tracing.svc.cluster.local:4317", Insecure: true},
+		},
+		"otlpDialOptions refuses a scheme it cannot map to a wire rather than guessing": {
+			endpoint: "grpcs://tempo.tracing.svc.cluster.local:4317",
+			wantErr:  true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := otlpDialOptions(tc.endpoint)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("an unmappable scheme must refuse, got %+v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong wire chosen for the endpoint", diff)
+			}
+		})
+	}
+}
+
+func TestNewTracer_RefusesAnUnmappableEndpointInsteadOfSilentlyGoingNoop(t *testing.T) {
+	t.Parallel()
+	// An unconfigured endpoint is a legal production state and gets a noop
+	// (see the empty-endpoint case above). A *configured but unusable* one is
+	// a deploy error, and collapsing the two would hide a typo'd scheme as
+	// "tracing is off".
+	_, _, err := newTracer(context.Background(), "clank", "grpcs://tempo:4317", failingExporter)
+	if err == nil {
+		t.Error("a configured-but-unmappable endpoint must fail the beat, not degrade to noop")
+	}
+}

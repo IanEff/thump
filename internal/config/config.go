@@ -8,6 +8,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 )
@@ -19,6 +20,7 @@ type Clank struct {
 	ActionCatalog    string        // ACTION_CATALOG - required; the authored action catalog YAML
 	FailureClasses   string        // FAILURE_CLASSES - required; the authored failure-class definitions YAML
 	DedupeWindow     time.Duration // DEDUPE_WINDOW — optional; how far back Engine.Propose looks for a live set on the same fingerprint before suppressing a redelivery; defaults to 1h
+	NATSURL          string        // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
 	PromURL          string        // PROM_URL — optional; empty disables the metrics tool
 	EvidenceQueries  string        // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	LokiURL          string        // LOKI_URL — optional; empty disables the loki tool
@@ -34,6 +36,9 @@ type Clank struct {
 	S3Bucket         string        // S3_BUCKET — required only in the broker path
 	S3AccessKey      string        // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey      string        // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile      string        // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile       string        // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile        string        // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadClank reads clank's environment once. broker is whether Main resolved
@@ -48,6 +53,7 @@ func LoadClank(broker bool) (Clank, error) {
 		ActionCatalog:    l.Require("ACTION_CATALOG"),
 		FailureClasses:   l.Require("FAILURE_CLASSES"),
 		DedupeWindow:     l.OptionalDuration("DEDUPE_WINDOW", time.Hour),
+		NATSURL:          l.OptionalURL("NATS_URL", "nats", "tls"),
 		PromURL:          l.Optional("PROM_URL"),
 		EvidenceQueries:  l.Optional("EVIDENCE_QUERIES"),
 		LokiURL:          l.Optional("LOKI_URL"),
@@ -61,10 +67,13 @@ func LoadClank(broker bool) (Clank, error) {
 		c.Outcomes = l.Optional("CLANK_OUTCOMES")
 		c.Declines = l.Optional("CLANK_DECLINES")
 		c.WALDir = l.Require("WAL_DIR")
-		c.S3Endpoint = l.Require("S3_ENDPOINT")
+		c.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		c.S3Bucket = l.Require("S3_BUCKET")
 		c.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		c.S3SecretKey = l.Require("S3_SECRET_KEY")
+		c.TLSCertFile = l.Require("TLS_CERT_FILE")
+		c.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		c.TLSCAFile = l.Require("TLS_CA_FILE")
 	} else {
 		c.Inbox = l.Require("CLANK_INBOX")
 		c.Outbox = l.Require("CLANK_OUTBOX")
@@ -80,6 +89,7 @@ func LoadClank(broker bool) (Clank, error) {
 // "where's the file" (env) and "what's in it" (the beat's own YAML parse).
 type Hiss struct {
 	Policy      string // HISS_POLICY — required
+	NATSURL     string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
 	Inbox       string // HISS_INBOX — required only in the offline (non-broker) path
 	Outbox      string // HISS_OUTBOX — required only in the offline path
 	WALDir      string // WAL_DIR — required only in the broker path
@@ -87,6 +97,9 @@ type Hiss struct {
 	S3Bucket    string // S3_BUCKET — required only in the broker path
 	S3AccessKey string // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile  string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile   string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadHiss reads hiss's environment once. broker is whether Main resolved a
@@ -99,16 +112,20 @@ type Hiss struct {
 func LoadHiss(broker bool) (Hiss, error) {
 	l := &loader{}
 	h := Hiss{
-		Policy: l.Require("HISS_POLICY"),
+		Policy:  l.Require("HISS_POLICY"),
+		NATSURL: l.OptionalURL("NATS_URL", "nats", "tls"),
 	}
 	if broker {
 		h.Inbox = l.Optional("HISS_INBOX")
 		h.Outbox = l.Optional("HISS_OUTBOX")
 		h.WALDir = l.Require("WAL_DIR")
-		h.S3Endpoint = l.Require("S3_ENDPOINT")
+		h.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		h.S3Bucket = l.Require("S3_BUCKET")
 		h.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		h.S3SecretKey = l.Require("S3_SECRET_KEY")
+		h.TLSCertFile = l.Require("TLS_CERT_FILE")
+		h.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		h.TLSCAFile = l.Require("TLS_CA_FILE")
 	} else {
 		h.Inbox = l.Require("HISS_INBOX")
 		h.Outbox = l.Require("HISS_OUTBOX")
@@ -122,6 +139,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 // Publisher and just logs without publishing (rattle.go's "if pub != nil").
 type Rattle struct {
 	PromURL          string // PROM_URL — required unconditionally, not broker-gated
+	NATSURL          string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
 	WhirCatalog      string // WHIR_CATALOG — optional; pairs with WhirStateQueries
 	WhirStateQueries string // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
 	Traffic          string // RATTLE_TRAFFIC — optional; empty disables the Hubble traffic source
@@ -132,6 +150,9 @@ type Rattle struct {
 	S3Bucket         string // S3_BUCKET — required only in the broker path
 	S3AccessKey      string // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey      string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile      string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile       string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile        string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadRattle reads rattle's environment once. broker is whether Main
@@ -142,6 +163,7 @@ func LoadRattle(broker bool) (Rattle, error) {
 	l := &loader{}
 	r := Rattle{
 		PromURL:          l.Require("PROM_URL"),
+		NATSURL:          l.OptionalURL("NATS_URL", "nats", "tls"),
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
 		WatchPath:        l.Require("RATTLE_WATCH"),
@@ -150,10 +172,13 @@ func LoadRattle(broker bool) (Rattle, error) {
 	}
 	if broker {
 		r.WALDir = l.Require("WAL_DIR")
-		r.S3Endpoint = l.Require("S3_ENDPOINT")
+		r.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		r.S3Bucket = l.Require("S3_BUCKET")
 		r.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		r.S3SecretKey = l.Require("S3_SECRET_KEY")
+		r.TLSCertFile = l.Require("TLS_CERT_FILE")
+		r.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		r.TLSCAFile = l.Require("TLS_CA_FILE")
 	}
 	return r, l.err()
 }
@@ -165,6 +190,7 @@ type Thump struct {
 	ActionCatalog   string // ACTION_CATALOG - required; the authored action catalog YAML
 	Executor        string // THUMP_EXECUTOR - "dry" (default) | "live"
 	KillSwitchPath  string // THUMP_KILLSWITCH -- path to armed:bool file; only read in live mode
+	NATSURL         string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
 	PromURL         string // PROM_URL — optional; empty disables the automatic reversal watcher
 	EvidenceQueries string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	SlackWebhookURL string // SLACK_WEBHOOK_URL - optional; empty means no Notifier is wired.
@@ -175,6 +201,9 @@ type Thump struct {
 	S3Bucket        string // S3_BUCKET — required only in the broker path
 	S3AccessKey     string // S3_ACCESS_KEY — required only in the broker path
 	S3SecretKey     string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile     string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile      string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile       string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 }
 
 // LoadThump reads thump's environment once. broker is whether Main resolved
@@ -186,6 +215,7 @@ func LoadThump(broker bool) (Thump, error) {
 		ActionCatalog:   l.Require("ACTION_CATALOG"),
 		Executor:        l.Optional("THUMP_EXECUTOR"),
 		KillSwitchPath:  l.Optional("THUMP_KILLSWITCH"),
+		NATSURL:         l.OptionalURL("NATS_URL", "nats", "tls"),
 		PromURL:         l.Optional("PROM_URL"),
 		EvidenceQueries: l.Optional("EVIDENCE_QUERIES"),
 		SlackWebhookURL: l.Optional("SLACK_WEBHOOK_URL"),
@@ -194,15 +224,41 @@ func LoadThump(broker bool) (Thump, error) {
 		t.Inbox = l.Optional("THUMP_INBOX")
 		t.Outbox = l.Optional("THUMP_OUTBOX")
 		t.WALDir = l.Require("WAL_DIR")
-		t.S3Endpoint = l.Require("S3_ENDPOINT")
+		t.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		t.S3Bucket = l.Require("S3_BUCKET")
 		t.S3AccessKey = l.Require("S3_ACCESS_KEY")
 		t.S3SecretKey = l.Require("S3_SECRET_KEY")
+		t.TLSCertFile = l.Require("TLS_CERT_FILE")
+		t.TLSKeyFile = l.Require("TLS_KEY_FILE")
+		t.TLSCAFile = l.Require("TLS_CA_FILE")
 	} else {
 		t.Inbox = l.Require("THUMP_INBOX")
 		t.Outbox = l.Require("THUMP_OUTBOX")
 	}
 	return t, l.err()
+}
+
+// Bootstrap is the one-shot broker-bootstrap Job's environment (R6c) — its
+// own NATS_URL and TLS triple, all required unconditionally. There's no
+// offline path: this binary has exactly one job, and it's unreachable
+// without a broker to reach.
+type Bootstrap struct {
+	NATSURL     string // NATS_URL — required
+	TLSCertFile string // TLS_CERT_FILE — required; the Job's own leaf, distinct from every beat's — it alone holds $JS.API.> in nats.conf
+	TLSKeyFile  string // TLS_KEY_FILE — required
+	TLSCAFile   string // TLS_CA_FILE — required
+}
+
+// LoadBootstrap reads the broker-bootstrap Job's environment once.
+func LoadBootstrap() (Bootstrap, error) {
+	l := &loader{}
+	c := Bootstrap{
+		NATSURL:     l.RequireURL("NATS_URL", "nats", "tls"),
+		TLSCertFile: l.Require("TLS_CERT_FILE"),
+		TLSKeyFile:  l.Require("TLS_KEY_FILE"),
+		TLSCAFile:   l.Require("TLS_CA_FILE"),
+	}
+	return c, l.err()
 }
 
 // loader accumulates every missing-required var instead of stopping at the
@@ -238,6 +294,43 @@ func (l *loader) OptionalDuration(name string, def time.Duration) time.Duration 
 		return def
 	}
 	return d
+}
+
+// RequireURL reads name like Require, then rejects a scheme outside
+// allowed — a plaintext WAL endpoint fails at load time instead of shipping
+// transcripts over the wire in the clear.
+func (l *loader) RequireURL(name string, allowed ...string) string {
+	v := l.Require(name)
+	if v == "" {
+		return v
+	}
+	l.checkScheme(name, v, allowed)
+	return v
+}
+
+// OptionalURL is RequireURL for a URL whose absence is legal.
+func (l *loader) OptionalURL(name string, allowed ...string) string {
+	v := l.Optional(name)
+	if v == "" {
+		return v
+	}
+	l.checkScheme(name, v, allowed)
+	return v
+}
+
+// checkScheme appends an error naming name if v's scheme isn't one of
+// allowed — including no scheme at all, which would otherwise let the SDK
+// choose the wire.
+func (l *loader) checkScheme(name, v string, allowed []string) {
+	u, err := url.Parse(v)
+	if err == nil {
+		for _, scheme := range allowed {
+			if u.Scheme == scheme {
+				return
+			}
+		}
+	}
+	l.errs = append(l.errs, fmt.Errorf("%s: scheme must be one of %v, got %q", name, allowed, v))
 }
 
 func (l *loader) err() error {

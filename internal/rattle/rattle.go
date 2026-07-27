@@ -17,6 +17,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/tracing"
 	"github.com/ianeff/thump/internal/whir"
 )
@@ -82,7 +83,11 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	var pub publish.Publisher[signal.Detection]
 	var walPub *publish.WALPublisher[signal.Detection]
 	if lc.NATSURL != "" {
-		js, closeNC, err := broker.Connect(ctx, lc.NATSURL)
+		js, closeNC, err := broker.Connect(ctx, cfg.NATSURL, tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1

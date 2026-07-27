@@ -25,6 +25,7 @@ import (
 	"github.com/ianeff/thump/internal/converge"
 	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/tlsx"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
@@ -70,7 +71,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg, cat, notifier, tracer, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, cat, notifier, tracer, stages, health, stderr)
 	}
 	health.SetReady(true)
 
@@ -127,7 +128,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
 func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
-	js, closeNC, err := broker.Connect(ctx, natsURL)
+	js, closeNC, err := broker.Connect(ctx, natsURL, tlsx.Config{
+		CertFile: cfg.TLSCertFile,
+		KeyFile:  cfg.TLSKeyFile,
+		CAFile:   cfg.TLSCAFile,
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1

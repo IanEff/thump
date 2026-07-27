@@ -122,6 +122,23 @@ beats:
       requests: {cpu: 25m, memory: 32Mi}
       limits: {cpu: 100m, memory: 64Mi}
 
+# The private PKI for ns/thump — R5's cert-manager ClusterIssuer, already
+# live on the rig. Every beat's own leaf, the NATS server's, and the
+# broker-bootstrap Job's all come from here (deploy/chart/thump/templates/
+# certificates.yaml). duration/renewBefore short enough that a lab rig
+# actually exercises renewal, not just in theory.
+tls:
+  issuerName: thump-ca
+  duration: 2160h    # 90d
+  renewBefore: 720h  # 30d
+
+# The one-shot broker-bootstrap Job (R6c) — never a long-running pod, so its
+# resources live outside beats.* above.
+bootstrap:
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 100m, memory: 64Mi}
+
 # NATS jetstream message broker
 nats:
   image:

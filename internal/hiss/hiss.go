@@ -24,6 +24,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/tlsx"
 	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/yaml"
 )
@@ -65,7 +66,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, lc.NATSURL, cfg, pol, tracer, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, pol, tracer, stages, health, stderr)
 	}
 	health.SetReady(true)
 
@@ -93,7 +94,11 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // authority, publish thump.decisions, and ship the decisions WAL's sealed
 // segments to object storage in the background.
 func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
-	js, closeNC, err := broker.Connect(ctx, natsURL)
+	js, closeNC, err := broker.Connect(ctx, natsURL, tlsx.Config{
+		CertFile: cfg.TLSCertFile,
+		KeyFile:  cfg.TLSKeyFile,
+		CAFile:   cfg.TLSCAFile,
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1

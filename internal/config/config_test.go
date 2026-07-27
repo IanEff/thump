@@ -124,10 +124,13 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
-	t.Setenv("S3_ENDPOINT", "http://minio:9000")
+	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
 	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
 	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES", "CLANK_DECLINES"} {
 		t.Setenv(name, "")
 	}
@@ -215,10 +218,13 @@ func TestLoadHiss_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	// other way: unset offline, required here.
 	t.Setenv("HISS_POLICY", "/etc/policy.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
-	t.Setenv("S3_ENDPOINT", "http://minio:9000")
+	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
 	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
 	for _, name := range []string{"HISS_INBOX", "HISS_OUTBOX"} {
 		t.Setenv(name, "")
 	}
@@ -353,6 +359,25 @@ func setThumpEnv(t *testing.T) {
 	}
 }
 
+// setThumpBrokerEnv sets the vars LoadThump additionally requires in the
+// broker path (broker=true) — WAL_DIR, the S3 quartet, and the TLS triple —
+// on top of setThumpEnv's offline set.
+func setThumpBrokerEnv(t *testing.T) {
+	t.Helper()
+	for name, val := range map[string]string{
+		"WAL_DIR":       "/var/run/wal",
+		"S3_ENDPOINT":   "https://storage.googleapis.com",
+		"S3_BUCKET":     "thump-wal",
+		"S3_ACCESS_KEY": "test-access-key",
+		"S3_SECRET_KEY": "test-secret-key",
+		"TLS_CERT_FILE": "/etc/thump/tls/tls.crt",
+		"TLS_KEY_FILE":  "/etc/thump/tls/tls.key",
+		"TLS_CA_FILE":   "/etc/thump/tls/ca.crt",
+	} {
+		t.Setenv(name, val)
+	}
+}
+
 func TestLoadThump_MissingRequired_ReportsAllAtOnce(t *testing.T) {
 	setThumpEnv(t)
 	t.Setenv("ACTION_CATALOG", "")
@@ -419,10 +444,13 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	// is what's actually going to run. ACTION_CATALOG is required either way.
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
-	t.Setenv("S3_ENDPOINT", "http://minio:9000")
+	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
 	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
 	for _, name := range []string{"THUMP_INBOX", "THUMP_OUTBOX"} {
 		t.Setenv(name, "")
 	}
@@ -434,5 +462,259 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 
 func TestConfigIsALeafPackage(t *testing.T) {
 	t.Parallel()
-	leaftest.AssertLeaf(t, "errors", "fmt", "os", "time")
+	leaftest.AssertLeaf(t, "errors", "net/url", "fmt", "os", "time")
+}
+
+func TestLoadThump_RefusesAPlaintextS3EndpointAtLoadTime(t *testing.T) {
+	cases := map[string]struct {
+		endpoint string
+		wantErr  bool
+	}{
+		"LoadThump accepts an https S3 endpoint in the broker path": {
+			endpoint: "https://storage.googleapis.com",
+		},
+		"LoadThump refuses a plaintext http endpoint rather than shipping transcripts in the clear": {
+			endpoint: "http://minio.thump.svc:9000",
+			wantErr:  true,
+		},
+		"LoadThump refuses a schemeless endpoint rather than letting the SDK choose a wire": {
+			endpoint: "storage.googleapis.com",
+			wantErr:  true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setThumpEnv(t)
+			setThumpBrokerEnv(t)
+			t.Setenv("S3_ENDPOINT", tc.endpoint)
+
+			got, err := config.LoadThump(true)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("a %q endpoint must refuse at load time, got %+v", tc.endpoint, got)
+				}
+				if !strings.Contains(err.Error(), "S3_ENDPOINT") {
+					t.Errorf("the error must name the offending var so a redeploy fixes the right thing, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.endpoint, got.S3Endpoint); diff != "" {
+				t.Error("a valid endpoint was rewritten on the way through", diff)
+			}
+		})
+	}
+}
+
+func TestEveryBrokerLoader_RefusesAPlaintextS3EndpointNotJustThumps(t *testing.T) {
+	cases := map[string]struct {
+		load func(bool) error
+		env  func(*testing.T)
+	}{
+		"LoadClank refuses a plaintext S3 endpoint in the broker path": {
+			load: func(b bool) error { _, err := config.LoadClank(b); return err },
+			env:  setClankEnv,
+		},
+		"LoadHiss refuses a plaintext S3 endpoint in the broker path": {
+			load: func(b bool) error { _, err := config.LoadHiss(b); return err },
+			env:  setHissEnv,
+		},
+		"LoadRattle refuses a plaintext S3 endpoint in the broker path": {
+			load: func(b bool) error { _, err := config.LoadRattle(b); return err },
+			env:  setRattleEnv,
+		},
+		"LoadThump refuses a plaintext S3 endpoint in the broker path": {
+			load: func(b bool) error { _, err := config.LoadThump(b); return err },
+			env:  setThumpEnv,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.env(t)
+			t.Setenv("S3_ENDPOINT", "http://minio.thump.svc:9000")
+
+			if err := tc.load(true); err == nil {
+				t.Error("every beat ships WAL segments to the same bucket — hardening one loader and not the rest is a hole with a test in front of it")
+			}
+		})
+	}
+}
+
+func TestLoadThump_ReportsAPlaintextEndpointAlongsideEveryOtherMissingVar(t *testing.T) {
+	setThumpEnv(t)
+	setThumpBrokerEnv(t)
+	t.Setenv("S3_ENDPOINT", "http://minio.thump.svc:9000")
+	t.Setenv("S3_BUCKET", "")
+	t.Setenv("ACTION_CATALOG", "")
+
+	_, err := config.LoadThump(true)
+	if err == nil {
+		t.Fatal("three bad vars must not load")
+	}
+	for _, want := range []string{"S3_ENDPOINT", "S3_BUCKET", "ACTION_CATALOG"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%s is missing from the error — one redeploy per var discovered is what this loader exists to prevent: %v", want, err)
+		}
+	}
+}
+
+func TestLoadClank_AcceptsAPlaintextPrometheusURLBecauseThatLegIsTheMeshs(t *testing.T) {
+	setClankEnv(t)
+	t.Setenv("PROM_URL", "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090")
+
+	got, err := config.LoadClank(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff("http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090", got.PromURL); diff != "" {
+		t.Error("the shipped chart's own Prometheus URL stopped loading", diff)
+	}
+}
+
+func TestLoadClank_ValidatesNATSURLScheme(t *testing.T) {
+	cases := map[string]struct {
+		url     string
+		wantErr bool
+	}{
+		"LoadClank accepts an empty NATS_URL because offline mode never sets one": {
+			url: "",
+		},
+		"LoadClank accepts a nats scheme": {
+			url: "nats://nats.thump.svc:4222",
+		},
+		"LoadClank accepts a tls scheme": {
+			url: "tls://nats.thump.svc:4222",
+		},
+		"LoadClank refuses a scheme nats.Connect was never going to accept": {
+			url:     "http://nats.thump.svc:4222",
+			wantErr: true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setClankEnv(t)
+			t.Setenv("NATS_URL", tc.url)
+
+			got, err := config.LoadClank(false)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("a %q NATS_URL must refuse at load time, got %+v", tc.url, got)
+				}
+				if !strings.Contains(err.Error(), "NATS_URL") {
+					t.Errorf("the error must name the offending var, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.url, got.NATSURL); diff != "" {
+				t.Error("a valid NATS_URL was rewritten on the way through", diff)
+			}
+		})
+	}
+}
+
+func TestEveryLoader_RefusesAPlaintextNATSURLNotJustClanks(t *testing.T) {
+	cases := map[string]struct {
+		load func(bool) error
+		env  func(*testing.T)
+	}{
+		"LoadClank refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadClank(b); return err },
+			env:  setClankEnv,
+		},
+		"LoadHiss refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadHiss(b); return err },
+			env:  setHissEnv,
+		},
+		"LoadRattle refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadRattle(b); return err },
+			env:  setRattleEnv,
+		},
+		"LoadThump refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadThump(b); return err },
+			env:  setThumpEnv,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.env(t)
+			t.Setenv("NATS_URL", "http://nats.thump.svc:4222")
+
+			if err := tc.load(false); err == nil {
+				t.Error("every beat dials the same broker — validating one loader and not  in front of it")
+			}
+		})
+	}
+}
+
+func TestLoadBootstrap_MissingRequired_ReportsAllAtOnce(t *testing.T) {
+	for _, name := range []string{"NATS_URL", "TLS_CERT_FILE", "TLS_KEY_FILE", "TLS_CA_FILE"} {
+		t.Setenv(name, "")
+	}
+
+	_, err := config.LoadBootstrap()
+	if err == nil {
+		t.Fatal("LoadBootstrap: want an error, got nil")
+	}
+	for _, want := range []string{"NATS_URL", "TLS_CERT_FILE", "TLS_KEY_FILE", "TLS_CA_FILE"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadBootstrap error %q does not mention %s", err, want)
+		}
+	}
+}
+
+func TestLoadBootstrap_Valid_PopulatesStruct(t *testing.T) {
+	t.Setenv("NATS_URL", "tls://nats.thump.svc:4222")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+
+	got, err := config.LoadBootstrap()
+	if err != nil {
+		t.Fatalf("LoadBootstrap: %v", err)
+	}
+	want := config.Bootstrap{
+		NATSURL:     "tls://nats.thump.svc:4222",
+		TLSCertFile: "/etc/thump/tls/tls.crt",
+		TLSKeyFile:  "/etc/thump/tls/tls.key",
+		TLSCAFile:   "/etc/thump/tls/ca.crt",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("LoadBootstrap (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadBootstrap_RefusesAPlaintextNATSURL(t *testing.T) {
+	t.Setenv("NATS_URL", "http://nats.thump.svc:4222")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+
+	if _, err := config.LoadBootstrap(); err == nil {
+		t.Error("LoadBootstrap must refuse a plaintext NATS_URL — the Job dials the same broker every beat does")
+	}
+}
+
+func TestEveryBrokerLoader_RequiresTLSFilesNotJustClanks(t *testing.T) {
+	cases := map[string]struct {
+		load func(bool) error
+		env  func(*testing.T)
+	}{
+		"LoadClank requires TLS_CERT_FILE in the broker path":  {load: func(b bool) error { _, err := config.LoadClank(b); return err }, env: setClankEnv},
+		"LoadHiss requires TLS_CERT_FILE in the broker path":   {load: func(b bool) error { _, err := config.LoadHiss(b); return err }, env: setHissEnv},
+		"LoadRattle requires TLS_CERT_FILE in the broker path": {load: func(b bool) error { _, err := config.LoadRattle(b); return err }, env: setRattleEnv},
+		"LoadThump requires TLS_CERT_FILE in the broker path":  {load: func(b bool) error { _, err := config.LoadThump(b); return err }, env: setThumpEnv},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.env(t)
+			if err := tc.load(true); err == nil || !strings.Contains(err.Error(), "TLS_CERT_FILE") {
+				t.Error("every beat's NATS leg needs a cert — hardening one loader and not the rest is a hole with a test in front of it")
+			}
+		})
+	}
 }

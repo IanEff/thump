@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -40,6 +41,9 @@ func newTracer(ctx context.Context, beatName, endpoint string, newExporter expor
 	if endpoint == "" {
 		return noop.Tracer{}, func(context.Context) error { return nil }, nil
 	}
+	if _, err := otlpDialOptions(endpoint); err != nil {
+		return nil, nil, fmt.Errorf("beat: %w", err)
+	}
 
 	exp, err := newExporter(ctx, endpoint)
 	if err != nil {
@@ -64,5 +68,34 @@ func newTracer(ctx context.Context, beatName, endpoint string, newExporter expor
 }
 
 func newOTLPExporter(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
-	return otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(endpoint), otlptracegrpc.WithInsecure())
+	dial, err := otlpDialOptions(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(dial.Host)}
+	if dial.Insecure {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+	return otlptracegrpc.New(ctx, opts...)
+}
+
+// otlpDial is what one OTEL_EXPORTER_OTLP_ENDPOINT value resolves to:
+// the host:port the SDK dials and whether the wire's in plaintext.
+type otlpDial struct {
+	Host     string
+	Insecure bool
+}
+
+func otlpDialOptions(endpoint string) (otlpDial, error) {
+	switch {
+	case strings.HasPrefix(endpoint, "https://"):
+		return otlpDial{Host: strings.TrimPrefix(endpoint, "https://")}, nil
+	case strings.HasPrefix(endpoint, "http://"):
+		return otlpDial{Host: strings.TrimPrefix(endpoint, "http://"), Insecure: true}, nil
+	case strings.Contains(endpoint, "://"):
+		scheme, _, _ := strings.Cut(endpoint, "://")
+		return otlpDial{}, fmt.Errorf("beat %q: unmappable OTLP scheme %q, want http or https", endpoint, scheme)
+	default:
+		return otlpDial{Host: endpoint, Insecure: true}, nil
+	}
 }

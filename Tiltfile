@@ -157,7 +157,7 @@ DEV_REGISTRY = cluster['registry']
 # default under Tilt — a per-build wall-clock stamp isn't worth the noise.
 COMMIT = str(local('git rev-parse --verify HEAD || echo none')).strip()
 
-for beat in ['rattle', 'clank', 'hiss', 'thump']:
+for beat in ['rattle', 'clank', 'hiss', 'thump', 'bootstrap']:
     # docker_build's platform= must be a string or omitted entirely — unlike
     # a plain Starlark/Python kwarg, it does NOT treat None as "unset".
     if cluster['platform']:
