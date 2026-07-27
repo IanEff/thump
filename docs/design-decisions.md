@@ -168,7 +168,7 @@ override a first-class, audited operation is strictly safer than pretending it
 won't happen. The boundary that matters is preserved exactly: **force overrides
 governance, never the physical stop.**
 
-## D-10 · Pausing the reconciler that owns the value — **Fixed** (2026-07-26)
+## D-10 · Pausing the reconciler that owns the value — **Fixed and proven live** (2026-07-26)
 
 **The problem:** a governed, executed action is supposed to durably change
 cluster state for the length of its success window. One shipped action didn't.
@@ -177,10 +177,32 @@ operator reconciled them back to its CR-declared values within roughly 29
 milliseconds — faster than any success window could observe. The action was a
 no-op that reported success.
 
-**What we do now:** the forward is a three-step sequence. Scale the
-`rook-ceph-operator` deployment to zero, *then* set the two tunables. The reverse
-restores the tunables first and unpauses the operator last, so Rook comes back to
-find its declared values already in place.
+**What we do now:** the forward is a four-step sequence
+(`config/actions/catalog.yaml`). Scale the `rook-ceph-operator` deployment to
+zero, set `osd_mclock_override_recovery_settings true`, then set the two
+tunables. The reverse restores the tunables first, clears the override, and
+unpauses the operator last, so Rook comes back to find its declared values
+already in place.
+
+The middle step is the second bug, found after the first fix shipped. Rook has
+defaulted to `osd_op_queue=mclock_scheduler` since Quincy, and mclock discards
+`osd_max_backfills` and `osd_recovery_max_active` unless that override is set
+first. Both `ceph config set` calls returned exit 0 and changed nothing. The
+action was a no-op for a second, unrelated reason through one whole live session
+before anyone read the values back by hand.
+
+**Proven live 2026-07-26** on `slo_burn:ceph-cluster/1785101992930477260`: both
+knobs read back `16`/`16` mid-flight, the window settled `success` with
+`observedSeverity` 0, the reversal restored the pre-test defaults, and the
+operator came back `1/1` with `HEALTH_OK`.
+
+**One failure in getting there is not ours to fix, and the contract cannot warn
+you about it.** On the first live attempt the pause did not hold: ArgoCD's own
+self-heal reverted `replicas: 0` in about a second. It holds now only because
+the rig was changed to stop fighting it — `ignoreDifferences` on `spec/replicas`,
+plus removing a competing ApplicationSet-generated Application. That is a
+property of one deployment. If you run this action under your own reconciler,
+you get the bug back, and nothing in `catalog.yaml` can tell you so.
 
 **Why this shape and not a new verb:** `scale` is an already-compiled mechanism,
 and the actuator already collapses a multi-step list into a sequence. Config
@@ -205,6 +227,11 @@ catalog PR stops being "does this argv make sense" and becomes "does this GVR
 exist and what does patching it do." That's a real widening, and it deserves its
 own decision rather than riding in as the incidental cost of fixing a storage
 knob.
+
+The declination originally carried a reopen clause: if the pause turned out not
+to hold, `patch` came back. It held, through a real recovery window, with the
+knobs read back by hand. The route stays declined on that evidence rather than
+on the clause.
 
 ## D-11 · Reversal after success — **Fixed** (2026-07-26)
 
