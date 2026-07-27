@@ -21,12 +21,14 @@ import (
 // livePolicy is the governance fixture this test is judged under. The floor is
 // data handed to the gate, never logic in the reasoner — if a grounded run's
 // confidence lands under it, this number is what moves, and the engine is not
-// touched.
+// touched. 0.50 is the highest floor a single-citation run can clear: one live
+// citation caps emitted confidence at 0.52 (signal 0.90 × grounding 0.70 ×
+// causal likelihood 0.83), while an uncited candidate reaches only 0.22.
 func livePolicy() hiss.Policy {
 	return hiss.Policy{
 		Version: "five-beat-live-v1",
 		Floors: map[string]map[proposal.FailureClass]float64{
-			"tier-1": {proposal.ClassResourceExhaustion: 0.60},
+			"tier-1": {proposal.ClassResourceExhaustion: 0.50},
 		},
 		MaxBand:         map[string]decision.Band{"tier-1": decision.BandActReversible},
 		RequireReversal: true,
