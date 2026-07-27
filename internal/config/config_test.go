@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,11 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/leaftest"
 )
+
+// testSealKeyB64 is a 32-byte AES-256 key, base64-encoded, standing in for
+// THUMP_SEAL_KEY in every broker-mode test — these tests exercise loading and
+// validation, not choice of key material.
+const testSealKeyB64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 
 // setClankEnv sets every var LoadClank reads, restored by t.Setenv's own
 // cleanup — a common baseline the missing/valid/optional cases each mutate.
@@ -131,6 +137,7 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
 	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
 	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
 	for _, name := range []string{"CLANK_INBOX", "CLANK_OUTBOX", "CLANK_OUTCOMES", "CLANK_DECLINES"} {
 		t.Setenv(name, "")
 	}
@@ -225,6 +232,7 @@ func TestLoadHiss_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
 	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
 	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
 	for _, name := range []string{"HISS_INBOX", "HISS_OUTBOX"} {
 		t.Setenv(name, "")
 	}
@@ -365,14 +373,15 @@ func setThumpEnv(t *testing.T) {
 func setThumpBrokerEnv(t *testing.T) {
 	t.Helper()
 	for name, val := range map[string]string{
-		"WAL_DIR":       "/var/run/wal",
-		"S3_ENDPOINT":   "https://storage.googleapis.com",
-		"S3_BUCKET":     "thump-wal",
-		"S3_ACCESS_KEY": "test-access-key",
-		"S3_SECRET_KEY": "test-secret-key",
-		"TLS_CERT_FILE": "/etc/thump/tls/tls.crt",
-		"TLS_KEY_FILE":  "/etc/thump/tls/tls.key",
-		"TLS_CA_FILE":   "/etc/thump/tls/ca.crt",
+		"WAL_DIR":        "/var/run/wal",
+		"S3_ENDPOINT":    "https://storage.googleapis.com",
+		"S3_BUCKET":      "thump-wal",
+		"S3_ACCESS_KEY":  "test-access-key",
+		"S3_SECRET_KEY":  "test-secret-key",
+		"TLS_CERT_FILE":  "/etc/thump/tls/tls.crt",
+		"TLS_KEY_FILE":   "/etc/thump/tls/tls.key",
+		"TLS_CA_FILE":    "/etc/thump/tls/ca.crt",
+		"THUMP_SEAL_KEY": testSealKeyB64,
 	} {
 		t.Setenv(name, val)
 	}
@@ -451,6 +460,7 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
 	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
 	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
 	for _, name := range []string{"THUMP_INBOX", "THUMP_OUTBOX"} {
 		t.Setenv(name, "")
 	}
@@ -462,7 +472,7 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 
 func TestConfigIsALeafPackage(t *testing.T) {
 	t.Parallel()
-	leaftest.AssertLeaf(t, "errors", "net/url", "fmt", "os", "time")
+	leaftest.AssertLeaf(t, "encoding/base64", "errors", "net/url", "fmt", "os", "time")
 }
 
 func TestLoadThump_RefusesAPlaintextS3EndpointAtLoadTime(t *testing.T) {
@@ -612,6 +622,77 @@ func TestLoadClank_ValidatesNATSURLScheme(t *testing.T) {
 			}
 			if diff := cmp.Diff(tc.url, got.NATSURL); diff != "" {
 				t.Error("a valid NATS_URL was rewritten on the way through", diff)
+			}
+		})
+	}
+}
+
+func TestLoadClank_ValidatesSealKey(t *testing.T) {
+	cases := map[string]struct {
+		sealKey string
+		wantErr bool
+	}{
+		"LoadClank accepts a 32-byte base64 key": {
+			sealKey: testSealKeyB64,
+		},
+		"LoadClank refuses a key that isn't valid base64": {
+			sealKey: "not valid base64!!",
+			wantErr: true,
+		},
+		"LoadClank refuses a key shorter than 32 bytes": {
+			sealKey: base64.StdEncoding.EncodeToString([]byte("too short")),
+			wantErr: true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setClankEnv(t)
+			t.Setenv("WAL_DIR", "/var/run/wal")
+			t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
+			t.Setenv("S3_BUCKET", "thump-wal")
+			t.Setenv("S3_ACCESS_KEY", "test-access-key")
+			t.Setenv("S3_SECRET_KEY", "test-secret-key")
+			t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+			t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+			t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+			t.Setenv("THUMP_SEAL_KEY", tc.sealKey)
+
+			got, err := config.LoadClank(true)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("a %q THUMP_SEAL_KEY must refuse at load time, got %+v", tc.sealKey, got)
+				}
+				if !strings.Contains(err.Error(), "THUMP_SEAL_KEY") {
+					t.Errorf("the error must name the offending var, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, _ := base64.StdEncoding.DecodeString(tc.sealKey)
+			if diff := cmp.Diff(want, got.SealKey); diff != "" {
+				t.Error("a valid seal key didn't decode into SealKey as loaded", diff)
+			}
+		})
+	}
+}
+
+func TestEveryBrokerLoader_RequiresSealKeyNotJustClanks(t *testing.T) {
+	cases := map[string]struct {
+		load func(bool) error
+		env  func(*testing.T)
+	}{
+		"LoadClank requires THUMP_SEAL_KEY in the broker path":  {load: func(b bool) error { _, err := config.LoadClank(b); return err }, env: setClankEnv},
+		"LoadHiss requires THUMP_SEAL_KEY in the broker path":   {load: func(b bool) error { _, err := config.LoadHiss(b); return err }, env: setHissEnv},
+		"LoadRattle requires THUMP_SEAL_KEY in the broker path": {load: func(b bool) error { _, err := config.LoadRattle(b); return err }, env: setRattleEnv},
+		"LoadThump requires THUMP_SEAL_KEY in the broker path":  {load: func(b bool) error { _, err := config.LoadThump(b); return err }, env: setThumpEnv},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.env(t)
+			if err := tc.load(true); err == nil || !strings.Contains(err.Error(), "THUMP_SEAL_KEY") {
+				t.Error("every beat seals its WAL segments — hardening one loader and not the rest is a hole with a test in front of it")
 			}
 		})
 	}

@@ -77,6 +77,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.s3.secretName }}
                   key: secret-key
+            - name: THUMP_SEAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.seal.secretName }}
+                  key: key
             - name: ACTION_CATALOG
               value: /etc/thump/actions/catalog.yaml
             - name: THUMP_EXECUTOR
@@ -101,6 +106,10 @@ spec:
           resources: {{- toYaml .Values.beats.thump.resources | nindent 12 }}
       volumes:
         - name: wal
+          # Plaintext on purpose: this copy dies with the pod. It's what trim
+          # and the debug-transcript skill read during an incident. The copy
+          # that outlives the cluster (shipped to S3) is sealed — see
+          # internal/beat.EncryptingSink.
           emptyDir: {}
         - name: actions-config
           configMap:
