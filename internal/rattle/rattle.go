@@ -2,6 +2,7 @@ package rattle
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -77,7 +78,19 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout), Queries: queries}
 	}
 
-	_, health, shutdownMetrics := beat.Metrics("rattle")
+	var metricsTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		metricsTLS, err = tlsx.Server(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			return 1
+		}
+	}
+	_, health, shutdownMetrics := beat.Metrics("rattle", metricsTLS)
 	defer func() { _ = shutdownMetrics(ctx) }()
 
 	var pub publish.Publisher[signal.Detection]

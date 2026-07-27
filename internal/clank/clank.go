@@ -2,6 +2,7 @@ package clank
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/whir"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -140,7 +142,19 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	reg, health, shutdownMetrics := beat.Metrics("clank")
+	var metricsTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		metricsTLS, err = tlsx.Server(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			return 1
+		}
+	}
+	reg, health, shutdownMetrics := beat.Metrics("clank", metricsTLS)
 	defer func() { _ = shutdownMetrics(ctx) }()
 	recorder := NewRecorder(reg)
 	stages := beat.NewStageRecorder(reg)

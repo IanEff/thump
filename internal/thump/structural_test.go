@@ -13,7 +13,7 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
 		// stdlib, none of it load-bearing for mischief
-		`"context"`: true, `"errors"`: true, `"flag"`: true, `"fmt"`: true,
+		`"context"`: true, `"crypto/tls"`: true, `"errors"`: true, `"flag"`: true, `"fmt"`: true,
 		`"io"`: true, `"log/slog"`: true, `"os"`: true, `"os/signal"`: true,
 		`"path/filepath"`: true, `"sync"`: true, `"syscall"`: true, `"time"`: true,
 		// the wire codec (hiss writes with it; we read with it)

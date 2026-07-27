@@ -10,6 +10,7 @@ package thump
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -66,7 +67,19 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	reg, health, shutdownMetrics := beat.Metrics("thump")
+	var metricsTLS *tls.Config
+	if cfg.TLSCertFile != "" {
+		metricsTLS, err = tlsx.Server(tlsx.Config{
+			CertFile: cfg.TLSCertFile,
+			KeyFile:  cfg.TLSKeyFile,
+			CAFile:   cfg.TLSCAFile,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			return 1
+		}
+	}
+	reg, health, shutdownMetrics := beat.Metrics("thump", metricsTLS)
 	defer func() { _ = shutdownMetrics(ctx) }()
 	stages := beat.NewStageRecorder(reg)
 
