@@ -1,6 +1,7 @@
 package beat_test
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -92,4 +93,67 @@ func TestHealth_ReadyzUnderConcurrentSetReadyIsRaceFree(t *testing.T) {
 		h.Readyz(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	}()
 	wg.Wait()
+}
+
+// TestBrokerHooks_DrivesReadinessThroughADropAndRecovery pins the property
+// the ghosting bug violated: a beat whose broker is gone must stop reporting
+// itself ready, and must start again when the broker returns — without a
+// restart in between.
+func TestBrokerHooks_DrivesReadinessThroughADropAndRecovery(t *testing.T) {
+	t.Parallel()
+	h := &beat.Health{}
+	h.SetReady(true)
+	hooks := beat.BrokerHooks(h, "dummy beat", nil)
+
+	hooks.OnDisconnect(errors.New("dummy drop"))
+	if diff := cmp.Diff(http.StatusServiceUnavailable, readyzStatus(t, h)); diff != "" {
+		t.Error("a beat with no broker still reported itself ready", diff)
+	}
+
+	hooks.OnReconnect()
+	if diff := cmp.Diff(http.StatusOK, readyzStatus(t, h)); diff != "" {
+		t.Error("a beat whose broker came back never reported itself ready again", diff)
+	}
+}
+
+// TestBrokerHooks_OnClosedRunsTheCallerSExitHook pins that a terminally lost
+// connection reaches the beat, which is what turns it into a non-zero exit
+// rather than a pod idling forever.
+func TestBrokerHooks_OnClosedRunsTheCallerSExitHook(t *testing.T) {
+	t.Parallel()
+	h := &beat.Health{}
+	h.SetReady(true)
+	var closed bool
+	hooks := beat.BrokerHooks(h, "dummy beat", func() { closed = true })
+
+	hooks.OnClosed()
+
+	if !closed {
+		t.Error("OnClosed never reached the beat — a permanently disconnected beat would sit Running forever")
+	}
+	if diff := cmp.Diff(http.StatusServiceUnavailable, readyzStatus(t, h)); diff != "" {
+		t.Error("a beat with a closed connection still reported itself ready", diff)
+	}
+}
+
+// TestReadyz_CarriesTheReasonSoAnOperatorLearnsWhichDependencyIsGone pins the
+// body, not just the code — a 503 with no reason sends the reader to the logs.
+func TestReadyz_CarriesTheReasonSoAnOperatorLearnsWhichDependencyIsGone(t *testing.T) {
+	t.Parallel()
+	h := &beat.Health{}
+	h.NotReady("broker unreachable")
+
+	rec := httptest.NewRecorder()
+	h.Readyz(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if diff := cmp.Diff("broker unreachable", rec.Body.String()); diff != "" {
+		t.Error("wrong /readyz body for an unreachable broker", diff)
+	}
+}
+
+func readyzStatus(t *testing.T, h *beat.Health) int {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.Readyz(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	return rec.Code
 }

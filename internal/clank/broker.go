@@ -29,11 +29,14 @@ import (
 // shape is clank's own; the beat kit supplies the consumer/publisher
 // primitives but leaves this composition here.
 func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+	ctx, brokerLost := context.WithCancelCause(ctx)
+	defer brokerLost(nil)
+
 	js, closeNC, err := broker.Connect(ctx, natsURL, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
-	})
+	}, beat.BrokerHooks(health, "clank", func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1

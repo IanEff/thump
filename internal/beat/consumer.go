@@ -19,6 +19,32 @@ func RunConsumer[In any](ctx context.Context, js jetstream.JetStream, subject st
 	return broker.NewJetSubscriber[In](js).Run(ctx, subject, h)
 }
 
+// BrokerHooks drives health from the broker connection's own lifecycle, and
+// calls onClosed when the connection is gone for good rather than merely
+// dropped. Tying readiness to a dependency is normally a cascade risk — every
+// replica leaves its Service at once — but a beat is a pull consumer nothing
+// routes traffic to, so leaving endpoints costs nothing and stops a rolling
+// deploy from marching through a broker outage.
+func BrokerHooks(h *Health, beatName string, onClosed func()) broker.Hooks {
+	return broker.Hooks{
+		OnDisconnect: func(err error) {
+			slog.Warn("broker disconnected, retrying", "beat", beatName, "err", err)
+			h.NotReady("broker unreachable")
+		},
+		OnReconnect: func() {
+			slog.Info("broker reconnected", "beat", beatName)
+			h.SetReady(true)
+		},
+		OnClosed: func() {
+			slog.Error("broker connection closed for good", "beat", beatName)
+			h.NotReady("broker connection closed")
+			if onClosed != nil {
+				onClosed()
+			}
+		},
+	}
+}
+
 // AwaitConsumers confirms a durable consumer bind exists for each subject, then flips ready to true.
 func AwaitConsumers(ctx context.Context, js jetstream.JetStream, ready *Health, subjects ...string) error {
 	for _, subject := range subjects {
@@ -47,9 +73,20 @@ func NewWALPublisher[Out any](js jetstream.JetStream, walDir, beatName, subject 
 	return pub, w.Close, nil
 }
 
+// ErrBrokerClosed cancels a beat's run context when its broker connection is
+// gone for good — the cause that separates a lost broker from a clean SIGTERM,
+// which are otherwise the same cancelled context.
+var ErrBrokerClosed = errors.New("broker connection closed")
+
 // ExitOnError maps a runner's terminating error to a process exit code,
 // swallowing the expected ctx-cancelled shutdown so a clean SIGTERM returns 0.
+// A run cancelled by ErrBrokerClosed is not clean — it exits non-zero so the
+// orchestrator restarts a beat that can no longer reach its broker.
 func ExitOnError(ctx context.Context, err error) int {
+	if errors.Is(context.Cause(ctx), ErrBrokerClosed) {
+		slog.Error("exiting: broker connection lost for good")
+		return 1
+	}
 	if err != nil && ctx.Err() == nil {
 		slog.Error("broker run failed", "err", err)
 		return 1

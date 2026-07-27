@@ -45,7 +45,7 @@ func TestMain_EnsuresTopologyOverTLSThenExitsZero(t *testing.T) {
 	// Main's own success exit code isn't evidence on its own.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	js, closeNC, err := broker.Connect(ctx, url, clientCfg)
+	js, closeNC, err := broker.Connect(ctx, url, clientCfg, broker.Hooks{})
 	if err != nil {
 		t.Fatal("reconnect to verify:", err)
 	}

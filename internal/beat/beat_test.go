@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/ianeff/thump/internal/beat"
 )
 
@@ -113,5 +115,32 @@ func TestPollLoop_ReturnsPromptlyOnCancel(t *testing.T) {
 	}
 	if ticked {
 		t.Error("PollLoop ticked despite the context being cancelled")
+	}
+}
+
+// TestExitOnError_TreatsALostBrokerAsAFailureNotACleanShutdown separates the
+// two cancelled contexts that otherwise look identical: a SIGTERM exits 0, a
+// broker that went away for good exits 1 so the orchestrator restarts the pod.
+func TestExitOnError_TreatsALostBrokerAsAFailureNotACleanShutdown(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		cause error
+		want  int
+	}{
+		"ExitOnError returns 0 when an operator's shutdown cancelled the run":   {cause: nil, want: 0},
+		"ExitOnError returns 1 when a lost broker connection cancelled the run": {cause: beat.ErrBrokerClosed, want: 1},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithCancelCause(context.Background())
+			cancel(tc.cause)
+
+			got := beat.ExitOnError(ctx, context.Canceled)
+
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong exit code for a cancelled run", diff)
+			}
+		})
 	}
 }

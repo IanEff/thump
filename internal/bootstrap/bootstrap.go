@@ -34,11 +34,13 @@ func Main(_ []string, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	// No hooks: this is a Job that runs to completion under a timeout, so a
+	// lost connection surfaces as a failed exit code, not a readiness flip.
 	_, closeNC, err := broker.ConnectAndEnsure(ctx, cfg.NATSURL, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
-	})
+	}, broker.Hooks{})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1

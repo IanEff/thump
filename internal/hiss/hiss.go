@@ -112,11 +112,14 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // authority, publish thump.decisions, and ship the decisions WAL's sealed
 // segments to object storage in the background.
 func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+	ctx, brokerLost := context.WithCancelCause(ctx)
+	defer brokerLost(nil)
+
 	js, closeNC, err := broker.Connect(ctx, natsURL, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
-	})
+	}, beat.BrokerHooks(health, "hiss", func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1

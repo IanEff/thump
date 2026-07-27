@@ -45,8 +45,8 @@ jobs:
       - name: Chart lint (kubeconform)
         run: task chart-lint
 
-      - name: test
-        run: task test
+      - name: race
+        run: task race
 
       - name: coverage
         run: task coverage

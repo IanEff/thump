@@ -22,7 +22,7 @@ func TestConnect_ReturnsAJetStreamContextAndAnIdempotentClose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	js, closeNC, err := broker.Connect(ctx, url, tlsx.Config{})
+	js, closeNC, err := broker.Connect(ctx, url, tlsx.Config{}, broker.Hooks{})
 	if err != nil {
 		t.Fatal("connect:", err)
 	}
@@ -46,7 +46,7 @@ func TestConnect_DoesNotEnsureTopology(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	js, closeNC, err := broker.Connect(ctx, url, tlsx.Config{})
+	js, closeNC, err := broker.Connect(ctx, url, tlsx.Config{}, broker.Hooks{})
 	if err != nil {
 		t.Fatal("connect:", err)
 	}
@@ -63,7 +63,7 @@ func TestConnectAndEnsure_CreatesTheStreamConnectAlonePreviouslyAssumed(t *testi
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	js, closeNC, err := broker.ConnectAndEnsure(ctx, url, tlsx.Config{})
+	js, closeNC, err := broker.ConnectAndEnsure(ctx, url, tlsx.Config{}, broker.Hooks{})
 	if err != nil {
 		t.Fatal("connect and ensure:", err)
 	}
@@ -76,7 +76,7 @@ func TestConnectAndEnsure_CreatesTheStreamConnectAlonePreviouslyAssumed(t *testi
 
 func TestConnect_FailsOnABadURL(t *testing.T) {
 	t.Parallel()
-	if _, _, err := broker.Connect(context.Background(), "nats://127.0.0.1:1", tlsx.Config{}); err == nil {
+	if _, _, err := broker.Connect(context.Background(), "nats://127.0.0.1:1", tlsx.Config{}, broker.Hooks{}); err == nil {
 		t.Fatal("expected an error connecting to a closed port")
 	}
 }
@@ -108,7 +108,7 @@ func TestConnect_HandshakesOverTLSWhenTheClientPresentsACertTheServerTrusts(t *t
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	js, closeNC, err := broker.Connect(ctx, url, clientCfg)
+	js, closeNC, err := broker.Connect(ctx, url, clientCfg, broker.Hooks{})
 	if err != nil {
 		t.Fatal("connect over tls with a trusted cert must succeed:", err)
 	}
@@ -137,7 +137,7 @@ func TestConnect_RefusesAServerCertSignedByAnUntrustedCA(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, _, err := broker.Connect(ctx, url, clientCfg); err == nil {
+	if _, _, err := broker.Connect(ctx, url, clientCfg, broker.Hooks{}); err == nil {
 		t.Fatal("a server cert signed by a CA the client doesn't trust must be refused, got a live connection")
 	}
 }
@@ -164,7 +164,7 @@ func TestConnect_ServerRefusesAClientCertSignedByASecondCA(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, _, err := broker.Connect(ctx, url, imposterCfg); err == nil {
+	if _, _, err := broker.Connect(ctx, url, imposterCfg, broker.Hooks{}); err == nil {
 		t.Fatal("a client cert from a CA the server never verified must be refused, got a live connection")
 	}
 }
@@ -188,7 +188,7 @@ func TestConnect_ServerRefusesAClientPresentingNoCertificate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, _, err := broker.Connect(ctx, url, noCertCfg); err == nil {
+	if _, _, err := broker.Connect(ctx, url, noCertCfg, broker.Hooks{}); err == nil {
 		t.Fatal("an mTLS server (RequireAndVerifyClientCert) must refuse a client presenting no certificate, got a live connection")
 	}
 }
@@ -261,5 +261,76 @@ func TestBrokerAuthz_OnlyHissMayPublishThumpDecisions(t *testing.T) {
 	}
 	if !errors.Is(clankErr, nats.ErrPermissionViolation) {
 		t.Error("expected a permissions violation refusing clank's publish", clankErr)
+	}
+}
+
+func TestConnect_NeverStopsRetryingAfterADrop(t *testing.T) {
+	t.Parallel()
+	// nats.go's default is a finite budget — 60 attempts at 2s — after which
+	// the connection is Closed for the life of the process. That is the
+	// ghosting bug: the pod stays up and Ready with no way to reach the
+	// broker. This asserts the policy directly, because the behaviour it
+	// prevents takes two minutes to reproduce.
+	opts := broker.DialOptionsForTest(t, broker.Hooks{})
+
+	if opts.MaxReconnect >= 0 {
+		t.Errorf("MaxReconnect is %d — a finite reconnect budget is a beat that eventually stops trying and never says so", opts.MaxReconnect)
+	}
+}
+
+func TestConnect_ReportsTheDropAndTheRecoveryAcrossABrokerBounce(t *testing.T) {
+	t.Parallel()
+	srv := natstest.Restartable(t)
+	dropped, restored := make(chan struct{}, 1), make(chan struct{}, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	_, closeNC, err := broker.Connect(ctx, srv.URL(), tlsx.Config{}, broker.Hooks{
+		OnDisconnect: func(error) { dropped <- struct{}{} },
+		OnReconnect:  func() { restored <- struct{}{} },
+	})
+	if err != nil {
+		t.Fatal("connect:", err)
+	}
+	defer closeNC()
+
+	srv.Stop()
+	select {
+	case <-dropped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("OnDisconnect never fired — a beat that cannot see its own drop cannot report one")
+	}
+
+	srv.Start()
+	select {
+	case <-restored:
+	case <-time.After(30 * time.Second):
+		t.Fatal("OnReconnect never fired — the client gave up on a broker that came back")
+	}
+}
+
+func TestConnect_StaysSilentOnClosedWhenTheCallerClosedItself(t *testing.T) {
+	t.Parallel()
+	// nats.go fires ClosedHandler for a clean shutdown too. Reporting that as
+	// a lost broker would make every SIGTERM exit non-zero, so the close func
+	// has to suppress it.
+	url := natstest.URL(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	closed := make(chan struct{}, 1)
+	_, closeNC, err := broker.Connect(ctx, url, tlsx.Config{}, broker.Hooks{
+		OnClosed: func() { closed <- struct{}{} },
+	})
+	if err != nil {
+		t.Fatal("connect:", err)
+	}
+
+	closeNC()
+	select {
+	case <-closed:
+		t.Error("OnClosed fired for the caller's own shutdown — every clean SIGTERM would exit non-zero")
+	case <-time.After(500 * time.Millisecond):
 	}
 }
