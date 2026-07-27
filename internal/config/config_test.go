@@ -560,3 +560,81 @@ func TestLoadClank_AcceptsAPlaintextPrometheusURLBecauseThatLegIsTheMeshs(t *tes
 		t.Error("the shipped chart's own Prometheus URL stopped loading", diff)
 	}
 }
+
+func TestLoadClank_ValidatesNATSURLScheme(t *testing.T) {
+	cases := map[string]struct {
+		url     string
+		wantErr bool
+	}{
+		"LoadClank accepts an empty NATS_URL because offline mode never sets one": {
+			url: "",
+		},
+		"LoadClank accepts a nats scheme": {
+			url: "nats://nats.thump.svc:4222",
+		},
+		"LoadClank accepts a tls scheme": {
+			url: "tls://nats.thump.svc:4222",
+		},
+		"LoadClank refuses a scheme nats.Connect was never going to accept": {
+			url:     "http://nats.thump.svc:4222",
+			wantErr: true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setClankEnv(t)
+			t.Setenv("NATS_URL", tc.url)
+
+			got, err := config.LoadClank(false)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("a %q NATS_URL must refuse at load time, got %+v", tc.url, got)
+				}
+				if !strings.Contains(err.Error(), "NATS_URL") {
+					t.Errorf("the error must name the offending var, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.url, got.NATSURL); diff != "" {
+				t.Error("a valid NATS_URL was rewritten on the way through", diff)
+			}
+		})
+	}
+}
+
+func TestEveryLoader_RefusesAPlaintextNATSURLNotJustClanks(t *testing.T) {
+	cases := map[string]struct {
+		load func(bool) error
+		env  func(*testing.T)
+	}{
+		"LoadClank refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadClank(b); return err },
+			env:  setClankEnv,
+		},
+		"LoadHiss refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadHiss(b); return err },
+			env:  setHissEnv,
+		},
+		"LoadRattle refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadRattle(b); return err },
+			env:  setRattleEnv,
+		},
+		"LoadThump refuses a plaintext NATS_URL": {
+			load: func(b bool) error { _, err := config.LoadThump(b); return err },
+			env:  setThumpEnv,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.env(t)
+			t.Setenv("NATS_URL", "http://nats.thump.svc:4222")
+
+			if err := tc.load(false); err == nil {
+				t.Error("every beat dials the same broker — validating one loader and not  in front of it")
+			}
+		})
+	}
+}

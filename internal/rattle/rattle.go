@@ -82,7 +82,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	var pub publish.Publisher[signal.Detection]
 	var walPub *publish.WALPublisher[signal.Detection]
 	if lc.NATSURL != "" {
-		js, closeNC, err := broker.Connect(ctx, lc.NATSURL)
+		js, closeNC, err := broker.Connect(ctx, cfg.NATSURL)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1

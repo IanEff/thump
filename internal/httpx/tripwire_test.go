@@ -80,6 +80,79 @@ func isNetHTTP(x ast.Expr) bool {
 	return ok && id.Name == "http"
 }
 
+// declaredTLSBuilders maps each non-test file allowed to construct a
+// *tls.Config to why it isn't going through internal/tlsx. Empty is the
+// correct steady state; a row is a design review.
+var declaredTLSBuilders = map[string]string{}
+
+// TestOnlyTlsxBuildsATLSConfig draws the same bound for *tls.Config that
+// TestOnlyHttpxBuildsAnHTTPClient draws for *http.Client: a config assembled
+// at the call site is a chance to leave MinVersion, RootCAs, or ClientAuth
+// at its zero value, and every one of those mistakes succeeds at runtime
+// instead of failing. A hit outside internal/tlsx is a leg nobody ran
+// through tlsx.Client or tlsx.Server.
+func TestOnlyTlsxBuildsATLSConfig(t *testing.T) {
+	t.Parallel()
+	repoRoot, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlsxDir := filepath.Join(repoRoot, "internal", "tlsx")
+	fset := token.NewFileSet()
+
+	err = filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != repoRoot && (strings.HasPrefix(d.Name(), ".") || d.Name() == "bin") {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		if filepath.Dir(path) == tlsxDir {
+			return nil
+		}
+		rel, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			return err
+		}
+		if _, declared := declaredTLSBuilders[filepath.ToSlash(rel)]; declared {
+			return nil
+		}
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			lit, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			sel, ok := lit.Type.(*ast.SelectorExpr)
+			if ok && isCryptoTLS(sel.X) && sel.Sel.Name == "Config" {
+				t.Errorf("%s:%d builds a *tls.Config literal — internal/tlsx is the only package that may; add a row to declaredTLSBuilders or route it through tlsx.Client/tlsx.Server",
+					rel, fset.Position(lit.Pos()).Line)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// isCryptoTLS reports whether an expression is the crypto/tls package
+// qualifier.
+func isCryptoTLS(x ast.Expr) bool {
+	id, ok := x.(*ast.Ident)
+	return ok && id.Name == "tls"
+}
+
 // declaredPlaintext maps each non-test file allowed to name an
 // insecure-transport option to the reason that leg runs in the clear. A hit
 // anywhere else is a leg nobody decided about; adding a row is a design
