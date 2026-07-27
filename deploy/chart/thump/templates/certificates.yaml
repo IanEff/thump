@@ -25,6 +25,7 @@ metadata:
 spec:
   secretName: nats-tls
   commonName: nats
+  dnsNames: ["nats", "nats.thump", "nats.thump.svc", "nats.thump.svc.cluster.local"]
   emailAddresses: ["nats@thump.svc"]
   usages: ["server auth"]
   privateKey:

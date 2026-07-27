@@ -35,12 +35,26 @@ data:
     # requesting them over $JS.API, not by subscribing to the raw subject.
     # subscribe: _INBOX.> is the matching half: every request (JS.API or a
     # tracked js.Publish ack) replies on the caller's own ephemeral inbox,
-    # and receiving a reply is a subscribe, not a publish. Durables are
-    # internal/broker.DurableFor's own names — clank owns "clank" (detections),
-    # "click" (outcomes, clank's own return edge), and "clank-declines"
-    # (declines); hiss owns "hiss" (proposals) and "his-approvals" (approvals);
-    # thump owns "thump" (decisions); rattle owns none — first hop, nothing to
-    # consume, so no $JS.API grant at all.
+    # and receiving a reply is a subscribe, not a publish.
+    #
+    # $JS.ACK.THUMP.<durable>.> is a second, separate publish grant a pull
+    # consumer needs and the API-subject pair above doesn't cover: acking a
+    # fetched message is nats.go publishing to the ack-reply subject stamped
+    # on the delivered message, not a call through $JS.API at all. Missing
+    # this one doesn't fail loudly at startup — EnsureTopology, the fetch,
+    # and the bind all succeed — it only surfaces once a message actually
+    # flows and the consumer can't acknowledge it, so nats-server logs a
+    # Publish Violation per redelivery and the message never leaves
+    # redelivery. Found live, R6e, 2026-07-27 — no hermetic test catches it
+    # (R6d's drift test only walks broker.Subjects, not JetStream's own
+    # ack/api subject space).
+    #
+    # Durables are internal/broker.DurableFor's own names — clank owns
+    # "clank" (detections), "click" (outcomes, clank's own return edge), and
+    # "clank-declines" (declines); hiss owns "hiss" (proposals) and
+    # "his-approvals" (approvals); thump owns "thump" (decisions); rattle
+    # owns none — first hop, nothing to consume, so no $JS.API/$JS.ACK grant
+    # at all.
     authorization {
       users = [
         { user: "rattle@thump.svc"
@@ -55,9 +69,9 @@ data:
               allow: [
                 "thump.proposals",
                 "thump.detections.dlq", "thump.outcomes.dlq", "thump.declines.dlq",
-                "$JS.API.CONSUMER.INFO.THUMP.clank", "$JS.API.CONSUMER.MSG.NEXT.THUMP.clank",
-                "$JS.API.CONSUMER.INFO.THUMP.click", "$JS.API.CONSUMER.MSG.NEXT.THUMP.click",
-                "$JS.API.CONSUMER.INFO.THUMP.clank-declines", "$JS.API.CONSUMER.MSG.NEXT.THUMP.clank-declines"
+                "$JS.API.CONSUMER.INFO.THUMP.clank", "$JS.API.CONSUMER.MSG.NEXT.THUMP.clank", "$JS.ACK.THUMP.clank.>",
+                "$JS.API.CONSUMER.INFO.THUMP.click", "$JS.API.CONSUMER.MSG.NEXT.THUMP.click", "$JS.ACK.THUMP.click.>",
+                "$JS.API.CONSUMER.INFO.THUMP.clank-declines", "$JS.API.CONSUMER.MSG.NEXT.THUMP.clank-declines", "$JS.ACK.THUMP.clank-declines.>"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }
@@ -69,8 +83,8 @@ data:
               allow: [
                 "thump.decisions", "thump.declines",
                 "thump.proposals.dlq", "thump.approvals.dlq",
-                "$JS.API.CONSUMER.INFO.THUMP.hiss", "$JS.API.CONSUMER.MSG.NEXT.THUMP.hiss",
-                "$JS.API.CONSUMER.INFO.THUMP.his-approvals", "$JS.API.CONSUMER.MSG.NEXT.THUMP.his-approvals"
+                "$JS.API.CONSUMER.INFO.THUMP.hiss", "$JS.API.CONSUMER.MSG.NEXT.THUMP.hiss", "$JS.ACK.THUMP.hiss.>",
+                "$JS.API.CONSUMER.INFO.THUMP.his-approvals", "$JS.API.CONSUMER.MSG.NEXT.THUMP.his-approvals", "$JS.ACK.THUMP.his-approvals.>"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }
@@ -82,7 +96,7 @@ data:
               allow: [
                 "thump.outcomes",
                 "thump.decisions.dlq",
-                "$JS.API.CONSUMER.INFO.THUMP.thump", "$JS.API.CONSUMER.MSG.NEXT.THUMP.thump"
+                "$JS.API.CONSUMER.INFO.THUMP.thump", "$JS.API.CONSUMER.MSG.NEXT.THUMP.thump", "$JS.ACK.THUMP.thump.>"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }
