@@ -145,7 +145,7 @@ func TestMetrics_TLSConfigured_ServesHealthzOverTLSAndRefusesPlaintext(t *testin
 	plainClient := &http.Client{Timeout: time.Second}
 	plainResp, err := plainClient.Get("http://" + addr + "/healthz")
 	if err != nil {
-		t.Fatalf("plaintext GET https://%s/healthz: %v", addr, err)
+		t.Fatalf("plaintext GET http://%s/healthz: %v", addr, err)
 	}
 	_ = plainResp.Body.Close()
 	if plainResp.StatusCode == http.StatusOK {

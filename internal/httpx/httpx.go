@@ -20,7 +20,9 @@ const DefaultBackendTimeout = 10 * time.Second
 func Client(timeout time.Duration, tlsCfg *tls.Config) *http.Client {
 	c := &http.Client{Timeout: timeout}
 	if tlsCfg != nil {
-		c.Transport = &http.Transport{TLSClientConfig: tlsCfg}
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.TLSClientConfig = tlsCfg
+		c.Transport = t
 	}
 	return c
 }
