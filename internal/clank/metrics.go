@@ -15,9 +15,9 @@ import (
 // instead of the same one twice.
 var confidenceBuckets = []float64{0.5, 0.6, 0.7, 0.8, 0.9, 1.0}
 
-// Recorder is click's Prometheus seam — Absorb calls exactly one method
-// here after an outcome clears its audit/coherence checks, so this file is
-// the one place that owns the agent_* metric names and label vocabulary.
+// Recorder owns clank's agent_* metric names and label vocabulary — mostly
+// click's seam, where Absorb calls exactly one method after an outcome clears
+// its audit/coherence checks, plus the reason loop's own redelivery counter.
 type Recorder struct {
 	resolutions *prometheus.CounterVec
 	confidence  *prometheus.HistogramVec // what the model claimed
@@ -30,6 +30,12 @@ type Recorder struct {
 	// outcome is skipped rather than imputed, or a nil would read as a
 	// fabricated full recovery.
 	effectiveness prometheus.Histogram
+
+	// redeliveries counts reason loops declined before the first model call
+	// because a live set already answered the same fingerprint. A climbing
+	// rate is money saved, not an error — but a steadily climbing one means
+	// acks aren't landing.
+	redeliveries prometheus.Counter
 }
 
 func NewRecorder(reg prometheus.Registerer) *Recorder {
@@ -52,9 +58,20 @@ func NewRecorder(reg prometheus.Registerer) *Recorder {
 			Help:    "Predicted minus observed severity reduction (0..1 error-budget axis); >0 means the model over-predicted a fix.",
 			Buckets: prometheus.LinearBuckets(-1, 0.2, 11),
 		}),
+		redeliveries: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "agent_redeliveries_skipped_total",
+			Help: "Reason loops declined before the first model call because a live set already answered the same fingerprint.",
+		}),
 	}
-	reg.MustRegister(r.resolutions, r.confidence, r.calibration, r.effectiveness)
+	reg.MustRegister(r.resolutions, r.confidence, r.calibration, r.effectiveness, r.redeliveries)
 	return r
+}
+
+// recordRedeliverySkipped counts one reason loop the dedupe precheck stopped.
+// The fingerprint is deliberately not a label — it is unbounded, and the log
+// line already carries it for the one run anyone needs to trace.
+func (r *Recorder) recordRedeliverySkipped() {
+	r.redeliveries.Inc()
 }
 
 func (r *Recorder) recordResolution(set proposal.Set, o outcome.Outcome) {
