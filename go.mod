@@ -21,6 +21,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.opentelemetry.io/proto/otlp v1.10.0
+	go.uber.org/goleak v1.3.0
 	go.yaml.in/yaml/v2 v2.4.3
 	golang.org/x/sync v0.22.0
 	google.golang.org/genai v1.62.0
