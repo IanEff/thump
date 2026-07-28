@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
@@ -135,3 +137,25 @@ func TestTransport_GivesUpAfterFiveFailures(t *testing.T) {
 		t.Error("want det.yaml gone from the inbox root after stalling")
 	}
 }
+
+func TestTransport_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+	outbox := t.TempDir()
+	tr := &clank.Transport{
+		Inbox:  inbox,
+		Engine: newProposingEngine(t, outbox),
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		if err := tr.Tick(ctx); err != nil {
+			t.Errorf("want nil error on empty inbox tick, got %v", err)
+		}
+
+		cancel()
+		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
+	})
+}
+

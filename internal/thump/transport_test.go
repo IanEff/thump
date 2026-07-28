@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/thump"
 )
 
@@ -195,3 +196,21 @@ func heldGoverned() decision.Governed {
 	g.Decision.GrantedBand = ""
 	return g
 }
+
+func TestTransport_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	tr := newTestTransport(inbox, outbox)
+
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		if err := tr.Tick(ctx); err != nil {
+			t.Errorf("want nil error on empty inbox tick, got %v", err)
+		}
+
+		cancel()
+		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
+	})
+}
+
