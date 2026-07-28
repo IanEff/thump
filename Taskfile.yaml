@@ -42,6 +42,7 @@ tasks:
       - task: vulncheck
       - task: chart-lint
       - task: race
+      - task: integration
       - task: build
 
   fmt:
@@ -108,6 +109,11 @@ tasks:
     desc: Run all benchmarks with allocation profiling and benchstat count
     cmds:
       - go test -run=^$ -bench=. -benchmem -count=6 ./...
+
+  integration:
+    desc: Run hermetic integration test suite (nothin' live)
+    cmds:
+      - go test -count=1 ./test/integration
 
   # eval is key-gated (ANTHROPIC_API_KEY) and NEVER part of ci — a real-model
   # assertion is exactly the flakiness `task ci` exists to keep out. Missing
