@@ -43,3 +43,17 @@ func TestMain_MissingOutboxReturnsOne(t *testing.T) {
 		t.Error("stderr should name the missing var:", errb.String())
 	}
 }
+
+func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
+	t.Setenv("ACTION_CATALOG", "")
+
+	var stdout, stderr bytes.Buffer
+	code := thump.Main(nil, &stdout, &stderr, "dev", "none", "unknown", nil)
+
+	if code != 1 {
+		t.Errorf("want exit code 1 for missing config, got %d", code)
+	}
+	if stderr.Len() == 0 {
+		t.Error("want error message printed to stderr, got none")
+	}
+}

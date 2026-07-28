@@ -140,6 +140,22 @@ func TestLoop_DeliversNonZeroConfidenceThroughProductionWiring(t *testing.T) {
 	}
 }
 
+func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ACTION_CATALOG", "")
+	t.Setenv("FAILURE_CLASSES", "")
+
+	var stdout, stderr bytes.Buffer
+	code := clank.Main(nil, &stdout, &stderr, "dev", "none", "unknown")
+
+	if code != 1 {
+		t.Errorf("want exit code 1 for missing config, got %d", code)
+	}
+	if stderr.Len() == 0 {
+		t.Error("want error message printed to stderr, got none")
+	}
+}
+
 // testLoop mirrors clank's unexported `loop` type field-for-field. We can't
 // name that type here (it's unexported, in package clank) — but newTestLoop
 // CAN hold a value of it via `:=` (Go lets you hold what you can't name), and

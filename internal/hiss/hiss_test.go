@@ -2,12 +2,18 @@ package hiss_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
+	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/publish"
 )
 
 func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {
@@ -51,3 +57,52 @@ func TestMain_UnreadablePolicyReturnsOne(t *testing.T) {
 		t.Error("stderr should say the policy failed to load:", errb.String())
 	}
 }
+
+func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
+	t.Setenv("HISS_POLICY", "")
+
+	var stdout, stderr bytes.Buffer
+	code := hiss.Main(nil, &stdout, &stderr, "dev", "none", "unknown")
+
+	if code != 1 {
+		t.Errorf("want exit code 1 for missing config, got %d", code)
+	}
+	if stderr.Len() == 0 {
+		t.Error("want error message printed to stderr, got none")
+	}
+}
+
+func TestTransport_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+	outbox := t.TempDir()
+	policyFile := filepath.Join(t.TempDir(), "policy.yaml")
+
+	if err := os.WriteFile(policyFile, []byte("rules: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pol, err := hiss.LoadPolicy(policyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		tr := &hiss.Transport{
+			Inbox:  inbox,
+			Pub:    &publish.DirPublisher[decision.Governed]{Dir: outbox, Name: func(g decision.Governed) string { return g.Decision.SignalRef }},
+			Policy: pol,
+			Log:    hiss.NewDecisionLog(),
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		if err := tr.Tick(ctx); err != nil {
+			t.Errorf("want nil error on empty inbox tick, got %v", err)
+		}
+
+		cancel()
+		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
+	})
+}
+
