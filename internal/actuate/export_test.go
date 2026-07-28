@@ -2,6 +2,7 @@ package actuate
 
 import (
 	"context"
+	"time"
 
 	"github.com/ianeff/thump/internal/contract"
 	corev1 "k8s.io/api/core/v1"
@@ -13,6 +14,13 @@ import (
 // without widening the production surface (production callers get New,
 // which builds a real in-cluster client).
 func NewWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) { return newWith(k, cat) }
+
+// NewWithTimeoutForTest exposes newWithTimeout so a test can shrink
+// actuateTimeout down to something synctest can advance instantly, rather
+// than waiting out the real production bound.
+func NewWithTimeoutForTest(k Kube, cat *contract.StaticCatalog, timeout time.Duration) (*Runner, error) {
+	return newWithTimeout(k, cat, timeout)
+}
 
 // FirstRunningForTest exposes firstRunning to actuate_test — pure
 // pod-selection logic, the cheapest real coverage in the package.

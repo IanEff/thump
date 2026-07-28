@@ -312,6 +312,38 @@ added the day untrusted catalog PRs start arriving.
 behavior while the record still said the opposite. Which is exactly the failure
 mode this file exists to catch.*
 
+## D-13 · Every outbound client gets an audited retry policy, timeout, and a failure that surfaces — **Ratified** (2026-07-28)
+
+**The finding this generalizes:** `internal/broker/connect.go`'s NATS client
+shipped with none of the three — an unbounded finite reconnect budget, no
+timeout on the notion of "still connected," and a `Closed` state nothing
+signaled (fixed separately; see `beat.BrokerHooks`). That was one instance of
+a class: every third-party client this engine dials was trusted on its
+defaults, not audited against them. This entry is the sweep, one row per
+client, verified against each library's own source rather than assumed.
+
+| Client | Seam | Retry policy | Timeout | Failure surfaces |
+|---|---|---|---|---|
+| `nats.go` | `broker/connect.go` | `MaxReconnects(-1)` — effectively-infinite, authored | dial timeout + `AckWait` (broker.go) | `OnDisconnect`/`OnReconnect`/`OnClosed` hooks; readiness follows the connection |
+| `client-go` | `actuate/kube.go`, `actuate/runner.go` | client-go's own default (`rest.Request`, `maxRetries: 10`, retries 429/5xx honoring `Retry-After`) — already authored by the library, unaudited before this entry | **was unbounded** — `rest.InClusterConfig` sets no `Config.Timeout`, and thump's `Transport.handle` never calls the redelivery-preventing `heartbeat` on the live-execute path. **Fixed**: `actuate.actuateTimeout` (20s) now bounds every `Runner.Run` call, comfortably inside the 30s `AckWait` a hung call would otherwise blow through | error return, wrapped and recorded as a `Result: failure` `Outcome` with text — was already true for a returned error, now also true for a timeout instead of a hang |
+| Anthropic SDK | `clank/model_anthropic.go` | SDK default, `MaxRetries: 2`, retries 429/5xx — already authored by the library | `option.WithRequestTimeout(120s)`, already authored | `Engine.Propose` wraps and returns the error; the reason loop's own heartbeat (unlike thump's) keeps a slow-but-alive call from tripping `AckWait` |
+| AWS SDK v2 (S3) | `beat/objectstore.go` | SDK default standard retryer, `MaxAttempts: 3`, retries 429/5xx/throttling — already authored by the library | `beat.RunShipper`'s `PollLoop` wraps every ship tick in `WithTimeout(4×ShipInterval)` (120s) — already authored, at the right altitude for "however many segments are sealed this tick," not per-call | logged via `slog.Error("tick failed", ...)`; a segment that fails to ship is left on disk for the next tick, not silently dropped |
+| OTLP (`otlptracegrpc`) | `beat/trace.go` | **known-bad, not fixed here.** A wrong/stale CA surfaces to gRPC as `codes.Unavailable`, and `otlptracegrpc`'s vendored default retry policy treats `Unavailable` as retryable — it backs off and keeps retrying up to the export's own 10s timeout ceiling before giving up on that batch, silently, per batch, forever | `WithTimeout` default (10s) per export, already authored | **does not surface** — async `WithBatcher`, no log line at the point of failure; spans just stop arriving. Flagged, not actioned — needs a `/readyz`-adjacent liveness check or an explicit ops-runbook entry, a bigger change than this sweep's scope |
+| `httpx` | `internal/httpx` | none authored — every current caller (Prometheus, Loki) is a single request, not a multi-step operation a partial retry could corrupt | `DefaultBackendTimeout` (10s), authored and centralized | caller's own error path; every backend call already goes through this one seam, which is the precedent the other rows are held to |
+
+**What actually shipped, this entry:** the client-go fix
+(`internal/actuate/runner.go`'s `actuateTimeout`, `internal/actuate/runner_test.go`'s
+`TestRunner_TimesOutAHungMutationRatherThanBlockingForever`) — the only row
+that was silently wrong, and the only client on this list that mutates a
+cluster. Every other row was already correctly postured; this entry is their
+first audit against source, not a behavior change.
+
+**Proposed, not yet in the vault charter — I-17:** *Every client this engine
+dials has an authored retry policy, an authored timeout, and a failure that
+reaches an operator. A silent client is a violation.* Recorded here so the
+wording exists; ratifying it into `thump-charter.md` is a decision for that
+document, not this one.
+
 ---
 
 ## Departures from other source material
