@@ -92,3 +92,13 @@ func TestRootContext_MintsASpanSharingTheFingerprintsTraceID(t *testing.T) {
 		t.Errorf("span trace_id = %s, want %s (tracing.TraceIDFromFingerprint(%q))", got, want, fp)
 	}
 }
+
+func BenchmarkTraceIDFromFingerprint(b *testing.B) {
+	b.ReportAllocs()
+
+	fingerprint := "slo:checkout-latency:burn-accel:v1:2026-07-28-001"
+
+	for b.Loop() {
+		_ = tracing.TraceIDFromFingerprint(fingerprint)
+	}
+}

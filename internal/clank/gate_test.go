@@ -228,3 +228,49 @@ func psWithSelfSubjectLiveEvidence() proposal.Set {
 		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "product-catalog"}},
 	}
 }
+
+// BenchmarkReadinessGate_Evaluate() is a first stab at a benchmark,
+// cuz why not?
+func BenchmarkReadinessGate_Evaluate(b *testing.B) {
+	b.ReportAllocs()
+
+	benchmarks := map[string]struct {
+		set       proposal.Set
+		openDupes []proposal.Set
+	}{
+		"Evaluate returns fast failure when dedupe check fails": {
+			set: proposal.Set{
+				Name:      "prop-1",
+				SignalRef: "sig-123",
+			},
+			openDupes: []proposal.Set{{Name: "prop-existing", SignalRef: "sig-123"}},
+		},
+		"Evaluate computes full conjunction for multi-evidence coherent proposal": {
+			set: proposal.Set{
+				Name:      "prop-2",
+				SignalRef: "sig-456",
+				Evidence: []proposal.EvidenceRef{
+					{Tool: "kube", Query: "pods", Live: true, Subject: "checkout"},
+					{Tool: "loki", Query: "errors", Live: true, Subject: "payment"},
+				},
+				SAOSnapshot: &proposal.SAO{
+					Signal: proposal.SignalSnapshot{OriginService: "checkout"},
+					Topology: proposal.TopologySnapshot{
+						Upstream: []proposal.NodeState{{Name: "payment"}},
+					},
+				},
+			},
+			openDupes: nil,
+		},
+	}
+
+	for name, tc := range benchmarks {
+		b.Run(name, func(b *testing.B) {
+			gate := clank.ReadinessGate{}
+
+			for b.Loop() {
+				_ = gate.Evaluate(tc.set, tc.openDupes)
+			}
+		})
+	}
+}
