@@ -45,6 +45,9 @@ jobs:
       - name: Chart lint (kubeconform)
         run: task chart-lint
 
+      # Race detector runs locally via `task race`, not here — this gate
+      # runs goleak's TestMain() in every package instead, which is cheaper
+      # to run on every push and catches goroutine leaks before deployment.
       - name: test
         run: task test
 

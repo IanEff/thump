@@ -20,7 +20,7 @@ import (
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
 func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
-	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil)
+	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil)
 }
 
 // ShippedCatalogForTest exposes the production catalog (the one Main wires)

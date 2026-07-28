@@ -23,7 +23,7 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder) *loop {
+func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
@@ -38,6 +38,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 		Prior:          cases,                           // scoreConfidence reads the same case base
 		DedupeWindow:   dedupeWindow,
 		Ledger:         ledger, // engine records into THIS ledger
+		Recorder:       recorder,
 		Pub:            &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
 		Gate:           ReadinessGate{},
 		MaxSteps:       8,
