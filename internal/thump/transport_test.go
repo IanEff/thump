@@ -213,4 +213,3 @@ func TestTransport_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) 
 		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
 	})
 }
-
