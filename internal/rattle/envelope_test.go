@@ -62,7 +62,7 @@ func BenchmarkEnvelopDetector_Fires(b *testing.B) {
 }
 
 // makeSamples is a simple helper to generate sample windows of varying
-// size
+// size.
 func makeSamples(count int, baseVal float64) []rattle.Sample {
 	samples := make([]rattle.Sample, count)
 
