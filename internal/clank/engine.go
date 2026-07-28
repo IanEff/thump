@@ -53,6 +53,7 @@ type Engine struct {
 	Prior          Prior                             // scoreConfidence's corroboration read — the same case base CausalScorerImpl.Prior points at; Engine needs its own reference because CausalScorer never exposes the one it holds
 	DedupeWindow   time.Duration                     // how far back Ledger.Open looks for a live set on the same fingerprint
 	Ledger         *MemProposalLog                   // every Propose run is recorded here, gated or not — the audit trail
+	Recorder       *Recorder                         // counts reason loops the dedupe precheck stopped; nil-safe, same discipline as Tracer
 	Pub            publish.Publisher[proposal.Set]   // delivery — only called when the gate passes
 	MaxSteps       int                               // hard bound on reason-loop turns; exhausting it without a propose/insufficient call ends the run budget-exhausted
 	Weights        ScoringWeights
@@ -93,9 +94,34 @@ func (e *Engine) tracer() trace.Tracer {
 // signal's blast radius, and the Gate — a conjunction of budget, dedup, and
 // evidence minimums, never an average — decides whether the set is worth
 // emitting. The set is Recorded to the Ledger either way; it is only
-// published through Pub when the gate passes, and an open set for the same
-// fingerprint suppresses (but still records) a new one.
+// published through Pub when the gate passes.
+//
+// A detection whose fingerprint already has a live set in the Ledger returns
+// a zero Set and a nil error without reaching the model at all — no
+// transcript, no ledger entry, no delivery. The run is counted and logged
+// rather than recorded, because the set already answering that fingerprint is
+// the audit unit and a second one would only record that the transport
+// delivered twice.
 func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposal.Set, err error) {
+	// The gate's dedup minimum runs on the formed set, which is the right
+	// place to decide whether a set is worth delivering and the wrong place to
+	// discover the work was never worth doing: reaching it costs several model
+	// calls and every tool they issue. The same question asked here is free,
+	// and a live set for this fingerprint means the answer already exists —
+	// so the run stops before the first token rather than paying to rebuild
+	// something the ledger is already holding.
+	open, err := e.Ledger.Open(ctx, sig.Fingerprint, time.Now().Add(-e.DedupeWindow))
+	if err != nil {
+		return proposal.Set{}, fmt.Errorf("open dupes: %w", err)
+	}
+	if len(open) > 0 {
+		if e.Recorder != nil {
+			e.Recorder.recordRedeliverySkipped()
+		}
+		slog.Info("redelivery skipped", "fingerprint", sig.Fingerprint, "open_sets", len(open))
+		return proposal.Set{}, nil
+	}
+
 	// runID, not sig.Fingerprint alone, keys every Store call below — two
 	// invocations for the same fingerprint (a legitimate re-fire after
 	// rattle's debounce window, a JetStream redelivery, a retry after a
@@ -316,6 +342,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		set.Recommended = ranked[0].ID
 	}
 
+	// Not redundant with the precheck at the top: the reason loop above takes
+	// as long as the model does, and a set for this fingerprint can be
+	// recorded while it runs. The precheck is a cost saver; this is the gate's
+	// dedup minimum, and the gate is a conjunction — dropping one minimum
+	// because another check happens to cover the common case is exactly the
+	// blend the gate refuses to be.
 	openDupes, err := e.Ledger.Open(ctx, sig.Fingerprint, time.Now().Add(-e.DedupeWindow))
 	if err != nil {
 		return proposal.Set{}, fmt.Errorf("open dupes: %w", err)
