@@ -144,3 +144,23 @@ func TestExitOnError_TreatsALostBrokerAsAFailureNotACleanShutdown(t *testing.T) 
 		})
 	}
 }
+
+func TestStart_HelpFlagPrintsUsageAndExitsZero(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	lc, code, exit := beat.Start("hiss", []string{"--help"}, &stdout, &stderr, beat.Version{Version: "v1.0.0"})
+
+	if !exit {
+		t.Error("want exit=true for --help flag; got false")
+	}
+	if code != 0 {
+		t.Errorf("want code=0 for --help flag; got %d", code)
+	}
+	if lc.Ctx != nil {
+		t.Errorf("want nil context on help exit path; got %v", lc.Ctx)
+	}
+	if stderr.Len() == 0 {
+		t.Error("want usage text written to stderr, got empty output")
+	}
+}

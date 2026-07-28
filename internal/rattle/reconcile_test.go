@@ -3,11 +3,13 @@ package rattle_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/rattle"
 )
 
@@ -265,4 +267,26 @@ func TestReconcile_EmitsOnSustainedBurnEvenWithoutAcceleration(t *testing.T) {
 	if got[0].Divergence.Trajectory != "stable" {
 		t.Errorf("expected trajectory to be 'stable', got %q", got[0].Divergence.Trajectory)
 	}
+}
+
+func TestReconciler_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) {
+	t.Parallel()
+	slo := rattle.SLO{ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.999}
+	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 4, 8)})
+
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		tick := func(ctx context.Context) error {
+			_, err := r.Reconcile(ctx)
+			return err
+		}
+
+		if err := tick(ctx); err != nil {
+			t.Errorf("want nil error on reconcile tick, got %v", err)
+		}
+
+		cancel()
+		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tick)
+	})
 }

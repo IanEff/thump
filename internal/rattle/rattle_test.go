@@ -207,6 +207,21 @@ func TestNewReconciler_WiresTheContractSoStaleWindowsAreSkipped(t *testing.T) {
 	}
 }
 
+func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
+	t.Setenv("PROM_URL", "")
+	t.Setenv("RATTLE_WATCH", "")
+
+	var stdout, stderr bytes.Buffer
+	code := rattle.Main(nil, &stdout, &stderr, "dev", "none", "unknown")
+
+	if code != 1 {
+		t.Errorf("want exit code 1 for missing config, got %d", code)
+	}
+	if stderr.Len() == 0 {
+		t.Error("want error message printed to stderr, got none")
+	}
+}
+
 func freshWindow(rates ...float64) []rattle.Sample {
 	out := make([]rattle.Sample, len(rates))
 	base := time.Now().Add(-time.Duration(len(rates)) * time.Minute)
