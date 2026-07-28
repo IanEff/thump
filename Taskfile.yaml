@@ -104,6 +104,11 @@ tasks:
       - go test -coverprofile=coverage.out ./...
       - go tool cover -func=coverage.out | tail -1
 
+  bench:
+    desc: Run all benchmarks with allocation profiling and benchstat count
+    cmds:
+      - go test -run=^$ -bench=. -benchmem -count=6 ./...
+
   # eval is key-gated (ANTHROPIC_API_KEY) and NEVER part of ci — a real-model
   # assertion is exactly the flakiness `task ci` exists to keep out. Missing
   # key = a clean skip, not a failure, so this is always safe to run.
