@@ -60,9 +60,10 @@ func (l *MemProposalLog) Record(ctx context.Context, ps proposal.Set) error {
 
 // Open returns every recorded set for fingerprint that is still in an open
 // phase (proposed, acknowledged, or acted) and was recorded after since —
-// the dedup query: a non-empty result means a live set already answers to
-// this signal, so Propose suppresses (but still records) a new one rather
-// than delivering it.
+// the dedup query, asked twice: Propose asks before reasoning, where a
+// non-empty result means a live set already answers this signal and the run
+// stops before the first model call, and the gate asks again on the formed
+// set, where it is one of the three minimums.
 func (l *MemProposalLog) Open(ctx context.Context, fingerprint string, since time.Time) ([]proposal.Set, error) {
 	if ctx.Err() != nil {
 		return []proposal.Set{}, ctx.Err()

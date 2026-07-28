@@ -139,32 +139,54 @@ type binding struct {
 	reverse operation
 }
 
+// actuateTimeout bounds one Runner.Run call. Transport.handle (thump.go)
+// never calls broker.Handler's heartbeat for the live-execute path — that
+// choice assumes rendering-and-executing stays fast, which client-go's own
+// defaults don't guarantee, since rest.InClusterConfig sets no Timeout and
+// leaves an apiserver call to hang on a wedged connection indefinitely. Left
+// unbounded, a hung mutation would sit past the consumer's 30s AckWait
+// (broker.go), get redelivered, and run the same live mutation a second time
+// while the first is still stuck. actuateTimeout fails it first, as one
+// ordinary Outcome, instead.
+const actuateTimeout = 20 * time.Second
+
 // Runner satisfies thump.ActionRunner: it maps a contract ref to a concrete
 // cluster mutation and applies it through the injected Kube seam.
 type Runner struct {
 	kube     Kube
 	bindings map[string]binding
+	timeout  time.Duration // bounds one Run call; see actuateTimeout
 }
 
 // newWith is the seam constructor shared by production (New, over a
 // liveKube) and tests (NewWith, over a fake). Every ref a Runner can execute
 // is bound from cat, so nothing outside the authored catalog is reachable.
 func newWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) {
+	return newWithTimeout(k, cat, actuateTimeout)
+}
+
+// newWithTimeout is newWith with the Run bound overridable — production and
+// ordinary tests always go through newWith's fixed actuateTimeout; only a
+// test proving the bound itself needs a shorter one to stay fast.
+func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration) (*Runner, error) {
 	b, err := bind(cat)
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{kube: k, bindings: b}, nil
+	return &Runner{kube: k, bindings: b, timeout: timeout}, nil
 }
 
-// Run dispatches ref's forward (or reverse) mutation through the Kube seam.
-// An unbound ref is an error, not a silent no-op — thump records it as a
-// failure with text.
+// Run dispatches ref's forward (or reverse) mutation through the Kube seam,
+// cut off at r.timeout. An unbound ref is an error, not a silent no-op —
+// thump records it as a failure with text, same as a timed-out or failing
+// mutation does.
 func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64) error {
 	b, ok := r.bindings[ref]
 	if !ok {
 		return fmt.Errorf("actuate: ref %q is not bound to an action", ref)
 	}
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
 	op := b.forward
 	if reverse {
 		op = b.reverse

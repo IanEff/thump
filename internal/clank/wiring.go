@@ -23,7 +23,7 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder) *loop {
+func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
@@ -38,6 +38,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 		Prior:          cases,                           // scoreConfidence reads the same case base
 		DedupeWindow:   dedupeWindow,
 		Ledger:         ledger, // engine records into THIS ledger
+		Recorder:       recorder,
 		Pub:            &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
 		Gate:           ReadinessGate{},
 		MaxSteps:       8,
@@ -59,7 +60,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder) *Engine {
+func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder) *Engine {
 	return &Engine{
 		Intake:         intake,
 		Model:          model,
@@ -72,6 +73,7 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 		Prior:          cases,
 		DedupeWindow:   dedupeWindow,
 		Ledger:         ledger,
+		Recorder:       recorder,
 		Pub:            pub,
 		Gate:           ReadinessGate{},
 		MaxSteps:       8,

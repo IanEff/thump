@@ -926,11 +926,11 @@ func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
 	}
-	if got.Gate.DedupeOK {
-		t.Errorf("an open proposal on the same fingerprint must fail dedupe: %+v", got.Gate)
+	if got.Gate != nil {
+		t.Errorf("an open proposal on the same fingerprint must stop the run before a set forms: %+v", got.Gate)
 	}
 	if len(sink.Delivered) != 0 {
-		t.Errorf("a suppressed set is recorded, not delivered: %d", len(sink.Delivered))
+		t.Errorf("a suppressed fingerprint delivers nothing: %d", len(sink.Delivered))
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
@@ -282,4 +284,30 @@ func TestRunner_AMultiStepForwardStopsAtTheFirstFailingStep(t *testing.T) {
 	if len(k.execs) != 1 {
 		t.Errorf("ran %d exec steps after the first failed, want 1", len(k.execs))
 	}
+}
+
+// hangingKube.Exec never returns on its own — it blocks on ctx, the way a
+// client-go call against a wedged apiserver connection does with no client
+// Config.Timeout set. It stands in for that gap without needing a real
+// apiserver to wedge.
+type hangingKube struct{ recordKube }
+
+func (k *hangingKube) Exec(ctx context.Context, _, _ string, _ []string) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestRunner_TimesOutAHungMutationRatherThanBlockingForever(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, err := actuate.NewWithTimeoutForTest(&hangingKube{}, configtest.ShippedCatalog(t), 5*time.Second)
+		if err != nil {
+			t.Fatalf("build runner from shipped catalog: %v", err)
+		}
+
+		err = r.Run(t.Context(), "hold-rebalance", false, nil)
+
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Run(hung exec) = %v, want a deadline error", err)
+		}
+	})
 }
