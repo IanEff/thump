@@ -44,7 +44,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	defer closeNC()
 
 	if err := beat.AwaitConsumers(ctx, js, health, "thump.detections", "thump.outcomes", "thump.declines"); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err) // TODO: write error
+		slog.Error("await consumers failed", "err", err)
 		return 1
 	}
 

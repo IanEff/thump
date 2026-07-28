@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 
@@ -127,7 +128,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	defer closeNC()
 
 	if err := beat.AwaitConsumers(ctx, js, health, "thump.proposals"); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err) // TODO: write error message
+		slog.Error("await consumers failed", "err", err)
 		return 1
 	}
 
