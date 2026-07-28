@@ -171,7 +171,8 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	}
 
 	// second pass: same fingerprint, same engine (same ledger). The open set
-	// from pass one suppresses this one — gated to no_action, NOT delivered.
+	// from pass one stops this one at the dedupe precheck — no model call, no
+	// set formed, nothing delivered.
 	eng.Model = goldenNodeDeathModel(t)
 	set2, err := eng.Propose(ctx, det)
 	if err != nil {
@@ -180,11 +181,8 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	if len(sink.Delivered) != 1 {
 		t.Fatalf("replay must be suppressed, not delivered; delivered %d total", len(sink.Delivered))
 	}
-	if set2.Gate == nil || set2.Gate.Passed {
-		t.Errorf("the replay's gate must fail on dedup: %+v", set2.Gate)
-	}
-	if set2.Status.Phase != "no_action" {
-		t.Errorf("a suppressed replay is phase=no_action, got %q", set2.Status.Phase)
+	if set2.Gate != nil || set2.Status != nil {
+		t.Errorf("a replayed fingerprint must not form a set at all: gate=%+v status=%+v", set2.Gate, set2.Status)
 	}
 }
 
