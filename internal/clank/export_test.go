@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace/noop"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
@@ -109,3 +110,22 @@ var shippedClasses = sync.OnceValue(func() []contract.FailureClassDefinition {
 	}
 	return defs
 })
+
+func FromAnthropicForTest(resp *anthropic.Message) Completion {
+	return fromAnthropicMessage(resp)
+}
+
+func ToAnthropicMessageParamsForTest(msgs []Message) []anthropic.MessageParam {
+	return toAnthropicMessageParams(msgs)
+}
+
+func ToAnthropicToolParamsForTest(tools []ToolSpec) []anthropic.ToolUnionParam {
+	return toAnthropicToolParams(tools)
+}
+
+// ToolSpecsForTest exposes Engine.toolSpecs, the one place tool order gets
+// fixed before it's sent to the model — clank_test needs it to pin that
+// order deterministic.
+func ToolSpecsForTest(e *Engine) []ToolSpec {
+	return e.toolSpecs()
+}

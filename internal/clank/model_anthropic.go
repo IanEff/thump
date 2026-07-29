@@ -32,10 +32,9 @@ func NewAnthropicModel(apiKey string) *AnthropicModel {
 }
 
 // Complete sends msgs and tools to Claude Haiku and folds the response into
-// a Completion: text blocks concatenate into the assistant Message, and each
-// ToolUseBlock becomes a ToolCall. A tool the model wasn't offered in tools
-// can never come back here — the SDK only echoes tool calls for tools it was
-// given a spec for.
+// a Completion via fromAnthropicMessage. A tool the model wasn't offered in
+// tools can never come back here — the SDK only echoes tool calls for tools
+// it was given a spec for.
 func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []ToolSpec) (Completion, error) {
 	resp, err := m.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeHaiku4_5_20251001, // cheapest model on record
@@ -46,22 +45,7 @@ func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []T
 	if err != nil {
 		return Completion{}, fmt.Errorf("anthropic complete: %w", err)
 	}
-
-	var comp Completion
-	comp.Message.Role = "assistant"
-	for _, block := range resp.Content {
-		switch b := block.AsAny().(type) {
-		case anthropic.TextBlock:
-			comp.Message.Content += b.Text
-		case anthropic.ToolUseBlock:
-			comp.ToolCalls = append(comp.ToolCalls, ToolCall{
-				ID:   b.ID,
-				Name: b.Name,
-				Args: json.RawMessage(b.JSON.Input.Raw()),
-			})
-		}
-	}
-	return comp, nil
+	return fromAnthropicMessage(resp), nil
 }
 
 // toAnthropicMessageParams renders msgs into the SDK's wire shape. Role
@@ -90,7 +74,29 @@ func toAnthropicMessageParams(msgs []Message) []anthropic.MessageParam {
 			params = append(params, anthropic.NewUserMessage(blocks...))
 		}
 	}
+	if len(params) > 0 {
+		last := &params[len(params)-1]
+		if n := len(last.Content); n > 0 {
+			setCacheControl(last.Content[n-1])
+		}
+	}
 	return params
+}
+
+// cacheControlHolder is satisfied by anthropic.ContentBlockParamUnion and
+// anthropic.ToolUnionParam — every wire-shape union toAnthropicMessageParams
+// and toAnthropicToolParams emit.
+type cacheControlHolder interface {
+	GetCacheControl() *anthropic.CacheControlEphemeralParam
+}
+
+// setCacheControl marks v as a prompt-cache breakpoint. GetCacheControl
+// returns nil only if v's union has no variant set at all, which never
+// happens for a block or tool this package actually constructs.
+func setCacheControl(v cacheControlHolder) {
+	if cc := v.GetCacheControl(); cc != nil {
+		*cc = anthropic.NewCacheControlEphemeralParam()
+	}
 }
 
 // toolInput decodes a call's raw args for the SDK, falling back to an empty
@@ -118,6 +124,10 @@ func toAnthropicToolParams(tools []ToolSpec) []anthropic.ToolUnionParam {
 		}
 		params = append(params, anthropic.ToolUnionParam{OfTool: &tool})
 	}
+	// The catalog is the same five tools, unchanged, every turn within a run —
+	// the one breakpoint most likely to actually clear the cache floor, once
+	// toolSpecs' sort keeps the rendered order byte-identical turn to turn.
+	setCacheControl(params[len(params)-1])
 	return params
 }
 
@@ -150,4 +160,32 @@ func toAnthropicInputSchema(raw json.RawMessage) anthropic.ToolInputSchemaParam 
 		schema.ExtraFields = extra
 	}
 	return schema
+}
+
+// fromAnthropicMessage folds resp into a Completion — text blocks concatenate
+// into the assistant Message, each ToolUseBlock becomes a ToolCall, and
+// resp.Usage always maps onto Completion.Usage, zero fields and all, since
+// the SDK reports it as a required struct rather than an optional one.
+func fromAnthropicMessage(resp *anthropic.Message) Completion {
+	var comp Completion
+	comp.Message.Role = "assistant"
+
+	for _, block := range resp.Content {
+		switch b := block.AsAny().(type) {
+		case anthropic.TextBlock:
+			comp.Message.Content += b.Text
+		case anthropic.ToolUseBlock:
+			comp.ToolCalls = append(comp.ToolCalls, ToolCall{
+				ID:   b.ID,
+				Name: b.Name,
+				Args: json.RawMessage(b.JSON.Input.Raw()),
+			})
+		}
+	}
+	comp.Usage = Usage{
+		InputTokens:              int(resp.Usage.InputTokens),
+		CacheCreationInputTokens: int(resp.Usage.CacheCreationInputTokens),
+		CacheReadInputTokens:     int(resp.Usage.CacheReadInputTokens),
+	}
+	return comp
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -136,6 +137,10 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	// ones lexically inside the loop.
 	var step int
 
+	// usage accumulates every turn's token counts, not just the last one —
+	// the reasoned line reports what the whole Propose call was billed for.
+	var usage Usage
+
 	// One "reasoned" line per Propose call, on every exit path — success,
 	// decline, budget exhaustion, or any of the loop's error returns. err
 	// and set are the named returns, so this sees the true terminal
@@ -150,13 +155,17 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			phase = set.Status.Phase
 		}
 		if err != nil {
-			slog.Error("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase, "err", err)
+			slog.Error("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase, "err", err,
+				"input_tokens", usage.InputTokens, "cache_creation_input_tokens", usage.CacheCreationInputTokens,
+				"cache_read_input_tokens", usage.CacheReadInputTokens)
 			return
 		}
 		slog.Info("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase,
 			"recommended", set.Recommended, "contractRef", set.ContractRefFor(set.Recommended),
 			"proposals", len(set.Proposals), "evidence", len(set.Evidence),
-			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason)
+			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason,
+			"input_tokens", usage.InputTokens, "cache_creation_input_tokens", usage.CacheCreationInputTokens,
+			"cache_read_input_tokens", usage.CacheReadInputTokens)
 	}()
 
 	var sao proposal.SAO
@@ -193,6 +202,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		}
 		comp.Message.ToolCalls = withCallIDs(comp.ToolCalls, step)
 		msgs = append(msgs, comp.Message)
+		usage.InputTokens += comp.Usage.InputTokens
+		usage.CacheCreationInputTokens += comp.Usage.CacheCreationInputTokens
+		usage.CacheReadInputTokens += comp.Usage.CacheReadInputTokens
 
 		if err := e.Store.Checkpoint(ctx, Turn{RunID: runID, Step: step, Msgs: msgs}); err != nil {
 			return proposal.Set{}, fmt.Errorf("checkpoint (step %d): %w", step, err)
@@ -386,7 +398,12 @@ func (e *Engine) toolSpecs() []ToolSpec {
 	// verbs must be real, offered tools — not bare switch arms. Catalogued actions
 	// are deliberately NOT offered: the model names one by ref inside propose's
 	// args, where enforceCatalog gates it.
-	return append(specs, ProposeToolSpec(), InsufficientToolSpec())
+	specs = append(specs, ProposeToolSpec(), InsufficientToolSpec())
+	// e.Tools is a map, so its iteration order is randomized per call — sorted
+	// here so the rendered request body is byte-identical turn to turn, which
+	// is what lets a cache_control breakpoint on the tool catalog ever hit.
+	slices.SortFunc(specs, func(a, b ToolSpec) int { return strings.Compare(a.Name, b.Name) })
+	return specs
 }
 
 func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {

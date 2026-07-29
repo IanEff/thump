@@ -370,6 +370,30 @@ func TestPropose_ASelfReportLowersButNeverRaisesTheComputedConfidence(t *testing
 	}
 }
 
+// TestEngine_ToolSpecsAreSortedByName pins tool order to a sort, not map
+// iteration — a cache_control breakpoint on the tool catalog caches nothing
+// if the rendered order differs turn to turn.
+func TestEngine_ToolSpecsAreSortedByName(t *testing.T) {
+	t.Parallel()
+
+	e := &clank.Engine{Tools: map[string]clank.Tool{
+		"metrics": fakeTool{name: "metrics"},
+		"kube":    fakeTool{name: "kube"},
+		"loki":    fakeTool{name: "loki"},
+	}}
+	want := []string{"insufficient", "kube", "loki", "metrics", "propose"}
+
+	for range 20 { // each call ranges e.Tools fresh, so 20 calls exercise 20 different random start points
+		var got []string
+		for _, s := range clank.ToolSpecsForTest(e) {
+			got = append(got, s.Name)
+		}
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Fatal("tool specs not sorted by name", diff)
+		}
+	}
+}
+
 type fakeModel struct {
 	script        []clank.Completion
 	err           error // when set, Complete fails on every call regardless of script — simulates a Model outage

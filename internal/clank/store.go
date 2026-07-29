@@ -258,6 +258,7 @@ type Message struct {
 type Completion struct {
 	Message   Message
 	ToolCalls []ToolCall
+	Usage     Usage
 }
 
 // ToolCall is one tool invocation the model requested — the tool's name and
@@ -278,4 +279,12 @@ type ToolResult struct {
 	Digest  string
 	Name    string `json:"Name,omitempty"` // the tool the call named; required by the Gemini wire format, ignored by Anthropic's
 	IsError bool   `json:"IsError,omitempty"`
+}
+
+// Usage is the token accounting for one Model.Complete call.  Zero
+// values mean no cache activity.
+type Usage struct {
+	InputTokens              int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
 }
