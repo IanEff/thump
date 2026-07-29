@@ -30,21 +30,25 @@ spec:
           ports:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
+            - name: health
+              containerPort: {{ .Values.metrics.healthPort }}
           livenessProbe:
             httpGet:
               path: /healthz
-              port: metrics
+              port: health
             initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /readyz
-              port: metrics
+              port: health
             initialDelaySeconds: 5
             periodSeconds: 5
           env:
             - name: METRICS_ADDR
               value: ":{{ .Values.metrics.port }}"
+            - name: HEALTH_ADDR
+              value: ":{{ .Values.metrics.healthPort }}"
             - name: NATS_URL
               value: "tls://nats.thump.svc:4222"
             - name: TLS_CERT_FILE

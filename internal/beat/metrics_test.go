@@ -88,22 +88,17 @@ func TestMetrics_ABindFailureSaysSoOnTheWayDown(t *testing.T) {
 	}
 }
 
-// TestMetrics_TLSConfigured_ServesHealthzOverTLSAndRefusesPlaintext pins R7a:
-// a non-nil tlsCfg switches the listener to ListenAndServeTLS rather than
-// opening a second plaintext port beside it — there is one address, and a
-// client without the right certificate gets nothing from it.
+// TestMetrics_TLSConfigured_MetricsRequiresClientCertAndHealthStaysPlaintext
+// pins the split that replaced R7a's single-address design: kubelet's
+// httpGet probes carry no client certificate, so /healthz and /readyz live
+// on their own always-plaintext HEALTH_ADDR, separate from METRICS_ADDR,
+// which keeps demanding the client cert tlsCfg configures.
 //
 // t.Setenv makes this test ineligible for t.Parallel(), same as
 // TestMetrics_ABindFailureSaysSoOnTheWayDown above.
-func TestMetrics_TLSConfigured_ServesHealthzOverTLSAndRefusesPlaintext(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	if err := ln.Close(); err != nil {
-		t.Fatal(err)
-	}
+func TestMetrics_TLSConfigured_MetricsRequiresClientCertAndHealthStaysPlaintext(t *testing.T) {
+	metricsAddr := reserveAddr(t)
+	healthAddr := reserveAddr(t)
 
 	ca := tlsxtest.NewCA(t)
 	leaf := ca.Leaf(t, "metrics", tlsxtest.IPSAN(net.ParseIP("127.0.0.1")))
@@ -117,38 +112,76 @@ func TestMetrics_TLSConfigured_ServesHealthzOverTLSAndRefusesPlaintext(t *testin
 	}
 	clientTLS.ServerName = "metrics"
 
-	t.Setenv("METRICS_ADDR", addr)
+	t.Setenv("METRICS_ADDR", metricsAddr)
+	t.Setenv("HEALTH_ADDR", healthAddr)
 	_, _, shutdown := beat.Metrics("dummy-beat", serverTLS)
 	t.Cleanup(func() { _ = shutdown(context.Background()) })
 
 	httpsClient := &http.Client{Transport: &http.Transport{TLSClientConfig: clientTLS}, Timeout: time.Second}
-	deadline := time.Now().Add(5 * time.Second)
-	var resp *http.Response
-	for time.Now().Before(deadline) {
-		resp, err = httpsClient.Get("https://" + addr + "/healthz")
-		if err == nil {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	resp, err := pollUntilOK(t, func() (*http.Response, error) {
+		return httpsClient.Get("https://" + metricsAddr + "/metrics")
+	})
 	if err != nil {
-		t.Fatalf("GET https://%s/healthz: %v", addr, err)
+		t.Fatalf("GET https://%s/metrics: %v", metricsAddr, err)
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("TLS request to /healthz returned %d, want 200", resp.StatusCode)
+		t.Errorf("TLS request with client cert to /metrics returned %d, want 200", resp.StatusCode)
+	}
+
+	plainClient := &http.Client{Timeout: time.Second}
+	healthResp, err := pollUntilOK(t, func() (*http.Response, error) {
+		return plainClient.Get("http://" + healthAddr + "/healthz")
+	})
+	if err != nil {
+		t.Fatalf("plaintext GET http://%s/healthz: %v", healthAddr, err)
+	}
+	_ = healthResp.Body.Close()
+	if healthResp.StatusCode != http.StatusOK {
+		t.Errorf("plaintext /healthz on HEALTH_ADDR returned %d, want 200 (kubelet has no client cert to offer)", healthResp.StatusCode)
 	}
 
 	// net/http's server detects a plaintext request on a TLS listener and
 	// answers 400 rather than dropping the connection — so the plain client
 	// gets a response, just never the 200 a real scrape needs.
-	plainClient := &http.Client{Timeout: time.Second}
-	plainResp, err := plainClient.Get("http://" + addr + "/healthz")
+	plainMetricsResp, err := plainClient.Get("http://" + metricsAddr + "/metrics")
 	if err != nil {
-		t.Fatalf("plaintext GET http://%s/healthz: %v", addr, err)
+		t.Fatalf("plaintext GET http://%s/metrics: %v", metricsAddr, err)
 	}
-	_ = plainResp.Body.Close()
-	if plainResp.StatusCode == http.StatusOK {
-		t.Error("a plaintext GET against a TLS-configured metrics port returned 200, want refused")
+	_ = plainMetricsResp.Body.Close()
+	if plainMetricsResp.StatusCode == http.StatusOK {
+		t.Error("a plaintext GET against the mTLS metrics port returned 200, want refused")
 	}
+}
+
+// reserveAddr hands back a loopback address nothing is listening on yet —
+// closed immediately so beat.Metrics can bind it, not this test.
+func reserveAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+// pollUntilOK retries get until it stops erroring — the listener goroutine
+// beat.Metrics starts hasn't necessarily bound yet by the time this runs.
+func pollUntilOK(t *testing.T, get func() (*http.Response, error)) (*http.Response, error) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var resp *http.Response
+	var err error
+	for time.Now().Before(deadline) {
+		resp, err = get()
+		if err == nil {
+			return resp, nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return resp, err
 }

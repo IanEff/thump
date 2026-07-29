@@ -20,47 +20,77 @@ const metricsReadHeaderTimeout = 5 * time.Second
 
 // Metrics builds a fresh Registry, wrapped so every metric registered
 // through the returned Registerer carries a beat="<beatName>" label without
-// each beat's own metric declarations having to add it themselves, and
-// serves it over METRICS_ADDR (":9090" style). Empty means unconfigured —
-// same "noop is a valid production state" discipline as Tracer: a beat with
-// no scraper pointed at it still runs, it just has nothing to collect into.
-// A nil tlsCfg serves plaintext, the offline path's only option; a non-nil
-// one — built by the caller via tlsx.Server, never here, so this package
-// stays transport-only — serves ListenAndServeTLS("", ""), the empty
-// strings because the certificate comes from tlsCfg's own GetCertificate
-// callback, not a path this func would reread.
+// each beat's own metric declarations having to add it themselves. It serves
+// /metrics on METRICS_ADDR — TLS via tlsCfg when non-nil, plaintext
+// otherwise — and /healthz+/readyz on a separate HEALTH_ADDR that is always
+// plaintext: kubelet's httpGet probes carry no client certificate, so they
+// can never pass tlsCfg's mTLS requirement, and splitting the health
+// listener out is what lets a probe and an mTLS-only scrape endpoint coexist
+// on one pod. Either address empty is a valid unconfigured state — same
+// "noop is a valid production state" discipline as Tracer.
 func Metrics(beatName string, tlsCfg *tls.Config) (prometheus.Registerer, *Health, Shutdown) {
 	reg := prometheus.NewRegistry()
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{"beat": beatName}, reg)
 	health := &Health{}
 
-	addr := os.Getenv("METRICS_ADDR")
-	if addr == "" {
-		return wrapped, health, func(context.Context) error { return nil }
-	}
+	var shutdowns []Shutdown
 
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	mux.HandleFunc("/healthz", health.Livez)
-	mux.HandleFunc("/readyz", health.Readyz)
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: metricsReadHeaderTimeout,
-		TLSConfig:         tlsCfg,
-	}
-
-	serve := srv.ListenAndServe
-	if tlsCfg != nil {
-		serve = func() error { return srv.ListenAndServeTLS("", "") }
-	}
-
-	go func() {
-		if err := serve(); !listenerStopWasClean(err) {
-			slog.Error("metrics listener stopped", "addr", addr, "err", err)
+	if addr := os.Getenv("METRICS_ADDR"); addr != "" {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+		srv := &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: metricsReadHeaderTimeout,
+			TLSConfig:         tlsCfg,
 		}
-	}()
-	return wrapped, health, srv.Shutdown
+
+		serve := srv.ListenAndServe
+		if tlsCfg != nil {
+			serve = func() error { return srv.ListenAndServeTLS("", "") }
+		}
+
+		go func() {
+			if err := serve(); !listenerStopWasClean(err) {
+				slog.Error("metrics listener stopped", "addr", addr, "err", err)
+			}
+		}()
+		shutdowns = append(shutdowns, srv.Shutdown)
+	}
+
+	if addr := os.Getenv("HEALTH_ADDR"); addr != "" {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", health.Livez)
+		mux.HandleFunc("/readyz", health.Readyz)
+		srv := &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: metricsReadHeaderTimeout,
+		}
+
+		go func() {
+			if err := srv.ListenAndServe(); !listenerStopWasClean(err) {
+				slog.Error("health listener stopped", "addr", addr, "err", err)
+			}
+		}()
+		shutdowns = append(shutdowns, srv.Shutdown)
+	}
+
+	return wrapped, health, joinShutdowns(shutdowns)
+}
+
+// joinShutdowns runs every listener's Shutdown and reports every failure
+// among them — one failing to close must not hide another's error.
+func joinShutdowns(shutdowns []Shutdown) Shutdown {
+	return func(ctx context.Context) error {
+		var errs []error
+		for _, s := range shutdowns {
+			if err := s(ctx); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		return errors.Join(errs...)
+	}
 }
 
 // listenerStopWasClean is kind of a hacky way of reporting whether
