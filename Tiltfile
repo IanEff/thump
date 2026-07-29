@@ -212,7 +212,12 @@ k8s_resource('nats', labels=['broker'], resource_deps=['thump-registry', 'thump-
 k8s_resource('thump-bootstrap', labels=['broker'], resource_deps=['nats', 'thump-s3-secret'])
 
 for beat in ['rattle', 'clank', 'hiss', 'thump']:
-    deps = ['thump-registry', 'nats', 'thump-s3-secret']   # ← every beat ships its WAL to S3
+    # thump-bootstrap creates the streams/consumers beat.AwaitConsumers binds to
+    # on startup (clank, hiss, thump all call it) — that call is a single lookup
+    # with no retry, so racing ahead of bootstrap means an immediate exit(1) and
+    # a k8s restart, which is what "fixes itself" a restart or two later without
+    # this dep (2026-07-29 incident, part 2: same race one edge further down).
+    deps = ['thump-registry', 'nats', 'thump-bootstrap', 'thump-s3-secret']   # ← every beat ships its WAL to S3
     if beat == 'clank':
         deps.append('thump-anthropic-secret')   # ← or until its Secret does
     if beat in ('clank', 'hiss'):
