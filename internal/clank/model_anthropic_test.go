@@ -10,6 +10,47 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 )
 
+// blockCacheControl reports b's cache breakpoint, or nil if none was set.
+// GetCacheControl returns a non-nil pointer once a block's union variant is
+// populated at all — true of every block this package renders — so Type
+// (only ever non-empty via anthropic.NewCacheControlEphemeralParam) is the
+// field that actually distinguishes marked from unmarked.
+func blockCacheControl(b anthropic.ContentBlockParamUnion) *anthropic.CacheControlEphemeralParam {
+	cc := b.GetCacheControl()
+	if cc == nil || cc.Type == "" {
+		return nil
+	}
+	return cc
+}
+
+// cacheBreakpoints flattens params into the indices of blocks carrying a
+// cache breakpoint, the same flattening blockTypes does for block type.
+func cacheBreakpoints(params []anthropic.MessageParam) []int {
+	var got []int
+	i := 0
+	for _, p := range params {
+		for _, b := range p.Content {
+			if blockCacheControl(b) != nil {
+				got = append(got, i)
+			}
+			i++
+		}
+	}
+	return got
+}
+
+// toolCacheBreakpoints flattens params into the indices of tools carrying a
+// cache breakpoint.
+func toolCacheBreakpoints(params []anthropic.ToolUnionParam) []int {
+	var got []int
+	for i, p := range params {
+		if cc := p.GetCacheControl(); cc != nil && cc.Type != "" {
+			got = append(got, i)
+		}
+	}
+	return got
+}
+
 // blockTypes flattens the rendered params into the block-type sequence the API
 // sees, which is the only thing these rows are claiming anything about.
 func blockTypes(params []anthropic.MessageParam) []string {
@@ -136,6 +177,66 @@ func TestFromAnthropicMessage_MapsUsageOntoCompletion(t *testing.T) {
 			got := clank.FromAnthropicForTest(resp)
 			if diff := cmp.Diff(tc.want, got.Usage); diff != "" {
 				t.Error("wrong usage mapped onto Completion (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
+func TestToAnthropicMessageParams_MarksTheLastMessagesLastBlockCacheable(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		msgs []clank.Message
+		want []int // flattened block indices carrying CacheControl
+	}{
+		"a single user turn marks its only block": {
+			msgs: []clank.Message{{Role: "user", Content: "seed prompt"}},
+			want: []int{0},
+		},
+		"a turn ending in tool_result marks the tool_result block, not an earlier text block": {
+			msgs: []clank.Message{
+				{Role: "user", Content: "seed"},
+				{Role: "assistant", ToolCalls: []clank.ToolCall{{ID: "t1", Name: "kube"}}},
+				{Role: "user", ToolResults: []clank.ToolResult{{CallID: "t1", Digest: "ok"}}},
+			},
+			want: []int{2},
+		},
+		"empty messages mark nothing": {
+			msgs: nil,
+			want: nil,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := cacheBreakpoints(clank.ToAnthropicMessageParamsForTest(tc.msgs))
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong blocks carry CacheControl (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
+func TestToAnthropicToolParams_MarksTheLastToolCacheable(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		tools []clank.ToolSpec
+		want  []int
+	}{
+		"multiple tools mark only the last one": {
+			tools: []clank.ToolSpec{{Name: "insufficient"}, {Name: "kube"}, {Name: "loki"}},
+			want:  []int{2},
+		},
+		"no tools marks nothing": {
+			tools: nil,
+			want:  nil,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := toolCacheBreakpoints(clank.ToAnthropicToolParamsForTest(tc.tools))
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong tools carry CacheControl (-want +got)\n", diff)
 			}
 		})
 	}

@@ -118,3 +118,14 @@ func FromAnthropicForTest(resp *anthropic.Message) Completion {
 func ToAnthropicMessageParamsForTest(msgs []Message) []anthropic.MessageParam {
 	return toAnthropicMessageParams(msgs)
 }
+
+func ToAnthropicToolParamsForTest(tools []ToolSpec) []anthropic.ToolUnionParam {
+	return toAnthropicToolParams(tools)
+}
+
+// ToolSpecsForTest exposes Engine.toolSpecs, the one place tool order gets
+// fixed before it's sent to the model — clank_test needs it to pin that
+// order deterministic.
+func ToolSpecsForTest(e *Engine) []ToolSpec {
+	return e.toolSpecs()
+}
