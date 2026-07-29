@@ -112,6 +112,12 @@ data:
             subscribe: { allow: ["_INBOX.>"] }
           }
         }
+        { user: "trim@thump.svc"
+          permissions: {
+            publish:   { allow: ["thump.approvals", "thump.decisions"] }
+            subscribe: { allow: ["_INBOX.>"] }
+          }
+        }
       ]
     }
 ---

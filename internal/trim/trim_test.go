@@ -2,6 +2,7 @@ package trim_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -15,8 +16,12 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/sealbox"
+	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/trim"
+	"github.com/ianeff/thump/internal/wire"
 	"sigs.k8s.io/yaml"
 )
 
@@ -296,5 +301,92 @@ func TestMain_UnsealRequiresExactlyOneFileArgument(t *testing.T) {
 
 	if code != 2 {
 		t.Errorf("want exit code 2 for a missing file argument, got %d", code)
+	}
+}
+
+// TestMain_ApprovePublishesToThumpApprovalsOverNATSWhenNATSURLIsSet pins the
+// V2 gap: without this leg, `trim approve` wrote a file a broker-mode hiss
+// never reads, and the operator surface was unreachable in the cluster.
+func TestMain_ApprovePublishesToThumpApprovalsOverNATSWhenNATSURLIsSet(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	url := natstest.URL(t)
+	js, closeNC, err := broker.ConnectAndEnsure(ctx, url, tlsx.Config{}, broker.Hooks{})
+	if err != nil {
+		t.Fatal("connect and ensure:", err)
+	}
+	defer closeNC()
+
+	var stdout, stderr bytes.Buffer
+	code := trim.Main([]string{"approve", "fp-1", "--approver", "alice", "--nats-url", url}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+
+	stream, err := js.Stream(ctx, broker.StreamName)
+	if err != nil {
+		t.Fatal("stream:", err)
+	}
+	raw, err := stream.GetLastMsgForSubject(ctx, "thump.approvals")
+	if err != nil {
+		t.Fatal("approval never reached thump.approvals:", err)
+	}
+	var got approval.Approval
+	if err := wire.Unmarshal(raw.Data, &got); err != nil {
+		t.Fatal("wire bytes didn't decode:", err)
+	}
+	if diff := cmp.Diff("fp-1", got.SignalRef); diff != "" {
+		t.Error("wrong fingerprint published (-want +got)", diff)
+	}
+}
+
+// TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet mirrors the
+// approve case for force's break-glass path (D-9): a forced Governed a
+// broker-mode thump can't read isn't a working override.
+func TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+	held := decision.Governed{
+		Decision: decision.Decision{
+			ID: "dec-1", SignalRef: "fp-1", Verdict: decision.VerdictHold,
+			RequestedBand: decision.BandActDisruptive, RiskBand: decision.BandActDisruptive,
+			PolicyVersion: "policy-v3", EvaluatedAt: time.Now(),
+			Reasons: []string{decision.ReasonRiskCeiling},
+		},
+		Set: proposal.Set{SignalRef: "fp-1"},
+	}
+	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", held)
+
+	ctx := context.Background()
+	url := natstest.URL(t)
+	js, closeNC, err := broker.ConnectAndEnsure(ctx, url, tlsx.Config{}, broker.Hooks{})
+	if err != nil {
+		t.Fatal("connect and ensure:", err)
+	}
+	defer closeNC()
+
+	var stdout, stderr bytes.Buffer
+	code := trim.Main([]string{"force", "fp-1", "--operator", "alice", "--inbox", inbox, "--nats-url", url}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+
+	stream, err := js.Stream(ctx, broker.StreamName)
+	if err != nil {
+		t.Fatal("stream:", err)
+	}
+	raw, err := stream.GetLastMsgForSubject(ctx, "thump.decisions")
+	if err != nil {
+		t.Fatal("forced decision never reached thump.decisions:", err)
+	}
+	var got decision.Governed
+	if err := wire.Unmarshal(raw.Data, &got); err != nil {
+		t.Fatal("wire bytes didn't decode:", err)
+	}
+	if diff := cmp.Diff(decision.VerdictApproved, got.Decision.Verdict); diff != "" {
+		t.Error("wrong verdict published (-want +got)", diff)
+	}
+	if !got.Decision.Forced {
+		t.Error("want Forced=true on a break-glass decision")
 	}
 }

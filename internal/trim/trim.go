@@ -13,8 +13,10 @@ import (
 
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
+	"github.com/ianeff/thump/internal/tlsx"
 )
 
 // shiftPositional pulls the leading fingerprint argument off args so a
@@ -29,6 +31,24 @@ func shiftPositional(args []string) (positional string, rest []string, ok bool) 
 	return args[0], args[1:], true
 }
 
+// operatorPublisher is approve's and force's shared choice between the
+// broker and the local outbox: a set natsURL means the operator surface is
+// reachable — hiss and thump read JetStream in broker mode, not a
+// directory — so the same fingerprint written to --outbox there would be
+// read by nothing. Empty natsURL preserves the offline path unchanged.
+// The returned closer is always safe to defer, including the dir path.
+func operatorPublisher[T any](natsURL, certFile, keyFile, caFile, outbox string, name func(T) string) (publish.Publisher[T], func(), error) {
+	if natsURL == "" {
+		return &publish.DirPublisher[T]{Dir: outbox, Name: name}, func() {}, nil
+	}
+	tc := tlsx.Config{CertFile: certFile, KeyFile: keyFile, CAFile: caFile}
+	js, closer, err := broker.Connect(context.Background(), natsURL, tc, broker.Hooks{})
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("connect %s: %w", natsURL, err)
+	}
+	return publish.NewJetPublisher[T](js), closer, nil
+}
+
 // Main is trim's entry point: routing to subcommand, then
 // either the machine (--json) or human (Lip Gloss) path over
 // the same Projection.
@@ -38,6 +58,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "usage: trim <incidents> [--json] [--inbox dir]")
 		return 2
 	}
+
 	switch args[0] {
 	case "incidents":
 		return runIncidents(args[1:], stdout, stderr)
@@ -83,7 +104,7 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 }
 
 func runApprove(args []string, stdout, stderr io.Writer) int {
-	usage := "usage: trim approve <fingerprint> [--approver name] [--outbox dir]"
+	usage := "usage: trim approve <fingerprint> [--approver name] [--outbox dir] [--nats-url url]"
 	fp, rest, ok := shiftPositional(args)
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, usage)
@@ -94,6 +115,10 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	approver := fs.String("approver", os.Getenv("USER"), "who is approving")
 	outbox := fs.String("outbox", ".", "directory trim writes the Approval to (thump.approvals in production)")
+	natsURL := fs.String("nats-url", "", "publish to thump.approvals over NATS instead of --outbox")
+	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
+	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
+	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -108,12 +133,14 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	pub := &publish.DirPublisher[approval.Approval]{
-		Dir: *outbox,
-		Name: func(a approval.Approval) string {
-			return a.SignalRef
-		},
+	pub, closer, err := operatorPublisher(*natsURL, *certFile, *keyFile, *caFile, *outbox,
+		func(a approval.Approval) string { return a.SignalRef })
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
 	}
+	defer closer()
+
 	if err := pub.Publish(context.Background(), "thump.approvals", a); err != nil {
 		_, _ = fmt.Fprintln(stderr, "trim:", err)
 		return 1
@@ -124,7 +151,7 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 }
 
 func runForce(args []string, stdout, stderr io.Writer) int {
-	usage := "usage: trim force <fingerprint> [--operator name] [--inbox dir] [--outbox dir]"
+	usage := "usage: trim force <fingerprint> [--operator name] [--inbox dir] [--outbox dir] [--nats-url url]"
 	fp, rest, ok := shiftPositional(args)
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, usage)
@@ -136,6 +163,10 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 	operator := fs.String("operator", os.Getenv("USER"), "who is forcing this through")
 	inbox := fs.String("inbox", ".", "directory trim reads incidents from")
 	outbox := fs.String("outbox", ".", "directory trim writes the forced Governed to (thump.decisions in production)")
+	natsURL := fs.String("nats-url", "", "publish to thump.decisions over NATS instead of --outbox")
+	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
+	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
+	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -170,10 +201,14 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	pub := &publish.DirPublisher[decision.Governed]{
-		Dir:  *outbox,
-		Name: func(g decision.Governed) string { return g.Decision.SignalRef },
+	pub, closer, err := operatorPublisher(*natsURL, *certFile, *keyFile, *caFile, *outbox,
+		func(g decision.Governed) string { return g.Decision.SignalRef })
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "trim:", err)
+		return 1
 	}
+	defer closer()
+
 	if err := pub.Publish(context.Background(), "thump.decisions", g); err != nil {
 		_, _ = fmt.Fprintln(stderr, "trim:", err)
 		return 1
