@@ -178,30 +178,30 @@ require (
 
 tool go.opentelemetry.io/otelc/tool/cmd/otelc
 
-replace go.opentelemetry.io/otelc/instrumentation/log => /Users/ian/projects/go/thump/.otelc-build/instrumentation/log
+replace go.opentelemetry.io/otelc/instrumentation/log => ./.otelc-build/instrumentation/log
 
-replace go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/server => /Users/ian/projects/go/thump/.otelc-build/instrumentation/google.golang.org/grpc/server
+replace go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/server => ./.otelc-build/instrumentation/google.golang.org/grpc/server
 
-replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel => ./.otelc-build/instrumentation/go.opentelemetry.io/otel
 
-replace go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/client => /Users/ian/projects/go/thump/.otelc-build/instrumentation/google.golang.org/grpc/client
+replace go.opentelemetry.io/otelc/instrumentation/google.golang.org/grpc/client => ./.otelc-build/instrumentation/google.golang.org/grpc/client
 
-replace go.opentelemetry.io/otelc/pkg => /Users/ian/projects/go/thump/.otelc-build/pkg
+replace go.opentelemetry.io/otelc/pkg => ./.otelc-build/pkg
 
-replace go.opentelemetry.io/otelc/pkg/runtime => /Users/ian/projects/go/thump/.otelc-build/pkg/runtime
+replace go.opentelemetry.io/otelc/pkg/runtime => ./.otelc-build/pkg/runtime
 
-replace go.opentelemetry.io/otelc/instrumentation => /Users/ian/projects/go/thump/.otelc-build/instrumentation
+replace go.opentelemetry.io/otelc/instrumentation => ./.otelc-build/instrumentation
 
-replace go.opentelemetry.io/otelc/instrumentation/runtime => /Users/ian/projects/go/thump/.otelc-build/instrumentation/runtime
+replace go.opentelemetry.io/otelc/instrumentation/runtime => ./.otelc-build/instrumentation/runtime
 
-replace go.opentelemetry.io/otelc/instrumentation/net/http/client => /Users/ian/projects/go/thump/.otelc-build/instrumentation/net/http/client
+replace go.opentelemetry.io/otelc/instrumentation/net/http/client => ./.otelc-build/instrumentation/net/http/client
 
-replace go.opentelemetry.io/otelc/instrumentation/net/http/server => /Users/ian/projects/go/thump/.otelc-build/instrumentation/net/http/server
+replace go.opentelemetry.io/otelc/instrumentation/net/http/server => ./.otelc-build/instrumentation/net/http/server
 
-replace go.opentelemetry.io/otelc/instrumentation/log/slog => /Users/ian/projects/go/thump/.otelc-build/instrumentation/log/slog
+replace go.opentelemetry.io/otelc/instrumentation/log/slog => ./.otelc-build/instrumentation/log/slog
 
-replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/trace => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel/trace
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/trace => ./.otelc-build/instrumentation/go.opentelemetry.io/otel/trace
 
-replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/sdk/trace => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel/sdk/trace
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/sdk/trace => ./.otelc-build/instrumentation/go.opentelemetry.io/otel/sdk/trace
 
-replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/init => /Users/ian/projects/go/thump/.otelc-build/instrumentation/go.opentelemetry.io/otel/init
+replace go.opentelemetry.io/otelc/instrumentation/go.opentelemetry.io/otel/init => ./.otelc-build/instrumentation/go.opentelemetry.io/otel/init
