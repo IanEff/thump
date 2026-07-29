@@ -84,3 +84,28 @@ spec:
   issuerRef:
     name: {{ .Values.tls.issuerName }}
     kind: ClusterIssuer
+{{- if .Values.serviceMonitor.enabled }}
+---
+# Lets an in-cluster Prometheus present a client cert the four beats'
+# RequireAndVerifyClientCert /metrics listener (internal/tlsx's Server())
+# will accept. Client auth only — nothing dials Prometheus the other way.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: prometheus-tls
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  secretName: prometheus-tls
+  commonName: prometheus
+  emailAddresses: ["prometheus@thump.svc"]
+  usages: ["client auth"]
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: {{ .Values.tls.duration | quote }}
+  renewBefore: {{ .Values.tls.renewBefore | quote }}
+  issuerRef:
+    name: {{ .Values.tls.issuerName }}
+    kind: ClusterIssuer
+{{- end }}

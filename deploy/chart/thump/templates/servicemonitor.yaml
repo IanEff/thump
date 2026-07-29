@@ -22,4 +22,26 @@ spec:
   endpoints:
     - port: metrics
       interval: {{ .Values.serviceMonitor.interval }}
+      scheme: https
+      tlsConfig:
+        ca:
+          secret:
+            name: prometheus-tls
+            key: ca.crt
+        cert:
+          secret:
+            name: prometheus-tls
+            key: tls.crt
+        keySecret:
+          name: prometheus-tls
+          key: tls.key
+        # Each beat's server leaf (certificates.yaml's ranged block) carries
+        # no DNS/IP SAN — identity on this rig is asserted by chain trust
+        # (RequireAndVerifyClientCert) plus the CN/SAN-email pair NATS reads
+        # for its own authz, not by hostname verification, and Endpoints-role
+        # scraping dials pod IPs a SAN could never list anyway. insecureSkipVerify
+        # only waives Prometheus's check of the server's identity; the beat
+        # still refuses the handshake if Prometheus's own cert (above) doesn't
+        # chain to thump-ca.
+        insecureSkipVerify: true
 {{- end }}
