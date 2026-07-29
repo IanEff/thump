@@ -185,9 +185,12 @@ nats:
     - key: "node-role.kubernetes.io/master"
       operator: "Exists"
       effect: "NoSchedule"
-# Per-beat /healthz and /readyz
+# Per-beat /metrics (mTLS, Prometheus-scraped) and /healthz+/readyz
+# (plaintext — kubelet's probes carry no client cert, so they live on their
+# own port rather than behind the mTLS metrics listener).
 metrics:
   port: 9090
+  healthPort: 9091
 
 # Each beat gets a service-<beat>.yaml Service exposing the metrics port
 # unconditionally (cheap, no CRD dependency) — the ServiceMonitor on top of
