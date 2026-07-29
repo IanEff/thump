@@ -148,6 +148,38 @@ local_resource(
     labels=['infra'],
 )
 
+# thump-seal-secret / thump-nats-js-key-secret: unlike thump-anthropic-secret
+# and thump-s3-secret above, these two keys are pure internal material — no
+# external system issues them, so there's nothing to source from .env. The
+# chart's own secret.yaml self-provisions them on a real `helm install` via
+# a `lookup`-guarded block, but `lookup` always reads empty under `helm
+# template` (what Tilt's helm() runs), so under Tilt that block would mint a
+# fresh random key on every Tiltfile reload and silently break whatever it
+# already sealed on disk. These local_resources are the Tilt-loop equivalent
+# of the chart's lookup guard: create-if-absent, never touch an existing one
+# (unlike thump-s3-secret's dry-run-apply, which is meant to re-sync every
+# run) — `kubectl get ... || kubectl create ...`, not `--dry-run=client -o
+# yaml | apply`.
+local_resource(
+    'thump-seal-secret',
+    cmd='bash -c \'' +
+        'kubectl --context ' + cluster['context'] + ' create namespace thump --dry-run=client -o yaml | kubectl --context ' + cluster['context'] + ' apply -f - >/dev/null && ' +
+        'kubectl --context ' + cluster['context'] + ' -n thump get secret thump-seal >/dev/null 2>&1 || ' +
+        'kubectl --context ' + cluster['context'] + ' -n thump create secret generic thump-seal --from-literal=key="$(openssl rand -base64 32)"' +
+        '\'',
+    labels=['infra'],
+)
+
+local_resource(
+    'thump-nats-js-key-secret',
+    cmd='bash -c \'' +
+        'kubectl --context ' + cluster['context'] + ' create namespace thump --dry-run=client -o yaml | kubectl --context ' + cluster['context'] + ' apply -f - >/dev/null && ' +
+        'kubectl --context ' + cluster['context'] + ' -n thump get secret nats-js-key >/dev/null 2>&1 || ' +
+        'kubectl --context ' + cluster['context'] + ' -n thump create secret generic nats-js-key --from-literal=key="$(openssl rand -base64 32)"' +
+        '\'',
+    labels=['infra'],
+)
+
 DEV_REGISTRY = cluster['registry']
 
 # COMMIT is resolved once at Tiltfile load (not per-build), so it reflects
@@ -168,12 +200,23 @@ for beat in ['rattle', 'clank', 'hiss', 'thump', 'bootstrap']:
 k8s_yaml(helm('deploy/chart/thump', values=[cluster['values']]))
 
 # Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
-k8s_resource('nats', labels=['broker'], resource_deps=['thump-registry'])
+k8s_resource('nats', labels=['broker'], resource_deps=['thump-registry', 'thump-nats-js-key-secret'])
+
+# thump-bootstrap: a Helm pre-install/pre-upgrade hook Job (job-bootstrap.yaml)
+# that calls broker.ConnectAndEnsure against NATS. Under a real `helm install`
+# the hook-weight annotations order it relative to other hooks, but Tilt's
+# helm() only templates the chart — it doesn't run Helm's hook lifecycle, so
+# nothing here stops this Job from racing NATS. Without this resource_deps,
+# it dialed a NATS Service with no pod behind it yet and burned through
+# backoffLimit before NATS ever came up (2026-07-29 incident).
+k8s_resource('thump-bootstrap', labels=['broker'], resource_deps=['nats', 'thump-s3-secret'])
 
 for beat in ['rattle', 'clank', 'hiss', 'thump']:
     deps = ['thump-registry', 'nats', 'thump-s3-secret']   # ← every beat ships its WAL to S3
     if beat == 'clank':
         deps.append('thump-anthropic-secret')   # ← or until its Secret does
+    if beat in ('clank', 'hiss'):
+        deps.append('thump-seal-secret')   # ← only these two mount seal.secretName
     k8s_resource(
         beat,
         labels=['machine'],

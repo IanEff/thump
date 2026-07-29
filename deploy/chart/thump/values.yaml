@@ -65,13 +65,13 @@ s3:
 
 # THUMP_SEAL_KEY — every beat's broker path Require()s this once NATS_URL is
 # set: the WAL shipper's EncryptingSink and clank's S3Store both seal under
-# it before a PutObject. A 32-byte AES-256 key, base64. Same out-of-band
-# posture as s3/anthropic above: production expects secretName to already
-# exist; create/key are a --set-only escape hatch, never a committed values
-# file.
+# it before a PutObject. A 32-byte AES-256 key, base64. Unlike s3/anthropic
+# above, this is internal-only key material, not an external credential — the
+# chart self-provisions it on first install (secret.yaml's `lookup`-guarded
+# block) rather than requiring out-of-band setup. `key` stays as a --set
+# override for anyone importing existing key material.
 seal:
   secretName: thump-seal
-  create: false
   key: ""
 
 # executor unset defaults to dry — a thump deployed with no override renders
@@ -161,11 +161,12 @@ nats:
     maxFile: 2Gi
     # $JS_KEY, interpolated into nats.conf's jetstream{} block (R9a) — the
     # AES/ChaCha20 key JetStream seals message blocks and stream/consumer
-    # metadata under on disk. Same out-of-band posture as s3/anthropic/seal
-    # above: production expects secretName to already exist; create/key are a
-    # --set-only escape hatch, never a committed values file.
+    # metadata under on disk. Same self-provisioning posture as seal.key
+    # above: internal-only key material, not an external credential, so the
+    # chart generates it on first install (secret.yaml's `lookup`-guarded
+    # block) instead of requiring out-of-band setup. `key` stays as a --set
+    # override for anyone importing existing key material.
     secretName: nats-js-key
-    create: false
     key: ""
   resources:
     requests:
