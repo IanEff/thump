@@ -151,3 +151,27 @@ func toAnthropicInputSchema(raw json.RawMessage) anthropic.ToolInputSchemaParam 
 	}
 	return schema
 }
+
+func fromAnthropicMessage(resp *anthropic.Message) Completion {
+	var comp Completion
+	comp.Message.Role = "assistant"
+
+	for _, block := range resp.Content {
+		switch b := block.AsAny().(type) {
+		case anthropic.TextBlock:
+			comp.Message.Content += b.Text
+		case anthropic.ToolUseBlock:
+			comp.ToolCalls = append(comp.ToolCalls, ToolCall{
+				ID:   b.ID,
+				Name: b.Name,
+				Args: json.RawMessage(b.JSON.Input.Raw()),
+			})
+		}
+	}
+	comp.Usage = Usage{
+		InputTokens:              int(resp.Usage.InputTokens),
+		CacheCreationInputTokens: int(resp.Usage.CacheCreationInputTokens),
+		CacheReadInputTokens:     int(resp.Usage.CacheReadInputTokens),
+	}
+	return comp
+}
