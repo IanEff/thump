@@ -44,3 +44,10 @@ func (h *PendingHolds) Take(fingerprint string) (decision.Governed, bool) {
 	}
 	return g, ok
 }
+
+// Len reports how many fingerprints are currently held.
+func (h *PendingHolds) Len() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.holds)
+}

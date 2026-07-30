@@ -5,6 +5,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 // HandleForTest exposes Transport.handle to hiss_test without handle
@@ -19,6 +20,6 @@ func (tr *Transport) ApproveHandlerForTest(ctx context.Context, a approval.Appro
 	return tr.approveHandler(ctx, a, heartbeat)
 }
 
-func NewRestartLossyHoldsForTest() *PendingHolds {
-	return newRestartLossyHolds()
+func RebuildHoldsForTest(ctx context.Context, js jetstream.JetStream) (*PendingHolds, error) {
+	return rebuildHolds(ctx, js)
 }
