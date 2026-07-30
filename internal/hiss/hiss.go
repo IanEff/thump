@@ -154,7 +154,14 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 		slog.Warn("no pre-restart holds recovered from thump.decisions", "beat", "hiss")
 	}
 
-	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: holds, Tracer: tracer, Stages: stages}
+	approvePub := publish.NewJetPublisher[approval.Approval](js)
+	controller, err := NewApprovalRequestController(holds, approvePub, pub)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
+
+	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: holds, Approvals: controller, Tracer: tracer, Stages: stages}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -167,6 +174,9 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	approvalSub := broker.NewJetSubscriber[approval.Approval](js)
 	g.Go(func() error {
 		return approvalSub.Run(gctx, "thump.approvals", tr.approveHandler)
+	})
+	g.Go(func() error {
+		return controller.Run(gctx)
 	})
 
 	return beat.ExitOnError(ctx, g.Wait())

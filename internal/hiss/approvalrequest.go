@@ -11,10 +11,15 @@ import (
 
 // ApprovalRequestSpec is the ApprovalRequest CR's spec: hiss writes
 // SignalRef, Action, Band and Reasons when it creates the CR from a held
-// Governed; a human writes only Decision, via kubectl patch. Everything
-// else is rejected at the API server, not here. JSON tags match the CRD's
-// OpenAPI property names — approvalrequest_controller.go converts through
-// them via unstructured content, never through a generated clientset.
+// Governed; a human writes only Decision, via kubectl patch. Everything else
+// is rejected at the API server, not here. The authenticated approver never
+// appears in spec or status — a CRD's status subresource resets .status to
+// its old value on every UPDATE that isn't itself targeted at /status
+// (exactly the request a plain kubectl patch sends), so a MutatingAdmissionPolicy
+// stamps it into metadata.annotations instead, where the approvalrequest
+// controller reads it back. JSON tags match the CRD's OpenAPI property
+// names — approvalrequest_controller.go converts through them via
+// unstructured content, never through a generated clientset.
 type ApprovalRequestSpec struct {
 	SignalRef string   `json:"signalRef"`
 	Action    string   `json:"action"`
@@ -23,17 +28,12 @@ type ApprovalRequestSpec struct {
 	Decision  string   `json:"decision,omitempty"` // "" or "approve" — anything else fails translateDecision
 }
 
-// ApprovalRequestStatus is the CR's controller-owned half. ApprovedBy is
-// stamped by a MutatingAdmissionPolicy at admission time, from the patch
-// request's authenticated UserInfo — hiss's controller only ever reads it,
-// never writes it, so there's no race between the policy and the reconcile
-// loop over who owns the field. Phase and DecidedAt are the reverse: the
-// controller writes them once it has translated Decision, so a resync
+// ApprovalRequestStatus is the CR's controller-owned half: the controller
+// writes Phase and DecidedAt once it has translated Decision, so a resync
 // redelivering the same object is a no-op rather than a repeat publish.
 type ApprovalRequestStatus struct {
-	ApprovedBy string    `json:"approvedBy,omitempty"`
-	Phase      string    `json:"phase,omitempty"` // "" or "Processed"
-	DecidedAt  time.Time `json:"decidedAt,omitempty"`
+	Phase     string    `json:"phase,omitempty"` // "" or "Processed"
+	DecidedAt time.Time `json:"decidedAt,omitempty"`
 }
 
 // ApprovalRequests is hiss's seam onto the one ApprovalRequest CR it

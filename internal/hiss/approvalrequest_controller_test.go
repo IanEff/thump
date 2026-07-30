@@ -19,7 +19,7 @@ import (
 // contract (group/version/resource), not an implementation detail, so
 // pinning it as a literal here is the same call as hardcoding "thump.decisions"
 // across the rest of hiss's tests.
-var approvalRequestGVR = schema.GroupVersionResource{Group: "thump.dev", Version: "v1", Resource: "approvalrequests"}
+var approvalRequestGVR = schema.GroupVersionResource{Group: "thump.dev", Version: "v1alpha1", Resource: "approvalrequests"}
 
 type fakeApprovalPub struct{ published []approval.Approval }
 
@@ -45,9 +45,9 @@ func fakeDyn(t *testing.T, objs ...*unstructured.Unstructured) *dynamicfake.Fake
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, items...)
 }
 
-func approvalRequestObj(name string, spec, status map[string]interface{}) *unstructured.Unstructured {
+func approvalRequestObj(name string, spec, status map[string]interface{}, annotations map[string]string) *unstructured.Unstructured {
 	obj := map[string]interface{}{
-		"apiVersion": "thump.dev/v1",
+		"apiVersion": "thump.dev/v1alpha1",
 		"kind":       "ApprovalRequest",
 		"metadata": map[string]interface{}{
 			"name":      name,
@@ -58,7 +58,11 @@ func approvalRequestObj(name string, spec, status map[string]interface{}) *unstr
 	if status != nil {
 		obj["status"] = status
 	}
-	return &unstructured.Unstructured{Object: obj}
+	u := &unstructured.Unstructured{Object: obj}
+	if annotations != nil {
+		u.SetAnnotations(annotations)
+	}
+	return u
 }
 
 func getStatus(t *testing.T, dyn *dynamicfake.FakeDynamicClient, name string) map[string]interface{} {
@@ -69,6 +73,16 @@ func getStatus(t *testing.T, dyn *dynamicfake.FakeDynamicClient, name string) ma
 	}
 	status, _, _ := unstructured.NestedMap(got.Object, "status")
 	return status
+}
+
+func TestNewApprovalRequestController_FailsClosedOutsideACluster(t *testing.T) {
+	t.Parallel()
+	// Not a behavior pin — there's no fake for rest.InClusterConfig — just
+	// proof this fails loud rather than panicking or silently building a
+	// controller pointed at nothing when hiss isn't actually running as a pod.
+	if _, err := hiss.NewApprovalRequestController(hiss.NewPendingHolds(), nil, nil); err == nil {
+		t.Fatal("want an error building the in-cluster config outside a real cluster")
+	}
 }
 
 func TestApprovalRequestName_IsStableAndDNS1123Safe(t *testing.T) {
@@ -129,7 +143,7 @@ func TestApprovalRequestController_Create_ExistingCRIsNotAnError(t *testing.T) {
 	t.Parallel()
 	held := heldGoverned(t)
 	name := hiss.ApprovalRequestNameForTest(held.Decision.SignalRef)
-	dyn := fakeDyn(t, approvalRequestObj(name, map[string]interface{}{"signalRef": held.Decision.SignalRef, "action": "x", "band": "y"}, nil))
+	dyn := fakeDyn(t, approvalRequestObj(name, map[string]interface{}{"signalRef": held.Decision.SignalRef, "action": "x", "band": "y"}, nil, nil))
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump"}
 
 	// A redelivered hold finding its CR already there is a no-op, not a
@@ -145,7 +159,7 @@ func TestApprovalRequestController_Reconcile_ApprovePublishesAnAckAndMarksProces
 	t.Parallel()
 	obj := approvalRequestObj("ar-1",
 		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
-		map[string]interface{}{"approvedBy": "alice"})
+		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
 	forcePub := &fakeDecisionPub{}
@@ -176,7 +190,7 @@ func TestApprovalRequestController_Reconcile_ForcePublishesAReissuedDecisionAndM
 	holds.Record(held)
 	obj := approvalRequestObj("ar-2",
 		map[string]interface{}{"signalRef": held.Decision.SignalRef, "decision": "force"},
-		map[string]interface{}{"approvedBy": "alice"})
+		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
 	forcePub := &fakeDecisionPub{}
@@ -213,7 +227,7 @@ func TestApprovalRequestController_Reconcile_ForceOnAnUnheldFingerprintMarksProc
 	t.Parallel()
 	obj := approvalRequestObj("ar-3",
 		map[string]interface{}{"signalRef": "no-such-fp", "decision": "force"},
-		map[string]interface{}{"approvedBy": "alice"})
+		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	forcePub := &fakeDecisionPub{}
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
@@ -233,7 +247,7 @@ func TestApprovalRequestController_Reconcile_ForceOnAnUnheldFingerprintMarksProc
 
 func TestApprovalRequestController_Reconcile_NoDecisionYetIsANoOp(t *testing.T) {
 	t.Parallel()
-	obj := approvalRequestObj("ar-4", map[string]interface{}{"signalRef": "fp-1"}, nil)
+	obj := approvalRequestObj("ar-4", map[string]interface{}{"signalRef": "fp-1"}, nil, nil)
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
 	forcePub := &fakeDecisionPub{}
@@ -261,7 +275,7 @@ func TestApprovalRequestController_Reconcile_AlreadyProcessedIsANoOp(t *testing.
 	// forever.
 	obj := approvalRequestObj("ar-5",
 		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
-		map[string]interface{}{"approvedBy": "alice", "phase": "Processed"})
+		map[string]interface{}{"phase": "Processed"}, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
@@ -280,7 +294,7 @@ func TestApprovalRequestController_Reconcile_UnrecognizedDecisionErrorsWithoutMa
 	// The CRD's spec.decision enum should make this unreachable in a real
 	// cluster; this pins the defensive path for the day the schema and the
 	// code drift.
-	obj := approvalRequestObj("ar-6", map[string]interface{}{"signalRef": "fp-1", "decision": "maybe"}, nil)
+	obj := approvalRequestObj("ar-6", map[string]interface{}{"signalRef": "fp-1", "decision": "maybe"}, nil, nil)
 	dyn := fakeDyn(t, obj)
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
 		ApprovePub: &fakeApprovalPub{}, ForcePub: &fakeDecisionPub{}, Now: frozenNow}

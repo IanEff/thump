@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-hiss-approvalrequests
+  namespace: thump
+rules:
+  - apiGroups: ["thump.dev"]
+    resources: ["approvalrequests"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["thump.dev"]
+    resources: ["approvalrequests/status"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-hiss-approvalrequests
+  namespace: thump
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: Role
+  name: thump-hiss-approvalrequests
+  apiGroup: rbac.authorization.k8s.io

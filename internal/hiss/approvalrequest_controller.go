@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/approval"
@@ -19,14 +20,23 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
 
 const (
 	approvalRequestGroup   = "thump.dev"
-	approvalRequestVersion = "v1"
+	approvalRequestVersion = "v1alpha1"
 	approvalRequestKind    = "ApprovalRequest"
 	approvalRequestPlural  = "approvalrequests"
+
+	// approvedByAnnotation is stamped by the approvalrequest-stamp-approver
+	// MutatingAdmissionPolicy from the patch request's authenticated
+	// UserInfo, overwriting whatever a client sent — it lives in an
+	// annotation, not spec or status, because annotation mutations survive
+	// a main-resource UPDATE and .status mutations don't (see
+	// ApprovalRequestSpec's doc comment).
+	approvedByAnnotation = "thump.dev/approved-by"
 )
 
 var approvalRequestGVR = schema.GroupVersionResource{
@@ -48,6 +58,36 @@ type ApprovalRequestController struct {
 	ApprovePub publish.Publisher[approval.Approval] // → thump.approvals, picked up by the existing approveHandler
 	ForcePub   publish.Publisher[decision.Governed] // → thump.decisions, mirrors trim force's break-glass path
 	Now        func() time.Time
+}
+
+// NewApprovalRequestController builds the production controller: an
+// in-cluster dynamic client scoped to this pod's own namespace, read from
+// the standard ServiceAccount projection (already mounted — InClusterConfig
+// itself depends on the token file living alongside it). Mirrors
+// internal/actuate/kube.go's New: the one file allowed to import client-go
+// builds its own clients and hands the composition root a ready value,
+// never the other way around, so hiss.go's runBroker needs no new import at
+// all — a same-package function call, not a client-go dependency.
+func NewApprovalRequestController(holds *PendingHolds, approvePub publish.Publisher[approval.Approval], forcePub publish.Publisher[decision.Governed]) (*ApprovalRequestController, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("hiss: in-cluster config: %w", err)
+	}
+	dyn, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("hiss: dynamic client: %w", err)
+	}
+	ns, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace") //nolint:gosec // G304: fixed well-known path, not user input
+	if err != nil {
+		return nil, fmt.Errorf("hiss: read own namespace: %w", err)
+	}
+	return &ApprovalRequestController{
+		Dyn:        dyn,
+		Namespace:  string(ns),
+		Holds:      holds,
+		ApprovePub: approvePub,
+		ForcePub:   forcePub,
+	}, nil
 }
 
 func (c *ApprovalRequestController) now() time.Time {
@@ -144,9 +184,11 @@ func (c *ApprovalRequestController) reconcile(ctx context.Context, u *unstructur
 		return nil // most reconcile events land here — not an error, just nothing new yet
 	}
 
+	approvedBy := u.GetAnnotations()[approvedByAnnotation]
+
 	switch spec.Decision {
 	case "approve":
-		ack, ok, err := translateDecision(spec, status.ApprovedBy, c.now())
+		ack, ok, err := translateDecision(spec, approvedBy, c.now())
 		if err != nil {
 			return err
 		}
@@ -164,7 +206,7 @@ func (c *ApprovalRequestController) reconcile(ctx context.Context, u *unstructur
 			slog.Warn("approvalrequest force arrived for an unheld fingerprint", "signalRef", spec.SignalRef)
 			return c.markProcessed(ctx, u.GetName())
 		}
-		g, err := forceDecision(held, status.ApprovedBy, c.now())
+		g, err := forceDecision(held, approvedBy, c.now())
 		if err != nil {
 			return fmt.Errorf("force %s: %w", spec.SignalRef, err)
 		}

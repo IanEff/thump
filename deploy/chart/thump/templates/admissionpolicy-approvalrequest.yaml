@@ -1,0 +1,62 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: approvalrequest-stamp-approver
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["thump.dev"]
+        apiVersions: ["v1alpha1"]
+        operations: ["UPDATE"]
+        resources: ["approvalrequests"]
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >
+          Object{
+            metadata: Object.metadata{
+              annotations: {"thump.dev/approved-by": request.userInfo.username}
+            }
+          }
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: approvalrequest-stamp-approver
+spec:
+  policyName: approvalrequest-stamp-approver
+  matchResources: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: approvalrequest-immutable-fields
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["thump.dev"]
+        apiVersions: ["v1alpha1"]
+        operations: ["UPDATE"]
+        resources: ["approvalrequests"]
+  validations:
+    - expression: "object.spec.signalRef == oldObject.spec.signalRef"
+      message: "spec.signalRef is set by hiss and cannot be changed"
+    - expression: "object.spec.action == oldObject.spec.action"
+      message: "spec.action is set by hiss and cannot be changed"
+    - expression: "object.spec.band == oldObject.spec.band"
+      message: "spec.band is set by hiss and cannot be changed"
+    - expression: "object.spec.reasons == oldObject.spec.reasons"
+      message: "spec.reasons is set by hiss and cannot be changed"
+    - expression: "object.spec.decision in ['', 'approve', 'force']"
+      message: "spec.decision must be '', 'approve', or 'force'"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: approvalrequest-immutable-fields
+spec:
+  policyName: approvalrequest-immutable-fields
+  validationActions: ["Deny"]
+  matchResources: {}

@@ -80,14 +80,21 @@ tasks:
   chart-lint:
     desc: helm template | kubeconform, strict
     cmds:
-      # -schema-location default alone doesn't know any CRD (cert-manager's
-      # Certificate, Cilium's *NetworkPolicy) — the second flag adds Datree's
-      # community-maintained CRDs-catalog, kubeconform's own documented way
-      # to validate those rather than skipping them.
       - |
         helm template deploy/chart/thump | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary \
           -schema-location default \
           -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
+      # helm template never renders crds/ (same as helm upgrade — Helm's own
+      # documented behavior), so the CRD is linted directly here. -ignore-missing-schemas
+      # because yannh/kubernetes-json-schema's default catalog has no schema
+      # for the bare CustomResourceDefinition kind itself (verified: it carries
+      # customresourcedefinitioncondition/-names/-status but not the top-level
+      # object) — this still catches real YAML/JSON errors, just skips the
+      # kind it has nothing to check against.
+      - |
+        go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
+          -schema-location default \
+          deploy/chart/thump/crds/approvalrequest.yaml
 
   test:
     desc: go test -shuffle=on ./...
