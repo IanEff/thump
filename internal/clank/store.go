@@ -142,7 +142,7 @@ func (s *DirStore) appendLine(runID string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("dir store: mkdir %s: %w", filepath.Dir(path), err)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: path built from s.Dir and the engine's own runID, not user input
 	if err != nil {
 		return fmt.Errorf("dir store: open %s: %w", path, err)
 	}

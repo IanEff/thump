@@ -13,11 +13,20 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// Transport reads boundary objects off disk — rattle, clank, hiss, and
+// thump each drop YAML files under one of Inbox's four subdirectories — and
+// folds them into a Projection. It has no NATS path: Tick and Snapshot are
+// trim's offline substitute for subscribing to the broker directly.
 type Transport struct {
 	Inbox string      // root directory.
 	Proj  *Projection // where Tick lands every successfully-folded object; unused by Snapshot, which builds and returns its own
 }
 
+// Tick reads every new file under each of Inbox's four subdirectories,
+// applies it to tr.Proj, and archives it — or quarantines it if it fails to
+// parse or Apply rejects it (ErrNoFingerprint) — so a re-run of Tick never
+// reprocesses the same file. It returns the first I/O error encountered; a
+// parse or Apply failure is not one, since quarantine already handled it.
 func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -45,7 +54,7 @@ func tickDir[T any](tr *Transport, dir string) error {
 	}
 
 	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec
+		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under Inbox, not user input
 		if err != nil {
 			return fmt.Errorf("trim: read %s: %w", path, err)
 		}
@@ -110,7 +119,7 @@ func snapshotDir[T any](tr *Transport, dir string, proj *Projection) error {
 			return fmt.Errorf("trim: list %s: %w", pattern, err)
 		}
 		for _, path := range matches {
-			raw, err := os.ReadFile(path) //nolint:gosec
+			raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under Inbox, not user input
 			if err != nil {
 				return fmt.Errorf("trim: read %s: %w", path, err)
 			}

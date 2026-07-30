@@ -115,7 +115,7 @@ func TestInsufficientToolSpec_PinsItsInputSchemaToGolden(t *testing.T) {
 			t.Fatalf("update golden: %v", err)
 		}
 	}
-	want, err := os.ReadFile(golden) //nolint:gosec
+	want, err := os.ReadFile(golden) //nolint:gosec // G304: fixed testdata path, not user input
 	if err != nil {
 		t.Fatalf("read golden (run with -update to create it): %v", err)
 	}

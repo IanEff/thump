@@ -146,7 +146,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 		store = NewS3Store(client, cfg.S3Bucket, sealbox.Key(cfg.SealKey))
 	case cfg.Transcripts != "":
-		if err := os.MkdirAll(cfg.Transcripts, 0o750); err != nil { //nolint:gosec
+		if err := os.MkdirAll(cfg.Transcripts, 0o750); err != nil { //nolint:gosec // G301: operator-configured directory, not user input
 			_, _ = fmt.Fprintf(stderr, "mkdir transcripts: %v", err)
 			return 1
 		}

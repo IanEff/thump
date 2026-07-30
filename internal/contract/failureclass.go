@@ -32,7 +32,7 @@ func LoadFailureClasses(raw []byte) ([]FailureClassDefinition, error) {
 
 // LoadFailureClassesFile reads path and parses it with LoadFailureClasses.
 func LoadFailureClassesFile(path string) ([]FailureClassDefinition, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config file path, not user input
 	if err != nil {
 		return nil, fmt.Errorf("read failure classes file %s: %w", path, err)
 	}

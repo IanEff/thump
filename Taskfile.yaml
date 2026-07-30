@@ -132,11 +132,21 @@ tasks:
       - echo "captured internal/clank/testdata/detections/{{.NAME}}.yaml"
       - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
+  otelc:generate:
+    desc: Regenerate otelc compile-time instrumentation wrappers and rulesets
+    cmds:
+      - go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim
+      - sed -i '' 's#/Users/ian/projects/go/thump/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true
+      - find .otelc-build -name "go.mod" -exec sed -i '' 's/v1\.81\.1/v1\.82\.0/g' {} + 2>/dev/null || true
+      - find .otelc-build -name "go.mod" -exec sed -i '' 's/go 1\.25\.0/go 1\.26\.0/g' {} + 2>/dev/null || true
+      - go fmt ./...
+      - go run golang.org/x/tools/cmd/goimports@latest -w cmd/*/otelc.runtime.go 2>/dev/null || true
+
   build:
-    desc: Build all five beats to bin/ (version/commit/date ldflags, -trimpath)
+    desc: Build all five beats to bin/ with otelc compile-time instrumentation
     cmds:
       - mkdir -p bin
-      - for beat in {{.BEATS}}; do go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/$beat ./cmd/$beat || exit 1; done
+      - for beat in {{.BEATS}}; do go tool otelc go build -ldflags "{{.LDFLAGS}}" -o bin/$beat ./cmd/$beat || exit 1; done
 
   # images builds one container per beat, tagged with the git SHA (never
   # `latest` — mutable tags break GitOps drift detection), with an SBOM and

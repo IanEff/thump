@@ -35,7 +35,7 @@ func (de *DeclineEdge) Tick(ctx context.Context) error {
 	}
 
 	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec
+		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under de.Inbox, not user input
 		if err != nil {
 			return fmt.Errorf("decline: read %s: %w", path, err)
 		}

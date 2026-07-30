@@ -386,7 +386,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 
 func loadDetectionFixture(t *testing.T, name string) signal.Detection {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", "detections", name)) //nolint:gosec
+	raw, err := os.ReadFile(filepath.Join("testdata", "detections", name)) //nolint:gosec // G304: fixed testdata path, not user input
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", name, err)
 	}

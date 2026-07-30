@@ -39,7 +39,7 @@ func Load(raw []byte, reg PreconditionRegistry) (*StaticCatalog, error) {
 
 // LoadCatalogFile reads path and parses it with Load.
 func LoadCatalogFile(path string, reg PreconditionRegistry) (*StaticCatalog, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied catalog file path, not user input
 	if err != nil {
 		return nil, fmt.Errorf("read catalog file %s: %w", path, err)
 	}

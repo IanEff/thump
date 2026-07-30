@@ -66,7 +66,7 @@ func walLineCount(t *testing.T, dirpath string) int {
 	}
 	n := 0
 	for _, m := range matches {
-		raw, err := os.ReadFile(m) //nolint:gosec
+		raw, err := os.ReadFile(m) //nolint:gosec // G304: m came from filepath.Glob under t.TempDir()
 		if err != nil {
 			t.Fatalf("read %s: %v", m, err)
 		}

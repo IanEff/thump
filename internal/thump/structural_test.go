@@ -27,15 +27,16 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// process. Same risk profile as contract above, not a widening.
 		`"github.com/ianeff/thump/internal/config"`: true,
 		`"github.com/ianeff/thump/api/v1/outcome"`:  true,
-		// the publish port — a local dir-writer today, same risk profile as the
-		// writeAtomic thump used to inline; revisit at Stage 3, when this
-		// package grows a live JetStream implementation.
+		// the publish port — a local dir-writer, same risk profile as the
+		// writeAtomic thump used to inline before this package existed.
 		`"github.com/ianeff/thump/internal/publish"`: true,
-		// Stage 3b: the live JetStream implementation arrived. NATS is the
-		// beat-to-beat transport (same risk profile as the dir glob it sits
-		// beside), not infrastructure thump acts on — I-10 is about Exec
-		// staying dry-run, not about how a Governed decision reaches thump.
-		`"github.com/ianeff/thump/internal/broker"`:  true,
+		// The beat-to-beat transport, same risk profile as the dir glob it
+		// sits beside — not infrastructure thump acts on.
+		`"github.com/ianeff/thump/internal/broker"`: true,
+		// The one infra-reaching import: Live's injected ActionRunner. I-10
+		// permits this behind GatedExecutor's kill-switch check, not by
+		// keeping Exec dry-run — that seal was deliberately broken once the
+		// governance path was real (docs/invariants.md I-10).
 		`"github.com/ianeff/thump/internal/actuate"`: true,
 		// Phase F Wave D: the automatic-undo probe. Reads Prometheus over
 		// net/http, same as actuate reaches os/exec — expressed in primitives
@@ -102,7 +103,7 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		}
 		for _, imp := range f.Imports {
 			if !allowed[imp.Path.Value] {
-				t.Errorf("%s imports %s — v1 thump is dry-run BY CONSTRUCTION (I-10); growing this allowlist is a design review, not a convenience",
+				t.Errorf("%s imports %s — infra-reaching imports stay inside internal/actuate, gated by GatedExecutor and the kill switch (I-10); growing this allowlist is a design review, not a convenience",
 					name, imp.Path.Value)
 			}
 		}

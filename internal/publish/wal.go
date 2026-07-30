@@ -208,14 +208,14 @@ func (w *WAL) openFreshActive(path string) error {
 }
 
 func (w *WAL) recoverOrphan(dir, activePath string, base int64) error {
-	raw, err := os.ReadFile(activePath) //nolint:gosec
+	raw, err := os.ReadFile(activePath) //nolint:gosec // G304: activePath is the WAL's own segment path, not user input
 	if err != nil {
 		return fmt.Errorf("wal: read orphaned active segment: %w", err)
 	}
 	complete := raw[:bytes.LastIndexByte(raw, '\n')+1]
 
 	sealedPath := filepath.Join(dir, segmentName(base, time.Now()))
-	f, err := os.OpenFile(sealedPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec
+	f, err := os.OpenFile(sealedPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // G304: sealedPath is built from the WAL's own segment dir, not user input
 	if err != nil {
 		return fmt.Errorf("wal: create revovered segment: %w", err)
 	}
@@ -295,7 +295,7 @@ func (w *WAL) runSyncLoop() {
 }
 
 func defaultOpenActive(path string) (activeFile, error) {
-	return os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec
+	return os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // G304: path is the WAL's own active-segment path, not user input
 }
 
 // segmentName is the immutable filename for a segment that started at

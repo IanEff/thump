@@ -17,6 +17,8 @@ coverage.*
 
 # Build output
 bin/
+dist/
+.otelc-build/
 
 # macOS
 .DS_Store

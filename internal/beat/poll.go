@@ -89,7 +89,7 @@ func pollBackoff(ctx context.Context, cfg BackoffConfig, tick func(context.Conte
 			}
 			delay = nextDelay(cfg, delay, err == nil)
 			if err != nil && cfg.JitterDivisor > 0 {
-				delay += rand.N(delay / time.Duration(cfg.JitterDivisor)) //nolint:gosec
+				delay += rand.N(delay / time.Duration(cfg.JitterDivisor)) //nolint:gosec // G404: retry jitter, not a security-sensitive value
 			}
 			timer.Reset(delay)
 		}

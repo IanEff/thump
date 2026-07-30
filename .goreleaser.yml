@@ -13,6 +13,8 @@ project_name: thump
 
 before:
   hooks:
+    - go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim
+    - sed -i '' 's#.*/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true
     - go mod tidy
 
 builds:

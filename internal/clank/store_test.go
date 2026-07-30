@@ -227,7 +227,7 @@ func newTestSealKey(t *testing.T) sealbox.Key {
 
 func readLines(t *testing.T, path string) []string {
 	t.Helper()
-	raw, err := os.ReadFile(path) //nolint:gosec
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: test helper, path always caller-controlled under t.TempDir()
 	if err != nil {
 		t.Fatalf("read transcript %s: %v", path, err)
 	}

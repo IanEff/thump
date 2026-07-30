@@ -104,7 +104,7 @@ func (re *ReturnEdge) Tick(ctx context.Context) error {
 	}
 
 	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec
+		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under re.Inbox, not user input
 		if err != nil {
 			return fmt.Errorf("click: read %s: %w", path, err)
 		}

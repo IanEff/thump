@@ -38,7 +38,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		return fmt.Errorf("clank: list inbox: %w", err)
 	}
 	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec
+		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under tr.Inbox, not user input
 		if err != nil {
 			return fmt.Errorf("clank: read %s: %w", path, err)
 		}

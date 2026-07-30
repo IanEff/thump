@@ -56,6 +56,7 @@ go to [`docs/`](#documentation).
 - [Why this shape](#why-this-shape)
 - [Authority model & guardrails](#authority-model--guardrails)
 - [The five beats](#the-five-beats)
+- [Repo tour](#repo-tour)
 - [A golden path, worked end to end](#a-golden-path-worked-end-to-end)
 - [Onboard your own domain](#onboard-your-own-domain)
 - [Install](#install)
@@ -202,6 +203,52 @@ and hiss is the only thing that converts a request into allow/hold/deny.
 
 Mechanism-level detail for each beat is in
 [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## Repo tour
+
+The beat table above is the concept. This is where it physically lives.
+
+| Beat | Entrypoint | Package | Open first |
+|---|---|---|---|
+| rattle | `cmd/rattle` | `internal/rattle` | `doc.go` |
+| clank | `cmd/clank` | `internal/clank` | `doc.go` |
+| hiss | `cmd/hiss` | `internal/hiss` | `hiss.go` |
+| thump | `cmd/thump` | `internal/thump` | `thump.go` |
+| click | none (see table above) | `internal/clank/click.go`, `metrics.go` | `Click.Absorb` and `ReturnEdge` in `click.go` |
+
+`internal/trim` is the sixth entrypoint (`cmd/trim`) and deliberately not a
+beat — see [Standing it up locally](#standing-it-up-locally) for what it's
+allowed to touch.
+
+**If you're opening one file, open `internal/clank/doc.go`.** clank is the
+reasoning plane — the seam with no prior art to copy from, and the one
+carrying the belief-formation defenses ([`docs/invariants.md`](docs/invariants.md),
+I-6). rattle and hiss are comparatively conventional: a detector and a policy
+evaluator. clank is where "bounded" had to be engineered rather than assumed.
+
+Test-support packages sit next to the beat they serve rather than under a
+shared `testutil`: `natstest` (an embedded, restartable NATS server),
+`s3test`, `configtest`, `leaftest` (the import-allowlist check that pins a
+package's dependency leaves — `internal/tlsx/leaf_test.go` uses it to prove
+`tlsx` imports nothing beyond `crypto/tls`, `crypto/x509`, `fmt`, `os`, and
+`sync`), and `tlsxtest`.
+
+**`internal/tlsx` + `internal/tlsxtest` are worth the detour.** `tlsx.go` is
+the one place a `*tls.Config` gets built, for the same reason
+`internal/httpx` centralizes outbound HTTP clients: a config assembled at the
+call site is a chance to get the root pool, the minimum version, or
+client-cert verification wrong, and every one of those mistakes succeeds at
+runtime instead of failing. `tlsxtest.go` mints a throwaway ECDSA CA and
+leaves from it per test rather than committing a PEM fixture that quietly
+expires, which is what makes the negative cases assertable at all:
+`TestClient_ServerLeafFromDifferentCA_HandshakeRefused`,
+`TestClient_ExpiredServerLeaf_HandshakeRefused`,
+`TestServer_ClientPresentsNoCertificate_HandshakeRefused`,
+`TestServer_RotatedKeypair_PickedUpWithoutRestart`. None of them need a
+cluster or a network. A negative case is the entire value of a TLS config,
+and this is the pair of files that makes negative cases cheap to write.
 
 ---
 
