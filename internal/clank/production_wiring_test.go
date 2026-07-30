@@ -43,12 +43,15 @@ func TestProductionWiring_ConfidenceIsTheProductOfBothBeatConstructors(t *testin
 	}
 }
 
-// TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors routes the
-// five-beat chain through newLoop (not newTestEngine), to the first approved
-// verdict on a confidence hand-set nowhere in the wiring.
+// TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors carries a
+// real rattle.Reconciler detection (seamDetection) through clank's and
+// hiss's real production constructors — NewLoopForTest's Engine.Propose,
+// then hiss.Authority.Evaluate — to the first approved verdict on a
+// confidence hand-set nowhere in the wiring.
 //
-// Skeleton: newApprovableTestLoop below still needs its intake/tools/catalog
-// wired to match seamCatalog() before this can run for real — see its TODO.
+// Only three of five beats run here: rattle, clank, hiss. thump and click
+// aren't wired in yet — see the trailing comment below for what to copy in
+// once they are.
 func TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors(t *testing.T) {
 	t.Parallel()
 
@@ -63,8 +66,8 @@ func TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors(t *testi
 	if diff := cmp.Diff(decision.VerdictApproved, dec.Verdict); diff != "" {
 		t.Fatalf("first approved verdict must come through real wiring (-want +got)\n%s\nreasons: %v", diff, dec.Reasons)
 	}
-	// thump.Actuator.Render + DryRun.Execute legs copy from the four-beat seam
-	// test's thump/click legs once this skeleton is filled in.
+	// thump.Actuator.Render + DryRun.Execute + click.Absorb legs copy from
+	// the four-beat seam test's thump/click legs once they're added here.
 }
 
 // newApprovableTestLoop mirrors newTestLoop but scripts a well-corroborated,

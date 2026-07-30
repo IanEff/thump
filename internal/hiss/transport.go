@@ -60,7 +60,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 	}
 
 	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec
+		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under tr.Inbox, not user input
 		if err != nil {
 			return fmt.Errorf("hiss: read %s: %w", path, err)
 		}

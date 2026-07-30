@@ -101,7 +101,7 @@ func (r *Resolver) State(ctx context.Context, dependency string) string {
 // returns them as a dependency-name-to-query map, ready to assign to
 // Resolver.Queries.
 func LoadStateQueries(path string) (map[string]string, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config file path, not user input
 	if err != nil {
 		return nil, fmt.Errorf("read state queries file %s: %w", path, err)
 	}

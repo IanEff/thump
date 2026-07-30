@@ -82,7 +82,7 @@ func Server(c Config) (*tls.Config, error) {
 // ignoring it turns a garbage or empty CA file into a pool that silently
 // trusts nothing.
 func loadCAPool(caFile string) (*x509.CertPool, error) {
-	pemBytes, err := os.ReadFile(caFile) //nolint:gosec
+	pemBytes, err := os.ReadFile(caFile) //nolint:gosec // G304: operator-supplied CA path, not user input
 	if err != nil {
 		return nil, fmt.Errorf("read CA file: %w", err)
 	}

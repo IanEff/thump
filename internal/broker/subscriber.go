@@ -63,7 +63,7 @@ func (s *JetSubscriber[T]) backoffFor(numDelivered uint64) time.Duration {
 	if len(schedule) == 0 {
 		schedule = defaultBackoff
 	}
-	idx := int(numDelivered) - 1 //nolint:gosec
+	idx := int(numDelivered) - 1 //nolint:gosec // G115: numDelivered is a small redelivery counter, never near MaxInt
 	if idx < 0 {
 		idx = 0
 	}

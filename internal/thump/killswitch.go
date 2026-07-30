@@ -46,7 +46,7 @@ type switchConfig struct {
 // logging. On any failure it first forces the flag to disarmed — a read it
 // can't trust must not leave a previous "armed" latched.
 func (s *FileSwitch) Reload(context.Context) error {
-	raw, err := os.ReadFile(s.path) //nolint:gosec
+	raw, err := os.ReadFile(s.path) //nolint:gosec // G304: operator-configured kill-switch file path, not user input
 	if err != nil {
 		s.set(false)
 		return fmt.Errorf("kill-switch read: %w", err)

@@ -235,7 +235,7 @@ func runUnseal(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	sealed, err := os.ReadFile(path) //nolint:gosec
+	sealed, err := os.ReadFile(path) //nolint:gosec // G304: path is the operator's own CLI argument
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "trim:", err)
 		return 1

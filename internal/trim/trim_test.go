@@ -122,7 +122,7 @@ func TestMain_ApprovePublishesAnAuditableApproval(t *testing.T) {
 	if len(matches) != 1 {
 		t.Fatalf("want exactly one written Approval, got %d", len(matches))
 	}
-	raw, err := os.ReadFile(matches[0]) //nolint:gosec
+	raw, err := os.ReadFile(matches[0]) //nolint:gosec // G304: matches came from filepath.Glob under t.TempDir()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestMain_ForcePublishesAForcedGovernedStraightToDecisions(t *testing.T) {
 	if len(matches) != 1 {
 		t.Fatalf("want exactly one forced Governed written, got %d", len(matches))
 	}
-	raw, err := os.ReadFile(matches[0]) //nolint:gosec
+	raw, err := os.ReadFile(matches[0]) //nolint:gosec // G304: matches came from filepath.Glob under t.TempDir()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,12 +276,12 @@ func TestMain_UnsealFailsOnATamperedFile(t *testing.T) {
 	path := sealFile(t, []byte("payload"))
 	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
 
-	sealed, err := os.ReadFile(path) //nolint:gosec
+	sealed, err := os.ReadFile(path) //nolint:gosec // G304: path came from sealFile, under t.TempDir()
 	if err != nil {
 		t.Fatal(err)
 	}
 	sealed[len(sealed)-1] ^= 0xFF
-	if err := os.WriteFile(path, sealed, 0o600); err != nil { //nolint:gosec
+	if err := os.WriteFile(path, sealed, 0o600); err != nil { //nolint:gosec // G703: path came from sealFile, under t.TempDir()
 		t.Fatal(err)
 	}
 

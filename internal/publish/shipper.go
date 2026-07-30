@@ -66,7 +66,7 @@ func (w *WAL) Ship(ctx context.Context, sink SegmentSink) error {
 }
 
 func (w *WAL) shipOne(ctx context.Context, sink SegmentSink, path string) error {
-	f, err := os.Open(path) //nolint:gosec
+	f, err := os.Open(path) //nolint:gosec // G304: path came from SealedSegments listing the WAL's own directory, not user input
 	if err != nil {
 		return fmt.Errorf("wal: ship: open %s: %w", path, err)
 	}

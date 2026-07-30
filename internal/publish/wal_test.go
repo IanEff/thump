@@ -34,7 +34,7 @@ func TestWAL_AppendWritesAJSONLineThatRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw, err := os.ReadFile(filepath.Join(segmentDir(dir, "rattle", "thump.detections"), "active.jsonl")) //nolint:gosec
+	raw, err := os.ReadFile(filepath.Join(segmentDir(dir, "rattle", "thump.detections"), "active.jsonl")) //nolint:gosec // G304: dir is t.TempDir(), not user input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestWAL_SealsTheActiveSegmentOnceItCrossesMaxBytes(t *testing.T) {
 		t.Fatalf("got %d sealed segments after crossing MaxBytes, want 1", len(sealed))
 	}
 
-	rawSealed, err := os.ReadFile(sealed[0]) //nolint:gosec
+	rawSealed, err := os.ReadFile(sealed[0]) //nolint:gosec // G304: sealed came from listing t.TempDir(), not user input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestWAL_SealsTheActiveSegmentAfterMaxAgeElapses(t *testing.T) {
 			t.Fatalf("got %d sealed segments after MaxAge elapsed, want 1", len(sealed))
 		}
 
-		rawSealed, err := os.ReadFile(sealed[0]) //nolint:gosec
+		rawSealed, err := os.ReadFile(sealed[0]) //nolint:gosec // G304: sealed came from listing t.TempDir(), not user input
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +127,7 @@ func TestWAL_SealsTheActiveSegmentAfterMaxAgeElapses(t *testing.T) {
 			t.Error("the stale segment (holding the first line) is what should have sealed", diff)
 		}
 
-		rawActive, err := os.ReadFile(filepath.Join(beatDir, "active.jsonl")) //nolint:gosec
+		rawActive, err := os.ReadFile(filepath.Join(beatDir, "active.jsonl")) //nolint:gosec // G304: beatDir is under t.TempDir(), not user input
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +190,7 @@ func TestWAL_RecoversAnOrphanedActiveSegmentWithoutLosingCompleteLines(t *testin
 		t.Fatalf("got %d sealed segments after recovery, want 1 (the recovered orphan)", len(sealed))
 	}
 
-	recovered, err := os.ReadFile(sealed[0]) //nolint:gosec
+	recovered, err := os.ReadFile(sealed[0]) //nolint:gosec // G304: sealed came from listing t.TempDir(), not user input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestWAL_RecoversAnOrphanedActiveSegmentWithoutLosingCompleteLines(t *testin
 		t.Error("recovered segment must hold exactly the complete lines, torn tail dropped", diff)
 	}
 
-	rawActive, err := os.ReadFile(filepath.Join(beatDir, "active.jsonl")) //nolint:gosec
+	rawActive, err := os.ReadFile(filepath.Join(beatDir, "active.jsonl")) //nolint:gosec // G304: beatDir is under t.TempDir(), not user input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ type orderCheckingPublisher struct {
 
 func (o *orderCheckingPublisher) Publish(_ context.Context, _ string, _ signal.Detection) error {
 	o.called = true
-	raw, err := os.ReadFile(filepath.Join(o.beatDir, "active.jsonl")) //nolint:gosec
+	raw, err := os.ReadFile(filepath.Join(o.beatDir, "active.jsonl")) //nolint:gosec // G304: o.beatDir is under t.TempDir(), not user input
 	o.sawWALContent = err == nil && len(raw) > 0
 	return nil
 }

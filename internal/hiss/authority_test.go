@@ -196,7 +196,7 @@ func TestEvaluate_RejectsInputThatIsNotFitToGovern(t *testing.T) {
 
 func TestAuthority_LivePolicyApprovesAStampedReversibleAct(t *testing.T) {
 	t.Parallel()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "config", "hiss", "policy.yaml")) //nolint:gosec
+	raw, err := os.ReadFile(filepath.Join("..", "..", "config", "hiss", "policy.yaml")) //nolint:gosec // G304: fixed repo config path, not user input
 	if err != nil {
 		t.Fatalf("read live policy: %v", err)
 	}

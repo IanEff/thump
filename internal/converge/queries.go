@@ -15,7 +15,7 @@ type query struct {
 // LoadQueries parses path -- an evidence-queries.yaml file-- into a
 // metric-name -> promql lookup map.
 func LoadQueries(path string) (map[string]string, error) {
-	raw, err := os.ReadFile(path) // nolint:gosec
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config file path, not user input
 	if err != nil {
 		return nil, fmt.Errorf("converge: read queries file %s: %w", path, err)
 	}

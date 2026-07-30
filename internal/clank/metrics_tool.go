@@ -164,7 +164,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 // subject: tag, so MetricsTool stamps no Subject for it (see
 // EvidenceRef.Subject).
 func LoadEvidenceQueries(path string) (queries map[string]string, subjects map[string]string, err error) {
-	raw, err := os.ReadFile(path) //nolint:gosec
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config file path, not user input
 	if err != nil {
 		return nil, nil, fmt.Errorf("read evidence queries file %s: %w", path, err)
 	}

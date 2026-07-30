@@ -11,18 +11,28 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 )
 
+// ErrNoFingerprint is Apply's error when obj carries no fingerprint —
+// fingerprintOf found none of the four boundary-object types, or the field
+// it checked was empty. Apply refuses the object rather than folding it in
+// under a zero-value key.
 var ErrNoFingerprint = errors.New("trim: object carries no fingerprint")
 
-// Projection is the map of fingerprints to Incidents.
+// Projection is the map of fingerprints to Incidents, safe for concurrent
+// Apply and Get/Snapshot — Tick's poll loop writes while an "incidents"
+// invocation reads.
 type Projection struct {
 	mu        sync.RWMutex
 	incidents map[string]Incident
 }
 
+// NewProjection returns an empty Projection, ready for Apply.
 func NewProjection() *Projection {
 	return &Projection{incidents: make(map[string]Incident)}
 }
 
+// Apply folds obj into the Incident at its fingerprint via Fold, or returns
+// ErrNoFingerprint if obj is none of the four boundary-object types Fold
+// recognizes.
 func (p *Projection) Apply(obj any) error {
 	fp, ok := fingerprintOf(obj)
 	if !ok {
@@ -34,6 +44,8 @@ func (p *Projection) Apply(obj any) error {
 	return nil
 }
 
+// Get returns the Incident at fingerprint, or false if Apply has never seen
+// that fingerprint.
 func (p *Projection) Get(fingerprint string) (Incident, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -44,6 +56,7 @@ func (p *Projection) Get(fingerprint string) (Incident, bool) {
 	return incident, true
 }
 
+// Snapshot returns every Incident currently held, in no particular order.
 func (p *Projection) Snapshot() []Incident {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

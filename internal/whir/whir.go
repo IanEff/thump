@@ -90,7 +90,7 @@ func Load(raw []byte) (Catalog, error) {
 
 // LoadCatalogFile reads path and parses it with Load.
 func LoadCatalogFile(path string) (Catalog, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: path is operator-supplied
 	if err != nil {
 		return Catalog{}, fmt.Errorf("read catalog file %s: %w", path, err)
 	}

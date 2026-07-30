@@ -58,7 +58,7 @@ func TestDirPublisher_WritesYAMLThatRoundTrips(t *testing.T) {
 		t.Fatalf("got %d files in %s, want 1", len(matches), dir)
 	}
 
-	raw, err := os.ReadFile(matches[0]) //nolint:gosec
+	raw, err := os.ReadFile(matches[0]) //nolint:gosec // G304: matches came from filepath.Glob under t.TempDir()
 	if err != nil {
 		t.Fatal(err)
 	}

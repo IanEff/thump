@@ -137,7 +137,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	} else if cfg.Outbox != "" {
 		// offline path: the DirPublisher is now the keyless fake the seam
 		// tests exercise — broker mode above is how this actually runs.
-		if err := os.MkdirAll(cfg.Outbox, 0o750); err != nil { //nolint:gosec
+		if err := os.MkdirAll(cfg.Outbox, 0o750); err != nil { //nolint:gosec // G301: operator-configured directory, not user input
 			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
 			return 1
 		}
