@@ -122,6 +122,29 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadClank_RequiresPromURLWhenBothWhirVarsAreSet(t *testing.T) {
+	setClankEnv(t)
+	t.Setenv("PROM_URL", "")
+
+	_, err := config.LoadClank(false /* broker */)
+	if err == nil {
+		t.Fatal("LoadClank: want an error — PROM_URL is unset but both WHIR vars are set")
+	}
+	if !strings.Contains(err.Error(), "PROM_URL") {
+		t.Errorf("LoadClank error %q does not mention PROM_URL", err)
+	}
+}
+
+func TestLoadClank_DoesNotRequirePromURLWhenOnlyOneWhirVarIsSet(t *testing.T) {
+	setClankEnv(t)
+	t.Setenv("PROM_URL", "")
+	t.Setenv("WHIR_STATE_QUERIES", "") // WHIR_CATALOG alone must not trip the cross-check
+
+	if _, err := config.LoadClank(false /* broker */); err != nil {
+		t.Errorf("LoadClank: want no error — one whir var alone doesn't require PROM_URL, got %v", err)
+	}
+}
+
 func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	// broker=true is clank's NATS path (lc.NATSURL != "") — CLANK_INBOX/
 	// OUTBOX/OUTCOMES are the offline dir-poll fallback's vars and must not

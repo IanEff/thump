@@ -109,6 +109,13 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	return 0
 }
 
+// newRestartLossyHolds constructs the PendingHolds runBroker wires in.
+// PendingHolds has no durable backing yet, so it always starts empty.
+func newRestartLossyHolds() *PendingHolds {
+	slog.Warn("pending holds rebuilt empty on startup - approvals for pre-restart holds have nothing to resolve against until W0c lands", "beat", "hiss")
+	return NewPendingHolds()
+}
+
 // runBroker is hiss's NATS branch: consume thump.proposals, evaluate
 // authority, publish thump.decisions, and ship the decisions WAL's sealed
 // segments to object storage in the background.
@@ -145,7 +152,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	}
 	defer func() { _ = pub.WAL.Drain(ctx, sink) }()
 
-	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: NewPendingHolds(), Tracer: tracer, Stages: stages}
+	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: newRestartLossyHolds(), Tracer: tracer, Stages: stages}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {

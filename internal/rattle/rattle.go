@@ -68,32 +68,36 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		}
 	}
 
-	var topo TopologySource
-	if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
-		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load state queries: %v\n", err)
-			return 1
-		}
-		if _, err := whir.LoadCatalogFile(cfg.WhirCatalog); err != nil {
-			_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
-			return 1
-		}
-		topo = &WhirTopologySource{Resolver: &whir.Resolver{
-			BaseURL: cfg.PromURL,
-			Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
-			Queries: queries,
-		}}
-	}
+	// var topo TopologySource
+	// if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
+	// 	queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
+	// 	if err != nil {
+	// 		_, _ = fmt.Fprintf(stderr, "load state queries: %v\n", err)
+	// 		return 1
+	// 	}
+	// 	if _, err := whir.LoadCatalogFile(cfg.WhirCatalog); err != nil {
+	// 		_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
+	// 		return 1
+	// 	}
+	// 	topo = &WhirTopologySource{Resolver: &whir.Resolver{
+	// 		BaseURL: cfg.PromURL,
+	// 		Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
+	// 		Queries: queries,
+	// 	}}
+	// }
 
-	var traffic TrafficSource
-	if cfg.Traffic != "" {
-		queries, err := LoadTrafficQueries(cfg.Traffic)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load traffic queries: %v\n", err)
-			return 1
-		}
-		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries}
+	// var traffic TrafficSource
+	// if cfg.Traffic != "" {
+	// 	queries, err := LoadTrafficQueries(cfg.Traffic)
+	// 	if err != nil {
+	// 		_, _ = fmt.Fprintf(stderr, "load traffic queries: %v\n", err)
+	// 		return 1
+	// 	}
+	// 	traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries}
+	// }
+	topo, traffic, err := buildSources(cfg, backendTLS)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "build sources: %v:\n", err)
 	}
 
 	var metricsTLS *tls.Config
@@ -266,4 +270,41 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.P
 		case <-ticker.C:
 		}
 	}
+}
+
+// buildSources assembles rattle's topology and traffic enrichment from cfg —
+// either return can be nil, since reconcile.go's Reconciler treats both as
+// optional, nil-safe enrichment, never a required collaborator.
+func buildSources(cfg config.Rattle, backendTLS *tls.Config) (TopologySource, TrafficSource, error) {
+	var topo TopologySource
+	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
+		slog.Warn("no topology source configured — reconciling without a blast-radius map",
+			"beat", "rattle", "fix", "set WHIR_CATALOG and WHIR_STATE_QUERIES")
+	} else {
+		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load state queries: %w", err)
+		}
+		if _, err := whir.LoadCatalogFile(cfg.WhirCatalog); err != nil {
+			return nil, nil, fmt.Errorf("load whir catalog: %w", err)
+		}
+		topo = &WhirTopologySource{Resolver: &whir.Resolver{
+			BaseURL: cfg.PromURL,
+			Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
+			Queries: queries,
+		}}
+	}
+
+	var traffic TrafficSource
+	if cfg.Traffic == "" {
+		slog.Warn("no traffic source configured — reconciling without traffic enrichment",
+			"beat", "rattle", "fix", "set RATTLE_TRAFFIC")
+	} else {
+		queries, err := LoadTrafficQueries(cfg.Traffic)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load traffic queries: %w", err)
+		}
+		traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries}
+	}
+	return topo, traffic, nil
 }

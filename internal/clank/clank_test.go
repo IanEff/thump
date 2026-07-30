@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 )
 
@@ -154,6 +156,50 @@ func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
 	if stderr.Len() == 0 {
 		t.Error("want error message printed to stderr, got none")
 	}
+}
+
+func TestBuildIntake_WarnsOnEverySilentFallback(t *testing.T) {
+	tests := map[string]struct {
+		cfg      config.Clank
+		wantMsgs []string
+	}{
+		"buildIntake warns for both the change source and the topology source when whir is unconfigured": {
+			cfg: config.Clank{},
+			wantMsgs: []string{
+				"no change source configured — causal scoring is inert",
+				"no topology source configured — clank reasoning without a blast-radius map",
+			},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			// captureLog mutates the process-wide default logger — no t.Parallel().
+			getLines := captureLog(t)
+
+			if _, err := clank.BuildIntakeForTest(tc.cfg, nil); err != nil {
+				t.Fatal(err)
+			}
+
+			got := warnMessages(getLines())
+			for _, want := range tc.wantMsgs {
+				if !slices.Contains(got, want) {
+					t.Errorf("want a WARN %q, got %v", want, got)
+				}
+			}
+		})
+	}
+}
+
+// warnMessages pulls the msg field out of every captured WARN-level line —
+// captureLog's handler is set at LevelInfo, so INFO lines are in the mix too.
+func warnMessages(lines []map[string]any) []string {
+	var msgs []string
+	for _, l := range lines {
+		if l["level"] == "WARN" {
+			msgs = append(msgs, l["msg"].(string))
+		}
+	}
+	return msgs
 }
 
 // testLoop mirrors clank's unexported `loop` type field-for-field. We can't

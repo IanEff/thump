@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/publish"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -19,4 +20,9 @@ func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, pub pu
 // behavior when a test hand-sets a field.
 func NewReconcilerForTest(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource, backendTLS *tls.Config) *Reconciler {
 	return newReconciler(promURL, slos, topo, traffic, backendTLS)
+}
+
+// BuildSourcesForTest exposes buildSources to rattle_test.
+func BuildSourcesForTest(cfg config.Rattle, backendTLS *tls.Config) (TopologySource, TrafficSource, error) {
+	return buildSources(cfg, backendTLS)
 }

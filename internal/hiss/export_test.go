@@ -18,3 +18,7 @@ func (tr *Transport) HandleForTest(ctx context.Context, ps proposal.Set, heartbe
 func (tr *Transport) ApproveHandlerForTest(ctx context.Context, a approval.Approval, heartbeat func()) error {
 	return tr.approveHandler(ctx, a, heartbeat)
 }
+
+func NewRestartLossyHoldsForTest() *PendingHolds {
+	return newRestartLossyHolds()
+}

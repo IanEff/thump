@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/internal/config"
 )
 
 // HandleForTest exposes Transport.handle to thump_test without handle
@@ -13,4 +14,10 @@ import (
 // internal/rattle/export_test.go.
 func (tr *Transport) HandleForTest(ctx context.Context, g decision.Governed, heartbeat func()) error {
 	return tr.handle(ctx, g, heartbeat)
+}
+
+// BuildNotifierForTest exposes buildNotifier to thump_test — the seam
+// W0b's silent-fallback warning hangs off.
+func BuildNotifierForTest(cfg config.Thump, ctor func(url string) Notifier) Notifier {
+	return buildNotifier(cfg, ctor)
 }

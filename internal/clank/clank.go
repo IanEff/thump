@@ -109,26 +109,10 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 
 	model := NewAnthropicModel(cfg.AnthropicAPIKey)
-	intake := NewIntake(noopTopology{}, noopChange{})
-	if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
-		if cfg.PromURL == "" {
-			_, _ = fmt.Fprintln(stderr, "PROM_URL required when WHIR_CATALOG and WHIR_STATE_QUERIES are set")
-			return 1
-		}
-		cat, err := whir.LoadCatalogFile(cfg.WhirCatalog)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
-			return 1
-		}
-		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load whir state queries: %v\n", err)
-			return 1
-		}
-		intake = NewIntake(WhirTopology{
-			Catalog:  cat,
-			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries},
-		}, noopChange{})
+	intake, err := buildIntake(cfg, backendTLS)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
+		return 1
 	}
 
 	// Broker mode already Require()s all four S3_* vars for the WAL shipper
@@ -225,4 +209,34 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Timeout: modelRequestTimeout + 30*time.Second,
 	}, tick)
 	return 0
+}
+
+// buildIntake assembles clank's Intake from cfg-- WhirTopology when
+// WHIR_CATALOG AND WHIR_STATE_QUERIES are both set, noopTopology other-
+// wise.
+// buildIntake assumes cfg has already passed config.LoadClank's validation —
+// PROM_URL is cross-required there whenever both whir vars are set, so this
+// never needs to check that combination itself.
+func buildIntake(cfg config.Clank, backendTLS *tls.Config) (*Intake, error) {
+	slog.Warn("no change source configured — causal scoring is inert",
+		"beat", "clank", "fix", "set ARGOCD_URL")
+
+	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
+		slog.Warn("no topology source configured — clank reasoning without a blast-radius map",
+			"beat", "clank", "fix", "set WHIR_CATALOG and WHIR_STATE_QUERIES")
+		return NewIntake(noopTopology{}, noopChange{}), nil
+	}
+	cat, err := whir.LoadCatalogFile(cfg.WhirCatalog)
+	if err != nil {
+		return nil, fmt.Errorf("load whir catalog: %w", err)
+	}
+	queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
+	if err != nil {
+		return nil, fmt.Errorf("load whir state queries: %w", err)
+	}
+
+	return NewIntake(WhirTopology{
+		Catalog:  cat,
+		Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries},
+	}, noopChange{}), nil
 }

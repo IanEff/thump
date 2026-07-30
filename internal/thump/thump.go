@@ -16,6 +16,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"time"
 
@@ -310,6 +311,7 @@ func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 // nobody (handle nil-checks Notifier at transport.go:161).
 func buildNotifier(cfg config.Thump, ctor func(url string) Notifier) Notifier {
 	if cfg.SlackWebhookURL == "" {
+		slog.Warn("no Slack webhook configured - held actions will page nobody", "beat", "thump", "fix", "set SLACK_WEBHOOK_URL")
 		return nil
 	}
 	return ctor(cfg.SlackWebhookURL)

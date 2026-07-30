@@ -47,7 +47,10 @@ type Clank struct {
 // a NATS_URL (lc.NATSURL != "" after beat.Start) — the offline dir-poll
 // inbox/outbox/outcomes trio is only required when it didn't; the broker
 // path never reads them. WAL_DIR and the S3 fields are the inverse — no WAL
-// in the offline path, nothing to ship.
+// in the offline path, nothing to ship. PROM_URL is cross-required with the
+// WHIR pair: WhirTopology's Resolver dials Prometheus, so clank.buildIntake
+// can trust a fully-set whir pair always carries a usable PromURL, rather
+// than checking it again at construction time.
 func LoadClank(broker bool) (Clank, error) {
 	l := &loader{}
 	c := Clank{
@@ -62,6 +65,9 @@ func LoadClank(broker bool) (Clank, error) {
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
 		Transcripts:      l.Optional("CLANK_TRANSCRIPTS"),
+	}
+	if c.WhirCatalog != "" && c.WhirStateQueries != "" && c.PromURL == "" {
+		l.errs = append(l.errs, errors.New("PROM_URL is required when WHIR_CATALOG and WHIR_STATE_QUERIES are set"))
 	}
 	if broker {
 		c.Inbox = l.Optional("CLANK_INBOX")

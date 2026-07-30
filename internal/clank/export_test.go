@@ -1,6 +1,7 @@
 package clank
 
 import (
+	"crypto/tls"
 	"path/filepath"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 )
@@ -128,4 +130,11 @@ func ToAnthropicToolParamsForTest(tools []ToolSpec) []anthropic.ToolUnionParam {
 // order deterministic.
 func ToolSpecsForTest(e *Engine) []ToolSpec {
 	return e.toolSpecs()
+}
+
+// BuildIntakeForTest exposes buildIntake to clank_test — the seam W0b's
+// silent-fallback warnings hang off, and where W1's ArgoCD change source
+// plugs in next.
+func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config) (*Intake, error) {
+	return buildIntake(cfg, backendTLS)
 }
