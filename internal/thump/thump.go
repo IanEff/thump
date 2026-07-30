@@ -1,11 +1,14 @@
-// Package thump is the Act beat: it renders (and, later, executes) a
-// governed decision.Decision. Actuator.Render turns one approval into an
-// Order, invented from nothing more than the Decision, the Set's recommended
-// Candidate, and the ActionContract catalog; Executor then performs it. v1
-// is structurally dry-run — DryRun is the only Executor, and an
-// import-allowlist test on this package proves no code path here can reach
-// os/exec, net, or a Kubernetes client, rather than merely trusting a flag
-// to keep it that way.
+// Package thump is the Act beat: it renders (dry-run, the default) or
+// executes (live) an approved decision.Decision. Actuator.Render turns one
+// approval into an Order, invented from nothing more than the Decision, the
+// Set's recommended Candidate, and the ActionContract catalog; Executor then
+// carries it out. DryRun only ever renders. Live delegates to an injected
+// ActionRunner — internal/actuate is the only concrete one, and the sole
+// place client-go is reachable — behind GatedExecutor, which refuses every
+// forward Order while the kill switch is disarmed. Package thump itself never
+// imports os/exec, net, or a Kubernetes client — an import-allowlist test on
+// this package enforces that boundary directly, rather than trusting Live's
+// own behavior to hold it.
 package thump
 
 import (
