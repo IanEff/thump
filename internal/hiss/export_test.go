@@ -2,8 +2,10 @@ package hiss
 
 import (
 	"context"
+	"time"
 
 	"github.com/ianeff/thump/api/v1/approval"
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -22,4 +24,16 @@ func (tr *Transport) ApproveHandlerForTest(ctx context.Context, a approval.Appro
 
 func RebuildHoldsForTest(ctx context.Context, js jetstream.JetStream) (*PendingHolds, error) {
 	return rebuildHolds(ctx, js)
+}
+
+func TranslateDecisionForTest(spec ApprovalRequestSpec, approvedBy string, now time.Time) (approval.Approval, bool, error) {
+	return translateDecision(spec, approvedBy, now)
+}
+
+func ForceDecisionForTest(held decision.Governed, forcedBy string, now time.Time) (decision.Governed, error) {
+	return forceDecision(held, forcedBy, now)
+}
+
+func NewApprovalRequestSpecForTest(held decision.Governed) ApprovalRequestSpec {
+	return newApprovalRequestSpec(held)
 }
