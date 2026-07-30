@@ -138,3 +138,8 @@ func ToolSpecsForTest(e *Engine) []ToolSpec {
 func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config) (*Intake, error) {
 	return buildIntake(cfg, backendTLS)
 }
+
+// IntakeTopologyForTest exposes the Intake's wired TopologySource.
+func IntakeTopologyForTest(i *Intake) TopologySource {
+	return i.topo
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -272,4 +273,31 @@ func writeOutcomeFor(t *testing.T, dir string, set proposal.Set) {
 func unmatchedCount(t *testing.T, inbox string) int {
 	t.Helper()
 	return yamlCount(t, filepath.Join(inbox, "unmatched"))
+}
+
+func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	catalogPath := filepath.Join(dir, "catalog.yaml")
+	queriesPath := filepath.Join(dir, "queries.yaml")
+	for _, f := range []string{catalogPath, queriesPath} {
+		if err := os.WriteFile(f, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.Clank{PromURL: "http://prom:9090", WhirCatalog: catalogPath, WhirStateQueries: queriesPath}
+	intake, err := clank.BuildIntakeForTest(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Row 1 (ChangeSource) is deliberately not pinned here: noopChange{} is
+	// still unconditional at clank.go:227,241 until W1 lands ArgoChangeSource,
+	// so there's no real implementation yet for a guard to reach. That row's
+	// pin is already spec'd in phase-w-plan.md's W1 section.
+	got := clank.IntakeTopologyForTest(intake)
+	if _, ok := got.(clank.WhirTopology); !ok {
+		t.Errorf("fully-configured buildIntake must reach a real WhirTopology, got %T", got)
+	}
 }

@@ -1,6 +1,8 @@
 package rattle_test
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -44,5 +46,35 @@ func TestBuildSources_WarnsOnEverySilentFallback(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBuildSources_FullyConfiguredReachesRealTopologyAndTraffic(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	catalogPath := filepath.Join(dir, "catalog.yaml")
+	statePath := filepath.Join(dir, "state-queries.yaml")
+	trafficPath := filepath.Join(dir, "traffic-queries.yaml")
+	for _, f := range []string{catalogPath, statePath, trafficPath} {
+		if err := os.WriteFile(f, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.Rattle{
+		PromURL:          "http://prom:9090",
+		WhirCatalog:      catalogPath,
+		WhirStateQueries: statePath,
+		Traffic:          trafficPath,
+	}
+	topo, traffic, err := rattle.BuildSourcesForTest(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := topo.(*rattle.WhirTopologySource); !ok {
+		t.Errorf("fully-configured buildSources must reach a real WhirTopologySource, got %T", topo)
+	}
+	if _, ok := traffic.(*rattle.HubbleTrafficSource); !ok {
+		t.Errorf("fully-configured buildSources must reach a real HubbleTrafficSource, got %T", traffic)
 	}
 }
