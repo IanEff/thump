@@ -18,7 +18,17 @@ coverage.*
 # Build output
 bin/
 dist/
-.otelc-build/
+
+# otelc's generated instrumentation/pkg trees (go.mod replace targets) are
+# committed — CI needs them present on a fresh checkout, and `otelc setup`
+# doesn't touch them again after the initial run. Only the scratch/cache
+# byproducts of every `task build` / `otelc:generate` run are ignored.
+.otelc-build/gocache/
+.otelc-build/debug/
+.otelc-build/debug.log
+.otelc-build/build-plan.log
+.otelc-build/matched.json
+.otelc-build/added_imports.*.json
 
 # macOS
 .DS_Store
