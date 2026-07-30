@@ -1,0 +1,30 @@
+# ClusterRole, not a namespaced Role like every other rbac-*-read.yaml in
+# this chart — an Application-of-Applications parent or an ApplicationSet
+# generator can land a child Application in any namespace (ArgoChangeSource
+# lists cluster-wide for exactly that reason), so a fixed-namespace Role
+# would silently miss whichever layout a given cluster uses. Gated on
+# argocd.enabled so a rig that doesn't run ArgoCD never gets a live grant it
+# has no use for.
+{{- if .Values.argocd.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: thump-argocd-read
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: thump-argocd-read
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: ClusterRole
+  name: thump-argocd-read
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

@@ -1,14 +1,17 @@
 package clank
 
 import (
+	"crypto/tls"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/trace/noop"
+	"k8s.io/client-go/dynamic"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 )
@@ -77,6 +80,14 @@ func ScoreConfidenceForTest(signalConf float64, corroborated int, selfReported f
 	}, DefaultScoringWeights())
 }
 
+// ScoreConfidencesForTest exposes scoreConfidences to clank_test — the
+// entry point Propose calls once per run, letting a test drive the causal
+// Likelihood term through the same code path production uses instead of
+// reimplementing scoreConfidence's per-candidate loop.
+func ScoreConfidencesForTest(set *proposal.Set, sao proposal.SAO, prior Prior, fingerprint string, w ScoringWeights) {
+	scoreConfidences(set, sao, prior, fingerprint, w)
+}
+
 // CoherentLiveCitationsForTest exposes coherentLiveCitations to clank_test —
 // the corroboration count scoreConfidences feeds into the grounding tiers,
 // so a test can pin what counts as coherent without going through a full
@@ -128,4 +139,21 @@ func ToAnthropicToolParamsForTest(tools []ToolSpec) []anthropic.ToolUnionParam {
 // order deterministic.
 func ToolSpecsForTest(e *Engine) []ToolSpec {
 	return e.toolSpecs()
+}
+
+// BuildIntakeForTest exposes buildIntake to clank_test — the seam W0b's
+// silent-fallback warnings hang off, and where W1's ArgoCD change source
+// plugs in next.
+func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface) (*Intake, error) {
+	return buildIntake(cfg, backendTLS, argo)
+}
+
+// IntakeTopologyForTest exposes the Intake's wired TopologySource.
+func IntakeTopologyForTest(i *Intake) TopologySource {
+	return i.topo
+}
+
+// IntakeChangeForTest exposes the Intake's wired ChangeSource.
+func IntakeChangeForTest(i *Intake) ChangeSource {
+	return i.change
 }

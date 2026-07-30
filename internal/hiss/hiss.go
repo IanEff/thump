@@ -134,7 +134,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 
 	pub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "hiss", "thump.decisions")
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
 
@@ -145,7 +145,16 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	}
 	defer func() { _ = pub.WAL.Drain(ctx, sink) }()
 
-	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: NewPendingHolds(), Tracer: tracer, Stages: stages}
+	holds, err := rebuildHolds(ctx, js)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
+	if holds.Len() == 0 {
+		slog.Warn("no pre-restart holds recovered from thump.decisions", "beat", "hiss")
+	}
+
+	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: holds, Tracer: tracer, Stages: stages}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {

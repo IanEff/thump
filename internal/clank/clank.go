@@ -16,6 +16,7 @@ import (
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/whir"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -97,38 +98,29 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 
 	restConfig, err := rest.InClusterConfig()
+	var argoClient dynamic.Interface
 	if err == nil {
-		kubeClient, err := kubernetes.NewForConfig(restConfig)
-		if err == nil {
+		kubeClient, kubeErr := kubernetes.NewForConfig(restConfig)
+		if kubeErr == nil {
 			tools["kube"] = &KubeTool{Client: kubeClient}
 		} else {
 			slog.Warn("could not build kube client from InClusterConfig", "err", err)
 		}
+
+		argoClient, err = dynamic.NewForConfig(restConfig)
+		if err != nil {
+			slog.Warn("could not build dynamic client from InClusterConfig", "err", err)
+			argoClient = nil
+		}
 	} else {
-		slog.Info("not running in-cluster, skipping kube tool registration")
+		slog.Info("not running in-cluster, skipping kube tool ang change source registration")
 	}
 
 	model := NewAnthropicModel(cfg.AnthropicAPIKey)
-	intake := NewIntake(noopTopology{}, noopChange{})
-	if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
-		if cfg.PromURL == "" {
-			_, _ = fmt.Fprintln(stderr, "PROM_URL required when WHIR_CATALOG and WHIR_STATE_QUERIES are set")
-			return 1
-		}
-		cat, err := whir.LoadCatalogFile(cfg.WhirCatalog)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
-			return 1
-		}
-		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load whir state queries: %v\n", err)
-			return 1
-		}
-		intake = NewIntake(WhirTopology{
-			Catalog:  cat,
-			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries},
-		}, noopChange{})
+	intake, err := buildIntake(cfg, backendTLS, argoClient)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
+		return 1
 	}
 
 	// Broker mode already Require()s all four S3_* vars for the WAL shipper
@@ -225,4 +217,44 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Timeout: modelRequestTimeout + 30*time.Second,
 	}, tick)
 	return 0
+}
+
+// buildIntake assembles clank's Intake from cfg-- WhirTopology when
+// WHIR_CATALOG AND WHIR_STATE_QUERIES are both set, noopTopology other-
+// wise.
+// buildIntake assumes cfg has already passed config.LoadClank's validation —
+// PROM_URL is cross-required there whenever both whir vars are set, so this
+// never needs to check that combination itself.
+func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface) (*Intake, error) {
+	var topo TopologySource = noopTopology{}
+
+	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
+		slog.Warn("no topology source configured — clank reasoning without a blast-radius map",
+			"beat", "clank", "fix", "set WHIR_CATALOG and WHIR_STATE_QUERIES")
+	} else {
+		cat, err := whir.LoadCatalogFile(cfg.WhirCatalog)
+		if err != nil {
+			return nil, fmt.Errorf("load whir catalog: %w", err)
+		}
+		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
+		if err != nil {
+			return nil, fmt.Errorf("load whir state queries: %w", err)
+		}
+		topo = WhirTopology{
+			Catalog:  cat,
+			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries},
+		}
+	}
+
+	var change ChangeSource = noopChange{}
+	switch {
+	case !cfg.ArgoEnabled:
+		slog.Warn("no change source configured — causal scoring is inert", "beat", "clank", "fix", "set ARGOCD_ENABLED=true")
+	case argo == nil:
+		slog.Warn("ARGOCD_ENABLED is set but clank has no in-cluster identity — causal scoring is inert", "beat", "clank")
+	default:
+		change = ArgoChangeSource{Client: argo}
+	}
+
+	return NewIntake(topo, change), nil
 }

@@ -5,6 +5,8 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/IanEff/thump.svg)](https://pkg.go.dev/github.com/IanEff/thump)
 [![License](https://img.shields.io/github/license/IanEff/thump)](LICENSE)
 
+![Thump](assets/rainbow_thump.png)
+
 thump is a general-purpose agentic SRE engine for Kubernetes — a
 multidimensional thermostat that watches reliability signals, reasons about them
 with an LLM, and executes an authored, catalog-bound action once policy clears.

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -27,6 +28,7 @@ type Clank struct {
 	LokiURL          string        // LOKI_URL — optional; empty disables the loki tool
 	WhirCatalog      string        // WHIR_CATALOG — optional; pairs with WhirStateQueries
 	WhirStateQueries string        // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
+	ArgoEnabled      bool          // ARGOCD_ENABLED - optional, default false; wires ArgoChangeSource against clank's in-cluster identity.
 	Transcripts      string        // CLANK_TRANSCRIPTS — optional, offline path only; broker mode always persists to S3 via the WAL's S3_* creds, ignoring this var. Empty keeps turns in memory only.
 	Inbox            string        // CLANK_INBOX — required only in the offline (non-broker) path
 	Outbox           string        // CLANK_OUTBOX — required only in the offline path
@@ -47,7 +49,10 @@ type Clank struct {
 // a NATS_URL (lc.NATSURL != "" after beat.Start) — the offline dir-poll
 // inbox/outbox/outcomes trio is only required when it didn't; the broker
 // path never reads them. WAL_DIR and the S3 fields are the inverse — no WAL
-// in the offline path, nothing to ship.
+// in the offline path, nothing to ship. PROM_URL is cross-required with the
+// WHIR pair: WhirTopology's Resolver dials Prometheus, so clank.buildIntake
+// can trust a fully-set whir pair always carries a usable PromURL, rather
+// than checking it again at construction time.
 func LoadClank(broker bool) (Clank, error) {
 	l := &loader{}
 	c := Clank{
@@ -61,7 +66,11 @@ func LoadClank(broker bool) (Clank, error) {
 		LokiURL:          l.Optional("LOKI_URL"),
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
+		ArgoEnabled:      l.OptionalBool("ARGOCD_ENABLED"),
 		Transcripts:      l.Optional("CLANK_TRANSCRIPTS"),
+	}
+	if c.WhirCatalog != "" && c.WhirStateQueries != "" && c.PromURL == "" {
+		l.errs = append(l.errs, errors.New("PROM_URL is required when WHIR_CATALOG and WHIR_STATE_QUERIES are set"))
 	}
 	if broker {
 		c.Inbox = l.Optional("CLANK_INBOX")
@@ -325,6 +334,20 @@ func (l *loader) OptionalURL(name string, allowed ...string) string {
 	}
 	l.checkScheme(name, v, allowed)
 	return v
+}
+
+// OptionalBool reads 'name' as a bool, defaulting to false when unset.
+func (l *loader) OptionalBool(name string) bool {
+	v := os.Getenv(name)
+	if v == "" {
+		return false
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		l.errs = append(l.errs, fmt.Errorf("%s: invalid bool %q: %w", name, v, err))
+		return false
+	}
+	return b
 }
 
 // checkScheme appends an error naming name if v's scheme isn't one of

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +15,10 @@ import (
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
 func TestMain_VersionFlag(t *testing.T) {
@@ -156,6 +161,50 @@ func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
 	}
 }
 
+func TestBuildIntake_WarnsOnEverySilentFallback(t *testing.T) {
+	tests := map[string]struct {
+		cfg      config.Clank
+		wantMsgs []string
+	}{
+		"buildIntake warns for both the change source and the topology source when whir is unconfigured": {
+			cfg: config.Clank{},
+			wantMsgs: []string{
+				"no change source configured — causal scoring is inert",
+				"no topology source configured — clank reasoning without a blast-radius map",
+			},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			// captureLog mutates the process-wide default logger — no t.Parallel().
+			getLines := captureLog(t)
+
+			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+
+			got := warnMessages(getLines())
+			for _, want := range tc.wantMsgs {
+				if !slices.Contains(got, want) {
+					t.Errorf("want a WARN %q, got %v", want, got)
+				}
+			}
+		})
+	}
+}
+
+// warnMessages pulls the msg field out of every captured WARN-level line —
+// captureLog's handler is set at LevelInfo, so INFO lines are in the mix too.
+func warnMessages(lines []map[string]any) []string {
+	var msgs []string
+	for _, l := range lines {
+		if l["level"] == "WARN" {
+			msgs = append(msgs, l["msg"].(string))
+		}
+	}
+	return msgs
+}
+
 // testLoop mirrors clank's unexported `loop` type field-for-field. We can't
 // name that type here (it's unexported, in package clank) — but newTestLoop
 // CAN hold a value of it via `:=` (Go lets you hold what you can't name), and
@@ -226,4 +275,54 @@ func writeOutcomeFor(t *testing.T, dir string, set proposal.Set) {
 func unmatchedCount(t *testing.T, inbox string) int {
 	t.Helper()
 	return yamlCount(t, filepath.Join(inbox, "unmatched"))
+}
+
+func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	catalogPath := filepath.Join(dir, "catalog.yaml")
+	queriesPath := filepath.Join(dir, "queries.yaml")
+	for _, f := range []string{catalogPath, queriesPath} {
+		if err := os.WriteFile(f, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.Clank{PromURL: "http://prom:9090", WhirCatalog: catalogPath, WhirStateQueries: queriesPath}
+	intake, err := clank.BuildIntakeForTest(cfg, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := clank.IntakeTopologyForTest(intake)
+	if _, ok := got.(clank.WhirTopology); !ok {
+		t.Errorf("fully-configured buildIntake must reach a real WhirTopology, got %T", got)
+	}
+}
+
+// TestBuildIntake_FullyConfiguredReachesRealChangeSource is W1's wiring
+// pin, the ChangeSource twin of TestBuildIntake_FullyConfiguredReachesRealTopology
+// above: an Intake holding noopChange{} assembles an SAO with no events, so
+// every CausalScore is absent and confidence's Likelihood term never
+// applies (TestScoreConfidences_LikelihoodTermIsLiveWhenChangeEventsExist
+// pins that half). Configured, buildIntake must reach a real ArgoChangeSource
+// instead — this is the guard against the exact class of bug W1 found:
+// a composition root passing a no-op unconditionally while the suite stays
+// green because it only ever tests the no-op path.
+func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
+	t.Parallel()
+
+	// A bare fake dynamic client.
+	fake := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+
+	cfg := config.Clank{ArgoEnabled: true}
+	intake, err := clank.BuildIntakeForTest(cfg, nil, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := clank.IntakeChangeForTest(intake)
+	if _, ok := got.(clank.ArgoChangeSource); !ok {
+		t.Errorf("fully-configured buildIntake must reach a real ArgoChangeSource, got %T", got)
+	}
 }

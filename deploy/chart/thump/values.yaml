@@ -28,6 +28,15 @@ prometheus:
 loki:
   url: http://loki.logging.svc.cluster.local:3100
 
+# ARGOCD_ENABLED wires ArgoChangeSource — clank's causal scorer has never
+# executed on a rig without it, because every proposal.ChangeSnapshot it
+# read was empty (phase-w-plan.md's headline finding). Both cluster
+# profiles already run ArgoCD (its self-heal is what reverts an operator
+# scale-to-0), so this defaults on rather than per-domain gated like
+# domains.otelDemo/acme below.
+argocd:
+  enabled: true
+
 # Empty by default — internal/beat.Tracer treats an empty
 # OTEL_EXPORTER_OTLP_ENDPOINT as "unconfigured" and falls back to a noop
 # Tracer, so a cluster with no OTel collector/Tempo deployed still starts
