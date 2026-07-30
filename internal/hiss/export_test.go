@@ -8,6 +8,7 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/nats-io/nats.go/jetstream"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // HandleForTest exposes Transport.handle to hiss_test without handle
@@ -36,4 +37,12 @@ func ForceDecisionForTest(held decision.Governed, forcedBy string, now time.Time
 
 func NewApprovalRequestSpecForTest(held decision.Governed) ApprovalRequestSpec {
 	return newApprovalRequestSpec(held)
+}
+
+func ApprovalRequestNameForTest(signalRef string) string {
+	return approvalRequestName(signalRef)
+}
+
+func (c *ApprovalRequestController) ReconcileForTest(ctx context.Context, u *unstructured.Unstructured) error {
+	return c.reconcile(ctx, u)
 }
