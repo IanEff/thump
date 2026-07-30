@@ -96,6 +96,8 @@ spec:
               value: /etc/thump/whir/state-queries.yaml
             - name: EVIDENCE_QUERIES
               value: /etc/thump/whir/evidence-queries.yaml
+            - name: ARGOCD_ENABLED
+              value: {{ .Values.argocd.enabled | quote }}
             - name: ACTION_CATALOG
               value: /etc/thump/actions/catalog.yaml
             - name: FAILURE_CLASSES

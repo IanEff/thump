@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -27,6 +28,7 @@ type Clank struct {
 	LokiURL          string        // LOKI_URL — optional; empty disables the loki tool
 	WhirCatalog      string        // WHIR_CATALOG — optional; pairs with WhirStateQueries
 	WhirStateQueries string        // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
+	ArgoEnabled      bool          // ARGOCD_ENABLED - optional, default false; wires ArgoChangeSource against clank's in-cluster identity.
 	Transcripts      string        // CLANK_TRANSCRIPTS — optional, offline path only; broker mode always persists to S3 via the WAL's S3_* creds, ignoring this var. Empty keeps turns in memory only.
 	Inbox            string        // CLANK_INBOX — required only in the offline (non-broker) path
 	Outbox           string        // CLANK_OUTBOX — required only in the offline path
@@ -64,6 +66,7 @@ func LoadClank(broker bool) (Clank, error) {
 		LokiURL:          l.Optional("LOKI_URL"),
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
+		ArgoEnabled:      l.OptionalBool("ARGOCD_ENABLED"),
 		Transcripts:      l.Optional("CLANK_TRANSCRIPTS"),
 	}
 	if c.WhirCatalog != "" && c.WhirStateQueries != "" && c.PromURL == "" {
@@ -331,6 +334,20 @@ func (l *loader) OptionalURL(name string, allowed ...string) string {
 	}
 	l.checkScheme(name, v, allowed)
 	return v
+}
+
+// OptionalBool reads 'name' as a bool, defaulting to false when unset.
+func (l *loader) OptionalBool(name string) bool {
+	v := os.Getenv(name)
+	if v == "" {
+		return false
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		l.errs = append(l.errs, fmt.Errorf("%s: invalid bool %q: %w", name, v, err))
+		return false
+	}
+	return b
 }
 
 // checkScheme appends an error naming name if v's scheme isn't one of

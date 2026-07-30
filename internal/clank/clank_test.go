@@ -17,6 +17,8 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
 func TestMain_VersionFlag(t *testing.T) {
@@ -177,7 +179,7 @@ func TestBuildIntake_WarnsOnEverySilentFallback(t *testing.T) {
 			// captureLog mutates the process-wide default logger — no t.Parallel().
 			getLines := captureLog(t)
 
-			if _, err := clank.BuildIntakeForTest(tc.cfg, nil); err != nil {
+			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 
@@ -287,17 +289,40 @@ func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
 	}
 
 	cfg := config.Clank{PromURL: "http://prom:9090", WhirCatalog: catalogPath, WhirStateQueries: queriesPath}
-	intake, err := clank.BuildIntakeForTest(cfg, nil)
+	intake, err := clank.BuildIntakeForTest(cfg, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Row 1 (ChangeSource) is deliberately not pinned here: noopChange{} is
-	// still unconditional at clank.go:227,241 until W1 lands ArgoChangeSource,
-	// so there's no real implementation yet for a guard to reach. That row's
-	// pin is already spec'd in phase-w-plan.md's W1 section.
 	got := clank.IntakeTopologyForTest(intake)
 	if _, ok := got.(clank.WhirTopology); !ok {
 		t.Errorf("fully-configured buildIntake must reach a real WhirTopology, got %T", got)
+	}
+}
+
+// TestBuildIntake_FullyConfiguredReachesRealChangeSource is W1's wiring
+// pin, the ChangeSource twin of TestBuildIntake_FullyConfiguredReachesRealTopology
+// above: an Intake holding noopChange{} assembles an SAO with no events, so
+// every CausalScore is absent and confidence's Likelihood term never
+// applies (TestScoreConfidences_LikelihoodTermIsLiveWhenChangeEventsExist
+// pins that half). Configured, buildIntake must reach a real ArgoChangeSource
+// instead — this is the guard against the exact class of bug W1 found:
+// a composition root passing a no-op unconditionally while the suite stays
+// green because it only ever tests the no-op path.
+func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
+	t.Parallel()
+
+	// A bare fake dynamic client.
+	fake := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+
+	cfg := config.Clank{ArgoEnabled: true}
+	intake, err := clank.BuildIntakeForTest(cfg, nil, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := clank.IntakeChangeForTest(intake)
+	if _, ok := got.(clank.ArgoChangeSource); !ok {
+		t.Errorf("fully-configured buildIntake must reach a real ArgoChangeSource, got %T", got)
 	}
 }

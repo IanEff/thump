@@ -495,7 +495,7 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 
 func TestConfigIsALeafPackage(t *testing.T) {
 	t.Parallel()
-	leaftest.AssertLeaf(t, "encoding/base64", "errors", "net/url", "fmt", "os", "time")
+	leaftest.AssertLeaf(t, "encoding/base64", "errors", "net/url", "fmt", "os", "strconv", "time")
 }
 
 func TestLoadThump_RefusesAPlaintextS3EndpointAtLoadTime(t *testing.T) {
