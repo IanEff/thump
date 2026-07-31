@@ -159,30 +159,45 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 	}, nil
 }
 
-// LoadEvidenceQueries parses evidence-queries.yaml into a query lookup and a
-// parallel subjects lookup — a name absent from subjects declared no
-// subject: tag, so MetricsTool stamps no Subject for it (see
+// EvidenceConfig is one rig's evidence surface: the named PromQL the metrics
+// tool exposes, the topology node each of those queries is about, and the
+// coordinate rules that tell the log and cluster tools the same thing. All
+// three answer one question — which node is this evidence about? — so they
+// are authored in one file per rig.
+type EvidenceConfig struct {
+	Queries  map[string]string // query name → PromQL
+	Subjects map[string]string // query name → topology node; a name absent from it declared no subject: tag
+	Index    SubjectIndex      // the log and cluster tools' coordinate rules
+}
+
+// LoadEvidenceConfig parses evidence-queries.yaml. A query with no subject:
+// tag is absent from Subjects rather than present with an empty string, so
+// MetricsTool stamps no Subject for it via the zero value (see
 // EvidenceRef.Subject).
-func LoadEvidenceQueries(path string) (queries map[string]string, subjects map[string]string, err error) {
+func LoadEvidenceConfig(path string) (EvidenceConfig, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config file path, not user input
 	if err != nil {
-		return nil, nil, fmt.Errorf("read evidence queries file %s: %w", path, err)
+		return EvidenceConfig{}, fmt.Errorf("read evidence queries file %s: %w", path, err)
 	}
 
 	var file struct {
-		Queries []EvidenceQuery `json:"queries"`
+		Queries  []EvidenceQuery `json:"queries"`
+		Subjects []SubjectRule   `json:"subjects"`
 	}
 	if err := yaml.Unmarshal(raw, &file); err != nil {
-		return nil, nil, fmt.Errorf("parse evidence queries: %w", err)
+		return EvidenceConfig{}, fmt.Errorf("parse evidence queries: %w", err)
 	}
 
-	queries = make(map[string]string, len(file.Queries))
-	subjects = make(map[string]string, len(file.Queries))
+	cfg := EvidenceConfig{
+		Queries:  make(map[string]string, len(file.Queries)),
+		Subjects: make(map[string]string, len(file.Queries)),
+		Index:    file.Subjects,
+	}
 	for _, q := range file.Queries {
-		queries[q.Name] = q.Query
+		cfg.Queries[q.Name] = q.Query
 		if q.Subject != "" {
-			subjects[q.Name] = q.Subject
+			cfg.Subjects[q.Name] = q.Subject
 		}
 	}
-	return queries, subjects, nil
+	return cfg, nil
 }
