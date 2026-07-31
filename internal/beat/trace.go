@@ -35,6 +35,11 @@ type exporterFactory func(ctx context.Context, endpoint string) (sdktrace.SpanEx
 // process-global default — internal/broker's and internal/publish's
 // propagation.TraceContext{} read that global, so they need no wiring of
 // their own.
+//
+// The otelc auto-instrumentation layer (.otelc-build) reads this same var
+// independently, through autoexport rather than otlpDialOptions below — it
+// needs a full URL, not the bare host:port otlpDialOptions itself would
+// accept, so the value must always carry a scheme.
 func Tracer(ctx context.Context, beatName string, tlsCfg tlsx.Config) (trace.Tracer, Shutdown, error) {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	factory := func(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
