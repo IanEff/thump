@@ -1,0 +1,32 @@
+# The authority to release a held action, expressed as RBAC on the resource
+# rather than as a string a human types about themselves. Anyone bound here
+# can approve any hold in the namespace; nobody is bound by default, because
+# a chart that shipped a default approver would be granting exactly the
+# authority this resource exists to constrain.
+#
+# There is no force verb to grant. Substituting a human's judgment for hiss's
+# risk gate is break-glass and lives in the trim CLI, so it cannot be reached
+# by changing one word of an ordinary approval patch.
+{{- if and .Values.approvalRequests.enabled .Values.approvalRequests.approvers }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-approver
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: ["thump.dev"]
+    resources: ["approvalrequests"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-approver
+  namespace: {{ .Release.Namespace }}
+subjects:
+{{- toYaml .Values.approvalRequests.approvers | nindent 2 }}
+roleRef:
+  kind: Role
+  name: thump-approver
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

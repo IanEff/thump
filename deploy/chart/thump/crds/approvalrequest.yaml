@@ -60,9 +60,15 @@ spec:
                   type: array
                   items:
                     type: string
+                # The only human-writable field on this resource, and it may
+                # only ever produce an ack. Bypassing hiss's risk gate is
+                # break-glass and stays with the trim CLI: a verdict a human
+                # substitutes for governance must not be five characters away
+                # from an ordinary approval, on the same object, under the
+                # same RBAC verb.
                 decision:
                   type: string
-                  enum: ["", "approve", "force"]
+                  enum: ["", "approve"]
             status:
               type: object
               properties:
