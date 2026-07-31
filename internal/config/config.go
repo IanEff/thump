@@ -113,6 +113,8 @@ type Hiss struct {
 	TLSKeyFile  string // TLS_KEY_FILE — required only in the broker path
 	TLSCAFile   string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 	SealKey     []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
+
+	ApprovalRequestsEnabled bool // APPROVALREQUESTS_ENABLED — optional, default false; runs the ApprovalRequest controller against hiss's in-cluster identity. Off means trim is the only path that releases a hold.
 }
 
 // LoadHiss reads hiss's environment once. broker is whether Main resolved a
@@ -140,6 +142,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 		h.TLSKeyFile = l.Require("TLS_KEY_FILE")
 		h.TLSCAFile = l.Require("TLS_CA_FILE")
 		h.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
+		h.ApprovalRequestsEnabled = l.OptionalBool("APPROVALREQUESTS_ENABLED")
 	} else {
 		h.Inbox = l.Require("HISS_INBOX")
 		h.Outbox = l.Require("HISS_OUTBOX")
