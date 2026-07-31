@@ -105,6 +105,7 @@ data:
           permissions: {
             publish: {
               allow: [
+                "thump.orders",
                 "thump.outcomes",
                 "thump.decisions.dlq",
                 "$JS.API.CONSUMER.INFO.THUMP.thump", "$JS.API.CONSUMER.MSG.NEXT.THUMP.thump", "$JS.ACK.THUMP.thump.>"
