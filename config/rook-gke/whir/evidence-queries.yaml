@@ -130,3 +130,22 @@ subjects:
     namespace: rook-ceph
     labels:
       app: rook-ceph-operator
+
+  # --- changed resources ---
+  # ArgoCD publishes a synced object's namespace, kind and name, never its
+  # labels, so the rules above can never match one. No CephFilesystem rule:
+  # this rig's catalog declares no such node, and a rule naming a node the
+  # graph does not have would resolve to a target nothing can join.
+  - subject: cephcluster
+    namespace: rook-ceph
+    kind: CephCluster
+  - subject: cephblockpool
+    namespace: rook-ceph
+    kind: CephBlockPool
+  - subject: cephobjectstore
+    namespace: rook-ceph
+    kind: CephObjectStore
+  - subject: rook-operator
+    namespace: rook-ceph
+    kind: Deployment
+    name: rook-ceph-operator

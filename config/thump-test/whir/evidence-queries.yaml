@@ -280,3 +280,49 @@ subjects:
   # labels; every multi-tenant namespace above does.
   - subject: acme-api
     namespace: acme
+
+  # --- changed resources ---
+  # ArgoCD publishes a synced object's namespace, kind and name, never its
+  # labels, so the rules above can never match one. These are keyed on kind
+  # wherever a kind identifies a node on its own: the object names differ per
+  # rig (replicapool here, myfs there) but the kinds do not.
+  - subject: cephcluster
+    namespace: rook-ceph
+    kind: CephCluster
+  - subject: cephblockpool
+    namespace: rook-ceph
+    kind: CephBlockPool
+  - subject: cephfilesystem
+    namespace: rook-ceph
+    kind: CephFilesystem
+  - subject: cephobjectstore
+    namespace: rook-ceph
+    kind: CephObjectStore
+  - subject: rook-operator
+    namespace: rook-ceph
+    kind: Deployment
+    name: rook-ceph-operator
+
+  # The demo names each service's Deployment after the service itself, which
+  # is also the catalog entity name — stated per workload anyway, because
+  # otel-demo is multi-tenant and a namespace-wide rule would claim all of it.
+  - subject: cart
+    namespace: otel-demo
+    kind: Deployment
+    name: cart
+  - subject: checkout
+    namespace: otel-demo
+    kind: Deployment
+    name: checkout
+  - subject: frontend
+    namespace: otel-demo
+    kind: Deployment
+    name: frontend
+  - subject: product-catalog
+    namespace: otel-demo
+    kind: Deployment
+    name: product-catalog
+  - subject: flagd
+    namespace: otel-demo
+    kind: Deployment
+    name: flagd

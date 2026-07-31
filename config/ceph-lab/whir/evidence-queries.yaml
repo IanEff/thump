@@ -134,3 +134,25 @@ subjects:
     namespace: rook-ceph
     labels:
       app: rook-ceph-operator
+
+  # --- changed resources ---
+  # ArgoCD publishes a synced object's namespace, kind and name, never its
+  # labels, so the rules above can never match one. Keyed on kind wherever a
+  # kind identifies a node on its own: object names differ per rig, kinds
+  # do not.
+  - subject: cephcluster
+    namespace: rook-ceph
+    kind: CephCluster
+  - subject: cephblockpool
+    namespace: rook-ceph
+    kind: CephBlockPool
+  - subject: cephfilesystem
+    namespace: rook-ceph
+    kind: CephFilesystem
+  - subject: cephobjectstore
+    namespace: rook-ceph
+    kind: CephObjectStore
+  - subject: rook-operator
+    namespace: rook-ceph
+    kind: Deployment
+    name: rook-ceph-operator
