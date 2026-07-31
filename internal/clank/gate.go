@@ -56,14 +56,12 @@ func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateR
 }
 
 // anyCoherentLive reports whether refs has a Live entry the gate may treat
-// as grounding on its own. A ref with no declared Subject makes no
-// topology claim and always qualifies — this is what keeps every
-// unclassified tool call (the whole fleet, until evidence-queries.yaml
-// grows subject: tags) behaving exactly as it did before this check
-// existed. A ref that does declare a Subject only qualifies when that node
-// appears in sao's Topology; a cross-domain claim still enters Evidence
-// (the model saw it, and it can corroborate a hypothesis another in-topology
-// ref already grounds) but can't be the sole citation that clears the gate.
+// as grounding on its own. A ref only qualifies when it declares a Subject
+// that resolves to the signal's own affected service or a node in sao's
+// Topology (W3: fail-closed, see coherentSubject) — an untagged ref, or one
+// naming a node outside the frozen snapshot, still enters Evidence and can
+// corroborate a hypothesis another in-topology ref already grounds, but
+// can't be the sole citation that clears the gate.
 func anyCoherentLive(refs []proposal.EvidenceRef, sao *proposal.SAO) bool {
 	for _, ref := range refs {
 		if ref.Live && coherentSubject(ref, sao) {
@@ -74,15 +72,25 @@ func anyCoherentLive(refs []proposal.EvidenceRef, sao *proposal.SAO) bool {
 }
 
 // coherentSubject reports whether ref's topology claim is one the SAO can
-// confirm: no claim at all, the signal's own affected service, or a node in
-// the frozen Topology snapshot. The self clause exists because no service
-// appears in its own dependency list — without it, evidence about the
-// affected service itself could never ground a proposal on its own. A nil
-// sao confirms nothing and fails closed.
+// confirm: the signal's own affected service, or a node in the frozen
+// Topology snapshot. The self clause exists because no service appears in
+// its own dependency list — without it, evidence about the affected
+// service itself could never ground a proposal on its own. A nil sao
+// confirms nothing and fails closed.
+//
+// An untagged ref (Subject == "") also fails closed — W3's ruling. It used
+// to auto-qualify, on the reasoning that "no claim" can't be an incoherent
+// claim; the gate-coherence-huddle finding was that this is exactly the
+// loophole a fabricated cross-domain bridge rides through undetected,
+// since an unlabelled citation looks identical to an honestly-untaggable
+// one. A ref that genuinely can't claim a single node (a cluster-wide
+// aggregate, a multi-service span) still enters Evidence and can
+// corroborate a hypothesis something in-topology already grounds — it
+// just can no longer be the sole citation that clears the gate. I-5's own
+// text: a gate minimum is a hard conjunction, and a missed subject: tag
+// failing loud here (a suppressed set, visible in the audit trail as
+// reason: "evidence") is safer than it failing silent.
 func coherentSubject(ref proposal.EvidenceRef, sao *proposal.SAO) bool {
-	if ref.Subject == "" {
-		return true
-	}
 	if sao == nil {
 		return false
 	}

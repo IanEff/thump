@@ -76,6 +76,14 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 				"ceph_health":  "ceph_health_status",
 				"osd_capacity": "ceph_osd_capacity_ratio",
 			},
+			// node-death.yaml's OriginService is ceph-cluster; goldenEngine's
+			// fakeTopo carries no topology at all, so the self-match clause
+			// of gate.go's coherentSubject is the only path to clearing the
+			// gate under W3's fail-closed ruling.
+			Subjects: map[string]string{
+				"ceph_health":  "ceph-cluster",
+				"osd_capacity": "ceph-cluster",
+			},
 		},
 	}
 
@@ -154,8 +162,9 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	defer ts.Close()
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
-			BaseURL: ts.URL,
-			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+			BaseURL:  ts.URL,
+			Queries:  map[string]string{"ceph_health": "ceph_health_status"},
+			Subjects: map[string]string{"ceph_health": "ceph-cluster"}, // self-match, see the sibling test above
 		},
 	}
 
@@ -219,13 +228,21 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	defer ts.Close()
 
 	// the two named queries a real evidence-queries.yaml resolves these to —
-	// see config/whir/evidence-queries.yaml, group 2.
+	// see config/whir/evidence-queries.yaml, group 2. Both carry subject:
+	// ceph-cluster in production (they're ceph-health's own decomposition,
+	// same relationship group 8's raw ratios have to their SLO) — self-match
+	// against node-death.yaml's OriginService here, same reasoning as the
+	// other goldenpath tests above.
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]string{
 				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
 				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
+			},
+			Subjects: map[string]string{
+				"osds_down":       "ceph-cluster",
+				"pgs_backfilling": "ceph-cluster",
 			},
 		},
 	}
@@ -452,6 +469,10 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 			Queries: map[string]string{
 				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
 				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
+			},
+			Subjects: map[string]string{
+				"osds_down":       "ceph-cluster",
+				"pgs_backfilling": "ceph-cluster",
 			},
 		},
 	}

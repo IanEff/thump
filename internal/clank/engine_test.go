@@ -438,6 +438,12 @@ func (metricsTool) Run(_ context.Context, args json.RawMessage) (proposal.Eviden
 		Summary: "latency_p99 elevated 3x over baseline",
 		Ref:     "metrics://latency_p99",
 		Live:    true,
+		// Subject names a node in newTestEngine/newTestEngineWithCatalog's
+		// fixed fakeTopo snapshot (Downstream: payments-db) — signal-
+		// independent, so this citation is in-topology regardless of which
+		// fixture's OriginService the caller uses (W3: gate.go's
+		// coherentSubject fails closed on an untagged ref).
+		Subject: "payments-db",
 	}, nil
 }
 

@@ -3,6 +3,14 @@
 # and cites the result as an EvidenceRef (Live:true only on a fresh,
 # non-empty, non-error result — see internal/clank/metrics_tool.go).
 #
+# subject: pins a query to the one topology node (from catalog-info.yaml)
+# it's evidence about — internal/clank/gate.go's coherentSubject checks it
+# against the signal's own frozen topology and fails CLOSED (W3, 2026-07-31):
+# an untagged query can still be cited as corroborating evidence, but can
+# never solely ground a proposal past the gate. Tag every query that
+# honestly maps to one node; leave a query untagged only when it genuinely
+# spans more than one.
+#
 # This is the same declared-surface discipline as config/whir/state-queries.yaml
 # and the action catalog (clank.go's defaultCatalog): a curated, reviewed set,
 # not arbitrary PromQL the model writes itself.
@@ -19,32 +27,53 @@ queries:
   # ── group 1 · cluster health & the firing SLO (universal) ───────────────
   - name: ceph_health              # 0=OK, 1=WARN, 2=ERR — the headline
     query: ceph_health_status
+    subject: ceph-cluster
   - name: slo_burn_ceph_health     # the burn rate rattle fired on
     query: slo:current_burn_rate:ratio{sloth_id="ceph-health"}
+    subject: ceph-cluster
   - name: slo_burn_rgw             # RGW-availability burn
     query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-availability"}
+    subject: ceph-rgw
 
   # ── group 2 · OSD / rebalance state (evidence FOR or AGAINST hold-rebalance) ─
+  # subject: ceph-cluster on the general-state queries below — these are the
+  # raw decomposition of the ceph-health SLI. pgs_degraded is the one
+  # exception: it's the redundancy_degraded surface, so it carries
+  # cephblockpool instead (this rig has no dedicated ceph-redundancy SLO
+  # query, but cephblockpool is still the honest subject for the metric).
   - name: osds_down                # OSDs currently down — transient node loss?
     query: count(ceph_osd_up == 0) or vector(0)
+    subject: ceph-cluster
   - name: osds_out                 # OSDs marked out — is CRUSH about to rebalance?
     query: count(ceph_osd_in == 0) or vector(0)
+    subject: ceph-cluster
   - name: pgs_degraded             # degraded PGs — the rebalance's blast surface
     query: sum(ceph_pg_degraded) or vector(0)
+    subject: cephblockpool
   - name: pgs_backfilling          # is a rebalance/backfill ALREADY in flight?
     query: sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)
+    subject: ceph-cluster
   - name: recovery_ops_rate        # recovery ops/s — is the cluster thrashing right now?
     query: sum(ceph_osd_recovery_ops) or vector(0)
+    subject: ceph-cluster
   - name: mons_in_quorum           # mon quorum count — a quorum loss changes everything
     query: count(ceph_mon_quorum_status == 1) or vector(0)
+    subject: ceph-cluster
 
   # ── group 3 · capacity / resource_exhaustion (the hold-rebalance failure class) ─
   - name: cluster_used_ratio       # 0..1 whole-cluster fullness
     query: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes
+    subject: ceph-cluster
   - name: fullest_pool_ratio       # the single most-full pool — nearfull triggers noout thrash
     query: max(ceph_pool_stored / (ceph_pool_stored + ceph_pool_max_avail))
+    subject: ceph-cluster
   - name: osd_write_latency_ms     # avg OSD write latency.
+    # subject: ceph-cluster, not ceph-osd — this rig's catalog-info.yaml has
+    # no dedicated ceph-osd component (no ceph-osd-latency SLO wired here
+    # yet), so ceph-cluster is the closest subject this query can honestly
+    # claim. Revisit if this rig ever grows that SLO.
     query: 1000 * rate(ceph_osd_op_w_latency_sum[5m]) / rate(ceph_osd_op_w_latency_count[5m])
+    subject: ceph-cluster
     # ⚠️ Ceph may already expose this ladder in MILLISECONDS on this cluster
     # (the ceph-latency-bridge ms-vs-s bug, running notes 2026-07-03). If the
     # sum is already ms, drop the `1000 *`. VERIFY the unit before trusting it.
@@ -52,14 +81,21 @@ queries:
   # ── group 4 · RGW / traffic (evidence for throttle-non-critical-paths + rgw SLO) ─
   - name: rgw_request_rate         # req/s through the object gateway
     query: sum(rate(ceph_rgw_req[5m])) or vector(0)
+    subject: ceph-rgw
   - name: rgw_failed_rate          # failed req/s — the availability SLI's numerator
     query: sum(rate(ceph_rgw_failed_req[5m])) or vector(0)
+    subject: ceph-rgw
 
   # ── group 5 · node / pod state (OPERATOR clusters only — see note) ───────
   # kube-state-metrics ships with kube-prometheus-stack (rook-gke). On a
   # standalone Prometheus chart these may NOT be scraped — verify before
   # relying on them; an absent metric just resolves Live:false, not an error.
+  # nodes_not_ready spans every k8s node, Ceph or not — left untagged rather
+  # than pinned to a subject it can't honestly claim. rook_pods_not_running
+  # is narrower (namespace=rook-ceph only) and is a ceph-cluster health
+  # decomposition, same as group 2.
   - name: nodes_not_ready
     query: count(kube_node_status_condition{condition="Ready",status="true"} == 0) or vector(0)
   - name: rook_pods_not_running
     query: count(kube_pod_status_phase{namespace="rook-ceph",phase!="Running"} == 1) or vector(0)
+    subject: ceph-cluster

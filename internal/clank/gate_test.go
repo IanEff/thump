@@ -133,7 +133,14 @@ func TestGate_EvidenceMinimumReadsTheRecommendedCandidatesCitations(t *testing.T
 }
 
 func psWithLiveEvidence() proposal.Set {
-	return proposal.Set{Name: "live_evidence", Evidence: []proposal.EvidenceRef{{Live: true}}}
+	return proposal.Set{
+		Name: "live_evidence",
+		SAOSnapshot: &proposal.SAO{
+			Version: 1,
+			Signal:  proposal.SignalSnapshot{OriginService: "checkout"},
+		},
+		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "checkout"}},
+	}
 }
 
 func psHistoricalOnly() proposal.Set {

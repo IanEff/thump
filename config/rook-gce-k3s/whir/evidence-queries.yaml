@@ -3,6 +3,14 @@
 # and cites the result as an EvidenceRef (Live:true only on a fresh,
 # non-empty, non-error result — see internal/clank/metrics_tool.go).
 #
+# subject: pins a query to the one topology node (from catalog-info.yaml)
+# it's evidence about — internal/clank/gate.go's coherentSubject checks it
+# against the signal's own frozen topology and fails CLOSED (W3, 2026-07-31):
+# an untagged query can still be cited as corroborating evidence, but can
+# never solely ground a proposal past the gate. Tag every query that
+# honestly maps to one node; leave a query untagged only when it genuinely
+# spans more than one.
+#
 # This is the same declared-surface discipline as
 # config/rook-gce-k3s/whir/state-queries.yaml and the action catalog
 # (clank.go's defaultCatalog): a curated, reviewed set, not arbitrary PromQL
@@ -27,30 +35,46 @@ queries:
   # now pins job="rook-ceph-mgr" for this reason — don't drop the filter.
   - name: ceph_health              # 0=OK, 1=WARN, 2=ERR — the headline
     query: ceph_health_status{job="rook-ceph-mgr"}
+    subject: ceph-cluster
   - name: slo_burn_ceph_health     # the burn rate rattle fired on
     query: slo:current_burn_rate:ratio{sloth_id="ceph-health"}
+    subject: ceph-cluster
   - name: slo_burn_rgw             # RGW-availability burn (error-rate SLI — see rgw_failed_rate below)
     query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-availability"}
+    subject: ceph-rgw
   - name: slo_burn_rgw_saturation  # RGW-saturation burn (raw GET/PUT latency SLI — see rgw_get_put_latency_ms below)
     query: slo:current_burn_rate:ratio{sloth_id="ceph-rgw-saturation"}
+    subject: ceph-rgw
   - name: slo_burn_osd_latency     # OSD-latency burn — the first live site to render this SLO
     query: slo:current_burn_rate:ratio{sloth_id="ceph-osd-latency"}
+    subject: ceph-osd
   - name: slo_burn_redundancy      # data-durability burn — degraded/undersized PGs (the redundancy_degraded signal)
     query: slo:current_burn_rate:ratio{sloth_id="ceph-redundancy"}
+    subject: cephblockpool
   - name: slo_burn_argocd_sync     # ArgoCD-sync burn — no catalog action maps here (D3 decline probe)
     query: slo:current_burn_rate:ratio{sloth_id="argocd-sync"}
+    subject: argocd
 
   # ── group 2 · OSD / rebalance state (evidence FOR or AGAINST hold-rebalance) ─
+  # subject: ceph-cluster on the general-state queries below — these are the
+  # raw decomposition of the ceph-health SLI. pgs_degraded/pgs_undersized
+  # are the exception: they're the redundancy_degraded surface, so they
+  # carry ceph-redundancy's own subject (cephblockpool) instead.
   - name: osds_down                # OSDs currently down — transient node loss?
     query: count(ceph_osd_up{job="rook-ceph-mgr"} == 0) or vector(0)
+    subject: ceph-cluster
   - name: osds_out                 # OSDs marked out — is CRUSH about to rebalance?
     query: count(ceph_osd_in{job="rook-ceph-mgr"} == 0) or vector(0)
+    subject: ceph-cluster
   - name: pgs_degraded             # degraded PGs — below replica count, the redundancy_degraded surface
     query: sum(ceph_pg_degraded{job="rook-ceph-mgr"}) or vector(0)
+    subject: cephblockpool
   - name: pgs_undersized           # undersized PGs — too few OSDs to place all replicas
     query: sum(ceph_pg_undersized{job="rook-ceph-mgr"}) or vector(0)
+    subject: cephblockpool
   - name: pgs_backfilling          # is a rebalance/backfill ALREADY in flight?
     query: sum(ceph_pg_backfilling{job="rook-ceph-mgr"} + ceph_pg_backfill_wait{job="rook-ceph-mgr"}) or vector(0)
+    subject: ceph-cluster
   - name: recovery_ops_rate        # recovery ops/s — is the cluster thrashing right now?
     # Different pairing than the rest of this group: ceph_osd_recovery_ops
     # comes from the standalone rook-ceph-exporter DaemonSet, not the mgr's
@@ -66,16 +90,21 @@ queries:
     # note only confirmed the metric SCRAPES; a scrape check can't catch a
     # counter-vs-rate mislabel — only reading it at rest vs. under load can.
     query: sum(rate(ceph_osd_recovery_ops{job="rook-ceph-exporter"}[2m])) or vector(0)
+    subject: ceph-cluster
   - name: mons_in_quorum           # mon quorum count — a quorum loss changes everything
     query: count(ceph_mon_quorum_status{job="rook-ceph-mgr"} == 1) or vector(0)
+    subject: ceph-cluster
 
   # ── group 3 · capacity / resource_exhaustion (the hold-rebalance failure class) ─
   - name: cluster_used_ratio       # 0..1 whole-cluster fullness
     query: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes
+    subject: ceph-cluster
   - name: fullest_pool_ratio       # the single most-full pool — nearfull triggers noout thrash
     query: max(ceph_pool_stored / (ceph_pool_stored + ceph_pool_max_avail))
+    subject: ceph-cluster
   - name: osd_write_latency_ms     # avg OSD write latency, filtered to the latency-bridge job
     query: 1000 * rate(ceph_osd_op_w_latency_sum{job="ceph-latency-bridge"}[5m]) / rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[5m])
+    subject: ceph-osd
     # ⚠️ ceph-latency-bridge's own ladder is already known to have hit an
     # ms-vs-s unit bug on this same rig lineage (ceph-lab-running-notes
     # 2026-07-03, "Bug 1"/"Bug 2") — the Sloth SLO's own errorRatioQuery was
@@ -88,11 +117,14 @@ queries:
   # ── group 4 · RGW / traffic (evidence for throttle-non-critical-paths + rgw SLOs) ─
   - name: rgw_request_rate         # req/s through the object gateway
     query: sum(rate(ceph_rgw_req[5m])) or vector(0)
+    subject: ceph-rgw
   - name: rgw_failed_rate          # failed req/s — the AVAILABILITY SLI's numerator (pre-execution
     query: sum(rate(ceph_rgw_failed_req[5m])) or vector(0)
+    subject: ceph-rgw
     # rejections only — auth/ratelimit/suspended-user. A backend-slow op
     # that completes successfully never moves this; see rgw_get_put_latency_ms.
   - name: rgw_get_put_latency_ms   # avg GET+PUT op latency, ms — the SATURATION SLI's raw value
+    subject: ceph-rgw
     query: >-
       1000 * (
         (sum(rate(ceph_rgw_op_get_obj_lat_sum[1m])) + sum(rate(ceph_rgw_op_put_obj_lat_sum[1m])))
@@ -127,14 +159,20 @@ queries:
   # kube-state-metrics is enabled on this rig's prometheus chart
   # (applications/infrastructure/prometheus/values.yaml, kube-state-metrics.
   # enabled: true) — unlike rook-gke, this isn't a maybe.
+  # nodes_not_ready spans every k8s node, Ceph or not — left untagged rather
+  # than pinned to a subject it can't honestly claim. rook_pods_not_running
+  # is narrower (namespace=rook-ceph only) and is a ceph-cluster health
+  # decomposition, same as group 2.
   - name: nodes_not_ready
     query: count(kube_node_status_condition{condition="Ready",status="true"} == 0) or vector(0)
   - name: rook_pods_not_running
     query: count(kube_pod_status_phase{namespace="rook-ceph",phase!="Running"} == 1) or vector(0)
+    subject: ceph-cluster
 
   # ── group 6 · ArgoCD sync state (evidence for the argocd-sync decline probe) ─
   - name: argocd_apps_out_of_sync
     query: count(argocd_app_info{sync_status!="Synced"}) or vector(0)
+    subject: argocd
 
   # ── group 7 · action convergence severity (Phase H — thump's watchAndSettle) ─
   # slo:sli_error:ratio_rate5m IS rattle's DegradationPct axis: Sloth's own SLI error
@@ -146,12 +184,14 @@ queries:
   # reads below.
   - name: severity_rgw_availability
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-availability"}
+    subject: ceph-rgw
 
   # accelerate-recovery targets redundancy_degraded — same axis, same discipline,
   # a different sloth_id. Confirmed live 2026-07-17: the recording rule exists
   # and reads a real 0..1 value (0 on a healthy cluster).
   - name: severity_ceph_redundancy
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-redundancy"}
+    subject: cephblockpool
 
   # throttle-non-critical-paths' success metric is rgw_get_put_latency_ms — the
   # SATURATION SLI's raw value — so its post-action severity reads the saturation
@@ -160,3 +200,4 @@ queries:
   # ⚠️ VERIFY the recording rule exists on the live cluster before trusting it.
   - name: severity_rgw_saturation
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-saturation"}
+    subject: ceph-rgw
