@@ -97,24 +97,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		tools["loki"] = &LokiTool{BaseURL: cfg.LokiURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS)}
 	}
 
-	restConfig, err := rest.InClusterConfig()
-	var argoClient dynamic.Interface
-	if err == nil {
-		kubeClient, kubeErr := kubernetes.NewForConfig(restConfig)
-		if kubeErr == nil {
-			tools["kube"] = &KubeTool{Client: kubeClient}
-		} else {
-			slog.Warn("could not build kube client from InClusterConfig", "err", err)
-		}
-
-		argoClient, err = dynamic.NewForConfig(restConfig)
-		if err != nil {
-			slog.Warn("could not build dynamic client from InClusterConfig", "err", err)
-			argoClient = nil
-		}
-	} else {
-		slog.Info("not running in-cluster, skipping kube tool ang change source registration")
-	}
+	argoClient := registerInClusterTools(tools)
 
 	model := NewAnthropicModel(cfg.AnthropicAPIKey)
 	intake, err := buildIntake(cfg, backendTLS, argoClient)
@@ -219,9 +202,39 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	return 0
 }
 
-// buildIntake assembles clank's Intake from cfg-- WhirTopology when
-// WHIR_CATALOG AND WHIR_STATE_QUERIES are both set, noopTopology other-
-// wise.
+// registerInClusterTools adds the kube evidence tool and returns the dynamic
+// client the ArgoCD change source needs, or nil for both when clank isn't
+// running as a pod. Every failure here degrades one capability rather than
+// stopping the beat, so each one says so at WARN and names what is now
+// missing.
+func registerInClusterTools(tools map[string]Tool) dynamic.Interface {
+	restConfig, err := rest.InClusterConfig()
+	if err != nil {
+		slog.Info("not running in-cluster — no kube evidence tool and no change source", "beat", "clank")
+		return nil
+	}
+
+	kubeClient, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		slog.Warn("could not build a kube client — clank reasoning without cluster-object evidence",
+			"beat", "clank", "err", err)
+	} else {
+		tools["kube"] = &KubeTool{Client: kubeClient}
+	}
+
+	argoClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		slog.Warn("could not build a dynamic client — causal scoring is inert",
+			"beat", "clank", "err", err)
+		return nil
+	}
+	return argoClient
+}
+
+// buildIntake assembles clank's Intake from cfg — WhirTopology when
+// WHIR_CATALOG and WHIR_STATE_QUERIES are both set, noopTopology otherwise,
+// and ArgoChangeSource only when clank both wants a change source and has the
+// in-cluster identity to reach one.
 // buildIntake assumes cfg has already passed config.LoadClank's validation —
 // PROM_URL is cross-required there whenever both whir vars are set, so this
 // never needs to check that combination itself.

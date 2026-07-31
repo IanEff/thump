@@ -1,0 +1,95 @@
+{{- if .Values.approvalRequests.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: approvalrequest-stamp-approver
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["thump.dev"]
+        apiVersions: ["v1alpha1"]
+        operations: ["UPDATE"]
+        resources: ["approvalrequests"]
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >
+          Object{
+            metadata: Object.metadata{
+              annotations: {"thump.dev/approved-by": request.userInfo.username}
+            }
+          }
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: approvalrequest-stamp-approver
+spec:
+  policyName: approvalrequest-stamp-approver
+  matchResources: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: approvalrequest-immutable-fields
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["thump.dev"]
+        apiVersions: ["v1alpha1"]
+        operations: ["UPDATE"]
+        resources: ["approvalrequests"]
+  validations:
+    - expression: "object.spec.signalRef == oldObject.spec.signalRef"
+      message: "spec.signalRef is set by hiss and cannot be changed"
+    - expression: "object.spec.action == oldObject.spec.action"
+      message: "spec.action is set by hiss and cannot be changed"
+    - expression: "object.spec.band == oldObject.spec.band"
+      message: "spec.band is set by hiss and cannot be changed"
+    - expression: "object.spec.reasons == oldObject.spec.reasons"
+      message: "spec.reasons is set by hiss and cannot be changed"
+    - expression: "object.spec.decision in ['', 'approve']"
+      message: "spec.decision must be '' or 'approve'"
+---
+# An ApprovalRequest is born undecided. The stamp policy above only fires on
+# UPDATE, so a resource created with spec.decision already set would reach the
+# controller carrying a decision nobody is recorded as having made. Rejecting
+# that at admission is what makes "every decision on this resource names an
+# authenticated subject" a property of the API server rather than a convention
+# the controller hopes holds.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: approvalrequest-born-undecided
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["thump.dev"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE"]
+        resources: ["approvalrequests"]
+  validations:
+    - expression: "!has(object.spec.decision) || object.spec.decision == ''"
+      message: "spec.decision cannot be set at creation — patch the resource so the approver is recorded"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: approvalrequest-born-undecided
+spec:
+  policyName: approvalrequest-born-undecided
+  validationActions: ["Deny"]
+  matchResources: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: approvalrequest-immutable-fields
+spec:
+  policyName: approvalrequest-immutable-fields
+  validationActions: ["Deny"]
+  matchResources: {}
+{{- end }}

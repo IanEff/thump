@@ -27,6 +27,32 @@ func TestCausalScorer_TopologyOutweighsRecency(t *testing.T) {
 	}
 }
 
+func TestCausalScorer_MarksWhetherEachEventResolvedIntoTheTopology(t *testing.T) {
+	t.Parallel()
+	// The scorer joins ChangeEvent.Target to a topology node name — two
+	// strings, so a source emitting names from a different vocabulary
+	// compiles, runs, and silently resolves nothing. InTopology is what makes
+	// that failure visible on the emitted set instead of showing up as a
+	// confidence number nobody can explain.
+	change := proposal.ChangeSnapshot{
+		Events: []proposal.ChangeEvent{
+			{ID: "in-path", Type: "deploy", Target: "payment-gateway", Age: time.Minute},
+			{ID: "elsewhere", Type: "deploy", Target: "opentelemetry-demo", Age: time.Minute},
+		},
+	}
+
+	got := clank.NewCausalScorer().Score("fp-causal-unit", change, topoWithDegradedUpstream("payment-gateway"), uniformWeights())
+
+	want := map[string]bool{"in-path": true, "elsewhere": false}
+	inTopology := make(map[string]bool, len(got))
+	for _, s := range got {
+		inTopology[s.EventID] = s.InTopology
+	}
+	if diff := cmp.Diff(want, inTopology); diff != "" {
+		t.Error("wrong InTopology marking across the scored events (-want +got)\n", diff)
+	}
+}
+
 func TestCausalScorer_HistoricalCannotCarryAHypothesisAlone(t *testing.T) {
 	t.Parallel()
 	got := clank.NewCausalScorer().Score("fp-causal-unit", historicalMatchNoLiveSource(), anyTopo(), uniformWeights())

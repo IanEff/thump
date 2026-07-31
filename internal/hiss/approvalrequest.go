@@ -1,6 +1,7 @@
 package hiss
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -10,14 +11,37 @@ import (
 
 // ApprovalRequestSpec is the ApprovalRequest CR's spec: hiss writes
 // SignalRef, Action, Band and Reasons when it creates the CR from a held
-// Governed; a human writes only Decision, via kubectl patch. Everything
-// else is rejected at the API server, not here.
+// Governed; a human writes only Decision, via kubectl patch. Everything else
+// is rejected at the API server, not here. The authenticated approver never
+// appears in spec or status — a CRD's status subresource resets .status to
+// its old value on every UPDATE that isn't itself targeted at /status
+// (exactly the request a plain kubectl patch sends), so a MutatingAdmissionPolicy
+// stamps it into metadata.annotations instead, where the approvalrequest
+// controller reads it back. JSON tags match the CRD's OpenAPI property
+// names — approvalrequest_controller.go converts through them via
+// unstructured content, never through a generated clientset.
 type ApprovalRequestSpec struct {
-	SignalRef string
-	Action    string
-	Band      string
-	Reasons   []string
-	Decision  string // "" or "approve" — anything else fails translateDecision
+	SignalRef string   `json:"signalRef"`
+	Action    string   `json:"action"`
+	Band      string   `json:"band"`
+	Reasons   []string `json:"reasons,omitempty"`
+	Decision  string   `json:"decision,omitempty"` // "" or "approve"; bypassing the risk gate is trim force's job, never this resource's
+}
+
+// ApprovalRequestStatus is the CR's controller-owned half: the controller
+// writes Phase and DecidedAt once it has translated Decision, so a resync
+// redelivering the same object is a no-op rather than a repeat publish.
+type ApprovalRequestStatus struct {
+	Phase     string    `json:"phase,omitempty"` // "" or "Processed"
+	DecidedAt time.Time `json:"decidedAt,omitempty"`
+}
+
+// ApprovalRequests is hiss's seam onto the one ApprovalRequest CR it
+// creates per hold — narrow enough that transport.go can depend on it
+// without importing client-go itself; approvalrequest_controller.go is the
+// only file that implements it.
+type ApprovalRequests interface {
+	Create(ctx context.Context, held decision.Governed) error
 }
 
 // translateDecision turns a patched ApprovalRequestSpec into the ack hiss
@@ -38,27 +62,6 @@ func translateDecision(spec ApprovalRequestSpec, approvedBy string, now time.Tim
 	default:
 		return approval.Approval{}, false, fmt.Errorf("hiss: unrecognized ApprovalRequest decision %q", spec.Decision)
 	}
-}
-
-// forceDecision mirrors trim force's break-glass path (runForce in
-// internal/trim/trim.go) as a pure function: it re-stamps a held Governed as
-// approved, forced, and attributed to forcedBy. PolicyVersion is left
-// untouched — the held decision already carries the version it was
-// evaluated under, and forcing it through doesn't re-evaluate anything.
-func forceDecision(held decision.Governed, forcedBy string, now time.Time) (decision.Governed, error) {
-	d := held.Decision
-	d.ID = fmt.Sprintf("dec:%s:force:%d", d.SignalRef, now.Unix())
-	d.Verdict = decision.VerdictApproved
-	d.GrantedBand = d.RequestedBand
-	d.Reasons = nil
-	d.Forced = true
-	d.Operator = forcedBy
-	d.EvaluatedAt = now
-
-	if err := d.Auditable(); err != nil {
-		return decision.Governed{}, fmt.Errorf("hiss: forced decision not auditable: %w", err)
-	}
-	return decision.Governed{Decision: d, Set: held.Set}, nil
 }
 
 // newApprovalRequestSpec builds the ApprovalRequest CR's spec from a

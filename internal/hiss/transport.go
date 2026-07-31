@@ -25,14 +25,15 @@ import (
 // tests drive without a broker; hiss.go's Main runs the NATS branch instead
 // in production.
 type Transport struct {
-	Inbox  string                               // directory globbed for *.yaml proposal.Set files
-	Pub    publish.Publisher[decision.Governed] // destination for governed decisions — thump.decisions in production
-	Policy Policy                               // the floors, ceilings, and freeze windows Authority.Evaluate governs against
-	Log    *DecisionLog                         // every Decision reached, queryable by ByVerdict
-	Holds  *PendingHolds                        // fingerprints hiss has held
-	Now    func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
-	Tracer trace.Tracer                         // spans "govern" under whatever trace ctx already carries; nil-safe via tracer()
-	Stages *beat.StageRecorder                  // RED metrics for "govern" — nil-safe, same discipline as Tracer
+	Inbox     string                               // directory globbed for *.yaml proposal.Set files
+	Pub       publish.Publisher[decision.Governed] // destination for governed decisions — thump.decisions in production
+	Policy    Policy                               // the floors, ceilings, and freeze windows Authority.Evaluate governs against
+	Log       *DecisionLog                         // every Decision reached, queryable by ByVerdict
+	Holds     *PendingHolds                        // fingerprints hiss has held
+	Approvals ApprovalRequests                     // creates the CR for a hold; nil in the offline dir-poll path, same nil-safety as Tracer/Stages
+	Now       func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
+	Tracer    trace.Tracer                         // spans "govern" under whatever trace ctx already carries; nil-safe via tracer()
+	Stages    *beat.StageRecorder                  // RED metrics for "govern" — nil-safe, same discipline as Tracer
 }
 
 // tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
@@ -100,7 +101,13 @@ func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) erro
 		return nil
 	})
 	if d.Verdict == decision.VerdictHold && tr.Holds != nil {
-		tr.Holds.Record(decision.Governed{Decision: d, Set: ps})
+		held := decision.Governed{Decision: d, Set: ps}
+		tr.Holds.Record(held)
+		if tr.Approvals != nil {
+			if err := tr.Approvals.Create(ctx, held); err != nil {
+				return fmt.Errorf("hiss: create approvalrequest for %s: %w", d.SignalRef, err)
+			}
+		}
 	}
 	tr.Log.Record(d)
 	rec, _ := recommended(ps)

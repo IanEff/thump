@@ -48,7 +48,10 @@ func NewCausalScorer() *CausalScorerImpl {
 // Score rates every entry in change.Events independently against fingerprint
 // and topo — the events are not compared against each other, so a topology
 // with two plausible causes returns two scores. Deciding which one wins is
-// the Ranker's job, not this one's.
+// the Ranker's job, not this one's. An event whose Target resolves to no
+// topology node is still scored, with InTopology false: the emitted set is
+// the audit unit, so what was considered and rejected stays on the record
+// even though only in-topology scores may move a Candidate's confidence.
 func (s *CausalScorerImpl) Score(fingerprint string, change proposal.ChangeSnapshot, topo proposal.TopologySnapshot, weights ScoringWeights) []CausalScore {
 	scores := make([]CausalScore, 0, len(change.Events))
 	for _, e := range change.Events {
@@ -104,8 +107,13 @@ func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.Topolo
 		rationale = append(rationale, fmt.Sprintf("defence 3: predicted %q absent -> %.2f", sig, negativeSignalPenalty))
 	}
 
+	if !inPath {
+		rationale = append(rationale, fmt.Sprintf("target %q is not in this signal's topology -> scored for audit, excluded from confidence", e.Target))
+	}
+
 	return CausalScore{
 		EventID:          e.ID,
+		InTopology:       inPath,
 		Temporal:         temporal,
 		Topological:      topological,
 		Historical:       historical,

@@ -193,6 +193,7 @@ type GateResult struct {
 // checks) so a Candidate's confidence is earned, not decorative.
 type CausalScore struct {
 	EventID          string   `json:"eventID,omitempty" yaml:"eventID,omitempty"`                   // the ChangeEvent this score explains
+	InTopology       bool     `json:"inTopology,omitempty" yaml:"inTopology,omitempty"`             // whether the event's Target resolved to a node in the SAO's topology — false means this is not a causal hypothesis at all, and the score is recorded for audit but contributes nothing to confidence
 	Temporal         float64  `json:"temporal,omitempty" yaml:"temporal,omitempty"`                 // recency component — decays with the event's Age
 	Topological      float64  `json:"topological,omitempty" yaml:"topological,omitempty"`           // nonzero only when the event's Target sits in-path and degraded
 	Historical       float64  `json:"historical,omitempty" yaml:"historical,omitempty"`             // the case-base prior, discounted by freshness-decay (defence 2)

@@ -1,0 +1,80 @@
+# Helm's dedicated CRD directory: applied once on `helm install`, then never
+# touched again by `helm upgrade` or `helm uninstall`. That protects live
+# ApprovalRequest CRs from an accidental delete-on-uninstall, but it also
+# means a schema change here needs a manual
+#   kubectl apply -f deploy/chart/thump/crds/
+# after the first install — helm upgrade silently ignores this file. The
+# Tiltfile's own k8s_yaml() call for local dev doesn't have that limitation.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: approvalrequests.thump.dev
+spec:
+  group: thump.dev
+  scope: Namespaced
+  names:
+    kind: ApprovalRequest
+    plural: approvalrequests
+    singular: approvalrequest
+    shortNames: ["ar"]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Action
+          type: string
+          jsonPath: .spec.action
+        - name: Band
+          type: string
+          jsonPath: .spec.band
+        - name: Decision
+          type: string
+          jsonPath: .spec.decision
+        - name: ApprovedBy
+          type: string
+          jsonPath: '.metadata.annotations.thump\.dev/approved-by'
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: ["signalRef", "action", "band"]
+              properties:
+                signalRef:
+                  type: string
+                action:
+                  type: string
+                band:
+                  type: string
+                reasons:
+                  type: array
+                  items:
+                    type: string
+                # The only human-writable field on this resource, and it may
+                # only ever produce an ack. Bypassing hiss's risk gate is
+                # break-glass and stays with the trim CLI: a verdict a human
+                # substitutes for governance must not be five characters away
+                # from an ordinary approval, on the same object, under the
+                # same RBAC verb.
+                decision:
+                  type: string
+                  enum: ["", "approve"]
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: ["", "Processed"]
+                decidedAt:
+                  type: string
+                  format: date-time

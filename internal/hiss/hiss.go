@@ -150,11 +150,24 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
-	if holds.Len() == 0 {
-		slog.Warn("no pre-restart holds recovered from thump.decisions", "beat", "hiss")
+
+	approvePub := publish.NewJetPublisher[approval.Approval](js)
+	controller, err := buildApprovalRequests(cfg, approvePub)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
 	}
 
-	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: holds, Tracer: tracer, Stages: stages}
+	// Assigned through a nil check rather than directly: a nil
+	// *ApprovalRequestController stored in an ApprovalRequests interface is
+	// non-nil at the interface, and Transport.handle's nil check would let it
+	// through to a method call on nothing.
+	var approvals ApprovalRequests
+	if controller != nil {
+		approvals = controller
+	}
+
+	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: holds, Approvals: approvals, Tracer: tracer, Stages: stages}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -168,8 +181,28 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	g.Go(func() error {
 		return approvalSub.Run(gctx, "thump.approvals", tr.approveHandler)
 	})
+	if controller != nil {
+		g.Go(func() error {
+			return controller.Run(gctx)
+		})
+	}
 
 	return beat.ExitOnError(ctx, g.Wait())
+}
+
+// buildApprovalRequests returns the ApprovalRequest controller, or nil when
+// the CR surface is switched off — in which case trim over thump.approvals is
+// the only way to release a hold, and a held action waits on an operator
+// running a command rather than patching a resource. Returns nil, not a
+// no-op: Transport.Approvals is already nil-safe, and a beat that cannot
+// reach Kubernetes should say so once rather than fail to start.
+func buildApprovalRequests(cfg config.Hiss, approvePub publish.Publisher[approval.Approval]) (*ApprovalRequestController, error) {
+	if !cfg.ApprovalRequestsEnabled {
+		slog.Warn("no ApprovalRequest surface configured — holds are released through trim only",
+			"beat", "hiss", "fix", "set APPROVALREQUESTS_ENABLED=true")
+		return nil, nil
+	}
+	return NewApprovalRequestController(approvePub)
 }
 
 // LoadPolicy reads path as a YAML file and unmarshals it into a Policy — the

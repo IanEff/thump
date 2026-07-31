@@ -61,6 +61,8 @@ spec:
               value: {{ .Values.tracing.endpoint | quote }}
             - name: WAL_DIR
               value: /var/thump/wal
+            - name: APPROVALREQUESTS_ENABLED
+              value: {{ .Values.approvalRequests.enabled | quote }}
             - name: S3_ENDPOINT
               valueFrom:
                 secretKeyRef:
