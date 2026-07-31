@@ -43,8 +43,8 @@ func TestProductionWiring_ConfidenceIsTheProductOfBothBeatConstructors(t *testin
 	}
 }
 
-// TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors carries a
-// real rattle.Reconciler detection (seamDetection) through clank's and
+// TestProductionWiring_ThreeBeatsReachApprovedThroughRealConstructors carries
+// a real rattle.Reconciler detection (seamDetection) through clank's and
 // hiss's real production constructors — NewLoopForTest's Engine.Propose,
 // then hiss.Authority.Evaluate — to the first approved verdict on a
 // confidence hand-set nowhere in the wiring.
@@ -52,7 +52,7 @@ func TestProductionWiring_ConfidenceIsTheProductOfBothBeatConstructors(t *testin
 // Only three of five beats run here: rattle, clank, hiss. thump and click
 // aren't wired in yet — see the trailing comment below for what to copy in
 // once they are.
-func TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors(t *testing.T) {
+func TestProductionWiring_ThreeBeatsReachApprovedThroughRealConstructors(t *testing.T) {
 	t.Parallel()
 
 	loop := newApprovableTestLoop(t) // local builder below — the delta from newTestLoop
