@@ -86,7 +86,13 @@ data:
                 "thump.decisions", "thump.declines",
                 "thump.proposals.dlq", "thump.approvals.dlq",
                 "$JS.API.CONSUMER.INFO.THUMP.hiss", "$JS.API.CONSUMER.MSG.NEXT.THUMP.hiss", "$JS.ACK.THUMP.hiss.>",
-                "$JS.API.CONSUMER.INFO.THUMP.his-approvals", "$JS.API.CONSUMER.MSG.NEXT.THUMP.his-approvals", "$JS.ACK.THUMP.his-approvals.>"
+                "$JS.API.CONSUMER.INFO.THUMP.his-approvals", "$JS.API.CONSUMER.MSG.NEXT.THUMP.his-approvals", "$JS.ACK.THUMP.his-approvals.>",
+                # rebuildHolds (internal/hiss/rebuild.go) mints a fresh,
+                # randomly-named ephemeral consumer on thump.decisions every
+                # startup to replay PendingHolds — the wildcard token covers
+                # that random name, unlike every other grant above which
+                # names a fixed durable.
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.decisions"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }
