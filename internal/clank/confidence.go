@@ -14,12 +14,16 @@ type confidenceInputs struct {
 	SelfReported     float64 // the model's own stated confidence
 }
 
-// scoreConfidence computes a Candidate's emitted confidence as a product of
-// what this run actually grounded, then applies the model's self-report as
-// a ceiling — min(computed, in.SelfReported) — so a confident-sounding guess
-// with nothing behind it can only be pulled down, never talked up. A term
-// whose *OK flag is false drops out of the product entirely; it never
-// multiplies in as zero.
+// scoreConfidence computes a Candidate's emitted confidence from what this run
+// actually grounded, then applies the model's self-report as a ceiling —
+// min(computed, in.SelfReported) — so a confident-sounding guess with nothing
+// behind it can only be pulled down, never talked up. A term whose *OK flag is
+// false drops out entirely; it never multiplies in as zero.
+//
+// The causal term is added rather than multiplied. LikelihoodOK is false
+// whenever no change event resolved into the topology, so as a factor it
+// scored a run holding corroborating change data below the identical run
+// holding none — confidence falling as evidence arrives.
 func scoreConfidence(in confidenceInputs, w ScoringWeights) float64 {
 	grounding := w.GroundingNone
 	switch {
@@ -34,7 +38,7 @@ func scoreConfidence(in confidenceInputs, w ScoringWeights) float64 {
 		computed *= 0.5 + 0.5*in.Alignment
 	}
 	if in.LikelihoodOK {
-		computed *= in.Likelihood
+		computed = min(1, computed*(1+w.Causal*in.Likelihood))
 	}
 
 	return min(computed, in.SelfReported)
@@ -69,9 +73,9 @@ func coherentLiveCitations(cand proposal.Candidate, evidence []proposal.Evidence
 //
 // Only scores whose event resolved into the signal's topology may contribute:
 // a change somewhere else in the cluster is not a weak cause, it is not a
-// cause, and letting it multiply in would make holding uncorrelatable change
-// data worse than holding none — the same trap defence 3 avoids by
-// decrementing on absent predicted signals rather than on silence.
+// cause, and letting it count would make holding uncorrelatable change data
+// worse than holding none — the same trap defence 3 avoids by decrementing on
+// absent predicted signals rather than on silence.
 func scoreConfidences(set *proposal.Set, sao proposal.SAO, prior Prior, fingerprint string, w ScoringWeights) {
 	var maxLikelihood float64
 	var likelihoodOK bool
