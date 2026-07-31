@@ -1,0 +1,12 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: osd-pod-failure-accelerate
+  namespace: chaos-mesh
+spec:
+  action: pod-failure
+  mode: one
+  selector:
+    namespaces: [rook-ceph]
+    labelSelectors: {app: rook-ceph-osd}
+  duration: "600s"
