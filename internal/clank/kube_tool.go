@@ -8,12 +8,14 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 )
 
 type kubeInput struct {
-	Resource  string `json:"resource"`
-	Namespace string `json:"namespace"`
+	Resource  string            `json:"resource"`
+	Namespace string            `json:"namespace"`
+	Selector  map[string]string `json:"selector,omitempty"` // label equality pairs; rendered server-side, never spliced into a selector string raw
 }
 
 // KubeTool is the production implementation of the "kube" tool: read-only
@@ -22,6 +24,11 @@ type kubeInput struct {
 // holding a client that can mutate anything.
 type KubeTool struct {
 	Client kubernetes.Interface
+	// Subjects resolves a query's namespace and selector to the topology node
+	// it is evidence about (EvidenceRef.Subject). Coordinates no rule claims
+	// stamp no Subject — a namespace holding several nodes is evidence about
+	// none of them, so it can corroborate but never ground.
+	Subjects SubjectIndex
 }
 
 // Implement the Tool interface.
@@ -30,8 +37,11 @@ var _ Tool = (*KubeTool)(nil)
 // Spec advertises the "kube" tool — resource currently supports only "pods".
 func (k *KubeTool) Spec() ToolSpec {
 	return ToolSpec{
-		Name:        "kube",
-		Description: "read-only kubernetes resource query (supports resource: 'pods')",
+		Name: "kube",
+		Description: "read-only kubernetes resource query (supports resource: 'pods'). " +
+			"selector is an optional map of label equality pairs, e.g. {\"app\": \"cart\"} — " +
+			"narrow to one workload with it; an unnarrowed namespace query spans every " +
+			"workload in it and cannot be evidence about any one of them.",
 		InputSchema: SchemaOf[kubeInput](),
 	}
 }
@@ -44,18 +54,21 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 	if err := json.Unmarshal(args, &input); err != nil {
 		return proposal.EvidenceRef{}, fmt.Errorf("decode kube args: %w", err)
 	}
+	subject := k.Subjects.For(input.Namespace, input.Selector)
 
 	var summary string
 
 	switch input.Resource {
 	case "pods":
-		list, err := k.Client.CoreV1().Pods(input.Namespace).List(ctx, metav1.ListOptions{})
+		opts := metav1.ListOptions{LabelSelector: labels.Set(input.Selector).String()}
+		list, err := k.Client.CoreV1().Pods(input.Namespace).List(ctx, opts)
 		if err != nil {
 			return proposal.EvidenceRef{
 				Tool:    "kube",
 				Query:   string(args),
 				Summary: fmt.Sprintf("failed to list pods: %v", err),
 				Live:    false,
+				Subject: subject,
 			}, nil
 		}
 		if len(list.Items) == 0 {
@@ -64,6 +77,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 				Query:   string(args),
 				Summary: "no pods found",
 				Live:    false,
+				Subject: subject,
 			}, nil
 		}
 		var statuses []string
@@ -78,6 +92,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 			Query:   string(args),
 			Summary: fmt.Sprintf("unsupported resource: %s", input.Resource),
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 
@@ -87,5 +102,6 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 		Summary: summary,
 		Ref:     fmt.Sprintf("kube://%s/%s", input.Namespace, input.Resource),
 		Live:    true,
+		Subject: subject,
 	}, nil
 }
