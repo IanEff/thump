@@ -43,11 +43,37 @@ type proposeInput struct {
 // the ranker's, or deferred, so it is deliberately absent from what the model may
 // author. The json tags mirror proposal.Candidate's, so it decodes straight into one.
 type proposeCandidate struct {
-	ID          string  `json:"id,omitempty"`
-	ContractRef string  `json:"contractRef" jsonschema:"required"`
-	Confidence  float64 `json:"confidence,omitempty"`
+	ID          string `json:"id,omitempty"`
+	ContractRef string `json:"contractRef" jsonschema:"required"`
+	// Confidence is a pointer because an unstated ceiling and a stated 0.0 are
+	// different claims — nil means the model asserted no ceiling, and
+	// candidates() translates it to 1.0, min's identity. Required so a model
+	// normally commits to a number, pointer so one that doesn't cannot zero
+	// every candidate in the set.
+	Confidence *float64 `json:"confidence" jsonschema:"required"`
 	// Citations must repeat cite keys verbatim — the engine validates them by
 	// exact string match against the keys it showed, so a paraphrase or a
 	// description of the value is an auditable decline, not a near miss.
 	Citations []string `json:"citations" jsonschema:"required,description=the evidence backing this candidate: the exact keys shown as [cite: <key>] in this run's tool results\\, repeated verbatim — never a description or paraphrase of the value"`
+}
+
+// candidates converts what the model authored into boundary objects, resolving
+// an unstated confidence to 1.0 — the identity of the min() the scorer applies
+// it as, where the zero value would be its annihilator and would drive every
+// candidate in the set to zero regardless of what the run actually grounded.
+func (p proposeInput) candidates() []proposal.Candidate {
+	out := make([]proposal.Candidate, 0, len(p.Proposals))
+	for _, c := range p.Proposals {
+		ceiling := 1.0
+		if c.Confidence != nil {
+			ceiling = *c.Confidence
+		}
+		out = append(out, proposal.Candidate{
+			ID:          c.ID,
+			ContractRef: c.ContractRef,
+			Confidence:  ceiling,
+			Citations:   c.Citations,
+		})
+	}
+	return out
 }
