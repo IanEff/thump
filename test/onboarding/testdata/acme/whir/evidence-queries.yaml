@@ -14,3 +14,18 @@ queries:
   - name: acme_db_connections_saturation
     query: 'max(acme_db_connections_active) / max(acme_db_connections_max)'
     subject: acme-db
+
+# `subjects` does the same job for the `loki` and `kube` tools, which take
+# free-form coordinates from the model rather than named queries: a rule
+# matches when its namespace equals the query's and every label it names
+# appears with the same value. acme owns its whole namespace, so no labels are
+# needed to narrow it — a namespace shared by several services would need one
+# rule per service, or the query is evidence about none of them.
+#
+# Authoring at least two backends is not optional bookkeeping: the grounding
+# tier counts DISTINCT backends, so a proposal cited only from Prometheus is
+# corroborated once however many queries it names, and a floor above that
+# tier will escalate it.
+subjects:
+  - subject: acme-api
+    namespace: acme

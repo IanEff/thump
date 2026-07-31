@@ -1,4 +1,7 @@
-# evidence-queries.yaml — read-only PromQL the clank `metrics` tool exposes.
+# evidence-queries.yaml — this rig's evidence surface. Two blocks: `queries`,
+# the read-only PromQL the clank `metrics` tool exposes, and `subjects`, the
+# coordinate rules the `loki` and `kube` tools resolve their citations through
+# (see the bottom of the file).
 # The model calls metrics with {"q":"<name>"}; the tool runs the mapped query
 # and cites the result as an EvidenceRef (Live:true only on a fresh,
 # non-empty, non-error result — see internal/clank/metrics_tool.go).
@@ -201,3 +204,40 @@ queries:
   - name: severity_rgw_saturation
     query: slo:sli_error:ratio_rate5m{sloth_id="ceph-rgw-saturation"}
     subject: ceph-rgw
+
+# ── subject rules · the same claim, for the loki and kube tools ─────────────
+# `subject:` above tags a named PromQL query. The `metrics` tool is the only
+# one whose queries are named here — `loki` and `kube` take free-form
+# coordinates from the model, so their tag is resolved from those coordinates
+# instead: a rule matches when its namespace equals the query's and every
+# label it names appears with the same value. The most specific matching rule
+# wins; two equally specific rules naming different subjects resolve to no
+# subject at all.
+#
+# The same fail-closed rule applies (internal/clank/gate.go's
+# coherentSubject): a log or cluster citation whose coordinates no rule claims
+# can still corroborate a hypothesis something in-topology already grounds,
+# but can never be the sole citation that clears the gate.
+#
+# ⚠️ THESE ARE FACTS ABOUT THIS CLUSTER, NOT ABOUT THUMP. Verify on the rig:
+#   kubectl get pods -n rook-ceph --show-labels
+# The `app:` values below are the ones chaos/*.yaml already targets live.
+subjects:
+  # `app` is both a pod label and a loki stream label on this rig, so one rule
+  # serves the kube selector and the log stream selector alike.
+  - subject: ceph-osd
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-osd
+  - subject: ceph-osd
+    namespace: rook-ceph
+    labels:
+      ceph_daemon_type: osd
+  - subject: ceph-rgw
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-rgw
+  - subject: rook-operator
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-operator
