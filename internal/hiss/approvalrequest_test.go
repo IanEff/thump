@@ -80,44 +80,6 @@ func heldGoverned(t *testing.T) decision.Governed {
 	return held
 }
 
-func TestForceDecision_MarksAHeldDecisionForcedAndBypassesTheRiskCeiling(t *testing.T) {
-	t.Parallel()
-	held := heldGoverned(t)
-
-	got, err := hiss.ForceDecisionForTest(held, "alice", frozenNow())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if diff := cmp.Diff(decision.VerdictApproved, got.Decision.Verdict); diff != "" {
-		t.Error("wrong verdict on a forced decision (-want +got)", diff)
-	}
-	if diff := cmp.Diff(held.Decision.RequestedBand, got.Decision.GrantedBand); diff != "" {
-		t.Error("granted band should equal the originally requested band (-want +got)", diff)
-	}
-	if !got.Decision.Forced {
-		t.Error("want Forced true on a forced decision")
-	}
-	if diff := cmp.Diff("alice", got.Decision.Operator); diff != "" {
-		t.Error("forced decision must carry the operator (-want +got)", diff)
-	}
-	if got.Decision.Approver != "" {
-		t.Errorf("a forced decision must not also carry an Approver — earned via ack or pushed through break-glass, never both, got %q", got.Decision.Approver)
-	}
-	if len(got.Decision.Reasons) != 0 {
-		t.Errorf("a forced decision must carry zero reasons, got %v", got.Decision.Reasons)
-	}
-	if diff := cmp.Diff(held.Decision.PolicyVersion, got.Decision.PolicyVersion); diff != "" {
-		t.Error("forcing must not alter which policy version the original hold was evaluated under (-want +got)", diff)
-	}
-	if diff := cmp.Diff(held.Set, got.Set); diff != "" {
-		t.Error("forcing must not alter the judged Set (-want +got)", diff)
-	}
-	if err := got.Decision.Auditable(); err != nil {
-		t.Error("forced decision must be Auditable:", err)
-	}
-}
-
 func TestNewApprovalRequestSpec_PopulatesFromAHeldDecision(t *testing.T) {
 	t.Parallel()
 	held := heldGoverned(t)

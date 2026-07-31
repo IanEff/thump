@@ -25,7 +25,7 @@ type ApprovalRequestSpec struct {
 	Action    string   `json:"action"`
 	Band      string   `json:"band"`
 	Reasons   []string `json:"reasons,omitempty"`
-	Decision  string   `json:"decision,omitempty"` // "" or "approve" — anything else fails translateDecision
+	Decision  string   `json:"decision,omitempty"` // "" or "approve"; bypassing the risk gate is trim force's job, never this resource's
 }
 
 // ApprovalRequestStatus is the CR's controller-owned half: the controller
@@ -62,27 +62,6 @@ func translateDecision(spec ApprovalRequestSpec, approvedBy string, now time.Tim
 	default:
 		return approval.Approval{}, false, fmt.Errorf("hiss: unrecognized ApprovalRequest decision %q", spec.Decision)
 	}
-}
-
-// forceDecision mirrors trim force's break-glass path (runForce in
-// internal/trim/trim.go) as a pure function: it re-stamps a held Governed as
-// approved, forced, and attributed to forcedBy. PolicyVersion is left
-// untouched — the held decision already carries the version it was
-// evaluated under, and forcing it through doesn't re-evaluate anything.
-func forceDecision(held decision.Governed, forcedBy string, now time.Time) (decision.Governed, error) {
-	d := held.Decision
-	d.ID = fmt.Sprintf("dec:%s:force:%d", d.SignalRef, now.Unix())
-	d.Verdict = decision.VerdictApproved
-	d.GrantedBand = d.RequestedBand
-	d.Reasons = nil
-	d.Forced = true
-	d.Operator = forcedBy
-	d.EvaluatedAt = now
-
-	if err := d.Auditable(); err != nil {
-		return decision.Governed{}, fmt.Errorf("hiss: forced decision not auditable: %w", err)
-	}
-	return decision.Governed{Decision: d, Set: held.Set}, nil
 }
 
 // newApprovalRequestSpec builds the ApprovalRequest CR's spec from a
