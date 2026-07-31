@@ -22,7 +22,11 @@
 #   - tracing.endpoint: Tempo is deployed here too (tempo-0, namespace
 #     tracing), OTLP/gRPC on the "grpc-tempo-otlp" Service port — confirmed
 #     live via `kubectl --context thump-test -n tracing get svc tempo -o
-#     jsonpath='{.spec.ports}'`, same port (4317) as rook-gce-k3s.
+#     jsonpath='{.spec.ports}'`, same port (4317) as rook-gce-k3s. Written as
+#     a full `http://host:port` URL, not bare host:port — the deployment
+#     templates hand this same value to two independent OTel exporters
+#     (internal/beat/trace.go's hand-rolled one and the otelc auto-export
+#     layer) and only the URL form parses correctly for both.
 #   - cilium.apiserverEgress: thump-test runs Cilium (confirmed live), same
 #     as every other GCE-based profile — the live executor needs the
 #     CiliumNetworkPolicy to reach the apiserver.
@@ -36,6 +40,12 @@ image:
   tag: "dev"
 
 configProfile: thump-test
+
+approvalRequests:
+  enabled: true
+  approvers:
+    - kind: User
+      name: system:admin
 
 # Both domains live only on this profile — see values.yaml's domains
 # comment for why this can't just render unconditionally everywhere.
@@ -61,7 +71,7 @@ serviceMonitor:
   enabled: true
 
 tracing:
-  endpoint: tempo.tracing.svc.cluster.local:4317
+  endpoint: http://tempo.tracing.svc.cluster.local:4317
 
 cilium:
   apiserverEgress: true
