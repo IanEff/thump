@@ -201,12 +201,33 @@ subjects:
     namespace: acme
 ```
 
-A rule matches when its namespace equals the query's and every label it names
-appears with the same value; the most specific match wins, and two equally
-specific rules naming different subjects resolve to nothing. `acme` owns its
-whole namespace, so no labels are needed. A namespace holding five services
-needs one rule per service — otherwise a query across all of them is evidence
-about none of them, and it will say so by grounding nothing.
+A rule constrains only the coordinates it names, and matches when all of them
+agree; the most specific match wins, and two equally specific rules naming
+different subjects resolve to nothing. `acme` owns its whole namespace, so no
+labels are needed. A namespace holding five services needs one rule per service —
+otherwise a query across all of them is evidence about none of them, and it will
+say so by grounding nothing.
+
+The same rules also place *changes*. When ArgoCD reports a synced object, clank
+resolves it here to learn which node changed, and the coordinates it has are a
+namespace, a kind and a name — never labels, which ArgoCD's resource inventory
+doesn't publish:
+
+```yaml
+subjects:
+  - subject: cephblockpool
+    namespace: rook-ceph
+    kind: CephBlockPool
+```
+
+Key those on `kind` where a kind identifies a node by itself. Object names drift
+between clusters — the block pool is `replicapool` on three of our rigs — and the
+kind doesn't. If every rule you author names labels, evidence resolves and change
+never does: the events still arrive, they just carry Kubernetes names your
+`catalog-info.yaml` has never heard of, so nothing joins and the causal term
+contributes nothing to any confidence. That failure is silent from inside the
+loop, which is why `TestShippedEvidenceConfigs_CarryRulesAChangedResourceCanMatch`
+fails the build for a rig whose rules are all label-constrained.
 
 **Author at least two backends.** The grounding tier counts *distinct backends*,
 not citations, so a proposal cited from three Prometheus queries is corroborated
