@@ -277,6 +277,62 @@ func TestCoherentLiveCitations_CountsASelfSubjectCitationTowardGrounding(t *test
 	}
 }
 
+// TestCoherentLiveCitations_CountsDistinctBackendsNotRefs pins W5 (defence
+// 1): the ≥2-source floor scoreConfidence applies to Corroborated must be
+// satisfiable only by distinct backends, not by ref count. Before this
+// lands, a candidate citing the same backend under two query names clears
+// GroundingMany exactly as if it had corroboration from two independent
+// tools — the gap thump-running-notes.md recorded on 2026-07-27.
+func TestCoherentLiveCitations_CountsDistinctBackendsNotRefs(t *testing.T) {
+	t.Parallel()
+
+	sao := &proposal.SAO{Signal: proposal.SignalSnapshot{OriginService: "product-catalog"}}
+
+	tests := map[string]struct {
+		citations []string
+		evidence  []proposal.EvidenceRef
+		want      int
+	}{
+		"one backend queried under two different query names counts as one source": {
+			citations: []string{"q1", "q2"},
+			evidence: []proposal.EvidenceRef{
+				{Tool: "loki", Query: "q1", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Query: "q2", Live: true, Subject: "product-catalog"},
+			},
+			want: 1,
+		},
+		"two distinct backends each queried once count as two sources": {
+			citations: []string{"q1", "q2"},
+			evidence: []proposal.EvidenceRef{
+				{Tool: "loki", Query: "q1", Live: true, Subject: "product-catalog"},
+				{Tool: "kube", Query: "q2", Live: true, Subject: "product-catalog"},
+			},
+			want: 2,
+		},
+		"the same backend cited three times still counts as one source": {
+			citations: []string{"q1", "q2", "q3"},
+			evidence: []proposal.EvidenceRef{
+				{Tool: "loki", Query: "q1", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Query: "q2", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Query: "q3", Live: true, Subject: "product-catalog"},
+			},
+			want: 1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cand := proposal.Candidate{Citations: tc.citations}
+
+			got := clank.CoherentLiveCitationsForTest(cand, tc.evidence, sao)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong corroboration count across the evidence set (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
 // noChangeIntake builds an Intake with an empty ChangeSnapshot, so
 // scoreConfidence's causal term drops out entirely (LikelihoodOK false) —
 // isolating a test to the citation-grounding term alone, the way a real
@@ -451,6 +507,27 @@ func (metricsTool) Spec() clank.ToolSpec {
 	return clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query"}
 }
 
+// logsTool is the second backend the test engine needs to reach the
+// two-source grounding tier at all: the tier counts distinct EvidenceRef.Tool
+// values, so a run citing metricsTool twice is corroborated once. Same fixed
+// Subject as metricsTool, for the same reason.
+type logsTool struct{}
+
+func (logsTool) Run(_ context.Context, args json.RawMessage) (proposal.EvidenceRef, error) {
+	return proposal.EvidenceRef{
+		Tool:    "loki",
+		Query:   string(args),
+		Summary: "3 log line(s); last: connection pool exhausted",
+		Ref:     "loki://payments/payments-db",
+		Live:    true,
+		Subject: "payments-db",
+	}, nil
+}
+
+func (logsTool) Spec() clank.ToolSpec {
+	return clank.ToolSpec{Name: "loki", Description: "read-only log query"}
+}
+
 func newTestEngine(model clank.Model) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
 	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
@@ -463,7 +540,7 @@ func newTestEngine(model clank.Model) (*clank.Engine, *publishtest.CapturePublis
 			}}},
 		),
 		Model: model,
-		Tools: map[string]clank.Tool{"metrics": metricsTool{}},
+		Tools: map[string]clank.Tool{"metrics": metricsTool{}, "loki": logsTool{}},
 		Catalog: contract.NewStaticCatalog([]contract.ActionContract{{
 			Name:                     "throttle-non-critical-paths",
 			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
@@ -505,7 +582,7 @@ func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*
 			}}},
 		),
 		Model:        model,
-		Tools:        map[string]clank.Tool{"metrics": metricsTool{}},
+		Tools:        map[string]clank.Tool{"metrics": metricsTool{}, "loki": logsTool{}},
 		Catalog:      cat,
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},

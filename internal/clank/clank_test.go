@@ -23,6 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	kubefake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 func TestMain_VersionFlag(t *testing.T) {
@@ -279,6 +281,131 @@ func writeOutcomeFor(t *testing.T, dir string, set proposal.Set) {
 func unmatchedCount(t *testing.T, inbox string) int {
 	t.Helper()
 	return yamlCount(t, filepath.Join(inbox, "unmatched"))
+}
+
+// TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools is the
+// wiring pin the loki and kube tools went without. A tool holding an empty
+// SubjectIndex satisfies the Tool interface, returns Live refs, logs
+// identically, and stamps no Subject — so gate.go's coherentSubject fails
+// closed on every one of its citations and it can neither ground a proposal
+// nor count as a second backend. The suite stays green the whole time,
+// because nothing else asks whether the composition root handed it any rules.
+func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T) {
+	t.Parallel()
+
+	ev := clank.EvidenceConfig{
+		Queries:  map[string]string{"ceph_health": "ceph_health_status"},
+		Subjects: map[string]string{"ceph_health": "ceph-cluster"},
+		Index:    clank.SubjectIndex{{Subject: "ceph-osd", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+	}
+	cfg := config.Clank{
+		PromURL:         "http://prom:9090",
+		EvidenceQueries: "/etc/evidence-queries.yaml",
+		LokiURL:         "http://loki:3100",
+	}
+
+	tools := clank.BuildToolsForTest(cfg, nil, ev, kubefake.NewSimpleClientset())
+
+	metrics, ok := tools["metrics"].(*clank.MetricsTool)
+	if !ok {
+		t.Fatalf("fully-configured buildTools must reach a real MetricsTool, got %T", tools["metrics"])
+	}
+	if diff := cmp.Diff(ev.Subjects, metrics.Subjects); diff != "" {
+		t.Error("the metrics tool must reach the per-query subject tags (-want +got)\n", diff)
+	}
+
+	loki, ok := tools["loki"].(*clank.LokiTool)
+	if !ok {
+		t.Fatalf("fully-configured buildTools must reach a real LokiTool, got %T", tools["loki"])
+	}
+	if diff := cmp.Diff(ev.Index, loki.Subjects); diff != "" {
+		t.Error("the loki tool must reach the subject rules, not an empty index (-want +got)\n", diff)
+	}
+
+	kube, ok := tools["kube"].(*clank.KubeTool)
+	if !ok {
+		t.Fatalf("buildTools with an in-cluster client must reach a real KubeTool, got %T", tools["kube"])
+	}
+	if diff := cmp.Diff(ev.Index, kube.Subjects); diff != "" {
+		t.Error("the kube tool must reach the subject rules, not an empty index (-want +got)\n", diff)
+	}
+}
+
+// TestBuildTools_RegistersNoKubeToolWithoutAnInClusterClient pins the other
+// half of the same wiring question. Offline — the dir-poll path, and every
+// test run — there is no cluster to query, and a kube tool built around a
+// nil client answers every citation with a panic rather than an absence.
+func TestBuildTools_RegistersNoKubeToolWithoutAnInClusterClient(t *testing.T) {
+	t.Parallel()
+
+	tools := clank.BuildToolsForTest(config.Clank{LokiURL: "http://loki:3100"}, nil, clank.EvidenceConfig{}, nil)
+
+	if got, ok := tools["kube"]; ok {
+		t.Errorf("buildTools with no in-cluster client must register no kube tool, got %T", got)
+	}
+}
+
+// TestClientsFor_YieldsATrulyNilInterfaceWhenAClientCannotBeBuilt is the
+// guard the nil check above is worthless without. Both constructors return a
+// concrete pointer, and a nil *Clientset assigned to a kubernetes.Interface
+// makes an interface that is not nil — so a caller that degrades on nil would
+// instead wire a tool around a client that panics on first use. This fails
+// the moment either return path is written through the concrete type.
+func TestClientsFor_YieldsATrulyNilInterfaceWhenAClientCannotBeBuilt(t *testing.T) {
+	t.Parallel()
+
+	kube, argo := clank.ClientsForTest(&rest.Config{Host: "://not-a-url"})
+
+	if kube != nil {
+		t.Errorf("a kube client that failed to build must come back as a nil interface, got %T", kube)
+	}
+	if argo != nil {
+		t.Errorf("a dynamic client that failed to build must come back as a nil interface, got %T", argo)
+	}
+}
+
+// TestShippedEvidenceConfigs_NameRealTopologyNodes is the vocabulary guard
+// TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary applies to
+// the change source, applied here to the subject join. EvidenceQuery.Subject,
+// SubjectRule.Subject and NodeState.Name are all strings, so a tag naming a
+// node the graph never declares parses, resolves, stamps an EvidenceRef the
+// gate then silently refuses, and leaves the suite green — a citation that
+// can never ground anything, indistinguishable from one that simply didn't.
+func TestShippedEvidenceConfigs_NameRealTopologyNodes(t *testing.T) {
+	t.Parallel()
+
+	for _, rig := range []string{"thump-test", "ceph-lab", "rook-gce-k3s", "rook-gke"} {
+		t.Run(rig, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join("..", "..", "config", rig, "whir")
+
+			cat, err := whir.LoadCatalogFile(filepath.Join(dir, "catalog-info.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			nodes := make(map[string]bool, len(cat.Entities))
+			for _, e := range cat.Entities {
+				nodes[e.Name] = true
+			}
+
+			ev, err := clank.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for name, subject := range ev.Subjects {
+				if !nodes[subject] {
+					t.Errorf("query %q is tagged subject: %q, which names no entity in this rig's catalog-info.yaml", name, subject)
+				}
+			}
+			for _, rule := range ev.Index {
+				if !nodes[rule.Subject] {
+					t.Errorf("subject rule for namespace %q names %q, which is no entity in this rig's catalog-info.yaml",
+						rule.Namespace, rule.Subject)
+				}
+			}
+		})
+	}
 }
 
 func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {

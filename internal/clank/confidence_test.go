@@ -21,9 +21,13 @@ func TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence(t *testing.T)
 
 	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: 0.9}}
 	cand := proposal.Candidate{ID: "p1", Confidence: 0.95, Citations: []string{"metrics_q", "loki_q"}}
+	// Two backends, not two queries: the grounding tier counts distinct
+	// EvidenceRef.Tool values, so a pair of refs that named no tool at all
+	// would collapse to one source and pull every want below off the
+	// GroundingMany tier this table is holding fixed.
 	evidence := []proposal.EvidenceRef{
-		{Query: "metrics_q", Live: true},
-		{Query: "loki_q", Live: true},
+		{Tool: "metrics", Query: "metrics_q", Live: true},
+		{Tool: "loki", Query: "loki_q", Live: true},
 	}
 
 	tests := map[string]struct {

@@ -56,6 +56,22 @@ func fakeProm(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// fakeLoki serves a Loki-shaped query_range response with one matching line,
+// so the authored subject rule is actually resolved and cited rather than
+// merely loaded. A second backend is what the grounding tier requires: it
+// counts distinct backends, so however many Prometheus queries a proposal
+// names, Prometheus alone corroborates it once.
+func fakeLoki(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[
+			{"stream":{"namespace":"acme"},"values":[["1750000000000000000","upstream connect error"]]}]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // scriptedModel replays a fixed Completion sequence, so the loop is driven
 // deterministically and with no API key. It stands in for the provider, not
 // for any part of the engine under test.
@@ -127,6 +143,7 @@ func proposeArgs(t *testing.T, ps proposal.Set) json.RawMessage {
 func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 	t.Parallel()
 	prom := fakeProm(t)
+	loki := fakeLoki(t)
 
 	// ── the operator's seven files, each through its production loader ──
 	slos, err := rattle.LoadWatch(acmeDir("rattle", "watch.yaml"))
@@ -141,7 +158,7 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load acme state queries: %v", err)
 	}
-	evidence, subjects, err := clank.LoadEvidenceQueries(acmeDir("whir", "evidence-queries.yaml"))
+	ev, err := clank.LoadEvidenceConfig(acmeDir("whir", "evidence-queries.yaml"))
 	if err != nil {
 		t.Fatalf("load acme evidence queries: %v", err)
 	}
@@ -180,17 +197,20 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 	}
 
 	// ── the reason loop, over acme's own evidence ──
+	// Two backends, because the authored floor sits above what one can
+	// ground: the operator's subject rule is what lets the log citation
+	// count at all (an untagged ref can corroborate, never ground).
 	model := &scriptedModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{
 			{Name: "metrics", Args: json.RawMessage(`{"q":"acme_api_error_ratio"}`)},
-			{Name: "metrics", Args: json.RawMessage(`{"q":"acme_db_connections_saturation"}`)},
+			{Name: "loki", Args: json.RawMessage(`{"namespace":"acme"}`)},
 		}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassServiceFailure,
 			Hypotheses:   []proposal.Hypothesis{{Name: "acme_api_fault", Weight: 0.85}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "acme-shed-load", Confidence: 0.9,
-				Citations: []string{"acme_api_error_ratio", "acme_db_connections_saturation"},
+				Citations: []string{"acme_api_error_ratio", `{namespace="acme"}`},
 			}},
 		})}}},
 	}}
@@ -205,9 +225,10 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 			noChange{},
 		),
 		Model: model,
-		Tools: map[string]clank.Tool{"metrics": &clank.MetricsTool{
-			BaseURL: prom.URL, Queries: evidence, Subjects: subjects,
-		}},
+		Tools: map[string]clank.Tool{
+			"metrics": &clank.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries, Subjects: ev.Subjects},
+			"loki":    &clank.LokiTool{BaseURL: loki.URL, Subjects: ev.Index},
+		},
 		Catalog:        cat,
 		FailureClasses: classes,
 		Ranker:         clank.NewRanker(),
