@@ -242,12 +242,12 @@ for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
         )
 
 
-# helm()'s k8s_yaml() below runs `helm template`, which — like `helm
-# upgrade` — never renders crds/. Applied directly instead, which also
-# means Tilt live-reloads it on edit, nicer than crds/'s install-once
-# behavior while this schema is still moving.
-k8s_yaml("deploy/chart/thump/crds/approvalrequest.yaml")
-
+# Unlike a bare `helm template` (what chart-lint runs, and why that path
+# needs its own CRD-blind kubeconform pass), Tilt's built-in helm() always
+# passes --include-crds, so crds/approvalrequest.yaml is already in this
+# k8s_yaml() call — a separate manual k8s_yaml() of the same file duplicated
+# the CRD and broke `tilt up` (2026-07-31). helm() watches the whole chart
+# dir, so crds/ edits still live-reload same as templates/.
 k8s_yaml(helm("deploy/chart/thump", values=[cluster["values"]]))
 
 # Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
