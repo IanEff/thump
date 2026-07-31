@@ -183,13 +183,42 @@ either the affected service itself or a node in the frozen topology snapshot. A
 live metric about something the signal has no declared relationship to may
 corroborate a hypothesis, but it can't clear the gate alone.
 
-Omitting `subject` makes **no topology claim at all**, which is different from
-making a false one, and such a ref always qualifies. Tag them as you learn what
-each query is really about.
+Omitting `subject` makes no topology claim at all, and the gate **fails closed**
+on that: an untagged ref still enters the evidence list and can corroborate a
+hypothesis something in-topology already grounds, but it can never be the sole
+citation that clears the gate. A query you forgot to tag shows up as a
+suppressed set with `reason: "evidence"` in the audit trail. Leave `subject` off
+only where a query honestly spans several nodes — a cluster-wide aggregate, a
+count across namespaces.
+
+The same file tells the `loki` and `kube` tools which node *their* citations are
+about. They take free-form coordinates from the model rather than named queries,
+so the tag is resolved from the coordinates instead:
+
+```yaml
+subjects:
+  - subject: acme-api
+    namespace: acme
+```
+
+A rule matches when its namespace equals the query's and every label it names
+appears with the same value; the most specific match wins, and two equally
+specific rules naming different subjects resolve to nothing. `acme` owns its
+whole namespace, so no labels are needed. A namespace holding five services
+needs one rule per service — otherwise a query across all of them is evidence
+about none of them, and it will say so by grounding nothing.
+
+**Author at least two backends.** The grounding tier counts *distinct backends*,
+not citations, so a proposal cited from three Prometheus queries is corroborated
+once. Metrics alone tops out one tier below where most authored floors sit; if
+your policy floor is 0.75 and your only backend is Prometheus, every proposal
+escalates.
 
 > **Verify every metric name against your actual Prometheus before trusting this
 > file.** A query that returns nothing is indistinguishable, from inside the
-> reason loop, from a system that's fine.
+> reason loop, from a system that's fine. The same goes for `subjects`: those
+> namespaces and labels are facts about your cluster, and `kubectl get pods -n
+> <ns> --show-labels` is how you check them.
 
 ### 3.5 · `actions/failure-classes.yaml` — what a class means for you
 
