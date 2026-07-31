@@ -83,3 +83,21 @@ func TestKubeTool_Run(t *testing.T) {
 		})
 	}
 }
+
+func TestKubeTool_Run_RegistersEveryDiscoveredPodNameOnTheContextMasker(t *testing.T) {
+	t.Parallel()
+	clientset := fake.NewSimpleClientset(
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "osd-0", Namespace: "rook-ceph"}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
+	)
+	tool := &clank.KubeTool{Client: clientset}
+	mask := clank.NewIdentifierMaskerForTest()
+	ctx := clank.ContextWithMaskerForTest(context.Background(), mask)
+
+	if _, err := tool.Run(ctx, json.RawMessage(`{"resource":"pods","namespace":"rook-ceph"}`)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff := cmp.Diff("{{mask-1}}", mask.MaskForTest("osd-0")); diff != "" {
+		t.Error("KubeTool.Run did not register the discovered pod name on the run's masker (-want +got)\n", diff)
+	}
+}

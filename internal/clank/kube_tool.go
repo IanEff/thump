@@ -68,6 +68,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 		}
 		var statuses []string
 		for _, p := range list.Items {
+			registerIdentifier(ctx, p.Name)
 			statuses = append(statuses, fmt.Sprintf("%s (%s)", p.Name, p.Status.Phase))
 		}
 		summary = strings.Join(statuses, ", ")

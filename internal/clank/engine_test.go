@@ -534,6 +534,19 @@ func (f *failingStore) Checkpoint(ctx context.Context, t clank.Turn) error {
 	return f.MemStore.Checkpoint(ctx, t)
 }
 
+// checkpointSpyStore records every checkpointed Turn, unlike MemStore.Pending,
+// which excludes a run the moment Propose's deferred Finish marks it done and
+// so can never answer "what did we ever checkpoint".
+type checkpointSpyStore struct {
+	*clank.MemStore
+	checkpoints []clank.Turn
+}
+
+func (s *checkpointSpyStore) Checkpoint(ctx context.Context, t clank.Turn) error {
+	s.checkpoints = append(s.checkpoints, t)
+	return s.MemStore.Checkpoint(ctx, t)
+}
+
 type fakeTool struct {
 	name   string
 	digest string
@@ -682,8 +695,12 @@ func TestPropose_AppendsTheToolDigestToTheConversation(t *testing.T) {
 	// has no Raw field. This asserts the positive: the digest reached the model as
 	// a tool-role message. (The old form scanned for a sentinel no tool ever
 	// emitted, so it could never fail — a vacuous test with no teeth.)
-	if !receivedToolDigest(model.received, digest) {
-		t.Errorf("tool digest %q never reached the conversation:\n%+v", digest, model.received)
+	// digest embeds "checkout" (sig.OriginService), which is masked before the
+	// wire copy is built — the model sees {{mask-1}} in its place, and this
+	// asserts the masked form, not the real one, reaches the conversation.
+	maskedDigest := "503 rate 12%/min on /{{mask-1}}"
+	if !receivedToolDigest(model.received, maskedDigest) {
+		t.Errorf("tool digest %q never reached the conversation:\n%+v", maskedDigest, model.received)
 	}
 }
 
@@ -736,6 +753,86 @@ func TestPropose_ToolMessagesCarryTheCitableKeyVerbatim(t *testing.T) {
 		if !receivedToolContent(final, ref.Query) {
 			t.Errorf("citable key %q never reached the conversation:\n%+v", ref.Query, final)
 		}
+	}
+}
+
+func TestEngine_Propose_NeverSendsARealChangeTargetToTheModel(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"no evidence yet"}`)}}},
+	}}
+	e, _ := newTestEngine(model)
+
+	if _, err := e.Propose(t.Context(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, msgs := range model.received {
+		for _, msg := range msgs {
+			if strings.Contains(msg.Content, "payments-db") {
+				t.Error("payments-db (a real ChangeEvent.Target) crossed the model boundary in plain text")
+			}
+		}
+	}
+}
+
+func TestEngine_Propose_ChecksPointsTheRealChangeTargetDespiteMasking(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"no evidence yet"}`)}}},
+	}}
+	store := &checkpointSpyStore{MemStore: clank.NewMemStore()}
+	e, _ := newTestEngine(model)
+	e.Store = store
+
+	if _, err := e.Propose(t.Context(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, turn := range store.checkpoints {
+		for _, msg := range turn.Msgs {
+			if strings.Contains(msg.Content, "payments-db") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("the checkpointed transcript lost the real change target — masking must never leak into Store")
+	}
+}
+
+// TestEngine_Propose_MatchesACitationTheModelEchoedBackThroughTheMask pins
+// the round-trip that isn't obvious from either half in isolation: the
+// model only ever sees the masked form of a citation key (engine.go masks
+// the whole message history before every wire call, including a previous
+// turn's tool-result digest), so it can only echo that masked form back —
+// and enforceCitations must still match it against the real EvidenceRef.Query
+// recorded at dispatch time.
+func TestEngine_Propose_MatchesACitationTheModelEchoedBackThroughTheMask(t *testing.T) {
+	t.Parallel()
+	model := &fakeModel{script: []clank.Completion{
+		// turn 1: query "checkout" — sig.OriginService, always registered first
+		// and so always {{mask-1}}, regardless of what else the SAO registers.
+		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"checkout"}`)}}},
+		// turn 2: cite exactly the masked key — simulating what the model actually saw
+		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
+				Citations: []string{`{"q":"{{mask-1}}"}`},
+			}},
+		})}}},
+	}}
+	e, _ := newTestEngine(model)
+
+	got, err := e.Propose(t.Context(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(`{"q":"checkout"}`, got.Proposals[0].Citations[0]); diff != "" {
+		t.Error("the restored citation does not match the real EvidenceRef.Query the gate checks against (-want +got)\n", diff)
 	}
 }
 
@@ -1065,8 +1162,8 @@ func TestSeedPrompt_RendersChangeEventsWhenTheSAOHasThem(t *testing.T) {
 	}
 	seed := model.received[0][0].Content
 
-	if !strings.Contains(seed, "payments-db") {
-		t.Errorf("seed prompt omits the SAO's change events; expected the deploy target in:\n%s",
+	if !strings.Contains(seed, "{{mask-2}}") {
+		t.Errorf("seed prompt omits the SAO's change events; expected the masked deploy target in:\n%s",
 			seed)
 	}
 }

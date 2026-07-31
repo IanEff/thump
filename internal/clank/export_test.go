@@ -1,6 +1,7 @@
 package clank
 
 import (
+	"context"
 	"crypto/tls"
 	"path/filepath"
 	"sync"
@@ -156,4 +157,18 @@ func IntakeTopologyForTest(i *Intake) TopologySource {
 // IntakeChangeForTest exposes the Intake's wired ChangeSource.
 func IntakeChangeForTest(i *Intake) ChangeSource {
 	return i.change
+}
+
+func NewIdentifierMaskerForTest() *identifierMasker { return newIdentifierMasker() }
+
+func (m *identifierMasker) RegisterForTest(name string)   { m.register(name) }
+func (m *identifierMasker) MaskForTest(s string) string   { return m.mask(s) }
+func (m *identifierMasker) UnmaskForTest(s string) string { return m.unmask(s) }
+
+func NewMaskingModelForTest(model Model, mask *identifierMasker) Model {
+	return &maskingModel{Model: model, mask: mask}
+}
+
+func ContextWithMaskerForTest(ctx context.Context, mask *identifierMasker) context.Context {
+	return contextWithMasker(ctx, mask)
 }

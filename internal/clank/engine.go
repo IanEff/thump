@@ -187,6 +187,25 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	set.Status = &proposal.Status{}
 
 	actions := e.Catalog.ApplicableToTier(sig.ServiceTier, sao)
+
+	mask := newIdentifierMasker()
+	subject := sig.OriginService
+	if subject == "" {
+		subject = sig.Name
+	}
+	mask.register(subject)
+	for _, ev := range sao.Change.Events {
+		mask.register(ev.Target)
+	}
+	for _, n := range sao.Topology.Upstream {
+		mask.register(n.Name)
+	}
+	for _, n := range sao.Topology.Downstream {
+		mask.register(n.Name)
+	}
+	ctx = contextWithMasker(ctx, mask)
+	model := &maskingModel{Model: e.Model, mask: mask}
+
 	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions)}}
 	var evidence []proposal.EvidenceRef
 	proposed, declined := false, false
@@ -195,7 +214,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		var comp Completion
 		if err := beat.Stage(ctx, e.tracer(), e.Stages, "llm_complete", func(sctx context.Context) error {
 			var err error
-			comp, err = e.Model.Complete(sctx, msgs, e.toolSpecs())
+			comp, err = model.Complete(sctx, msgs, e.toolSpecs())
 			return err
 		}); err != nil {
 			return proposal.Set{}, fmt.Errorf("model complete (step %d): %w", step, err)
