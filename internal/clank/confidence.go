@@ -9,8 +9,8 @@ type confidenceInputs struct {
 	Corroborated     int     // this candidate's Citations resolving to a Live, in-topology EvidenceRef
 	Alignment        float64 // Prior.Alignment's rate — meaningless unless AlignmentOK
 	AlignmentOK      bool    // true once the case base clears its own ≥2-vote floor (defence 1)
-	Likelihood       float64 // the strongest CausalScore.Likelihood this run produced — meaningless unless LikelihoodOK
-	LikelihoodOK     bool    // true only when the SAO had change events to score at all
+	Likelihood       float64 // the strongest in-topology CausalScore.Likelihood this run produced — meaningless unless LikelihoodOK
+	LikelihoodOK     bool    // true only when at least one change event resolved into the signal's own topology
 	SelfReported     float64 // the model's own stated confidence
 }
 
@@ -64,12 +64,21 @@ func coherentLiveCitations(cand proposal.Candidate, evidence []proposal.Evidence
 // scoreConfidence's output — each candidate graded on its own citations, so
 // two candidates in the same set can end up with different grounding. The
 // causal term is shared across candidates (it describes the run's change
-// events, not any one action) and is present only when sao.Change had
-// events to score; the corroboration term is per-candidate.
+// events, not any one action); the corroboration term is per-candidate.
+//
+// Only scores whose event resolved into the signal's topology may contribute:
+// a change somewhere else in the cluster is not a weak cause, it is not a
+// cause, and letting it multiply in would make holding uncorrelatable change
+// data worse than holding none — the same trap defence 3 avoids by
+// decrementing on absent predicted signals rather than on silence.
 func scoreConfidences(set *proposal.Set, sao proposal.SAO, prior Prior, fingerprint string, w ScoringWeights) {
-	maxLikelihood, likelihoodOK := 0.0, len(set.CausalScores) > 0
+	var maxLikelihood float64
+	var likelihoodOK bool
 	for _, cs := range set.CausalScores {
-		maxLikelihood = max(maxLikelihood, cs.Likelihood)
+		if !cs.InTopology {
+			continue
+		}
+		maxLikelihood, likelihoodOK = max(maxLikelihood, cs.Likelihood), true
 	}
 
 	var alignment float64
