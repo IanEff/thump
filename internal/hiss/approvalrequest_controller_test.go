@@ -4,10 +4,12 @@ import (
 	"context"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/internal/hiss"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -80,7 +82,7 @@ func TestNewApprovalRequestController_FailsClosedOutsideACluster(t *testing.T) {
 	// Not a behavior pin — there's no fake for rest.InClusterConfig — just
 	// proof this fails loud rather than panicking or silently building a
 	// controller pointed at nothing when hiss isn't actually running as a pod.
-	if _, err := hiss.NewApprovalRequestController(hiss.NewPendingHolds(), nil, nil); err == nil {
+	if _, err := hiss.NewApprovalRequestController(nil); err == nil {
 		t.Fatal("want an error building the in-cluster config outside a real cluster")
 	}
 }
@@ -162,9 +164,8 @@ func TestApprovalRequestController_Reconcile_ApprovePublishesAnAckAndMarksProces
 		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
-	forcePub := &fakeDecisionPub{}
-	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
-		ApprovePub: approvePub, ForcePub: forcePub, Now: frozenNow}
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: approvePub, Now: frozenNow}
 
 	if err := c.ReconcileForTest(context.Background(), obj); err != nil {
 		t.Fatal(err)
@@ -174,74 +175,98 @@ func TestApprovalRequestController_Reconcile_ApprovePublishesAnAckAndMarksProces
 	if diff := cmp.Diff(want, approvePub.published); diff != "" {
 		t.Error("wrong ack published to thump.approvals (-want +got)", diff)
 	}
-	if len(forcePub.published) != 0 {
-		t.Error("an approve decision must never publish straight to thump.decisions — that's the force path")
-	}
 	status := getStatus(t, dyn, "ar-1")
 	if diff := cmp.Diff("Processed", status["phase"]); diff != "" {
 		t.Error("wrong status.phase after reconcile (-want +got)", diff)
 	}
 }
 
-func TestApprovalRequestController_Reconcile_ForcePublishesAReissuedDecisionAndMarksProcessed(t *testing.T) {
+func TestApprovalRequestController_Reconcile_RefusesToPublishWithoutAnAuthenticatedApprover(t *testing.T) {
 	t.Parallel()
-	held := heldGoverned(t)
-	holds := hiss.NewPendingHolds()
-	holds.Record(held)
+	// The approver annotation is stamped by a MutatingAdmissionPolicy that
+	// only fires on UPDATE, and a companion policy refuses a CREATE that
+	// arrives already decided. Absent both — policies uninstalled, or an
+	// admission path that got around them — the only honest reading is that
+	// nobody is recorded as having approved this, which is the one thing the
+	// resource exists to establish.
 	obj := approvalRequestObj("ar-2",
-		map[string]interface{}{"signalRef": held.Decision.SignalRef, "decision": "force"},
-		nil, map[string]string{"thump.dev/approved-by": "alice"})
+		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"}, nil, nil)
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
-	forcePub := &fakeDecisionPub{}
-	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: holds,
-		ApprovePub: approvePub, ForcePub: forcePub, Now: frozenNow}
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: approvePub, Now: frozenNow}
 
 	if err := c.ReconcileForTest(context.Background(), obj); err != nil {
 		t.Fatal(err)
 	}
-
-	if len(forcePub.published) != 1 {
-		t.Fatalf("want one decision published to thump.decisions, got %d", len(forcePub.published))
-	}
-	got := forcePub.published[0]
-	if !got.Decision.Forced {
-		t.Error("want Forced true on a force-decided CR")
-	}
-	if diff := cmp.Diff("alice", got.Decision.Operator); diff != "" {
-		t.Error("wrong Operator on the forced decision (-want +got)", diff)
-	}
 	if len(approvePub.published) != 0 {
-		t.Error("a force decision must never publish to thump.approvals — that's the approve path")
-	}
-	if _, ok := holds.Take(held.Decision.SignalRef); ok {
-		t.Error("force must consume the hold, same as approveHandler does")
+		t.Error("an unattributed decision must publish nothing — a self-asserted approver is what the CR surface exists to replace")
 	}
 	status := getStatus(t, dyn, "ar-2")
-	if diff := cmp.Diff("Processed", status["phase"]); diff != "" {
-		t.Error("wrong status.phase after reconcile (-want +got)", diff)
+	if status["phase"] != nil {
+		t.Error("an unattributed decision must not be marked Processed — the stamp may still arrive on a later patch")
 	}
 }
 
-func TestApprovalRequestController_Reconcile_ForceOnAnUnheldFingerprintMarksProcessedWithoutPublishing(t *testing.T) {
+func TestApprovalRequestController_Reconcile_ForceIsNotAValueThisSurfaceAccepts(t *testing.T) {
 	t.Parallel()
+	// Bypassing hiss's risk gate is a human substituting their judgment for
+	// governance, and it stays with trim: a break-glass verb reachable by
+	// changing five characters of an ordinary approval, on the same object
+	// and under the same RBAC verb, is not break-glass.
 	obj := approvalRequestObj("ar-3",
-		map[string]interface{}{"signalRef": "no-such-fp", "decision": "force"},
+		map[string]interface{}{"signalRef": "fp-1", "decision": "force"},
 		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
-	forcePub := &fakeDecisionPub{}
-	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
-		ApprovePub: &fakeApprovalPub{}, ForcePub: forcePub, Now: frozenNow}
+	approvePub := &fakeApprovalPub{}
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: approvePub, Now: frozenNow}
 
-	if err := c.ReconcileForTest(context.Background(), obj); err != nil {
-		t.Fatal(err)
+	if err := c.ReconcileForTest(context.Background(), obj); err == nil {
+		t.Fatal("force must be rejected by the controller, not just by the CRD's enum")
 	}
-	if len(forcePub.published) != 0 {
-		t.Error("an unheld fingerprint must never publish a re-issued decision")
+	if len(approvePub.published) != 0 {
+		t.Error("a rejected decision must publish nothing")
 	}
-	status := getStatus(t, dyn, "ar-3")
-	if diff := cmp.Diff("Processed", status["phase"]); diff != "" {
-		t.Error("an unheld fingerprint must still be marked Processed, or every resync retries it forever (-want +got)", diff)
+}
+
+func TestApprovalRequestController_Sweep_DeletesAProcessedRequestPastItsRetention(t *testing.T) {
+	t.Parallel()
+	// The sealed WAL is the audit record; this resource is a projection of a
+	// hold. An unswept projection is one etcd object per hold, forever, which
+	// is the cost D-1 declined CRD-as-output to avoid.
+	decidedAt := frozenNow().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
+	obj := approvalRequestObj("ar-4",
+		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
+		map[string]interface{}{"phase": "Processed", "decidedAt": decidedAt},
+		map[string]string{"thump.dev/approved-by": "alice"})
+	dyn := fakeDyn(t, obj)
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: &fakeApprovalPub{}, Now: frozenNow, Retention: 24 * time.Hour}
+
+	c.ReconcileObjForTest(context.Background(), obj)
+
+	_, err := dyn.Resource(approvalRequestGVR).Namespace("thump").Get(context.Background(), "ar-4", metav1.GetOptions{})
+	if !apierrors.IsNotFound(err) {
+		t.Errorf("a Processed request past its retention must be swept, got err=%v", err)
+	}
+}
+
+func TestApprovalRequestController_Sweep_KeepsAProcessedRequestInsideItsRetention(t *testing.T) {
+	t.Parallel()
+	decidedAt := frozenNow().Add(-time.Hour).UTC().Format(time.RFC3339)
+	obj := approvalRequestObj("ar-5",
+		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
+		map[string]interface{}{"phase": "Processed", "decidedAt": decidedAt},
+		map[string]string{"thump.dev/approved-by": "alice"})
+	dyn := fakeDyn(t, obj)
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: &fakeApprovalPub{}, Now: frozenNow, Retention: 24 * time.Hour}
+
+	c.ReconcileObjForTest(context.Background(), obj)
+
+	if _, err := dyn.Resource(approvalRequestGVR).Namespace("thump").Get(context.Background(), "ar-5", metav1.GetOptions{}); err != nil {
+		t.Error("a recently-decided request must stay readable:", err)
 	}
 }
 
@@ -250,14 +275,13 @@ func TestApprovalRequestController_Reconcile_NoDecisionYetIsANoOp(t *testing.T) 
 	obj := approvalRequestObj("ar-4", map[string]interface{}{"signalRef": "fp-1"}, nil, nil)
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
-	forcePub := &fakeDecisionPub{}
-	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
-		ApprovePub: approvePub, ForcePub: forcePub, Now: frozenNow}
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: approvePub, Now: frozenNow}
 
 	if err := c.ReconcileForTest(context.Background(), obj); err != nil {
 		t.Fatal(err)
 	}
-	if len(approvePub.published) != 0 || len(forcePub.published) != 0 {
+	if len(approvePub.published) != 0 {
 		t.Error("no decision yet must publish nothing — most reconcile events are exactly this, not an error")
 	}
 	status := getStatus(t, dyn, "ar-4")
@@ -278,8 +302,8 @@ func TestApprovalRequestController_Reconcile_AlreadyProcessedIsANoOp(t *testing.
 		map[string]interface{}{"phase": "Processed"}, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
-	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
-		ApprovePub: approvePub, ForcePub: &fakeDecisionPub{}, Now: frozenNow}
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: approvePub, Now: frozenNow}
 
 	if err := c.ReconcileForTest(context.Background(), obj); err != nil {
 		t.Fatal(err)
@@ -294,10 +318,12 @@ func TestApprovalRequestController_Reconcile_UnrecognizedDecisionErrorsWithoutMa
 	// The CRD's spec.decision enum should make this unreachable in a real
 	// cluster; this pins the defensive path for the day the schema and the
 	// code drift.
-	obj := approvalRequestObj("ar-6", map[string]interface{}{"signalRef": "fp-1", "decision": "maybe"}, nil, nil)
+	obj := approvalRequestObj("ar-6",
+		map[string]interface{}{"signalRef": "fp-1", "decision": "maybe"},
+		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
-	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump", Holds: hiss.NewPendingHolds(),
-		ApprovePub: &fakeApprovalPub{}, ForcePub: &fakeDecisionPub{}, Now: frozenNow}
+	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
+		ApprovePub: &fakeApprovalPub{}, Now: frozenNow}
 
 	if err := c.ReconcileForTest(context.Background(), obj); err == nil {
 		t.Fatal("an unrecognized decision value must error")

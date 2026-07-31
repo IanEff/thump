@@ -48,17 +48,27 @@ var approvalRequestGVR = schema.GroupVersionResource{
 // ApprovalRequestController is hiss's one file that touches Kubernetes: it
 // creates an ApprovalRequest CR for every hold (the reverse of
 // newApprovalRequestSpec) and watches for a human's kubectl patch,
-// translating spec.decision back into hiss's existing NATS-side ack paths.
-// It never evaluates or decides — the same authority boundary trim already
-// holds, expressed as a CR instead of a CLI flag.
+// translating spec.decision into an ack. It never evaluates or decides, and
+// it never reaches thump.decisions — a patched CR can only ever satisfy the
+// condition hiss already attached, leaving hiss the one place a verdict is
+// issued. Substituting a human's judgment for that gate is break-glass and
+// lives in trim, not here.
 type ApprovalRequestController struct {
 	Dyn        dynamic.Interface
 	Namespace  string
-	Holds      *PendingHolds
 	ApprovePub publish.Publisher[approval.Approval] // → thump.approvals, picked up by the existing approveHandler
-	ForcePub   publish.Publisher[decision.Governed] // → thump.decisions, mirrors trim force's break-glass path
 	Now        func() time.Time
+
+	// Retention bounds how long a Processed CR stays readable before the
+	// controller sweeps it; zero means DefaultApprovalRequestRetention. The
+	// sealed WAL is the audit record — this resource is a projection, and an
+	// unswept projection is an etcd leak, one object per hold, forever.
+	Retention time.Duration
 }
+
+// DefaultApprovalRequestRetention leaves a decided ApprovalRequest readable
+// for a day before the sweep reclaims it.
+const DefaultApprovalRequestRetention = 24 * time.Hour
 
 // NewApprovalRequestController builds the production controller: an
 // in-cluster dynamic client scoped to this pod's own namespace, read from
@@ -68,7 +78,7 @@ type ApprovalRequestController struct {
 // builds its own clients and hands the composition root a ready value,
 // never the other way around, so hiss.go's runBroker needs no new import at
 // all — a same-package function call, not a client-go dependency.
-func NewApprovalRequestController(holds *PendingHolds, approvePub publish.Publisher[approval.Approval], forcePub publish.Publisher[decision.Governed]) (*ApprovalRequestController, error) {
+func NewApprovalRequestController(approvePub publish.Publisher[approval.Approval]) (*ApprovalRequestController, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("hiss: in-cluster config: %w", err)
@@ -84,9 +94,7 @@ func NewApprovalRequestController(holds *PendingHolds, approvePub publish.Publis
 	return &ApprovalRequestController{
 		Dyn:        dyn,
 		Namespace:  string(ns),
-		Holds:      holds,
 		ApprovePub: approvePub,
-		ForcePub:   forcePub,
 	}, nil
 }
 
@@ -159,9 +167,43 @@ func (c *ApprovalRequestController) reconcileObj(ctx context.Context, obj interf
 	if !ok {
 		return
 	}
+	if swept, err := c.sweep(ctx, u); err != nil {
+		slog.Error("approvalrequest sweep failed", "name", u.GetName(), "err", err)
+		return
+	} else if swept {
+		return
+	}
 	if err := c.reconcile(ctx, u); err != nil {
 		slog.Error("approvalrequest reconcile failed", "name", u.GetName(), "err", err)
 	}
+}
+
+// sweep deletes a Processed CR once it is older than Retention, reporting
+// whether it did. The informer redelivers every object on every resync, so
+// the resync this controller already runs is the whole scheduler the sweep
+// needs — no timer, no finalizer, no second control loop.
+func (c *ApprovalRequestController) sweep(ctx context.Context, u *unstructured.Unstructured) (bool, error) {
+	var status ApprovalRequestStatus
+	if err := fromUnstructuredField(u.Object, "status", &status); err != nil {
+		return false, fmt.Errorf("decode status: %w", err)
+	}
+	if status.Phase != "Processed" || status.DecidedAt.IsZero() {
+		return false, nil
+	}
+
+	retention := c.Retention
+	if retention <= 0 {
+		retention = DefaultApprovalRequestRetention
+	}
+	if c.now().Sub(status.DecidedAt) < retention {
+		return false, nil
+	}
+
+	err := c.Dyn.Resource(approvalRequestGVR).Namespace(c.Namespace).Delete(ctx, u.GetName(), metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return false, fmt.Errorf("delete %s: %w", u.GetName(), err)
+	}
+	return true, nil
 }
 
 // reconcile is the whole controller in one function: decode, skip if
@@ -184,40 +226,29 @@ func (c *ApprovalRequestController) reconcile(ctx context.Context, u *unstructur
 		return nil // most reconcile events land here — not an error, just nothing new yet
 	}
 
+	// The stamp is the whole reason this resource exists: an ack whose
+	// approver is a string a client chose is no better than the one trim
+	// already emits. Missing means the admission policies are absent or were
+	// bypassed, so refuse rather than publish an unattributed approval.
 	approvedBy := u.GetAnnotations()[approvedByAnnotation]
+	if approvedBy == "" {
+		slog.Error("approvalrequest decided with no authenticated approver — refusing to publish",
+			"name", u.GetName(), "signalRef", spec.SignalRef, "annotation", approvedByAnnotation)
+		return nil
+	}
 
-	switch spec.Decision {
-	case "approve":
-		ack, ok, err := translateDecision(spec, approvedBy, c.now())
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return nil
-		}
-		if err := c.ApprovePub.Publish(ctx, "thump.approvals", ack); err != nil {
-			return fmt.Errorf("publish approval for %s: %w", spec.SignalRef, err)
-		}
-	case "force":
-		held, ok := c.Holds.Take(spec.SignalRef)
-		if !ok {
-			// Retrying won't help — the hold is gone, and it won't come
-			// back on the next resync — so this still counts as done.
-			slog.Warn("approvalrequest force arrived for an unheld fingerprint", "signalRef", spec.SignalRef)
-			return c.markProcessed(ctx, u.GetName())
-		}
-		g, err := forceDecision(held, approvedBy, c.now())
-		if err != nil {
-			return fmt.Errorf("force %s: %w", spec.SignalRef, err)
-		}
-		if err := c.ForcePub.Publish(ctx, "thump.decisions", g); err != nil {
-			return fmt.Errorf("publish forced decision for %s: %w", spec.SignalRef, err)
-		}
-	default:
+	ack, ok, err := translateDecision(spec, approvedBy, c.now())
+	if err != nil {
 		// The CRD's spec.decision enum should make this unreachable in a
 		// real cluster; left unmarked so a schema/code drift retries
 		// rather than silently freezing the CR in this state.
-		return fmt.Errorf("unrecognized decision %q", spec.Decision)
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if err := c.ApprovePub.Publish(ctx, "thump.approvals", ack); err != nil {
+		return fmt.Errorf("publish approval for %s: %w", spec.SignalRef, err)
 	}
 
 	return c.markProcessed(ctx, u.GetName())

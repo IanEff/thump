@@ -31,10 +31,6 @@ func TranslateDecisionForTest(spec ApprovalRequestSpec, approvedBy string, now t
 	return translateDecision(spec, approvedBy, now)
 }
 
-func ForceDecisionForTest(held decision.Governed, forcedBy string, now time.Time) (decision.Governed, error) {
-	return forceDecision(held, forcedBy, now)
-}
-
 func NewApprovalRequestSpecForTest(held decision.Governed) ApprovalRequestSpec {
 	return newApprovalRequestSpec(held)
 }
@@ -45,4 +41,10 @@ func ApprovalRequestNameForTest(signalRef string) string {
 
 func (c *ApprovalRequestController) ReconcileForTest(ctx context.Context, u *unstructured.Unstructured) error {
 	return c.reconcile(ctx, u)
+}
+
+// ReconcileObjForTest drives the informer's own entry point, so a test sees
+// the sweep and the reconcile in the order a resync delivers them.
+func (c *ApprovalRequestController) ReconcileObjForTest(ctx context.Context, obj any) {
+	c.reconcileObj(ctx, obj)
 }
