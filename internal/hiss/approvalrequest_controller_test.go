@@ -2,8 +2,10 @@ package hiss_test
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
@@ -332,4 +335,46 @@ func TestApprovalRequestController_Reconcile_UnrecognizedDecisionErrorsWithoutMa
 	if status["phase"] != nil {
 		t.Error("an errored reconcile must not be marked Processed — it should retry on the next resync")
 	}
+}
+
+// hangingDyn's Create never returns on its own — it blocks on ctx, the way a
+// client-go call blocked at the network layer does. rest.InClusterConfig sets
+// no Config.Timeout, so without a bound of the controller's own this is
+// indistinguishable from a slow apiserver and never fails at all.
+type hangingDyn struct{ dynamic.Interface }
+
+func (h hangingDyn) Resource(schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return hangingResource{}
+}
+
+type hangingResource struct {
+	dynamic.NamespaceableResourceInterface
+}
+
+func (h hangingResource) Namespace(string) dynamic.ResourceInterface { return h }
+
+func (h hangingResource) Create(ctx context.Context, _ *unstructured.Unstructured, _ metav1.CreateOptions, _ ...string) (*unstructured.Unstructured, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestApprovalRequestController_Create_TimesOutAnUnreachableApiserverWellInsideTheAckDeadline(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// A hold whose Create never returns is worse than one that fails: the
+		// message sits until its ack deadline expires and is redelivered with
+		// nothing logged, so the one path the CR surface exists for goes
+		// silently dead. The bound must beat the broker's 30s AckWait.
+		c := &hiss.ApprovalRequestController{Dyn: hangingDyn{}, Namespace: "thump"}
+
+		start := time.Now()
+		err := c.Create(t.Context(), heldGoverned(t))
+		elapsed := time.Since(start)
+
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Create against an unreachable apiserver = %v, want a deadline error", err)
+		}
+		if elapsed >= 30*time.Second {
+			t.Errorf("Create took %v, which does not beat the broker's 30s AckWait — the failure would surface as a silent redelivery", elapsed)
+		}
+	})
 }

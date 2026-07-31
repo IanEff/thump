@@ -1,0 +1,25 @@
+{{- if .Values.cilium.apiserverEgress }}
+# Cilium-only companion to netpol-hiss.yaml. The kube-apiserver carries a
+# reserved Cilium identity ("kube-apiserver") that a standard NetworkPolicy
+# ipBlock/CIDR egress rule does not match — so hiss's ApprovalRequest
+# controller, which creates and watches CRs over client-go, gets a 30s dial
+# timeout under the plain NetworkPolicy alone (its 0.0.0.0/0:443 rule looks
+# like it should reach kubernetes.default.svc, but can't on Cilium). Without
+# this, every held decision stalls: the CR is never created, the hold is
+# never surfaced to a human, and the message dies on its retry budget.
+# Cilium unions allow-rules across policies, so this adds apiserver egress on
+# top of hiss-egress rather than replacing it. Gated because non-Cilium
+# profiles don't have this CRD.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: hiss-apiserver-egress
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "hiss") .) | nindent 6 }}
+  egress:
+    - toEntities:
+        - kube-apiserver
+{{- end }}

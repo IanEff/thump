@@ -64,6 +64,28 @@ type ApprovalRequestController struct {
 	// sealed WAL is the audit record — this resource is a projection, and an
 	// unswept projection is an etcd leak, one object per hold, forever.
 	Retention time.Duration
+
+	// Timeout bounds one apiserver call; zero means approvalRequestTimeout.
+	Timeout time.Duration
+}
+
+// approvalRequestTimeout bounds a single apiserver call. It is deliberately
+// under the broker's 30s AckWait: an unreachable apiserver must fail the
+// message while the handler still owns it, so the failure surfaces as a
+// logged error and a nak rather than an ack deadline expiring in silence.
+// rest.InClusterConfig sets no Timeout of its own, and client-go's default
+// dial timeout is itself 30s — long enough to lose the race.
+const approvalRequestTimeout = 10 * time.Second
+
+// bound returns ctx with Timeout applied — every call this controller makes
+// to the apiserver goes through it, so no single unreachable API server can
+// stall a governed decision past its delivery budget.
+func (c *ApprovalRequestController) bound(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := c.Timeout
+	if timeout <= 0 {
+		timeout = approvalRequestTimeout
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 // DefaultApprovalRequestRetention leaves a decided ApprovalRequest readable
@@ -138,6 +160,9 @@ func (c *ApprovalRequestController) Create(ctx context.Context, held decision.Go
 		"spec": specMap,
 	}}
 
+	ctx, cancel := c.bound(ctx)
+	defer cancel()
+
 	_, err = c.Dyn.Resource(approvalRequestGVR).Namespace(c.Namespace).Create(ctx, obj, metav1.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("hiss: create approvalrequest for %s: %w", spec.SignalRef, err)
@@ -198,6 +223,9 @@ func (c *ApprovalRequestController) sweep(ctx context.Context, u *unstructured.U
 	if c.now().Sub(status.DecidedAt) < retention {
 		return false, nil
 	}
+
+	ctx, cancel := c.bound(ctx)
+	defer cancel()
 
 	err := c.Dyn.Resource(approvalRequestGVR).Namespace(c.Namespace).Delete(ctx, u.GetName(), metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -264,6 +292,9 @@ func (c *ApprovalRequestController) markProcessed(ctx context.Context, name stri
 	if err != nil {
 		return fmt.Errorf("marshal status patch: %w", err)
 	}
+	ctx, cancel := c.bound(ctx)
+	defer cancel()
+
 	_, err = c.Dyn.Resource(approvalRequestGVR).Namespace(c.Namespace).
 		Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}, "status")
 	if err != nil {
