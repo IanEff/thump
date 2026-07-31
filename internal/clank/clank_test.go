@@ -14,10 +14,14 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/whir"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
@@ -304,7 +308,7 @@ func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
 // pin, the ChangeSource twin of TestBuildIntake_FullyConfiguredReachesRealTopology
 // above: an Intake holding noopChange{} assembles an SAO with no events, so
 // every CausalScore is absent and confidence's Likelihood term never
-// applies (TestScoreConfidences_LikelihoodTermIsLiveWhenChangeEventsExist
+// applies (TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence
 // pins that half). Configured, buildIntake must reach a real ArgoChangeSource
 // instead — this is the guard against the exact class of bug W1 found:
 // a composition root passing a no-op unconditionally while the suite stays
@@ -324,5 +328,68 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 	got := clank.IntakeChangeForTest(intake)
 	if _, ok := got.(clank.ArgoChangeSource); !ok {
 		t.Errorf("fully-configured buildIntake must reach a real ArgoChangeSource, got %T", got)
+	}
+}
+
+// TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary is the guard
+// the no-op pins above cannot provide. Reaching a real ArgoChangeSource proves
+// the seam is filled; it says nothing about whether the names it emits mean
+// anything to the graph they are joined against. ChangeEvent.Target and
+// NodeState.Name are both strings, so a source emitting a vocabulary the
+// topology never uses compiles, runs, scores every event zero, and leaves the
+// suite green — which is what shipped when Target named the ArgoCD Application
+// instead of the workloads it manages.
+func TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary(t *testing.T) {
+	t.Parallel()
+
+	cat, err := whir.LoadCatalogFile(filepath.Join("..", "..", "config", "thump-test", "whir", "catalog-info.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := make(map[string]bool, len(cat.Entities))
+	for _, e := range cat.Entities {
+		nodes[e.Name] = true
+	}
+
+	// One Application managing several workloads is the shape the rig
+	// actually runs: thump-test deploys the whole OTel demo as a single
+	// GitOps unit, so "cart" only ever appears in status.resources.
+	app := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "argoproj.io/v1alpha1",
+		"kind":       "Application",
+		"metadata":   map[string]any{"name": "opentelemetry-demo", "namespace": "argocd"},
+		"status": map[string]any{
+			"operationState": map[string]any{
+				"phase":      "Succeeded",
+				"finishedAt": "2026-07-30T11:55:00Z",
+				"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
+			},
+			"resources": []any{
+				map[string]any{"kind": "Deployment", "namespace": "otel-demo", "name": "cart"},
+				map[string]any{"kind": "Deployment", "namespace": "otel-demo", "name": "checkout"},
+			},
+		},
+	}}
+	fake := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{
+			{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}: "ApplicationList",
+		}, app)
+
+	src := clank.ArgoChangeSource{Client: fake, Now: func() time.Time {
+		return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	}}
+	snap, err := src.Changes(t.Context(), signal.Detection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var resolved []string
+	for _, e := range snap.Events {
+		if nodes[e.Target] {
+			resolved = append(resolved, e.Target)
+		}
+	}
+	if diff := cmp.Diff([]string{"cart", "checkout"}, resolved); diff != "" {
+		t.Error("the change source's targets must resolve against the shipped topology catalog's node names (-want +got)\n", diff)
 	}
 }
