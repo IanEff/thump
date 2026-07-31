@@ -6,7 +6,7 @@ import "github.com/ianeff/thump/api/v1/proposal"
 // Candidate — every field already lives on the audit trail.
 type confidenceInputs struct {
 	SignalConfidence float64 // SignalSnapshot.Confidence — rattle's number, read-only
-	Corroborated     int     // this candidate's Citations resolving to a Live, in-topology EvidenceRef
+	Corroborated     int     // this candidate's distinct backends resolving to a Live, in-topology EvidenceRef
 	Alignment        float64 // Prior.Alignment's rate — meaningless unless AlignmentOK
 	AlignmentOK      bool    // true once the case base clears its own ≥2-vote floor (defence 1)
 	Likelihood       float64 // the strongest in-topology CausalScore.Likelihood this run produced — meaningless unless LikelihoodOK
@@ -40,24 +40,25 @@ func scoreConfidence(in confidenceInputs, w ScoringWeights) float64 {
 	return min(computed, in.SelfReported)
 }
 
-// coherentLiveCitations counts how many of cand's Citations resolve to an
-// EvidenceRef that is both Live and topologically coherent — the same test
-// gate.go's anyCoherentLive applies, counted here instead of just asked
-// yes/no, since scoreConfidence's grounding tiers care how many, not
-// whether any.
+// coherentLiveCitations counts the distinct backends behind cand's
+// Citations that resolve to a Live, topologically coherent EvidenceRef —
+// grouped by EvidenceRef.Tool, not one per ref, so a candidate can't clear
+// the ≥2-source grounding floor by querying one backend twice (defence 1).
+// The same test gate.go's anyCoherentLive applies, counted here instead of
+// just asked yes/no.
 func coherentLiveCitations(cand proposal.Candidate, evidence []proposal.EvidenceRef, sao *proposal.SAO) int {
 	cited := make(map[string]bool, len(cand.Citations))
 	for _, c := range cand.Citations {
 		cited[c] = true
 	}
 
-	n := 0
+	backends := make(map[string]bool)
 	for _, ref := range evidence {
 		if cited[ref.Query] && ref.Live && coherentSubject(ref, sao) {
-			n++
+			backends[ref.Tool] = true
 		}
 	}
-	return n
+	return len(backends)
 }
 
 // scoreConfidences overwrites every set.Proposals entry's Confidence with
