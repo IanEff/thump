@@ -144,11 +144,11 @@ func ToolSpecsForTest(e *Engine) []ToolSpec {
 	return e.toolSpecs()
 }
 
-// BuildIntakeForTest exposes buildIntake to clank_test — the seam W0b's
-// silent-fallback warnings hang off, and where W1's ArgoCD change source
-// plugs in next.
-func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface) (*Intake, error) {
-	return buildIntake(cfg, backendTLS, argo)
+// BuildIntakeForTest exposes buildIntake to clank_test — the seam the
+// silent-fallback warnings hang off, and where the ArgoCD change source and
+// its subject rules are wired together.
+func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex) (*Intake, error) {
+	return buildIntake(cfg, backendTLS, argo, subjects)
 }
 
 // BuildToolsForTest exposes buildTools to clank_test — the seam that decides

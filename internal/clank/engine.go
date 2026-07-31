@@ -160,10 +160,13 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 				"cache_read_input_tokens", usage.CacheReadInputTokens)
 			return
 		}
+		causal := summarizeCausal(set.CausalScores)
 		slog.Info("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase,
 			"recommended", set.Recommended, "contractRef", set.ContractRefFor(set.Recommended),
 			"proposals", len(set.Proposals), "evidence", len(set.Evidence),
 			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason,
+			"confidence", set.ConfidenceFor(set.Recommended),
+			"maxLikelihood", causal.maxLikelihood, "inTopology", causal.inTopology, "outOfTopology", causal.outOfTopology,
 			"input_tokens", usage.InputTokens, "cache_creation_input_tokens", usage.CacheCreationInputTokens,
 			"cache_read_input_tokens", usage.CacheReadInputTokens)
 	}()
@@ -245,13 +248,13 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			slog.Info("tool_call", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "tool", call.Name)
 			switch call.Name {
 			case "propose":
-				var p proposal.Set
+				var p proposeInput
 				if err := json.Unmarshal(call.Args, &p); err != nil {
 					return proposal.Set{}, fmt.Errorf("decode propose: %w", err)
 				}
 				set.FailureClass = p.FailureClass
 				set.Hypotheses = p.Hypotheses
-				set.Proposals = p.Proposals
+				set.Proposals = p.candidates()
 				proposed, done = true, true
 			case "insufficient":
 				var in insufficientInput
@@ -408,6 +411,32 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	return set, nil
 }
 
+// causalSummary is the causal scoring detail the reasoned line carries, so a
+// live run's Likelihood term is readable from kubectl logs instead of only from
+// a sealed ProposalSet in the object store.
+type causalSummary struct {
+	maxLikelihood float64 // the strongest in-topology score, which is the only one confidence reads
+	inTopology    int
+	outOfTopology int
+}
+
+// summarizeCausal reduces a run's CausalScores to what a reader diagnosing the
+// causal term needs. inTopology at zero with outOfTopology above it is the
+// signature of a broken join: change events arrived and none of them named
+// something the topology graph knows.
+func summarizeCausal(scores []CausalScore) causalSummary {
+	var s causalSummary
+	for _, cs := range scores {
+		if !cs.InTopology {
+			s.outOfTopology++
+			continue
+		}
+		s.inTopology++
+		s.maxLikelihood = max(s.maxLikelihood, cs.Likelihood)
+	}
+	return s
+}
+
 func (e *Engine) toolSpecs() []ToolSpec {
 	specs := make([]ToolSpec, 0, len(e.Tools)+2)
 	for _, t := range e.Tools {
@@ -502,7 +531,7 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 	b.WriteString("- to propose an action, cite at least one LIVE telemetry result about the affected service, or a node in its declared topology.\n")
 	b.WriteString("- a citation is the exact key shown as [cite: <key>] in a tool result, repeated verbatim — never a description of the value.\n")
 	b.WriteString("- a live metric is sufficient in corroboration on its own; log lines can corroborate but are never required.\n")
-	b.WriteString("- your stated confidence can lower the emitted number, but never raise it-- it is computed from your citations' grounding.\n")
+	b.WriteString("- state a confidence on every candidate. it is a ceiling, not the answer: the emitted number is computed from your citations' grounding, and yours can only lower it.\n")
 
 	if len(classes) > 0 {
 		b.WriteString("failure classes — pick the one the EVIDENCE supports, not the one that has a matching action:\n")

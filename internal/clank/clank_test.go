@@ -185,7 +185,7 @@ func TestBuildIntake_WarnsOnEverySilentFallback(t *testing.T) {
 			// captureLog mutates the process-wide default logger — no t.Parallel().
 			getLines := captureLog(t)
 
-			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil); err != nil {
+			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 
@@ -420,7 +420,7 @@ func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
 	}
 
 	cfg := config.Clank{PromURL: "http://prom:9090", WhirCatalog: catalogPath, WhirStateQueries: queriesPath}
-	intake, err := clank.BuildIntakeForTest(cfg, nil, nil)
+	intake, err := clank.BuildIntakeForTest(cfg, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,8 +446,12 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 	// A bare fake dynamic client.
 	fake := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
 
+	// Subject rules are part of "fully configured" for a change source: without
+	// them every resolved target is empty and the source reports nothing the
+	// topology can place, so buildIntake declines to build one.
+	subjects := clank.SubjectIndex{{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}
 	cfg := config.Clank{ArgoEnabled: true}
-	intake, err := clank.BuildIntakeForTest(cfg, nil, fake)
+	intake, err := clank.BuildIntakeForTest(cfg, nil, fake, subjects)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,18 +462,56 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 	}
 }
 
-// TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary is the guard
-// the no-op pins above cannot provide. Reaching a real ArgoChangeSource proves
-// the seam is filled; it says nothing about whether the names it emits mean
-// anything to the graph they are joined against. ChangeEvent.Target and
-// NodeState.Name are both strings, so a source emitting a vocabulary the
-// topology never uses compiles, runs, scores every event zero, and leaves the
-// suite green — which is what shipped when Target named the ArgoCD Application
-// instead of the workloads it manages.
-func TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary(t *testing.T) {
+// TestShippedEvidenceConfigs_CarryRulesAChangedResourceCanMatch is the guard the
+// no-op pins above cannot provide. Reaching a real ArgoChangeSource proves the
+// seam is filled; it says nothing about whether the names it emits mean anything
+// to the graph they are joined against.
+//
+// A changed Kubernetes object states a namespace, kind and name — never labels,
+// which ArgoCD's resource inventory does not publish. So a rig whose rules are
+// all label-constrained resolves every evidence query and no change event at
+// all: the source runs, the events carry Kubernetes names the catalog never
+// declares, every score lands out of topology, and the suite stays green. That
+// is the shape that shipped, and one rule per rig that a resource can actually
+// match is what refutes it.
+func TestShippedEvidenceConfigs_CarryRulesAChangedResourceCanMatch(t *testing.T) {
 	t.Parallel()
 
-	cat, err := whir.LoadCatalogFile(filepath.Join("..", "..", "config", "thump-test", "whir", "catalog-info.yaml"))
+	for _, rig := range []string{"thump-test", "ceph-lab", "rook-gce-k3s", "rook-gke"} {
+		t.Run(rig, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join("..", "..", "config", rig, "whir")
+
+			ev, err := clank.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var matchable int
+			for _, rule := range ev.Index {
+				if len(rule.Labels) == 0 {
+					matchable++
+				}
+			}
+			if matchable == 0 {
+				t.Error("every subject rule on this rig constrains labels, which an ArgoCD resource entry never carries — no change event can resolve into the topology, so the causal term is inert here")
+			}
+		})
+	}
+}
+
+// TestArgoChangeSource_ResolvesTheShippedRigsOwnCoordinates joins the two halves
+// the guard above only checks separately: the rig's authored rules, and the
+// coordinates its ArgoCD actually reports. The Ceph resources are the case that
+// matters, because that is where the two vocabularies genuinely diverge — the
+// CephBlockPool is named "replicapool" and the topology node is named
+// "cephblockpool", so a fixture that picks names which happen to coincide (as
+// the OTel demo's do) proves nothing.
+func TestArgoChangeSource_ResolvesTheShippedRigsOwnCoordinates(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join("..", "..", "config", "thump-test", "whir")
+	cat, err := whir.LoadCatalogFile(filepath.Join(dir, "catalog-info.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,14 +519,16 @@ func TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary(t *testing.T
 	for _, e := range cat.Entities {
 		nodes[e.Name] = true
 	}
+	ev, err := clank.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// One Application managing several workloads is the shape the rig
-	// actually runs: thump-test deploys the whole OTel demo as a single
-	// GitOps unit, so "cart" only ever appears in status.resources.
+	// The inventory a real rook-storage sync reports on this rig.
 	app := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "argoproj.io/v1alpha1",
 		"kind":       "Application",
-		"metadata":   map[string]any{"name": "opentelemetry-demo", "namespace": "argocd"},
+		"metadata":   map[string]any{"name": "rook-storage", "namespace": "argocd"},
 		"status": map[string]any{
 			"operationState": map[string]any{
 				"phase":      "Succeeded",
@@ -492,8 +536,8 @@ func TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary(t *testing.T
 				"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 			},
 			"resources": []any{
-				map[string]any{"kind": "Deployment", "namespace": "otel-demo", "name": "cart"},
-				map[string]any{"kind": "Deployment", "namespace": "otel-demo", "name": "checkout"},
+				map[string]any{"kind": "CephBlockPool", "namespace": "rook-ceph", "name": "replicapool"},
+				map[string]any{"kind": "Deployment", "namespace": "rook-ceph", "name": "rook-ceph-operator"},
 			},
 		},
 	}}
@@ -502,7 +546,7 @@ func TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary(t *testing.T
 			{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}: "ApplicationList",
 		}, app)
 
-	src := clank.ArgoChangeSource{Client: fake, Now: func() time.Time {
+	src := clank.ArgoChangeSource{Client: fake, Subjects: ev.Index, Now: func() time.Time {
 		return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
 	}}
 	snap, err := src.Changes(t.Context(), signal.Detection{})
@@ -516,7 +560,7 @@ func TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary(t *testing.T
 			resolved = append(resolved, e.Target)
 		}
 	}
-	if diff := cmp.Diff([]string{"cart", "checkout"}, resolved); diff != "" {
-		t.Error("the change source's targets must resolve against the shipped topology catalog's node names (-want +got)\n", diff)
+	if diff := cmp.Diff([]string{"cephblockpool", "rook-operator"}, resolved); diff != "" {
+		t.Error("the shipped rules must resolve this rig's own synced resources onto catalog node names (-want +got)\n", diff)
 	}
 }
