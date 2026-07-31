@@ -9,6 +9,8 @@ import (
 
 	"go.opentelemetry.io/otel/trace/noop"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/ianeff/thump/api/v1/proposal"
@@ -147,6 +149,20 @@ func ToolSpecsForTest(e *Engine) []ToolSpec {
 // plugs in next.
 func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface) (*Intake, error) {
 	return buildIntake(cfg, backendTLS, argo)
+}
+
+// BuildToolsForTest exposes buildTools to clank_test — the seam that decides
+// which evidence tools exist and whether each one can name the topology node
+// its citations concern.
+func BuildToolsForTest(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]Tool {
+	return buildTools(cfg, backendTLS, ev, kube)
+}
+
+// ClientsForTest exposes clientsFor to clank_test — the half of the
+// in-cluster path that doesn't need a cluster, so the nil-on-failure contract
+// its callers' nil checks depend on can actually be exercised.
+func ClientsForTest(restConfig *rest.Config) (kubernetes.Interface, dynamic.Interface) {
+	return clientsFor(restConfig)
 }
 
 // IntakeTopologyForTest exposes the Intake's wired TopologySource.
