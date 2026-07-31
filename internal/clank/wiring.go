@@ -85,11 +85,12 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 
 // DefaultScoringWeights is the tuning both production constructors wire —
 // uniform causal axes (no evidence yet favors recency over topology over
-// history), a 30-day freshness half-life, and the grounding tiers the
-// confidence scorer's regression table locks: 0.3 uncorroborated, 0.7 for
-// one live in-topology citation, 1.0 for two or more. A zero-value
-// ScoringWeights doesn't degrade — it multiplies whole scoring terms out
-// of existence — so construction must never rely on the zero value.
+// history), a 30-day freshness half-life, the grounding tiers the confidence
+// scorer's regression table locks (0.3 uncorroborated, 0.7 for one live
+// in-topology citation, 1.0 for two or more), and a causal bonus worth up to
+// +50%. A zero-value ScoringWeights doesn't degrade — it multiplies whole
+// scoring terms out of existence — so construction must never rely on the
+// zero value.
 func DefaultScoringWeights() ScoringWeights {
 	return ScoringWeights{
 		Temporal:          1.0 / 3,
@@ -99,5 +100,6 @@ func DefaultScoringWeights() ScoringWeights {
 		GroundingNone:     0.3,
 		GroundingOne:      0.7,
 		GroundingMany:     1.0,
+		Causal:            0.5,
 	}
 }

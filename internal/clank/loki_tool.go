@@ -58,7 +58,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 	}
 
 	logQL := buildLogQL(input.Namespace, input.Labels, input.Query)
-	subject := l.Subjects.For(input.Namespace, input.Labels)
+	subject := l.Subjects.For(Coordinates{Namespace: input.Namespace, Labels: input.Labels})
 
 	lookback := input.Lookback
 	if lookback == "" {

@@ -20,4 +20,11 @@ type ScoringWeights struct {
 	GroundingNone float64
 	GroundingOne  float64
 	GroundingMany float64
+
+	// Causal is how much a fully implicated in-topology change may raise a
+	// candidate's confidence — 0.5 means up to +50%. It is a bonus rather than
+	// a factor because LikelihoodOK drops the term out entirely when no change
+	// resolves: as a factor, a run holding corroborating change data scored
+	// below the same run holding none.
+	Causal float64
 }

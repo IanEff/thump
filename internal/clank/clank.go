@@ -87,7 +87,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
 	model := NewAnthropicModel(cfg.AnthropicAPIKey)
-	intake, err := buildIntake(cfg, backendTLS, argoClient)
+	intake, err := buildIntake(cfg, backendTLS, argoClient, ev.Index)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
 		return 1
@@ -281,7 +281,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 // buildIntake assumes cfg has already passed config.LoadClank's validation —
 // PROM_URL is cross-required there whenever both whir vars are set, so this
 // never needs to check that combination itself.
-func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface) (*Intake, error) {
+func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex) (*Intake, error) {
 	var topo TopologySource = noopTopology{}
 
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
@@ -308,8 +308,15 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interfac
 		slog.Warn("no change source configured — causal scoring is inert", "beat", "clank", "fix", "set ARGOCD_ENABLED=true")
 	case argo == nil:
 		slog.Warn("ARGOCD_ENABLED is set but clank has no in-cluster identity — causal scoring is inert", "beat", "clank")
+	case len(subjects) == 0:
+		// A change source with nothing to resolve against reports events whose
+		// targets name Kubernetes objects the topology graph has never heard
+		// of, so every score lands out of topology and the causal term drops
+		// out — inert, but inert while looking configured.
+		slog.Warn("no subject rules authored — every change event will resolve outside the topology and causal scoring is inert",
+			"beat", "clank", "fix", "author subjects: in the file EVIDENCE_QUERIES names")
 	default:
-		change = ArgoChangeSource{Client: argo}
+		change = ArgoChangeSource{Client: argo, Subjects: subjects}
 	}
 
 	return NewIntake(topo, change), nil

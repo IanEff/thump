@@ -54,7 +54,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 	if err := json.Unmarshal(args, &input); err != nil {
 		return proposal.EvidenceRef{}, fmt.Errorf("decode kube args: %w", err)
 	}
-	subject := k.Subjects.For(input.Namespace, input.Selector)
+	subject := k.Subjects.For(Coordinates{Namespace: input.Namespace, Labels: input.Selector})
 
 	var summary string
 
