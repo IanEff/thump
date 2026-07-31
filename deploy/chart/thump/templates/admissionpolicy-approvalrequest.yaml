@@ -5,6 +5,7 @@ metadata:
   name: approvalrequest-stamp-approver
 spec:
   failurePolicy: Fail
+  reinvocationPolicy: Never
   matchConstraints:
     resourceRules:
       - apiGroups: ["thump.dev"]
