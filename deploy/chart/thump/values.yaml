@@ -37,6 +37,21 @@ loki:
 argocd:
   enabled: true
 
+# The ApprovalRequest surface: hiss opens one custom resource per held action
+# and a human releases it with kubectl patch. What that buys over `trim
+# approve` is the approver's identity — an authenticated Kubernetes subject
+# the API server records independently of thump, rather than a string an
+# operator typed about themselves. Off means trim is the only way to release
+# a hold; hiss still runs, and still holds.
+#
+# approvers are the subjects granted patch rights. Empty means nobody can
+# approve through kubectl — deliberately, since a default that granted this
+# would hand out the authority the resource exists to constrain. Each entry is
+# an RBAC subject: {kind: User|Group|ServiceAccount, name: ..., namespace: ...}.
+approvalRequests:
+  enabled: false
+  approvers: []
+
 # Empty by default — internal/beat.Tracer treats an empty
 # OTEL_EXPORTER_OTLP_ENDPOINT as "unconfigured" and falls back to a noop
 # Tracer, so a cluster with no OTel collector/Tempo deployed still starts

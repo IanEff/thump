@@ -95,6 +95,22 @@ tasks:
         go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
           -schema-location default \
           deploy/chart/thump/crds/approvalrequest.yaml
+      # Every value-gated template renders to nothing under the defaults, so
+      # the pass above validates none of them. The admission policies are the
+      # authority boundary on the ApprovalRequest surface — a typo in one
+      # fails open — so the on-state is rendered and checked too.
+      # -ignore-missing-schemas: MutatingAdmissionPolicy is newer than the
+      # schema catalog, and the ValidatingAdmissionPolicy pair is covered by
+      # internal/hiss/chart_test.go's assertions on the rendered output.
+      - |
+        helm template deploy/chart/thump \
+          --set approvalRequests.enabled=true \
+          --set 'approvalRequests.approvers[0].kind=User' \
+          --set 'approvalRequests.approvers[0].name=someone@example.com' \
+          --set 'approvalRequests.approvers[0].apiGroup=rbac.authorization.k8s.io' \
+          | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
 
   test:
     desc: go test -shuffle=on ./...

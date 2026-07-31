@@ -407,6 +407,33 @@ done and what it's holding. `trim approve <fingerprint>` acks a held action, and
 hiss re-issues the approved decision. The operator surface never writes a
 decision itself.
 
+There is a second way to release a hold, off by default
+(`approvalRequests.enabled`, `deploy/chart/thump/values.yaml`). With it on, hiss
+opens an `ApprovalRequest` custom resource per held action and a human releases
+it by patching one field:
+
+```
+kubectl -n thump get approvalrequests
+kubectl -n thump patch approvalrequest ar-8f3c1d2e0a5b7649 \
+  --type=merge -p '{"spec":{"decision":"approve"}}'
+```
+
+What that buys over `trim approve` is the approver's identity. `--approver` is a
+string an operator types about themselves; under the CR the approver is the
+authenticated Kubernetes subject, a `MutatingAdmissionPolicy` stamps it into
+`thump.dev/approved-by` regardless of what the patch body said, and the API
+server records the request in its own audit log. Every other audit claim this
+engine makes is thump attesting about itself. Grant it with
+`approvalRequests.approvers`, which is empty by default.
+
+`spec.decision` accepts `approve` and nothing else. Bypassing hiss's risk gate
+stays with `trim force` (D-9): a break-glass verb five characters away from an
+ordinary approval, on the same object and under the same RBAC verb, would not be
+break-glass. The controller refuses to publish an ack it cannot attribute, so a
+cluster that never installed the admission policies fails closed rather than
+approving on behalf of nobody. Needs Kubernetes 1.36 —
+`MutatingAdmissionPolicy` went stable there.
+
 Check `internal/config/config.go` for the full environment variable list before
 arming anything for real.
 
