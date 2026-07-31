@@ -172,13 +172,14 @@ local_resource(
 # external system issues them, so there's nothing to source from .env. The
 # chart's own secret.yaml self-provisions them on a real `helm install` via
 # a `lookup`-guarded block, but `lookup` always reads empty under `helm
-# template` (what Tilt's helm() runs), so under Tilt that block would mint a
-# fresh random key on every Tiltfile reload and silently break whatever it
-# already sealed on disk. These local_resources are the Tilt-loop equivalent
-# of the chart's lookup guard: create-if-absent, never touch an existing one
-# (unlike thump-s3-secret's dry-run-apply, which is meant to re-sync every
-# run) — `kubectl get ... || kubectl create ...`, not `--dry-run=client -o
-# yaml | apply`.
+# template` (what Tilt's helm() runs) — the k8s_yaml() call above now
+# filter_yaml()s both Secret objects out of the chart's rendered manifests
+# entirely, so that inert guard never gets a chance to matter under Tilt.
+# These local_resources are the *only* thing that ever creates or touches
+# either secret in a Tilt session: create-if-absent, never touch an existing
+# one (unlike thump-s3-secret's dry-run-apply, which is meant to re-sync
+# every run) — `kubectl get ... || kubectl create ...`, not `--dry-run=client
+# -o yaml | apply`.
 local_resource(
     "thump-seal-secret",
     cmd="bash -c '"
@@ -248,7 +249,26 @@ for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
 # k8s_yaml() call — a separate manual k8s_yaml() of the same file duplicated
 # the CRD and broke `tilt up` (2026-07-31). helm() watches the whole chart
 # dir, so crds/ edits still live-reload same as templates/.
-k8s_yaml(helm("deploy/chart/thump", values=[cluster["values"]]))
+rendered = helm("deploy/chart/thump", values=[cluster["values"]])
+
+# secret.yaml's thump-seal and nats-js-key Secrets are guarded by
+# `{{- if not (lookup ...) }}` so a real `helm install` mints them once and
+# leaves them alone. `lookup` always reads empty under `helm template` (what
+# helm() above runs), so left in this manifest set, that guard is inert:
+# every Tiltfile reload re-renders a *freshly random* key and k8s_yaml
+# applies it over whatever's already live. That's what broke thump-test
+# 2026-07-31 — an unrelated chart edit (OTel env vars) triggered a reload
+# mid-session, silently rotated nats-js-key's value, and the running NATS
+# pod could no longer decrypt its own on-disk JetStream store ("unable to
+# recover keys" / stream "could not be recovered"). Strip both Secret
+# objects out of what k8s_yaml ever sees — thump-seal-secret and
+# thump-nats-js-key-secret below (create-if-absent) become the *only* thing
+# allowed to touch them under Tilt, enforcing the same once-only intent the
+# chart's lookup guard has for a real `helm install`, by manifest filtering
+# instead of a guard Tilt can't evaluate.
+_, rendered = filter_yaml(rendered, kind="Secret", name="thump-seal")
+_, rendered = filter_yaml(rendered, kind="Secret", name="nats-js-key")
+k8s_yaml(rendered)
 
 # Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
 k8s_resource(
