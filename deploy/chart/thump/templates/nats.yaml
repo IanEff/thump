@@ -91,8 +91,11 @@ data:
                 # randomly-named ephemeral consumer on thump.decisions every
                 # startup to replay PendingHolds — the wildcard token covers
                 # that random name, unlike every other grant above which
-                # names a fixed durable.
-                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.decisions"
+                # names a fixed durable. All three of create, fetch (MSG.NEXT),
+                # and ack are needed: FetchNoWait and msg.Ack() both address
+                # the consumer by that same random name, not by filter subject.
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.decisions",
+                "$JS.API.CONSUMER.MSG.NEXT.THUMP.*", "$JS.ACK.THUMP.*.>"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }
