@@ -17,7 +17,22 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/nats-io/nats.go/jetstream"
 )
+
+// RebuildLedgerForTest exposes rebuildLedger to clank_test — the replay
+// logic itself, independent of the composition root that wires it in.
+func RebuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention time.Duration) (*MemProposalLog, error) {
+	return rebuildLedger(ctx, js, retention)
+}
+
+// BuildLedgerForTest exposes buildLedger to clank_test — the composition-root
+// seam runBroker actually calls, so a wiring-guard test can prove that call
+// site reaches replay rather than a bare NewMemProposalLog() a future edit
+// could silently swap back in.
+func BuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention time.Duration) (*MemProposalLog, error) {
+	return buildLedger(ctx, js, retention)
+}
 
 // NewLoopForTest is the one deliberate crack in the package boundary: it lets
 // clank_test build a loop through the exact same newLoop Main uses, without
@@ -51,12 +66,11 @@ func NewBrokerEngineForTest(model Model, intake *Intake, store Store, tools map[
 	return newBrokerEngine(model, intake, store, tools, cat, shippedClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights())
 }
 
-// TODO: These are a gooney workaround and this stuff should probably go elsewhere or be relagated to the dustbin of bad ideas.
+// SeedForTest backdates ps into the ledger as if Record had run age ago —
+// a thin wrapper over seedAt, the same primitive rebuildLedger uses to
+// replay history with its real timestamps.
 func (l *MemProposalLog) SeedForTest(ps proposal.Set, age time.Duration) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	// Backdate the record to simulate a stale entry
-	l.sets = append(l.sets, recorded{set: ps, at: time.Now().Add(-age)})
+	l.seedAt(ps, time.Now().Add(-age))
 }
 
 func (l *MemProposalLog) LenForTest() int {

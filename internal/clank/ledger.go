@@ -133,6 +133,15 @@ func (l *MemProposalLog) Decline(ctx context.Context, fingerprint string, at tim
 	return proposal.Set{}, fmt.Errorf("%w: %s", ErrNoOpenSet, fingerprint)
 }
 
+// seedAt appends ps to the ledger stamped at — the replay counterpart to
+// Record's time.Now(), so a rebuilt ledger's dedupe window measures from
+// when a set was actually proposed, not when the process restarted.
+func (l *MemProposalLog) seedAt(ps proposal.Set, at time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sets = append(l.sets, recorded{set: ps, at: at})
+}
+
 func transition(st proposal.Status, o outcome.Outcome) proposal.Status {
 	st.ObservedAt = o.ExecutedAt
 	switch o.Result {
