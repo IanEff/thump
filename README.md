@@ -15,9 +15,8 @@ What it can act on is entirely a function of what's in the catalog. Today that's
 a handful of rook/Ceph runbooks and two OpenTelemetry-demo remedies, because
 those are the rigs I have on hand to build and chaos-test against. Grow the
 catalog and you grow what thump can act on; the reasoner and the governor don't
-change. That's the design claim, and
-[onboarding a domain in config alone](#onboard-your-own-domain) is how it gets
-tested rather than asserted.
+change. [Onboarding a domain in config alone](#onboard-your-own-domain) is the
+test of that.
 
 It is also deliberately dumb, anal, and rigid. It cannot invent an action
 outside the catalog. It cannot invent a magnitude the action's author didn't
@@ -310,7 +309,7 @@ here needs a second source of truth to answer "why did it do that."
 
 **Onboarding a system to thump takes no Go.** Signals, evidence, topology,
 failure-class meanings, the action catalog, and how each action executes are all
-operator-authored YAML. That claim is a test rather than a promise:
+operator-authored YAML, and there's a test that proves it:
 `test/onboarding/` onboards a synthetic `acme` service from seven files and
 drives it through all five beats in `task ci`. Copy that directory as a starting
 point.
@@ -387,8 +386,8 @@ against, not because thump requires one.
 
 `thump-test` additionally runs the OpenTelemetry Astronomy Shop demo alongside
 Ceph — a second, orthogonal domain on one cluster, sharing no signal, failure
-class, or catalog action with the first. That's the general-purpose claim under
-load rather than in a test fixture. Bring one up, then:
+class, or catalog action with the first — the general-purpose claim under load
+instead of in a test fixture. Bring one up, then:
 
 ```sh
 tilt up -- --cluster=rook-gce-k3s   # or ceph-lab, rook-gke, thump-test
@@ -486,9 +485,7 @@ sourcing, and the test that would go red for each:
     Governance, action contracts with automatic reversal, signal contracts with
     declared guarantees, and calibrated confidence are *all four* simultaneously
     operational. Three of four doesn't count.
-13. **Every wave stays red→green, and every commit is reviewed.** No untested
-    seam crosses into the next beat. Contributors and AI pairing partners may
-    edit and test; I review and land every commit.
+13. **Every wave stays red→green.** No untested seam crosses into the next beat.
 14. **Delivery is at-least-once; identity is the fingerprint.** Every transport
     may redeliver, so every consumer dedupes on the producer-assigned
     fingerprint and never on transport metadata like a filename or sequence
@@ -503,9 +500,6 @@ sourcing, and the test that would go red for each:
 ---
 
 ## Known-open
-
-Told straight, because "decline out loud instead of guessing quietly" applies to
-this project's own status page and not just its runtime behavior.
 
 - **The `hold` → ack loop is built; the surface around it is thin.** `trim
   incidents`, `trim approve`, and the break-glass `trim force` all work, and
@@ -572,26 +566,16 @@ opening a PR.** A green `go test` on GitHub is a weaker claim than a green
 
 ## Contributing
 
-This is a learning project as much as a build — I'm using it to get fluent in
-Go — and the working agreement reflects that:
+The "never" column in the beat table is the design. A policy check inside clank,
+a raw payload riding in a conversation message, a recomputed fingerprint, a new
+noun that isn't in the vocabulary — those are the regressions that matter most,
+ahead of any bug in business logic.
 
-- **I land every commit.** Edits, tests, and `task ci` are fair game for anyone
-  helping out, including an AI pairing partner. The commit itself is always
-  mine to make.
-- **TDD is a spine, held loosely.** Red→green is the default shape rather than a
-  ritual enforced on every change. Sometimes a spike or a tangent comes first,
-  and that's fine.
-- **Respect the seams.** The "never" column in the beat table above is the
-  design. A policy check inside clank, a raw payload riding in a conversation
-  message, a recomputed fingerprint, a new noun that isn't in the vocabulary —
-  these are the regressions that matter most, more than any bug in business
-  logic.
-
-Full contributor guide, including the one review rule that isn't obvious (a
-catalog change is an execution-surface change), is in `CONTRIBUTING.md`. Go
-conventions, comment style, and testing standards live in `AGENTS.md`; read it
-before touching any `.go` file. Security reports go through `SECURITY.md` rather
-than a PR.
+`CONTRIBUTING.md` has the full guide, including the review rule that isn't
+obvious: a catalog change is an execution-surface change. Go conventions,
+comment style, and testing standards live in `AGENTS.md`; read it before
+touching any `.go` file. Security reports go through `SECURITY.md` rather than a
+PR.
 
 ---
 
@@ -625,9 +609,6 @@ than a PR.
 - **Joel Holmes, *Shipping Go*** (Manning) — release pipeline, delivery, and
   repo layout conventions.
 
-You don't need any of these to read this repo.
-
 The dated design journal — day-by-day investigation notes, live-run
-post-mortems, per-phase build plans — I keep privately rather than mirroring
-here. Everything load-bearing from it has been brought into `docs/`. Pointing
-you at a file you can't open would be worse than saying that plainly.
+post-mortems, per-phase build plans — stays private rather than mirrored here.
+Everything load-bearing from it is in `docs/`.
