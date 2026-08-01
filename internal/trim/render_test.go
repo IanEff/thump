@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-func ptr(f float64) *float64 { return &f }
-
 // TestRenderIncident_ShowsFingerprintServiceAndStage pins the baseline: the
 // three facts an operator needs at a glance are always present in the
 // rendered line, regardless of which stage the incident is in.
@@ -43,12 +41,12 @@ func TestRenderIncident_ShowsUnmeasuredNotZeroForNilSeverity(t *testing.T) {
 			wantSubstr: "unmeasured",
 		},
 		"renderIncident shows a real zero Severity as 0.00, distinct from unmeasured": {
-			severity:   ptr(0.0),
+			severity:   new(0.0),
 			wantSubstr: "0.00",
 			wantAbsent: "unmeasured",
 		},
 		"renderIncident shows a real nonzero Severity": {
-			severity:   ptr(0.62),
+			severity:   new(0.62),
 			wantSubstr: "0.62",
 			wantAbsent: "unmeasured",
 		},

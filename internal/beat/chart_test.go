@@ -46,7 +46,7 @@ func beatsLinkingClientGo(t *testing.T) []string {
 		if err != nil {
 			t.Fatalf("go list -deps ./cmd/%s: %v", beat, err)
 		}
-		for _, dep := range strings.Split(out, "\n") {
+		for dep := range strings.SplitSeq(out, "\n") {
 			if dep == "k8s.io/client-go/kubernetes" || dep == "k8s.io/client-go/dynamic" {
 				linked = append(linked, beat)
 				break

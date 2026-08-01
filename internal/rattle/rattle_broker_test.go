@@ -70,7 +70,7 @@ func walLineCount(t *testing.T, dirpath string) int {
 		if err != nil {
 			t.Fatalf("read %s: %v", m, err)
 		}
-		for _, line := range strings.Split(string(raw), "\n") {
+		for line := range strings.SplitSeq(string(raw), "\n") {
 			if strings.TrimSpace(line) != "" {
 				n++
 			}

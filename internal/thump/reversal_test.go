@@ -117,12 +117,10 @@ func TestReversalWatcher_AReversalSurvivesADisarmedKillSwitch(t *testing.T) {
 // neverConverges / alwaysConverges are the two poles of the convergence probe
 // — a real Converger reads telemetry, but the reversal decision only turns on
 // its bool, so the poles are the whole test surface.
-func ptr(f float64) *float64 { return &f }
-
 type neverConverges struct{}
 
-func (neverConverges) Settle(context.Context, thump.Order) (bool, *float64) { return false, ptr(0.9) }
+func (neverConverges) Settle(context.Context, thump.Order) (bool, *float64) { return false, new(0.9) }
 
 type alwaysConverges struct{}
 
-func (alwaysConverges) Settle(context.Context, thump.Order) (bool, *float64) { return true, ptr(0.05) }
+func (alwaysConverges) Settle(context.Context, thump.Order) (bool, *float64) { return true, new(0.05) }

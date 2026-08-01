@@ -128,11 +128,11 @@ func TestRecordEffectiveness_ObservesTheForecastError(t *testing.T) {
 		want    float64
 	}{
 		"a converged success near the forecast observes a small delta": {
-			outcome: outcome.Outcome{Result: outcome.ResultSuccess, ObservedSeverity: floatPtr(0.1)},
+			outcome: outcome.Outcome{Result: outcome.ResultSuccess, ObservedSeverity: new(0.1)},
 			want:    -0.3, // observedReduction 1.0-0.1=0.9, delta 0.6-0.9
 		},
 		"a non-converging action that left severity untouched observes a large positive delta": {
-			outcome: outcome.Outcome{Result: outcome.ResultPartialNonConverging, ObservedSeverity: floatPtr(1.0)},
+			outcome: outcome.Outcome{Result: outcome.ResultPartialNonConverging, ObservedSeverity: new(1.0)},
 			want:    0.6, // observedReduction 1.0-1.0=0, delta 0.6-0
 		},
 	}
@@ -168,8 +168,8 @@ func TestRecordEffectiveness_SkipsUnmeasuredAndInterim(t *testing.T) {
 		Proposals:   []proposal.Candidate{{ID: "cand-1", PredictedImpact: &proposal.PredictedImpact{SeverityReductionPct: 0.6}}},
 	}
 	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultSuccess}) // ObservedSeverity nil
-	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultApplied, ObservedSeverity: floatPtr(0.1)})
-	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultRendered, ObservedSeverity: floatPtr(0.1)})
+	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultApplied, ObservedSeverity: new(0.1)})
+	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultRendered, ObservedSeverity: new(0.1)})
 
 	if count, _ := effectivenessSample(t, reg); count != 0 {
 		t.Errorf("effectiveness histogram got %d samples, want 0", count)
@@ -198,8 +198,6 @@ func effectivenessSample(t *testing.T, reg *prometheus.Registry) (count uint64, 
 	t.Fatal("agent_action_effectiveness_delta family not found")
 	return 0, 0
 }
-
-func floatPtr(f float64) *float64 { return &f }
 
 func TestConfidenceBucket(t *testing.T) {
 	tests := []struct {

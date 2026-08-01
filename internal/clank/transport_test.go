@@ -124,7 +124,7 @@ func TestTransport_GivesUpAfterFiveFailures(t *testing.T) {
 	eng.Model = erroringModel{err: errors.New("boom: model unreachable")}
 
 	tr := &clank.Transport{Inbox: inbox, Engine: eng}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if err := tr.Tick(context.Background()); err != nil {
 			t.Fatalf("tick %d: transport-level error, want per-file retry: %v", i, err)
 		}

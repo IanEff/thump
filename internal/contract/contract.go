@@ -8,6 +8,7 @@ package contract
 
 import (
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/proposal"
@@ -84,21 +85,11 @@ func (s *StaticCatalog) Contracts() []ActionContract {
 }
 
 func classMatches(c ActionContract, class proposal.FailureClass) bool {
-	for _, fc := range c.ApplicableFailureClasses {
-		if fc == class {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.ApplicableFailureClasses, class)
 }
 
 func tierMatches(c ActionContract, tier string) bool {
-	for _, t := range c.ApplicableTiers {
-		if t == tier {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.ApplicableTiers, tier)
 }
 
 func preconditionsMet(c ActionContract, sao proposal.SAO) bool {
@@ -116,10 +107,10 @@ type ActionContract struct {
 	ApplicableTiers          []string                `json:"applicableTiers,omitempty" yaml:"applicableTiers,omitempty"`
 	BlastTier                proposal.BlastTier      `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`
 	Preconditions            []Precondition          `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
-	Action                   ActionSpec              `json:"action,omitempty" yaml:"action,omitempty"`
-	Reversal                 Reversal                `json:"reversal,omitempty" yaml:"reversal,omitempty"`
-	Execution                Execution               `json:"execution,omitempty" yaml:"execution,omitempty"`
-	SuccessCriteria          SuccessCriteria         `json:"successCriteria,omitempty" yaml:"successCriteria,omitempty"`
+	Action                   ActionSpec              `json:"action" yaml:"action,omitempty"`
+	Reversal                 Reversal                `json:"reversal" yaml:"reversal,omitempty"`
+	Execution                Execution               `json:"execution" yaml:"execution,omitempty"`
+	SuccessCriteria          SuccessCriteria         `json:"successCriteria" yaml:"successCriteria,omitempty"`
 }
 
 type ActionSpec struct {
