@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+
+	"github.com/ianeff/thump/internal/httpx"
 )
 
 // modelRequestTimeout bounds one call to the model. Longer than
@@ -21,14 +24,30 @@ const modelRequestTimeout = 120 * time.Second
 // wires in — GeminiModel exists as a second Model implementation but Main
 // doesn't select it yet.
 type AnthropicModel struct {
-	client anthropic.Client
+	client     anthropic.Client
+	httpClient *http.Client
 }
 
-// NewAnthropicModel builds an AnthropicModel authenticated with apiKey.
+// NewAnthropicModel builds an AnthropicModel authenticated with apiKey. It
+// carries its own *http.Client rather than the SDK's http.DefaultClient
+// default — a private connection pool Close can drain, instead of one
+// shared process-wide with anything else in the binary.
 func NewAnthropicModel(apiKey string) *AnthropicModel {
+	httpClient := httpx.Client(modelRequestTimeout, nil)
 	return &AnthropicModel{
-		client: anthropic.NewClient(option.WithAPIKey(apiKey), option.WithRequestTimeout(modelRequestTimeout)),
+		client:     anthropic.NewClient(option.WithAPIKey(apiKey), option.WithRequestTimeout(modelRequestTimeout), option.WithHTTPClient(httpClient)),
+		httpClient: httpClient,
 	}
+}
+
+// Close drains this model's HTTP/2 connection pool. A long-lived production
+// process never needs to call it — the OS reclaims sockets at exit — but a
+// short-lived one (a test binary driving the real model, e.g. TestEval_*,
+// TestRCA_*) does: an idle HTTP/2 connection's read loop is still a live
+// goroutine until this runs, and goleak checks before the runtime would ever
+// close it on its own.
+func (m *AnthropicModel) Close() {
+	m.httpClient.CloseIdleConnections()
 }
 
 // Complete sends msgs and tools to Claude Haiku and folds the response into

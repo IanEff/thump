@@ -249,8 +249,11 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 			prom := newFakePrometheus(t, queries, tc.evidence)
 			tools := map[string]Tool{"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries}}
 
+			model := NewAnthropicModel(apiKey)
+			t.Cleanup(model.Close)
+
 			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),
-				NewAnthropicModel(apiKey), tools,
+				model, tools,
 				NewIntake(noopTopology{}, noopChange{}),
 				shippedCatalog(),
 				shippedClasses(),
