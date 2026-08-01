@@ -188,3 +188,7 @@ func NewMaskingModelForTest(model Model, mask *identifierMasker) Model {
 func ContextWithMaskerForTest(ctx context.Context, mask *identifierMasker) context.Context {
 	return contextWithMasker(ctx, mask)
 }
+
+// ModelRequestTimeoutForTest exposes the bound on one model call — the only
+// handler timeout in the tree that deliberately exceeds AckWait.
+func ModelRequestTimeoutForTest() time.Duration { return modelRequestTimeout }
