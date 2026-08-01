@@ -203,3 +203,83 @@ func TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence(t *testing.T)
 		})
 	}
 }
+
+// setWithOneCandidate builds a one-candidate proposal.Set with two live,
+// coherent citations (GroundingMany) and, when likelihood > 0, a single
+// in-topology CausalScore carrying it. Signal confidence swings with
+// likelihood's presence — 0.7 when a causal score grounds the run, 0.3 when
+// none does — so the pre-ceiling computed value lands above 0.75 and below
+// 0.99 in the grounded cases and exactly on 0.3 in the ungrounded one,
+// straddling every case table boundary below on purpose.
+func setWithOneCandidate(t *testing.T, selfReported, likelihood float64) *proposal.Set {
+	t.Helper()
+
+	signalConf := 0.3
+	var causal []proposal.CausalScore
+	if likelihood > 0 {
+		signalConf = 0.7
+		causal = []proposal.CausalScore{{EventID: "c1", InTopology: true, Likelihood: likelihood}}
+	}
+
+	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: signalConf}}
+	return &proposal.Set{
+		Proposals: []proposal.Candidate{{
+			ID:         "p1",
+			Confidence: selfReported,
+			Citations:  []string{"metrics_q", "loki_q"},
+		}},
+		Evidence: []proposal.EvidenceRef{
+			{Tool: "metrics", Query: "metrics_q", Live: true},
+			{Tool: "loki", Query: "loki_q", Live: true},
+		},
+		SAOSnapshot:  &sao,
+		CausalScores: causal,
+	}
+}
+
+func TestScoreConfidences_RecordsWhetherTheSelfReportCeilingBound(t *testing.T) {
+	t.Parallel()
+	// D-16 made the causal term additive so a corroborating in-topology change
+	// raises confidence rather than lowering it. min(computed, SelfReported)
+	// can erase that raise entirely, and nothing on the emitted set
+	// distinguishes a bonus that applied from one the ceiling clipped — which
+	// is exactly what the live inTopology=2 / maxLikelihood=0.359 /
+	// confidence=0.75 run left open. 0.75 is the shape of a model self-report,
+	// not of a product of five terms.
+	cases := map[string]struct {
+		selfReported float64
+		likelihood   float64
+		wantBound    bool
+	}{
+		"a self-report below what the run grounded is recorded as the binding ceiling": {
+			selfReported: 0.75, likelihood: 0.359, wantBound: true,
+		},
+		"a self-report above what the run grounded leaves the computed value intact": {
+			selfReported: 0.99, likelihood: 0.359, wantBound: false,
+		},
+		"a self-report exactly equal to the computed value does not count as bound": {
+			// The boundary case, and the one a naive <= gets wrong: nothing was
+			// clipped, so reporting "the ceiling bound" here would send someone
+			// hunting a suppression that never happened.
+			selfReported: 0.3, likelihood: 0, wantBound: false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			set := setWithOneCandidate(t, tc.selfReported, tc.likelihood)
+			clank.ScoreConfidencesForTest(set, *set.SAOSnapshot, nil, "dummy fingerprint", clank.DefaultScoringWeights())
+
+			got := set.Proposals[0]
+			if got.ConfidenceCeilingBound != tc.wantBound {
+				t.Errorf("ConfidenceCeilingBound = %v, want %v — emitted confidence %v cannot be read as computed-or-clipped without it",
+					got.ConfidenceCeilingBound, tc.wantBound, got.Confidence)
+			}
+			if got.ComputedConfidence < got.Confidence {
+				t.Errorf("ComputedConfidence %v is below emitted Confidence %v — the ceiling only ever lowers, so this ordering is impossible",
+					got.ComputedConfidence, got.Confidence)
+			}
+		})
+	}
+}
