@@ -100,7 +100,7 @@ const DefaultApprovalRequestRetention = 24 * time.Hour
 // builds its own clients and hands the composition root a ready value,
 // never the other way around, so hiss.go's runBroker needs no new import at
 // all — a same-package function call, not a client-go dependency.
-func NewApprovalRequestController(approvePub publish.Publisher[approval.Approval]) (*ApprovalRequestController, error) {
+func NewApprovalRequestController(approvePub publish.Publisher[approval.Approval], retention time.Duration) (*ApprovalRequestController, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("hiss: in-cluster config: %w", err)
@@ -117,6 +117,7 @@ func NewApprovalRequestController(approvePub publish.Publisher[approval.Approval
 		Dyn:        dyn,
 		Namespace:  string(ns),
 		ApprovePub: approvePub,
+		Retention:  retention,
 	}, nil
 }
 

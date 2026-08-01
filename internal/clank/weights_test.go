@@ -61,8 +61,10 @@ func constantsBeforeExtraction() clank.ScoringWeights {
 		GroundingMany:     1.0,
 		Causal:            0.5,
 		// Promoted out of causal.go by this track; same values.
-		TemporalHalfLife:   30 * time.Minute,
-		HistoricalAloneCap: 0.5,
+		TemporalHalfLife:      30 * time.Minute,
+		HistoricalAloneCap:    0.5,
+		CaseBaseBaseline:      0.9,
+		NegativeSignalPenalty: 0.2,
 	}
 }
 
@@ -133,16 +135,18 @@ func TestLoadWeights_AcceptsATermExplicitlySetToZero(t *testing.T) {
 // marshal to the same document.
 func weightsFileFrom(w clank.ScoringWeights) map[string]any {
 	return map[string]any{
-		"temporal":           w.Temporal,
-		"topological":        w.Topological,
-		"historical":         w.Historical,
-		"freshnessHalfLife":  w.FreshnessHalfLife.String(),
-		"groundingNone":      w.GroundingNone,
-		"groundingOne":       w.GroundingOne,
-		"groundingMany":      w.GroundingMany,
-		"causal":             w.Causal,
-		"temporalHalfLife":   w.TemporalHalfLife.String(),
-		"historicalAloneCap": w.HistoricalAloneCap,
+		"temporal":              w.Temporal,
+		"topological":           w.Topological,
+		"historical":            w.Historical,
+		"freshnessHalfLife":     w.FreshnessHalfLife.String(),
+		"groundingNone":         w.GroundingNone,
+		"groundingOne":          w.GroundingOne,
+		"groundingMany":         w.GroundingMany,
+		"causal":                w.Causal,
+		"temporalHalfLife":      w.TemporalHalfLife.String(),
+		"historicalAloneCap":    w.HistoricalAloneCap,
+		"caseBaseBaseline":      w.CaseBaseBaseline,
+		"negativeSignalPenalty": w.NegativeSignalPenalty,
 	}
 }
 

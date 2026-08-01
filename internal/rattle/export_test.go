@@ -19,7 +19,7 @@ func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, pub pu
 // swap in a fake Source and prove Main's wiring, not just Reconciler's
 // behavior when a test hand-sets a field.
 func NewReconcilerForTest(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource, backendTLS *tls.Config) *Reconciler {
-	return newReconciler(promURL, slos, topo, traffic, backendTLS)
+	return newReconciler(promURL, slos, topo, traffic, backendTLS, DefaultQueryConfig())
 }
 
 // BuildSourcesForTest exposes buildSources to rattle_test.

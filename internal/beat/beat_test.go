@@ -87,7 +87,7 @@ func TestExitOnError(t *testing.T) {
 
 func TestNewWALPublisher_RejectsEmptyWALDir(t *testing.T) {
 	t.Parallel()
-	_, _, err := beat.NewWALPublisher[int](nil, "", "hiss", "thump.decisions")
+	_, _, err := beat.NewWALPublisher[int](nil, "", "hiss", "thump.decisions", beat.DefaultWALConfig())
 	if err == nil {
 		t.Fatal("an empty WAL_DIR must be rejected, got nil error")
 	}

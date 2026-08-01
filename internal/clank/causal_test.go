@@ -169,12 +169,14 @@ func topoWithDegradedUpstream(name string) proposal.TopologySnapshot {
 // so an in-path change outscores a more-recent but unrelated one.
 func heavyTopologyWeights() clank.ScoringWeights {
 	return clank.ScoringWeights{
-		Temporal:           0.1,
-		Topological:        0.8,
-		Historical:         0.1,
-		FreshnessHalfLife:  30 * 24 * time.Hour,
-		TemporalHalfLife:   30 * time.Minute,
-		HistoricalAloneCap: 0.5,
+		Temporal:              0.1,
+		Topological:           0.8,
+		Historical:            0.1,
+		FreshnessHalfLife:     30 * 24 * time.Hour,
+		TemporalHalfLife:      30 * time.Minute,
+		HistoricalAloneCap:    0.5,
+		CaseBaseBaseline:      0.9,
+		NegativeSignalPenalty: 0.2,
 	}
 }
 
@@ -182,12 +184,14 @@ func heavyTopologyWeights() clank.ScoringWeights {
 // no thumb on the scale, useful when the test is about something else.
 func uniformWeights() clank.ScoringWeights {
 	return clank.ScoringWeights{
-		Temporal:           1.0 / 3,
-		Topological:        1.0 / 3,
-		Historical:         1.0 / 3,
-		FreshnessHalfLife:  30 * 24 * time.Hour,
-		TemporalHalfLife:   30 * time.Minute,
-		HistoricalAloneCap: 0.5,
+		Temporal:              1.0 / 3,
+		Topological:           1.0 / 3,
+		Historical:            1.0 / 3,
+		FreshnessHalfLife:     30 * 24 * time.Hour,
+		TemporalHalfLife:      30 * time.Minute,
+		HistoricalAloneCap:    0.5,
+		CaseBaseBaseline:      0.9,
+		NegativeSignalPenalty: 0.2,
 	}
 }
 
