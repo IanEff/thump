@@ -55,3 +55,7 @@ func (c *ApprovalRequestController) ReconcileForTest(ctx context.Context, u *uns
 func (c *ApprovalRequestController) ReconcileObjForTest(ctx context.Context, obj any) {
 	c.reconcileObj(ctx, obj)
 }
+
+// ApprovalRequestTimeoutForTest exposes the per-apiserver-call bound the
+// controller applies when its Timeout field is zero.
+func ApprovalRequestTimeoutForTest() time.Duration { return approvalRequestTimeout }

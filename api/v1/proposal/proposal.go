@@ -55,6 +55,28 @@ func (s Set) ConfidenceFor(candidateID string) float64 {
 	return 0
 }
 
+// ComputedConfidenceFor returns the ComputedConfidence of the Proposals
+// whose ID matches candidateID or 0 if none matches.
+func (s Set) ComputedConfidenceFor(candidateID string) float64 {
+	for _, p := range s.Proposals {
+		if p.ID == candidateID {
+			return p.ComputedConfidence
+		}
+	}
+	return 0
+}
+
+// ConfidenceCeilingBoundFor returns the ConfidenceCeilingBound of the
+// Proposals whose ID matches candidateID or false if none matches.
+func (s Set) ConfidenceCeilingBoundFor(candidateID string) bool {
+	for _, p := range s.Proposals {
+		if p.ID == candidateID {
+			return p.ConfidenceCeilingBound
+		}
+	}
+	return false
+}
+
 // RankingRationale records why the ranker ordered Proposals the way it did —
 // the deterministic, auditable half of ranking, kept separate from the
 // model's own hypothesis reasoning.
@@ -116,15 +138,23 @@ type EvidenceRef struct {
 // hypothesis confidence and governance band — a graded request, never a
 // verdict; hiss decides whether it may proceed.
 type Candidate struct {
-	ID              string           `json:"id,omitempty" yaml:"id,omitempty"`
-	ContractRef     string           `json:"contractRef,omitempty" yaml:"contractRef,omitempty"` // must name an entry in the ActionContract catalog — the engine rejects any Candidate whose ContractRef the catalog doesn't list
-	Confidence      float64          `json:"confidence,omitempty" yaml:"confidence,omitempty"`   // the model's hypothesis confidence ("how sure of this fix?") — never signal.Divergence.Confidence ("is this real?")
-	PredictedImpact *PredictedImpact `json:"predictedImpact,omitempty" yaml:"predictedImpact,omitempty"`
-	BlastTier       BlastTier        `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`             // authored; copied from the ActionContract at enrichment — hiss's shaper reads this for risk, never the effectiveness forecast in PredictedImpact
-	ReversalPath    *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence
-	GovernanceLevel *GovernanceLevel `json:"governanceLevel,omitempty" yaml:"governanceLevel,omitempty"` // nil is read as the lowest band (BandObserve), never as elevated privilege
-	Rank            int              `json:"rank,omitempty" yaml:"rank,omitempty"`                       // 1-indexed position after ranking; rank 1 is what Set.Recommended names
-	Citations       []string         `json:"citations,omitempty" yaml:"citations,omitempty"`             // EvidenceRef.Query names backing this Candidate - what the gate grounds and the confidence function corroborates.
+	ID          string  `json:"id,omitempty" yaml:"id,omitempty"`
+	ContractRef string  `json:"contractRef,omitempty" yaml:"contractRef,omitempty"` // must name an entry in the ActionContract catalog — the engine rejects any Candidate whose ContractRef the catalog doesn't list
+	Confidence  float64 `json:"confidence,omitempty" yaml:"confidence,omitempty"`   // the model's hypothesis confidence ("how sure of this fix?") — never signal.Divergence.Confidence ("is this real?")
+	// ComputedConfidence is what this run's evidence grounded, before the
+	// model's self-report was applied as a ceiling — emitted alongside
+	// Confidence so a set records whether a causal bonus reached the number or
+	// was clipped out of it. Never below Confidence: the ceiling only lowers.
+	ComputedConfidence float64 `json:"computedConfidence,omitempty" yaml:"computedConfidence,omitempty"`
+	// ConfidenceCeilingBound reports that the model claimed less than the run
+	// grounded, so Confidence is the self-report and not the computation.
+	ConfidenceCeilingBound bool             `json:"confidenceCeilingBound,omitempty" yaml:"confidenceCeilingBound,omitempty"`
+	PredictedImpact        *PredictedImpact `json:"predictedImpact,omitempty" yaml:"predictedImpact,omitempty"`
+	BlastTier              BlastTier        `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`             // authored; copied from the ActionContract at enrichment — hiss's shaper reads this for risk, never the effectiveness forecast in PredictedImpact
+	ReversalPath           *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence
+	GovernanceLevel        *GovernanceLevel `json:"governanceLevel,omitempty" yaml:"governanceLevel,omitempty"` // nil is read as the lowest band (BandObserve), never as elevated privilege
+	Rank                   int              `json:"rank,omitempty" yaml:"rank,omitempty"`                       // 1-indexed position after ranking; rank 1 is what Set.Recommended names
+	Citations              []string         `json:"citations,omitempty" yaml:"citations,omitempty"`             // EvidenceRef.Query names backing this Candidate - what the gate grounds and the confidence function corroborates.
 }
 
 // PredictedImpact is a forecast of what this Candidate would do to the

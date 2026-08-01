@@ -41,3 +41,6 @@ func LiveKubeForTest(cs kubernetes.Interface, dyn dynamic.Interface) Kube {
 func ExecTargetForTest(ctx context.Context, cs kubernetes.Interface, namespace, selector string) (pod, container string, err error) {
 	return liveKube{cs: cs}.execTarget(ctx, namespace, selector)
 }
+
+// ActuateTimeoutForTest exposes the bound on one Runner.Run call.
+func ActuateTimeoutForTest() time.Duration { return actuateTimeout }

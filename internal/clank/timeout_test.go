@@ -9,7 +9,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/natstest"
 )
 
 // timedOutTransport answers every request the way a bounded client answers a
@@ -45,5 +47,23 @@ func TestMetricsTool_ATimedOutQueryReturnsNonLiveEvidence(t *testing.T) {
 	want := proposal.EvidenceRef{Tool: "metrics", Query: "ceph_health", Live: false}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("a timed-out metrics query must come back as non-live evidence (-want +got)", diff)
+	}
+}
+
+func TestModelRequestTimeout_ExceedsAckWaitAndIsCoveredByTheSubscriberHeartbeat(t *testing.T) {
+	t.Parallel()
+	// The deliberate inversion, and the one nobody can check today. A reason
+	// loop runs well past AckWait, which is safe only because Handler's
+	// heartbeat resets the deadline on real checkpoint progress. This test
+	// pins both halves together: drop the heartbeat and the relationship
+	// silently becomes up to maxDeliver concurrent paid reason loops for one
+	// detection.
+	ctx := t.Context()
+	ackWait, err := broker.ProvisionedAckWait(ctx, natstest.New(t), "thump.detections")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := clank.ModelRequestTimeoutForTest(); got <= ackWait {
+		t.Errorf("modelRequestTimeout is %s against a provisioned AckWait of %s — if the model call now fits inside AckWait, the heartbeat this beat depends on is no longer load-bearing and this test is asserting the wrong thing", got, ackWait)
 	}
 }

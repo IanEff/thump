@@ -27,7 +27,7 @@ import (
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
 func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
-	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil)
+	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights())
 }
 
 // ShippedCatalogForTest exposes the production catalog (the one Main wires)
@@ -48,7 +48,7 @@ func ShippedFailureClassesForTest() []contract.FailureClassDefinition {
 
 // NewBrokerEngineForTest exposes the broker-mode Engine construction to tests.
 func NewBrokerEngineForTest(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase) *Engine {
-	return newBrokerEngine(model, intake, store, tools, cat, shippedClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil, nil)
+	return newBrokerEngine(model, intake, store, tools, cat, shippedClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights())
 }
 
 // TODO: These are a gooney workaround and this stuff should probably go elsewhere or be relagated to the dustbin of bad ideas.
@@ -188,3 +188,7 @@ func NewMaskingModelForTest(model Model, mask *identifierMasker) Model {
 func ContextWithMaskerForTest(ctx context.Context, mask *identifierMasker) context.Context {
 	return contextWithMasker(ctx, mask)
 }
+
+// ModelRequestTimeoutForTest exposes the bound on one model call — the only
+// handler timeout in the tree that deliberately exceeds AckWait.
+func ModelRequestTimeoutForTest() time.Duration { return modelRequestTimeout }

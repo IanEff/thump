@@ -44,6 +44,7 @@ type Clank struct {
 	TLSKeyFile       string        // TLS_KEY_FILE — required only in the broker path
 	TLSCAFile        string        // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 	SealKey          []byte        // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments and transcripts before they reach the bucket
+	Weights          string        // CLANK_WEIGHTS -- required; path to mounted weights.yaml
 }
 
 // LoadClank reads clank's environment once. broker is whether Main resolved
@@ -70,6 +71,7 @@ func LoadClank(broker bool) (Clank, error) {
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
 		ArgoEnabled:      l.OptionalBool("ARGOCD_ENABLED"),
 		Transcripts:      l.Optional("CLANK_TRANSCRIPTS"),
+		Weights:          l.Require("CLANK_WEIGHTS"),
 	}
 	if c.WhirCatalog != "" && c.WhirStateQueries != "" && c.PromURL == "" {
 		l.errs = append(l.errs, errors.New("PROM_URL is required when WHIR_CATALOG and WHIR_STATE_QUERIES are set"))
