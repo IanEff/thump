@@ -63,6 +63,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
+	limits, err := LoadLimitsFile(cfg.Limits)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load limits: %v\n", err)
+		return 1
+	}
+
 	// backendTLS is nil in the offline path (cfg.TLSCertFile unset) and dials
 	// PROM_URL/LOKI_URL in the clear, same as today — L4/L5's declared
 	// exception. In the broker path it's the beat's own leaf, ready the day
@@ -93,7 +99,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
 	model := NewAnthropicModel(cfg.AnthropicAPIKey)
-	intake, err := buildIntake(cfg, backendTLS, argoClient, ev.Index)
+	intake, err := buildIntake(cfg, backendTLS, argoClient, ev.Index, limits.ChangeLookback)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
 		return 1
@@ -150,7 +156,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, weights, tracer, recorder, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, weights, limits, tracer, recorder, stages, health, stderr)
 	}
 
 	health.SetReady(true)
@@ -160,8 +166,8 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// cfg.Inbox/Outbox/Outcomes are this path's env, not the process's —
 	// config.LoadClank only requires them when broker is false (mirrors
 	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
-	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages, recorder, weights)
-	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine}
+	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages, recorder, weights, limits)
+	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine, MaxAttempts: limits.MaxProposeAttempts}
 	re := l.ReturnEdge
 	de := l.DeclineEdge
 
@@ -287,7 +293,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 // buildIntake assumes cfg has already passed config.LoadClank's validation —
 // PROM_URL is cross-required there whenever both whir vars are set, so this
 // never needs to check that combination itself.
-func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex) (*Intake, error) {
+func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex, changeLookback time.Duration) (*Intake, error) {
 	var topo TopologySource = noopTopology{}
 
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
@@ -322,7 +328,7 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interfac
 		slog.Warn("no subject rules authored — every change event will resolve outside the topology and causal scoring is inert",
 			"beat", "clank", "fix", "author subjects: in the file EVIDENCE_QUERIES names")
 	default:
-		change = ArgoChangeSource{Client: argo, Subjects: subjects}
+		change = ArgoChangeSource{Client: argo, Subjects: subjects, Lookback: changeLookback}
 	}
 
 	return NewIntake(topo, change), nil

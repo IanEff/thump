@@ -28,7 +28,7 @@ import (
 // sealed segments to object storage in the background. The two-subscriber
 // shape is clank's own; the beat kit supplies the consumer/publisher
 // primitives but leaves this composition here.
-func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, limits Limits, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 
@@ -48,7 +48,13 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 		return 1
 	}
 
-	proposalPub, _, err := beat.NewWALPublisher[proposal.Set](js, cfg.WALDir, "clank", "thump.proposals")
+	walConfig, err := beat.LoadWALConfig(cfg.WALConfig)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+		return 1
+	}
+
+	proposalPub, _, err := beat.NewWALPublisher[proposal.Set](js, cfg.WALDir, "clank", "thump.proposals", walConfig)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -62,7 +68,9 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	defer func() { _ = proposalPub.WAL.Drain(ctx, sink) }()
 
 	ledger := NewMemProposalLog()
+	ledger.Retention = limits.LedgerRetention
 	cases := NewCaseBase()
+	cases.MaxCases = limits.MaxCases
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}
 
 	// HeartbeatingStore lets the detection handler below reset this run's
@@ -74,7 +82,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		beat.RunShipper(gctx, proposalPub.WAL, sink)
+		beat.RunShipper(gctx, proposalPub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 
