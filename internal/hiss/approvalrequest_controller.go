@@ -150,10 +150,10 @@ func (c *ApprovalRequestController) Create(ctx context.Context, held decision.Go
 		return fmt.Errorf("hiss: approvalrequest spec for %s: %w", spec.SignalRef, err)
 	}
 
-	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": approvalRequestGroup + "/" + approvalRequestVersion,
 		"kind":       approvalRequestKind,
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name":      approvalRequestName(spec.SignalRef),
 			"namespace": c.Namespace,
 		},
@@ -177,8 +177,8 @@ func (c *ApprovalRequestController) Run(ctx context.Context) error {
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(c.Dyn, 10*time.Minute, c.Namespace, nil)
 	informer := factory.ForResource(approvalRequestGVR).Informer()
 	_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { c.reconcileObj(ctx, obj) },
-		UpdateFunc: func(_, obj interface{}) { c.reconcileObj(ctx, obj) },
+		AddFunc:    func(obj any) { c.reconcileObj(ctx, obj) },
+		UpdateFunc: func(_, obj any) { c.reconcileObj(ctx, obj) },
 	})
 	if err != nil {
 		return fmt.Errorf("hiss: register approvalrequest handler: %w", err)
@@ -187,7 +187,7 @@ func (c *ApprovalRequestController) Run(ctx context.Context) error {
 	return nil
 }
 
-func (c *ApprovalRequestController) reconcileObj(ctx context.Context, obj interface{}) {
+func (c *ApprovalRequestController) reconcileObj(ctx context.Context, obj any) {
 	u, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return
@@ -283,8 +283,8 @@ func (c *ApprovalRequestController) reconcile(ctx context.Context, u *unstructur
 }
 
 func (c *ApprovalRequestController) markProcessed(ctx context.Context, name string) error {
-	patch, err := json.Marshal(map[string]interface{}{
-		"status": map[string]interface{}{
+	patch, err := json.Marshal(map[string]any{
+		"status": map[string]any{
 			"phase":     "Processed",
 			"decidedAt": c.now().UTC().Format(time.RFC3339),
 		},
@@ -307,19 +307,19 @@ func (c *ApprovalRequestController) markProcessed(ctx context.Context, name stri
 // ApprovalRequestStatus through unstructured content via their JSON tags —
 // simpler than runtime.DefaultUnstructuredConverter for two small, flat
 // structs, and it's the only conversion this file needs.
-func toUnstructuredMap(v interface{}) (map[string]interface{}, error) {
+func toUnstructuredMap(v any) (map[string]any, error) {
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func fromUnstructuredField(obj map[string]interface{}, field string, v interface{}) error {
+func fromUnstructuredField(obj map[string]any, field string, v any) error {
 	sub, ok := obj[field]
 	if !ok {
 		return nil // absent field: zero value stands, e.g. a freshly created CR has no status yet

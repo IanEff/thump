@@ -33,7 +33,7 @@ type ApprovalRequestSpec struct {
 // redelivering the same object is a no-op rather than a repeat publish.
 type ApprovalRequestStatus struct {
 	Phase     string    `json:"phase,omitempty"` // "" or "Processed"
-	DecidedAt time.Time `json:"decidedAt,omitempty"`
+	DecidedAt time.Time `json:"decidedAt"`
 }
 
 // ApprovalRequests is hiss's seam onto the one ApprovalRequest CR it

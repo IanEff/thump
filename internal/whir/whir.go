@@ -59,7 +59,7 @@ func (c Catalog) Edges(name string) []string {
 func Load(raw []byte) (Catalog, error) {
 	var cat Catalog
 
-	for _, doc := range bytes.Split(raw, []byte("\n---")) {
+	for doc := range bytes.SplitSeq(raw, []byte("\n---")) {
 		var e struct {
 			Metadata struct {
 				Name string `json:"name"`

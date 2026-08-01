@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -369,10 +370,8 @@ func (l *loader) OptionalBool(name string) bool {
 func (l *loader) checkScheme(name, v string, allowed []string) {
 	u, err := url.Parse(v)
 	if err == nil {
-		for _, scheme := range allowed {
-			if u.Scheme == scheme {
-				return
-			}
+		if slices.Contains(allowed, u.Scheme) {
+			return
 		}
 	}
 	l.errs = append(l.errs, fmt.Errorf("%s: scheme must be one of %v, got %q", name, allowed, v))

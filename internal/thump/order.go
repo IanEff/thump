@@ -21,9 +21,9 @@ type Order struct {
 	GrantedBand decision.Band            `json:"grantedBand,omitempty" yaml:"grantedBand,omitempty"` // carried for a future live executor to enforce band <= grant; read by nothing in v1
 	Description string                   `json:"description,omitempty" yaml:"description,omitempty"` // contract.Action.Description, verbatim
 	Parameters  map[string]float64       `json:"parameters,omitempty" yaml:"parameters,omitempty"`   // ScopeParameters -> Default, verbatim from the catalog; thump invents no numbers of its own
-	Reversal    ReversalPlan             `json:"reversal,omitempty" yaml:"reversal,omitempty"`
-	Success     contract.SuccessCriteria `json:"success,omitempty" yaml:"success,omitempty"` // rendered, not evaluated, in v1 — no convergence watcher exists yet to check it
-	RenderedAt  time.Time                `json:"renderedAt,omitempty" yaml:"renderedAt,omitempty"`
+	Reversal    ReversalPlan             `json:"reversal" yaml:"reversal,omitempty"`
+	Success     contract.SuccessCriteria `json:"success" yaml:"success,omitempty"` // rendered, not evaluated, in v1 — no convergence watcher exists yet to check it
+	RenderedAt  time.Time                `json:"renderedAt" yaml:"renderedAt,omitempty"`
 }
 
 // OrderKind separates a forward action from its undo — the distinction a

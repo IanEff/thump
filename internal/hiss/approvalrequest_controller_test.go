@@ -50,11 +50,11 @@ func fakeDyn(t *testing.T, objs ...*unstructured.Unstructured) *dynamicfake.Fake
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, items...)
 }
 
-func approvalRequestObj(name string, spec, status map[string]interface{}, annotations map[string]string) *unstructured.Unstructured {
-	obj := map[string]interface{}{
+func approvalRequestObj(name string, spec, status map[string]any, annotations map[string]string) *unstructured.Unstructured {
+	obj := map[string]any{
 		"apiVersion": "thump.dev/v1alpha1",
 		"kind":       "ApprovalRequest",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name":      name,
 			"namespace": "thump",
 		},
@@ -70,7 +70,7 @@ func approvalRequestObj(name string, spec, status map[string]interface{}, annota
 	return u
 }
 
-func getStatus(t *testing.T, dyn *dynamicfake.FakeDynamicClient, name string) map[string]interface{} {
+func getStatus(t *testing.T, dyn *dynamicfake.FakeDynamicClient, name string) map[string]any {
 	t.Helper()
 	got, err := dyn.Resource(approvalRequestGVR).Namespace("thump").Get(context.Background(), name, metav1.GetOptions{})
 	if err != nil {
@@ -148,7 +148,7 @@ func TestApprovalRequestController_Create_ExistingCRIsNotAnError(t *testing.T) {
 	t.Parallel()
 	held := heldGoverned(t)
 	name := hiss.ApprovalRequestNameForTest(held.Decision.SignalRef)
-	dyn := fakeDyn(t, approvalRequestObj(name, map[string]interface{}{"signalRef": held.Decision.SignalRef, "action": "x", "band": "y"}, nil, nil))
+	dyn := fakeDyn(t, approvalRequestObj(name, map[string]any{"signalRef": held.Decision.SignalRef, "action": "x", "band": "y"}, nil, nil))
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump"}
 
 	// A redelivered hold finding its CR already there is a no-op, not a
@@ -163,7 +163,7 @@ func TestApprovalRequestController_Create_ExistingCRIsNotAnError(t *testing.T) {
 func TestApprovalRequestController_Reconcile_ApprovePublishesAnAckAndMarksProcessed(t *testing.T) {
 	t.Parallel()
 	obj := approvalRequestObj("ar-1",
-		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
+		map[string]any{"signalRef": "fp-1", "decision": "approve"},
 		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
@@ -193,7 +193,7 @@ func TestApprovalRequestController_Reconcile_RefusesToPublishWithoutAnAuthentica
 	// nobody is recorded as having approved this, which is the one thing the
 	// resource exists to establish.
 	obj := approvalRequestObj("ar-2",
-		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"}, nil, nil)
+		map[string]any{"signalRef": "fp-1", "decision": "approve"}, nil, nil)
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
@@ -218,7 +218,7 @@ func TestApprovalRequestController_Reconcile_ForceIsNotAValueThisSurfaceAccepts(
 	// changing five characters of an ordinary approval, on the same object
 	// and under the same RBAC verb, is not break-glass.
 	obj := approvalRequestObj("ar-3",
-		map[string]interface{}{"signalRef": "fp-1", "decision": "force"},
+		map[string]any{"signalRef": "fp-1", "decision": "force"},
 		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
@@ -240,8 +240,8 @@ func TestApprovalRequestController_Sweep_DeletesAProcessedRequestPastItsRetentio
 	// is the cost D-1 declined CRD-as-output to avoid.
 	decidedAt := frozenNow().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
 	obj := approvalRequestObj("ar-4",
-		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
-		map[string]interface{}{"phase": "Processed", "decidedAt": decidedAt},
+		map[string]any{"signalRef": "fp-1", "decision": "approve"},
+		map[string]any{"phase": "Processed", "decidedAt": decidedAt},
 		map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
@@ -259,8 +259,8 @@ func TestApprovalRequestController_Sweep_KeepsAProcessedRequestInsideItsRetentio
 	t.Parallel()
 	decidedAt := frozenNow().Add(-time.Hour).UTC().Format(time.RFC3339)
 	obj := approvalRequestObj("ar-5",
-		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
-		map[string]interface{}{"phase": "Processed", "decidedAt": decidedAt},
+		map[string]any{"signalRef": "fp-1", "decision": "approve"},
+		map[string]any{"phase": "Processed", "decidedAt": decidedAt},
 		map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
@@ -275,7 +275,7 @@ func TestApprovalRequestController_Sweep_KeepsAProcessedRequestInsideItsRetentio
 
 func TestApprovalRequestController_Reconcile_NoDecisionYetIsANoOp(t *testing.T) {
 	t.Parallel()
-	obj := approvalRequestObj("ar-4", map[string]interface{}{"signalRef": "fp-1"}, nil, nil)
+	obj := approvalRequestObj("ar-4", map[string]any{"signalRef": "fp-1"}, nil, nil)
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
@@ -301,8 +301,8 @@ func TestApprovalRequestController_Reconcile_AlreadyProcessedIsANoOp(t *testing.
 	// otherwise a long-lived hiss process replays every ack once per resync
 	// forever.
 	obj := approvalRequestObj("ar-5",
-		map[string]interface{}{"signalRef": "fp-1", "decision": "approve"},
-		map[string]interface{}{"phase": "Processed"}, map[string]string{"thump.dev/approved-by": "alice"})
+		map[string]any{"signalRef": "fp-1", "decision": "approve"},
+		map[string]any{"phase": "Processed"}, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	approvePub := &fakeApprovalPub{}
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",
@@ -322,7 +322,7 @@ func TestApprovalRequestController_Reconcile_UnrecognizedDecisionErrorsWithoutMa
 	// cluster; this pins the defensive path for the day the schema and the
 	// code drift.
 	obj := approvalRequestObj("ar-6",
-		map[string]interface{}{"signalRef": "fp-1", "decision": "maybe"},
+		map[string]any{"signalRef": "fp-1", "decision": "maybe"},
 		nil, map[string]string{"thump.dev/approved-by": "alice"})
 	dyn := fakeDyn(t, obj)
 	c := &hiss.ApprovalRequestController{Dyn: dyn, Namespace: "thump",

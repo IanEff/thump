@@ -13,8 +13,6 @@ import (
 	"github.com/ianeff/thump/internal/trim"
 )
 
-func ptr(f float64) *float64 { return &f }
-
 // TestFold walks one fingerprint's golden path — detected, proposed,
 // held-for-you, approved, declined, applied, settled — asserting the whole
 // Incident each step, not just Stage: Fold has to thread Service and
@@ -187,9 +185,9 @@ func TestFold(t *testing.T) {
 				Mode:             outcome.ModeLive,
 				Result:           outcome.ResultSuccess,
 				ExecutedAt:       t4,
-				ObservedSeverity: ptr(0.12),
+				ObservedSeverity: new(0.12),
 			},
-			want: trim.Incident{Fingerprint: fp, Stage: trim.StageSettled, Service: svc, UpdatedAt: t4, Severity: ptr(0.12)},
+			want: trim.Incident{Fingerprint: fp, Stage: trim.StageSettled, Service: svc, UpdatedAt: t4, Severity: new(0.12)},
 		},
 		"Fold advances to settled when the outcome result is partial_non_converging": {
 			prior: applied,
@@ -223,9 +221,9 @@ func TestFold(t *testing.T) {
 				Mode:             outcome.ModeLive,
 				Result:           outcome.ResultSuccess,
 				ExecutedAt:       t4,
-				ObservedSeverity: ptr(0.0),
+				ObservedSeverity: new(0.0),
 			},
-			want: trim.Incident{Fingerprint: fp, Stage: trim.StageSettled, Service: svc, UpdatedAt: t4, Severity: ptr(0.0)},
+			want: trim.Incident{Fingerprint: fp, Stage: trim.StageSettled, Service: svc, UpdatedAt: t4, Severity: new(0.0)},
 		},
 		"Fold ignores an unknown object and returns prior unchanged": {
 			prior: proposed,

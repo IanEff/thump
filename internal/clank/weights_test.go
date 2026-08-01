@@ -20,7 +20,7 @@ import (
 // or via ScoringWeights), this goes red.
 func TestEngine_CarriesNoFloorPolicy(t *testing.T) {
 	t.Parallel()
-	for _, typ := range []reflect.Type{reflect.TypeOf(clank.Engine{}), reflect.TypeOf(clank.ScoringWeights{})} {
+	for _, typ := range []reflect.Type{reflect.TypeFor[clank.Engine](), reflect.TypeFor[clank.ScoringWeights]()} {
 		for _, f := range reflect.VisibleFields(typ) {
 			if strings.Contains(strings.ToLower(f.Name), "threshold") ||
 				strings.Contains(strings.ToLower(f.Name), "floor") {

@@ -26,7 +26,7 @@ type Outcome struct {
 	Mode             Mode      `json:"mode,omitempty" yaml:"mode,omitempty"`               // dry_run or live — rehearsal and reality must be distinguishable, never inferred from Result alone
 	Result           Result    `json:"result,omitempty" yaml:"result,omitempty"`
 	Error            string    `json:"error,omitempty" yaml:"error,omitempty"` // required company for failure / partial_non_converging — a failure with no error text is silence, not accountability
-	ExecutedAt       time.Time `json:"executedAt,omitempty" yaml:"executedAt,omitempty"`
+	ExecutedAt       time.Time `json:"executedAt" yaml:"executedAt,omitempty"`
 	ObservedSeverity *float64  `json:"observedSeverity,omitempty" yaml:"observedSeverity,omitempty"`
 }
 

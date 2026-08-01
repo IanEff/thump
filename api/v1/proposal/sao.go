@@ -13,10 +13,10 @@ import (
 // assembled, and the audit trail would be dangling, not just incomplete.
 type SAO struct {
 	Version     int              `json:"version,omitempty" yaml:"version,omitempty"`
-	AssembledAt time.Time        `json:"assembledAt,omitempty" yaml:"assembledAt,omitempty"`
-	Signal      SignalSnapshot   `json:"signal,omitempty" yaml:"signal,omitempty"`
-	Topology    TopologySnapshot `json:"topology,omitempty" yaml:"topology,omitempty"`
-	Change      ChangeSnapshot   `json:"change,omitempty" yaml:"change,omitempty"`
+	AssembledAt time.Time        `json:"assembledAt" yaml:"assembledAt,omitempty"`
+	Signal      SignalSnapshot   `json:"signal" yaml:"signal,omitempty"`
+	Topology    TopologySnapshot `json:"topology" yaml:"topology,omitempty"`
+	Change      ChangeSnapshot   `json:"change" yaml:"change,omitempty"`
 }
 
 // SignalSnapshot is intake's copy of the originating signal.Detection's
@@ -32,8 +32,8 @@ type SAO struct {
 type SignalSnapshot struct {
 	Confidence    float64            `json:"confidence,omitempty" yaml:"confidence,omitempty"`
 	Metric        string             `json:"metric,omitempty" yaml:"metric,omitempty"`
-	Severity      signal.Severity    `json:"severity,omitempty" yaml:"severity,omitempty"`
-	BlastRadius   signal.BlastRadius `json:"blastRadius,omitempty" yaml:"blastRadius,omitempty"`
+	Severity      signal.Severity    `json:"severity" yaml:"severity,omitempty"`
+	BlastRadius   signal.BlastRadius `json:"blastRadius" yaml:"blastRadius,omitempty"`
 	OriginService string             `json:"originService,omitempty" yaml:"originService,omitempty"` // the affected service
 }
 

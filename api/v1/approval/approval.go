@@ -10,9 +10,9 @@ import (
 // Approval is one human ack of one held fingerprint.  Dedupe is on
 // the SignalRef and nothing else.
 type Approval struct {
-	SignalRef  string    `json:"signalRef,omitempty"`  // the held Detection's fingerprint
-	Approver   string    `json:"approver,omitempty"`   // Who approved.
-	ApprovedAt time.Time `json:"approvedAt,omitempty"` // When the approval was made.
+	SignalRef  string    `json:"signalRef,omitempty"` // the held Detection's fingerprint
+	Approver   string    `json:"approver,omitempty"`  // Who approved.
+	ApprovedAt time.Time `json:"approvedAt"`          // When the approval was made.
 	// CapBand is the highest band the operator will grant.  Empty means
 	// 'grant what hiss grants'.  Held as a string, not decision.Band to
 	// keep this a leaf.

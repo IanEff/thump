@@ -33,7 +33,7 @@ type Decision struct {
 	RiskBand      Band      `json:"riskBand,omitempty" yaml:"riskBand,omitempty"`           // the intrinsic risk hiss's riskBand lattice computed from reversibility and blast tier, recorded alongside RequestedBand/GrantedBand so a hold verdict's cause is on the record
 	FloorApplied  float64   `json:"floorApplied,omitempty" yaml:"floorApplied,omitempty"`   // the confidence floor looked up for the Set's ServiceTier and FailureClass from Policy.Floors
 	PolicyVersion string    `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"` // which Policy this verdict was evaluated under — required by Auditable, since a verdict with no policy version can't be re-checked later
-	EvaluatedAt   time.Time `json:"evaluatedAt,omitempty" yaml:"evaluatedAt,omitempty"`
+	EvaluatedAt   time.Time `json:"evaluatedAt" yaml:"evaluatedAt,omitempty"`
 	Forced        bool      `json:"forced,omitempty" yaml:"forced,omitempty"`     // true when a human pushed this through trim's break-glass path instead of hiss granting it — never rendered as an earned approval
 	Operator      string    `json:"operator,omitempty" yaml:"operator,omitempty"` // who forced it; set only when Forced is true
 	Approver      string    `json:"approver,omitempty" yaml:"approver,omitempty"` // who acked a held Candidate through trim approve's re-issue path; set only by hiss's approval handler, never by Evaluate, and never alongside Forced — earned via ack or pushed through break-glass, never both
@@ -94,8 +94,8 @@ const (
 // file to find the candidate it was granted. hiss seals it; thump reads it
 // read-only.
 type Governed struct {
-	Decision Decision     `json:"decision,omitempty" yaml:"decision,omitempty"` // the verdict — always about the Set carried alongside it, never a different one
-	Set      proposal.Set `json:"set,omitempty" yaml:"set,omitempty"`           // the exact Set hiss judged, unmutated and un-re-ranked
+	Decision Decision     `json:"decision" yaml:"decision,omitempty"` // the verdict — always about the Set carried alongside it, never a different one
+	Set      proposal.Set `json:"set" yaml:"set,omitempty"`           // the exact Set hiss judged, unmutated and un-re-ranked
 }
 
 const VerdictHold Verdict = "hold" // every minimum met, but risk exceeds the auto-fire ceiling — approved-in-principle, pending a human ack

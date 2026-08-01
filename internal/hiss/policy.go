@@ -13,8 +13,8 @@ import (
 // [Start, End) is inside the window, now == End is not.
 type Window struct {
 	Name  string    `json:"name,omitempty" yaml:"name,omitempty"` // operator label, appended to ReasonFreezeWindow so a Decision names which window fired
-	Start time.Time `json:"start,omitempty" yaml:"start,omitempty"`
-	End   time.Time `json:"end,omitempty" yaml:"end,omitempty"`
+	Start time.Time `json:"start" yaml:"start,omitempty"`
+	End   time.Time `json:"end" yaml:"end,omitempty"`
 }
 
 // Policy is loaded straight off a human-authored HISS_POLICY YAML file

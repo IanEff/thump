@@ -68,7 +68,7 @@ func makeSamples(count int, baseVal float64) []rattle.Sample {
 
 	now := time.Now()
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		samples[i] = rattle.Sample{
 			T:        now.Add(time.Duration(i) * time.Second),
 			BurnRate: baseVal + float64(i%5)*0.1,

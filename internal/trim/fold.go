@@ -35,7 +35,7 @@ type Incident struct {
 	Fingerprint string    `json:"fingerprint,omitempty"`
 	Stage       Stage     `json:"stage,omitempty"`
 	Service     string    `json:"service,omitempty"`
-	UpdatedAt   time.Time `json:"updatedAt,omitempty"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 	// Held retains the exact Governed hiss judged while Stage is
 	// StageHeld, so a later ack can act on the Set hiss actually saw. Nil
 	// whenever Stage isn't StageHeld.

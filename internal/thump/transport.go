@@ -28,8 +28,8 @@ import (
 // elapses. Carries the full audit chain (Decision + Set) rather than a
 // rendered summary — a Notifier adapter derives human-facing text from it.
 type HeldAction struct {
-	Decision decision.Decision `json:"decision,omitempty" yaml:"decision,omitempty"`
-	Set      proposal.Set      `json:"set,omitempty" yaml:"set,omitempty"`
+	Decision decision.Decision `json:"decision" yaml:"decision,omitempty"`
+	Set      proposal.Set      `json:"set" yaml:"set,omitempty"`
 }
 
 // ErrRenderFailed marks a governed approval thump's Actuator couldn't render

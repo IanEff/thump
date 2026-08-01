@@ -92,7 +92,7 @@ type Status struct {
 	Reason       string    `json:"reason,omitempty" yaml:"reason,omitempty"`
 	SupersededBy string    `json:"supersededBy,omitempty" yaml:"supersededBy,omitempty"` // the Set.Name that superseded this one, when Phase is PhaseSuperseded
 	Outcome      string    `json:"outcome,omitempty" yaml:"outcome,omitempty"`           // applied | success | failure | unknown | partial_non_converging — applied is interim (Phase stays Acted, awaiting convergence); the rest are terminal
-	ObservedAt   time.Time `json:"observedAt,omitempty" yaml:"observedAt,omitempty"`
+	ObservedAt   time.Time `json:"observedAt" yaml:"observedAt,omitempty"`
 }
 
 // Phase* enumerate Status.Phase. Dedup only suppresses against the open
