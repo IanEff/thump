@@ -146,6 +146,11 @@ tasks:
     cmds:
       - go test -tags eval ./internal/clank -run TestEval_ReasonerAgainstProductionCatalog -v
 
+  rca:
+    desc: Run the graded RCA suite — did the reasoner cite the right evidence, not just reach the right verdict? (key-gated, not part of ci)
+    cmds:
+      - go test -tags eval ./internal/clank -run TestRCA_ReachesTheCorrectFailureClassNotTheDecoy -v
+
   capture-detection:
     desc: "Farm a live detection into a fixture: task capture-detection SRC=<path to .yaml> NAME=<fixture-name>"
     requires:
