@@ -14,36 +14,6 @@ type confidenceInputs struct {
 	SelfReported     float64 // the model's own stated confidence
 }
 
-// scoreConfidence computes a Candidate's emitted confidence from what this run
-// actually grounded, then applies the model's self-report as a ceiling —
-// min(computed, in.SelfReported) — so a confident-sounding guess with nothing
-// behind it can only be pulled down, never talked up. A term whose *OK flag is
-// false drops out entirely; it never multiplies in as zero.
-//
-// The causal term is added rather than multiplied. LikelihoodOK is false
-// whenever no change event resolved into the topology, so as a factor it
-// scored a run holding corroborating change data below the identical run
-// holding none — confidence falling as evidence arrives.
-func scoreConfidence(in confidenceInputs, w ScoringWeights) float64 {
-	grounding := w.GroundingNone
-	switch {
-	case in.Corroborated >= 2:
-		grounding = w.GroundingMany
-	case in.Corroborated == 1:
-		grounding = w.GroundingOne
-	}
-
-	computed := in.SignalConfidence * grounding
-	if in.AlignmentOK {
-		computed *= 0.5 + 0.5*in.Alignment
-	}
-	if in.LikelihoodOK {
-		computed = min(1, computed*(1+w.Causal*in.Likelihood))
-	}
-
-	return min(computed, in.SelfReported)
-}
-
 // coherentLiveCitations counts the distinct backends behind cand's
 // Citations that resolve to a Live, topologically coherent EvidenceRef —
 // grouped by EvidenceRef.Tool, not one per ref, so a candidate can't clear
@@ -94,14 +64,52 @@ func scoreConfidences(set *proposal.Set, sao proposal.SAO, prior Prior, fingerpr
 
 	for i := range set.Proposals {
 		cand := &set.Proposals[i]
-		cand.Confidence = scoreConfidence(confidenceInputs{
+		selfReported := cand.Confidence
+		computed := groundedConfidence(confidenceInputs{
 			SignalConfidence: sao.Signal.Confidence,
 			Corroborated:     coherentLiveCitations(*cand, set.Evidence, set.SAOSnapshot),
 			Alignment:        alignment,
 			AlignmentOK:      alignmentOK,
 			Likelihood:       maxLikelihood,
 			LikelihoodOK:     likelihoodOK,
-			SelfReported:     cand.Confidence,
+			SelfReported:     selfReported,
 		}, w)
+		cand.ComputedConfidence = computed
+		cand.ConfidenceCeilingBound = computed > selfReported
+		cand.Confidence = min(computed, selfReported)
 	}
+}
+
+// groundedConfidence computes what this run's evidence alone supports, before
+// the model's self-report is applied as a ceiling. A term whose *OK flag is
+// false drops out entirely; it never multiplies in as zero.
+//
+// The causal term is added rather than multiplied. LikelihoodOK is false
+// whenever no change event resolved into the topology, so as a factor it
+// scored a run holding corroborating change data below the identical run
+// holding none — confidence falling as evidence arrives.
+func groundedConfidence(in confidenceInputs, w ScoringWeights) float64 {
+	grounding := w.GroundingNone
+	switch {
+	case in.Corroborated >= 2:
+		grounding = w.GroundingMany
+	case in.Corroborated == 1:
+		grounding = w.GroundingOne
+	}
+
+	computed := in.SignalConfidence * grounding
+	if in.AlignmentOK {
+		computed *= 0.5 + 0.5*in.Alignment
+	}
+	if in.LikelihoodOK {
+		computed = min(1, computed*(1+w.Causal*in.Likelihood))
+	}
+	return computed
+}
+
+// scoreConfidence applies the model's self-report as a ceiling over
+// groundedConfidence — min(computed, in.SelfReported) — so a confident-sounding
+// guess with nothing behind it can only be pulled down, never talked up.
+func scoreConfidence(in confidenceInputs, w ScoringWeights) float64 {
+	return min(groundedConfidence(in, w), in.SelfReported)
 }

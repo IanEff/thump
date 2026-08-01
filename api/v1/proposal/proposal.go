@@ -55,6 +55,28 @@ func (s Set) ConfidenceFor(candidateID string) float64 {
 	return 0
 }
 
+// ComputedConfidenceFor returns the ComputedConfidence of the Proposals
+// whose ID matches candidateID or 0 if none matches.
+func (s Set) ComputedConfidenceFor(candidateID string) float64 {
+	for _, p := range s.Proposals {
+		if p.ID == candidateID {
+			return p.ComputedConfidence
+		}
+	}
+	return 0
+}
+
+// ConfidenceCeilingBoundFor returns the ConfidenceCeilingBound of the
+// Proposals whose ID matches candidateID or false if none matches.
+func (s Set) ConfidenceCeilingBoundFor(candidateID string) bool {
+	for _, p := range s.Proposals {
+		if p.ID == candidateID {
+			return p.ConfidenceCeilingBound
+		}
+	}
+	return false
+}
+
 // RankingRationale records why the ranker ordered Proposals the way it did —
 // the deterministic, auditable half of ranking, kept separate from the
 // model's own hypothesis reasoning.
@@ -123,10 +145,10 @@ type Candidate struct {
 	// model's self-report was applied as a ceiling — emitted alongside
 	// Confidence so a set records whether a causal bonus reached the number or
 	// was clipped out of it. Never below Confidence: the ceiling only lowers.
-	ComputedConfidence float64
+	ComputedConfidence float64 `json:"computedConfidence,omitempty" yaml:"computedConfidence,omitempty"`
 	// ConfidenceCeilingBound reports that the model claimed less than the run
 	// grounded, so Confidence is the self-report and not the computation.
-	ConfidenceCeilingBound bool
+	ConfidenceCeilingBound bool             `json:"confidenceCeilingBound,omitempty" yaml:"confidenceCeilingBound,omitempty"`
 	PredictedImpact        *PredictedImpact `json:"predictedImpact,omitempty" yaml:"predictedImpact,omitempty"`
 	BlastTier              BlastTier        `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`             // authored; copied from the ActionContract at enrichment — hiss's shaper reads this for risk, never the effectiveness forecast in PredictedImpact
 	ReversalPath           *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence

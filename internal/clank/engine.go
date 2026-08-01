@@ -161,13 +161,25 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			return
 		}
 		causal := summarizeCausal(set.CausalScores)
-		slog.Info("reasoned", "run_id", runID, "fingerprint", sig.Fingerprint, "step", step, "phase", phase,
-			"recommended", set.Recommended, "contractRef", set.ContractRefFor(set.Recommended),
-			"proposals", len(set.Proposals), "evidence", len(set.Evidence),
-			"gatePassed", set.Gate != nil && set.Gate.Passed, "reason", set.Status.Reason,
+		slog.Info("reasoned",
+			"run_id", runID,
+			"fingerprint", sig.Fingerprint,
+			"step", step,
+			"phase", phase,
+			"recommended", set.Recommended,
+			"contractRef", set.ContractRefFor(set.Recommended),
+			"proposals", len(set.Proposals),
+			"evidence", len(set.Evidence),
+			"gatePassed", set.Gate != nil && set.Gate.Passed,
+			"reason", set.Status.Reason,
 			"confidence", set.ConfidenceFor(set.Recommended),
-			"maxLikelihood", causal.maxLikelihood, "inTopology", causal.inTopology, "outOfTopology", causal.outOfTopology,
-			"input_tokens", usage.InputTokens, "cache_creation_input_tokens", usage.CacheCreationInputTokens,
+			"computedConfidence", set.ComputedConfidenceFor(set.Recommended),
+			"ceilingBound", set.ConfidenceCeilingBoundFor(set.Recommended),
+			"maxLikelihood", causal.maxLikelihood,
+			"inTopology", causal.inTopology,
+			"outOfTopology", causal.outOfTopology,
+			"input_tokens", usage.InputTokens,
+			"cache_creation_input_tokens", usage.CacheCreationInputTokens,
 			"cache_read_input_tokens", usage.CacheReadInputTokens)
 	}()
 
