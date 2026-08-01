@@ -8,3 +8,5 @@ groundingMany: 1.0
 causal: 0.5
 temporalHalfLife: 30m
 historicalAloneCap: 0.5
+caseBaseBaseline: 0.9
+negativeSignalPenalty: 0.2

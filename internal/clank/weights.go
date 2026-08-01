@@ -46,6 +46,14 @@ type ScoringWeights struct {
 	// HistoricalAloneCap is the ceiling on an uncorroborated historical
 	// score.
 	HistoricalAloneCap float64
+
+	// CaseBaseBaseline is the historical score assigned before freshness
+	// decay when no case-base prior corroborates it yet.
+	CaseBaseBaseline float64
+
+	// NegativeSignalPenalty is how much likelihood a predicted-but-absent
+	// signal costs — defence 3.
+	NegativeSignalPenalty float64
 }
 
 // weightsFile stages a weights.yaml before validation. Every field is a
@@ -58,16 +66,18 @@ type ScoringWeights struct {
 // calling time.ParseDuration ourselves is what lets the file read the way a
 // human would write it.
 type weightsFile struct {
-	Temporal           *float64 `json:"temporal"`
-	Topological        *float64 `json:"topological"`
-	Historical         *float64 `json:"historical"`
-	FreshnessHalfLife  *string  `json:"freshnessHalfLife"`
-	GroundingNone      *float64 `json:"groundingNone"`
-	GroundingOne       *float64 `json:"groundingOne"`
-	GroundingMany      *float64 `json:"groundingMany"`
-	Causal             *float64 `json:"causal"`
-	TemporalHalfLife   *string  `json:"temporalHalfLife"`
-	HistoricalAloneCap *float64 `json:"historicalAloneCap"`
+	Temporal              *float64 `json:"temporal"`
+	Topological           *float64 `json:"topological"`
+	Historical            *float64 `json:"historical"`
+	FreshnessHalfLife     *string  `json:"freshnessHalfLife"`
+	GroundingNone         *float64 `json:"groundingNone"`
+	GroundingOne          *float64 `json:"groundingOne"`
+	GroundingMany         *float64 `json:"groundingMany"`
+	Causal                *float64 `json:"causal"`
+	TemporalHalfLife      *string  `json:"temporalHalfLife"`
+	HistoricalAloneCap    *float64 `json:"historicalAloneCap"`
+	CaseBaseBaseline      *float64 `json:"caseBaseBaseline"`
+	NegativeSignalPenalty *float64 `json:"negativeSignalPenalty"`
 }
 
 // LoadWeightsFile reads path as a YAML file and validates it into a
@@ -99,6 +109,8 @@ func LoadWeightsFile(path string) (ScoringWeights, error) {
 	need("causal", wf.Causal != nil)
 	need("temporalHalfLife", wf.TemporalHalfLife != nil)
 	need("historicalAloneCap", wf.HistoricalAloneCap != nil)
+	need("caseBaseBaseline", wf.CaseBaseBaseline != nil)
+	need("negativeSignalPenalty", wf.NegativeSignalPenalty != nil)
 
 	if len(missing) > 0 {
 		return ScoringWeights{}, fmt.Errorf("%w: %s", ErrIncompleteWeights, strings.Join(missing, ", "))
@@ -114,15 +126,17 @@ func LoadWeightsFile(path string) (ScoringWeights, error) {
 	}
 
 	return ScoringWeights{
-		Temporal:           *wf.Temporal,
-		Topological:        *wf.Topological,
-		Historical:         *wf.Historical,
-		FreshnessHalfLife:  freshness,
-		GroundingNone:      *wf.GroundingNone,
-		GroundingOne:       *wf.GroundingOne,
-		GroundingMany:      *wf.GroundingMany,
-		Causal:             *wf.Causal,
-		TemporalHalfLife:   temporalHalfLife,
-		HistoricalAloneCap: *wf.HistoricalAloneCap,
+		Temporal:              *wf.Temporal,
+		Topological:           *wf.Topological,
+		Historical:            *wf.Historical,
+		FreshnessHalfLife:     freshness,
+		GroundingNone:         *wf.GroundingNone,
+		GroundingOne:          *wf.GroundingOne,
+		GroundingMany:         *wf.GroundingMany,
+		Causal:                *wf.Causal,
+		TemporalHalfLife:      temporalHalfLife,
+		HistoricalAloneCap:    *wf.HistoricalAloneCap,
+		CaseBaseBaseline:      *wf.CaseBaseBaseline,
+		NegativeSignalPenalty: *wf.NegativeSignalPenalty,
 	}, nil
 }
