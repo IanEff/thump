@@ -67,8 +67,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	}
 	defer func() { _ = proposalPub.WAL.Drain(ctx, sink) }()
 
-	ledger := NewMemProposalLog()
-	ledger.Retention = limits.LedgerRetention
+	ledger, err := buildLedger(ctx, js, limits.LedgerRetention)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "rebuild ledger: %v\n", err)
+		return 1
+	}
 	cases := NewCaseBase()
 	cases.MaxCases = limits.MaxCases
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}
