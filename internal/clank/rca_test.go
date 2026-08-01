@@ -255,7 +255,7 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 				shippedCatalog(),
 				shippedClasses(),
 				NewDirStore(transcripts),
-				time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights())
+				time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits())
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()

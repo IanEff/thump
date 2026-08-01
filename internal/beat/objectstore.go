@@ -18,11 +18,6 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// ShipInterval is the fixed cadence RunShipper checks a WAL for sealed,
-// unshipped segments. Not (yet) a configured knob — every beat ships on
-// the same schedule.
-const ShipInterval = 30 * time.Second
-
 // NewS3Client builds an S3-compatible client (MinIO, s3mock, or real S3)
 // from plain config values — so a beat's Main never has to import the AWS
 // SDK itself to get one, the same hiding Tracer does for the OTel exporter.
@@ -148,14 +143,14 @@ func UnsealSegment(key sealbox.Key, r io.Reader) ([][]byte, error) {
 	return lines, nil
 }
 
-// RunShipper ships wal's sealed segments to sink on ShipInterval until ctx
+// RunShipper ships wal's sealed segments to sink on shipInterval until ctx
 // is cancelled — the async half of the Mimir pattern: WALPublisher.Publish
 // already returned once the segment was durable on local disk, so a slow
 // or failing ship never sits in the hot path. Meant to run under an
 // errgroup alongside a beat's consumer loop, same shape as
 // clank/broker.go's two-subscriber composition.
-func RunShipper(ctx context.Context, wal *publish.WAL, sink publish.SegmentSink) {
-	PollLoop(ctx, PollConfig{Interval: ShipInterval, Timeout: 4 * ShipInterval}, func(ctx context.Context) error {
+func RunShipper(ctx context.Context, wal *publish.WAL, sink publish.SegmentSink, shipInterval time.Duration) {
+	PollLoop(ctx, PollConfig{Interval: shipInterval, Timeout: 4 * shipInterval}, func(ctx context.Context) error {
 		return wal.Ship(ctx, sink)
 	})
 }

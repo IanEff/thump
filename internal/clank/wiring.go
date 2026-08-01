@@ -23,9 +23,11 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights) *loop {
+func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
-	cases := NewCaseBase()        // ONE case base
+	ledger.Retention = limits.LedgerRetention
+	cases := NewCaseBase() // ONE case base
+	cases.MaxCases = limits.MaxCases
 	eng := &Engine{
 		Intake:         intake,
 		Model:          model,
@@ -102,7 +104,21 @@ func DefaultScoringWeights() ScoringWeights {
 		GroundingMany:     1.0,
 		Causal:            0.5,
 		// Promoted out of causal.go's unexported consts by X2b; same values.
-		TemporalHalfLife:   30 * time.Minute,
-		HistoricalAloneCap: 0.5,
+		TemporalHalfLife:      30 * time.Minute,
+		HistoricalAloneCap:    0.5,
+		CaseBaseBaseline:      0.9,
+		NegativeSignalPenalty: 0.2,
+	}
+}
+
+// DefaultLimits is the sizing/horizon/retry-budget tuning both production
+// constructors wire — a 10000-case base, a 24h ledger retention, a 2h change
+// lookback, and a 5-attempt propose budget.
+func DefaultLimits() Limits {
+	return Limits{
+		MaxCases:           10000,
+		LedgerRetention:    24 * time.Hour,
+		ChangeLookback:     2 * time.Hour,
+		MaxProposeAttempts: 5,
 	}
 }

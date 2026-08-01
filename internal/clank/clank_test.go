@@ -185,7 +185,7 @@ func TestBuildIntake_WarnsOnEverySilentFallback(t *testing.T) {
 			// captureLog mutates the process-wide default logger — no t.Parallel().
 			getLines := captureLog(t)
 
-			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil, nil); err != nil {
+			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil, nil, 2*time.Hour); err != nil {
 				t.Fatal(err)
 			}
 
@@ -420,7 +420,7 @@ func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
 	}
 
 	cfg := config.Clank{PromURL: "http://prom:9090", WhirCatalog: catalogPath, WhirStateQueries: queriesPath}
-	intake, err := clank.BuildIntakeForTest(cfg, nil, nil, nil)
+	intake, err := clank.BuildIntakeForTest(cfg, nil, nil, nil, 2*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +451,7 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 	// topology can place, so buildIntake declines to build one.
 	subjects := clank.SubjectIndex{{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}
 	cfg := config.Clank{ArgoEnabled: true}
-	intake, err := clank.BuildIntakeForTest(cfg, nil, fake, subjects)
+	intake, err := clank.BuildIntakeForTest(cfg, nil, fake, subjects, 2*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

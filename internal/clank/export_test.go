@@ -27,7 +27,7 @@ import (
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
 func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
-	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights())
+	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits())
 }
 
 // ShippedCatalogForTest exposes the production catalog (the one Main wires)
@@ -147,8 +147,8 @@ func ToolSpecsForTest(e *Engine) []ToolSpec {
 // BuildIntakeForTest exposes buildIntake to clank_test — the seam the
 // silent-fallback warnings hang off, and where the ArgoCD change source and
 // its subject rules are wired together.
-func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex) (*Intake, error) {
-	return buildIntake(cfg, backendTLS, argo, subjects)
+func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex, changeLookback time.Duration) (*Intake, error) {
+	return buildIntake(cfg, backendTLS, argo, subjects, changeLookback)
 }
 
 // BuildToolsForTest exposes buildTools to clank_test — the seam that decides

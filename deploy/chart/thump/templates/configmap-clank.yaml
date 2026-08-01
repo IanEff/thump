@@ -12,3 +12,5 @@ metadata:
 data:
   weights.yaml: |
 {{ .Files.Get "config/clank/weights.yaml" | indent 4 }}
+  limits.yaml: |
+{{ .Files.Get "config/clank/limits.yaml" | indent 4 }}

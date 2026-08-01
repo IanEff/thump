@@ -85,7 +85,7 @@ func TestNewApprovalRequestController_FailsClosedOutsideACluster(t *testing.T) {
 	// Not a behavior pin — there's no fake for rest.InClusterConfig — just
 	// proof this fails loud rather than panicking or silently building a
 	// controller pointed at nothing when hiss isn't actually running as a pod.
-	if _, err := hiss.NewApprovalRequestController(nil); err == nil {
+	if _, err := hiss.NewApprovalRequestController(nil, 24*time.Hour); err == nil {
 		t.Fatal("want an error building the in-cluster config outside a real cluster")
 	}
 }

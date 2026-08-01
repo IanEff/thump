@@ -172,6 +172,11 @@ beats:
       requests: {cpu: 25m, memory: 32Mi}
       limits: {cpu: 100m, memory: 128Mi}
   hiss:
+    # How long a Processed ApprovalRequest stays readable before the
+    # controller's sweep reclaims it. 24h is the production default;
+    # shorten per-cluster for a live run where etcd churn from held
+    # requests is the bottleneck.
+    approvalRetention: 24h
     resources:
       requests: {cpu: 25m, memory: 32Mi}
       limits: {cpu: 100m, memory: 64Mi}

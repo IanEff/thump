@@ -31,6 +31,7 @@ func setClankEnv(t *testing.T) {
 		"WHIR_STATE_QUERIES": "/etc/state-queries.yaml",
 		"CLANK_TRANSCRIPTS":  "/var/run/transcripts",
 		"CLANK_WEIGHTS":      "/etc/clank/weights.yaml",
+		"CLANK_LIMITS":       "/etc/clank/limits.yaml",
 		"CLANK_INBOX":        "/var/run/inbox",
 		"CLANK_OUTBOX":       "/var/run/outbox",
 		"CLANK_OUTCOMES":     "/var/run/outcomes",
@@ -76,6 +77,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 		WhirStateQueries: "/etc/state-queries.yaml",
 		Transcripts:      "/var/run/transcripts",
 		Weights:          "/etc/clank/weights.yaml",
+		Limits:           "/etc/clank/limits.yaml",
 		Inbox:            "/var/run/inbox",
 		Outbox:           "/var/run/outbox",
 		Outcomes:         "/var/run/outcomes",
@@ -93,6 +95,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
 	t.Setenv("CLANK_WEIGHTS", "/etc/clank/weights.yaml")
+	t.Setenv("CLANK_LIMITS", "/etc/clank/limits.yaml")
 	t.Setenv("CLANK_INBOX", "/var/run/inbox")
 	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
 	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
@@ -111,6 +114,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 		FailureClasses:  "/etc/actions/failure-classes.yaml",
 		DedupeWindow:    time.Hour,
 		Weights:         "/etc/clank/weights.yaml",
+		Limits:          "/etc/clank/limits.yaml",
 		Inbox:           "/var/run/inbox",
 		Outbox:          "/var/run/outbox",
 		Outcomes:        "/var/run/outcomes",
@@ -157,7 +161,9 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
 	t.Setenv("CLANK_WEIGHTS", "/etc/clank/weights.yaml")
+	t.Setenv("CLANK_LIMITS", "/etc/clank/limits.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
+	t.Setenv("WAL_CONFIG", "/etc/wal.yaml")
 	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
@@ -184,6 +190,7 @@ func TestLoadClank_BrokerMode_RequiresWALAndS3(t *testing.T) {
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
 	t.Setenv("CLANK_WEIGHTS", "/etc/clank/weights.yaml")
+	t.Setenv("CLANK_LIMITS", "/etc/clank/limits.yaml")
 	for _, name := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
 		t.Setenv(name, "")
 	}
@@ -254,6 +261,7 @@ func TestLoadHiss_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	// other way: unset offline, required here.
 	t.Setenv("HISS_POLICY", "/etc/policy.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
+	t.Setenv("WAL_CONFIG", "/etc/wal.yaml")
 	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
@@ -268,6 +276,29 @@ func TestLoadHiss_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 
 	if _, err := config.LoadHiss(true /* broker */); err != nil {
 		t.Errorf("LoadHiss(broker=true): want no error with the offline pair unset, got %v", err)
+	}
+}
+
+func TestLoadHiss_BrokerMode_ApprovalRetentionDefaultsTo24h(t *testing.T) {
+	t.Setenv("HISS_POLICY", "/etc/policy.yaml")
+	t.Setenv("WAL_DIR", "/var/run/wal")
+	t.Setenv("WAL_CONFIG", "/etc/wal.yaml")
+	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
+	t.Setenv("S3_BUCKET", "thump-wal")
+	t.Setenv("S3_ACCESS_KEY", "test-access-key")
+	t.Setenv("S3_SECRET_KEY", "test-secret-key")
+	t.Setenv("TLS_CERT_FILE", "/etc/thump/tls/tls.crt")
+	t.Setenv("TLS_KEY_FILE", "/etc/thump/tls/tls.key")
+	t.Setenv("TLS_CA_FILE", "/etc/thump/tls/ca.crt")
+	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
+	t.Setenv("APPROVALREQUEST_RETENTION", "")
+
+	got, err := config.LoadHiss(true /* broker */)
+	if err != nil {
+		t.Fatalf("LoadHiss(broker=true): %v", err)
+	}
+	if got.ApprovalRetention != 24*time.Hour {
+		t.Errorf("ApprovalRetention unset: want the 24h default (the constant extraction preserves), got %s", got.ApprovalRetention)
 	}
 }
 
@@ -295,12 +326,13 @@ func TestLoadHiss_BrokerMode_RequiresWALAndS3(t *testing.T) {
 func setRattleEnv(t *testing.T) {
 	t.Helper()
 	for name, val := range map[string]string{
-		"PROM_URL":           "http://prom:9090",
-		"WHIR_CATALOG":       "/etc/catalog-info.yaml",
-		"WHIR_STATE_QUERIES": "/etc/state-queries.yaml",
-		"RATTLE_TRAFFIC":     "/etc/traffic-queries.yaml",
-		"RATTLE_OUTBOX":      "/var/run/outbox",
-		"RATTLE_WATCH":       "/etc/watch.yaml",
+		"PROM_URL":            "http://prom:9090",
+		"WHIR_CATALOG":        "/etc/catalog-info.yaml",
+		"WHIR_STATE_QUERIES":  "/etc/state-queries.yaml",
+		"RATTLE_TRAFFIC":      "/etc/traffic-queries.yaml",
+		"RATTLE_OUTBOX":       "/var/run/outbox",
+		"RATTLE_WATCH":        "/etc/watch.yaml",
+		"RATTLE_QUERY_CONFIG": "/etc/query.yaml",
 	} {
 		t.Setenv(name, val)
 	}
@@ -336,6 +368,7 @@ func TestLoadRattle_Valid_PopulatesStruct(t *testing.T) {
 		Traffic:          "/etc/traffic-queries.yaml",
 		Outbox:           "/var/run/outbox",
 		WatchPath:        "/etc/watch.yaml",
+		QueryConfig:      "/etc/query.yaml",
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("LoadRattle (-want +got):\n%s", diff)
@@ -343,9 +376,11 @@ func TestLoadRattle_Valid_PopulatesStruct(t *testing.T) {
 }
 
 func TestLoadRattle_OptionalDefaults(t *testing.T) {
-	// Only what's unconditionally required: PROM_URL and RATTLE_WATCH.
+	// Only what's unconditionally required: PROM_URL, RATTLE_WATCH, and
+	// RATTLE_QUERY_CONFIG.
 	t.Setenv("PROM_URL", "http://prom:9090")
 	t.Setenv("RATTLE_WATCH", "/etc/watch.yaml")
+	t.Setenv("RATTLE_QUERY_CONFIG", "/etc/query.yaml")
 	for _, name := range []string{"WHIR_CATALOG", "WHIR_STATE_QUERIES", "RATTLE_TRAFFIC", "RATTLE_OUTBOX"} {
 		t.Setenv(name, "")
 	}
@@ -355,8 +390,9 @@ func TestLoadRattle_OptionalDefaults(t *testing.T) {
 		t.Fatalf("LoadRattle: %v", err)
 	}
 	want := config.Rattle{
-		PromURL:   "http://prom:9090",
-		WatchPath: "/etc/watch.yaml",
+		PromURL:     "http://prom:9090",
+		WatchPath:   "/etc/watch.yaml",
+		QueryConfig: "/etc/query.yaml",
 		// WhirCatalog, WhirStateQueries, Traffic, Outbox all default to ""
 		// — genuinely optional, documented by their zero value.
 	}
@@ -403,6 +439,7 @@ func setThumpBrokerEnv(t *testing.T) {
 	t.Helper()
 	for name, val := range map[string]string{
 		"WAL_DIR":        "/var/run/wal",
+		"WAL_CONFIG":     "/etc/wal.yaml",
 		"S3_ENDPOINT":    "https://storage.googleapis.com",
 		"S3_BUCKET":      "thump-wal",
 		"S3_ACCESS_KEY":  "test-access-key",
@@ -482,6 +519,7 @@ func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	// is what's actually going to run. ACTION_CATALOG is required either way.
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
+	t.Setenv("WAL_CONFIG", "/etc/wal.yaml")
 	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "test-access-key")
@@ -677,6 +715,7 @@ func TestLoadClank_ValidatesSealKey(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			setClankEnv(t)
 			t.Setenv("WAL_DIR", "/var/run/wal")
+			t.Setenv("WAL_CONFIG", "/etc/wal.yaml")
 			t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 			t.Setenv("S3_BUCKET", "thump-wal")
 			t.Setenv("S3_ACCESS_KEY", "test-access-key")

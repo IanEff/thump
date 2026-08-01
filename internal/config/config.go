@@ -37,6 +37,7 @@ type Clank struct {
 	Outcomes         string        // CLANK_OUTCOMES — required only in the offline path
 	Declines         string        // CLANK_DECLINES — required only in the offline path
 	WALDir           string        // WAL_DIR — required only in the broker path
+	WALConfig        string        // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
 	S3Endpoint       string        // S3_ENDPOINT — required only in the broker path
 	S3Bucket         string        // S3_BUCKET — required only in the broker path
 	S3AccessKey      string        // S3_ACCESS_KEY — required only in the broker path
@@ -46,6 +47,7 @@ type Clank struct {
 	TLSCAFile        string        // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 	SealKey          []byte        // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments and transcripts before they reach the bucket
 	Weights          string        // CLANK_WEIGHTS -- required; path to mounted weights.yaml
+	Limits           string        // CLANK_LIMITS -- required; path to mounted limits.yaml
 }
 
 // LoadClank reads clank's environment once. broker is whether Main resolved
@@ -73,6 +75,7 @@ func LoadClank(broker bool) (Clank, error) {
 		ArgoEnabled:      l.OptionalBool("ARGOCD_ENABLED"),
 		Transcripts:      l.Optional("CLANK_TRANSCRIPTS"),
 		Weights:          l.Require("CLANK_WEIGHTS"),
+		Limits:           l.Require("CLANK_LIMITS"),
 	}
 	if c.WhirCatalog != "" && c.WhirStateQueries != "" && c.PromURL == "" {
 		l.errs = append(l.errs, errors.New("PROM_URL is required when WHIR_CATALOG and WHIR_STATE_QUERIES are set"))
@@ -83,6 +86,7 @@ func LoadClank(broker bool) (Clank, error) {
 		c.Outcomes = l.Optional("CLANK_OUTCOMES")
 		c.Declines = l.Optional("CLANK_DECLINES")
 		c.WALDir = l.Require("WAL_DIR")
+		c.WALConfig = l.Require("WAL_CONFIG")
 		c.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		c.S3Bucket = l.Require("S3_BUCKET")
 		c.S3AccessKey = l.Require("S3_ACCESS_KEY")
@@ -111,6 +115,7 @@ type Hiss struct {
 	Inbox        string // HISS_INBOX — required only in the offline (non-broker) path
 	Outbox       string // HISS_OUTBOX — required only in the offline path
 	WALDir       string // WAL_DIR — required only in the broker path
+	WALConfig    string // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
 	S3Endpoint   string // S3_ENDPOINT — required only in the broker path
 	S3Bucket     string // S3_BUCKET — required only in the broker path
 	S3AccessKey  string // S3_ACCESS_KEY — required only in the broker path
@@ -120,7 +125,8 @@ type Hiss struct {
 	TLSCAFile    string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 	SealKey      []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
 
-	ApprovalRequestsEnabled bool // APPROVALREQUESTS_ENABLED — optional, default false; runs the ApprovalRequest controller against hiss's in-cluster identity. Off means trim is the only path that releases a hold.
+	ApprovalRequestsEnabled bool          // APPROVALREQUESTS_ENABLED — optional, default false; runs the ApprovalRequest controller against hiss's in-cluster identity. Off means trim is the only path that releases a hold.
+	ApprovalRetention       time.Duration // APPROVALREQUEST_RETENTION — optional; how long a Processed ApprovalRequest stays readable before the sweep reclaims it; defaults to 24h
 }
 
 // LoadHiss reads hiss's environment once. broker is whether Main resolved a
@@ -141,6 +147,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 		h.Inbox = l.Optional("HISS_INBOX")
 		h.Outbox = l.Optional("HISS_OUTBOX")
 		h.WALDir = l.Require("WAL_DIR")
+		h.WALConfig = l.Require("WAL_CONFIG")
 		h.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		h.S3Bucket = l.Require("S3_BUCKET")
 		h.S3AccessKey = l.Require("S3_ACCESS_KEY")
@@ -150,6 +157,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 		h.TLSCAFile = l.Require("TLS_CA_FILE")
 		h.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
 		h.ApprovalRequestsEnabled = l.OptionalBool("APPROVALREQUESTS_ENABLED")
+		h.ApprovalRetention = l.OptionalDuration("APPROVALREQUEST_RETENTION", 24*time.Hour)
 	} else {
 		h.Inbox = l.Require("HISS_INBOX")
 		h.Outbox = l.Require("HISS_OUTBOX")
@@ -170,7 +178,9 @@ type Rattle struct {
 	Traffic          string // RATTLE_TRAFFIC — optional; empty disables the Hubble traffic source
 	Outbox           string // RATTLE_OUTBOX — optional even offline; unset means detections are logged, not published
 	WatchPath        string // RATTLE_WATCH - required unconditionally
+	QueryConfig      string // RATTLE_QUERY_CONFIG - required unconditionally; path to mounted query.yaml
 	WALDir           string // WAL_DIR — required only in the broker path
+	WALConfig        string // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
 	S3Endpoint       string // S3_ENDPOINT — required only in the broker path
 	S3Bucket         string // S3_BUCKET — required only in the broker path
 	S3AccessKey      string // S3_ACCESS_KEY — required only in the broker path
@@ -194,11 +204,13 @@ func LoadRattle(broker bool) (Rattle, error) {
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
 		WatchPath:        l.Require("RATTLE_WATCH"),
+		QueryConfig:      l.Require("RATTLE_QUERY_CONFIG"),
 		Traffic:          l.Optional("RATTLE_TRAFFIC"),
 		Outbox:           l.Optional("RATTLE_OUTBOX"),
 	}
 	if broker {
 		r.WALDir = l.Require("WAL_DIR")
+		r.WALConfig = l.Require("WAL_CONFIG")
 		r.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		r.S3Bucket = l.Require("S3_BUCKET")
 		r.S3AccessKey = l.Require("S3_ACCESS_KEY")
@@ -226,6 +238,7 @@ type Thump struct {
 	Inbox           string // THUMP_INBOX — required only in the offline (non-broker) path
 	Outbox          string // THUMP_OUTBOX — required only in the offline path
 	WALDir          string // WAL_DIR — required only in the broker path
+	WALConfig       string // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
 	S3Endpoint      string // S3_ENDPOINT — required only in the broker path
 	S3Bucket        string // S3_BUCKET — required only in the broker path
 	S3AccessKey     string // S3_ACCESS_KEY — required only in the broker path
@@ -255,6 +268,7 @@ func LoadThump(broker bool) (Thump, error) {
 		t.Inbox = l.Optional("THUMP_INBOX")
 		t.Outbox = l.Optional("THUMP_OUTBOX")
 		t.WALDir = l.Require("WAL_DIR")
+		t.WALConfig = l.Require("WAL_CONFIG")
 		t.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
 		t.S3Bucket = l.Require("S3_BUCKET")
 		t.S3AccessKey = l.Require("S3_ACCESS_KEY")

@@ -64,11 +64,11 @@ func AwaitConsumers(ctx context.Context, js jetstream.JetStream, ready *Health, 
 // interface, so a caller can reach .WAL directly to hand it to
 // beat.RunShipper — it still satisfies Publisher[Out] everywhere that's
 // what's wanted, so no other call site changes shape.
-func NewWALPublisher[Out any](js jetstream.JetStream, walDir, beatName, subject string) (*publish.WALPublisher[Out], func(context.Context) error, error) {
+func NewWALPublisher[Out any](js jetstream.JetStream, walDir, beatName, subject string, wal WALConfig) (*publish.WALPublisher[Out], func(context.Context) error, error) {
 	if walDir == "" {
 		return nil, nil, errors.New("WAL_DIR is required")
 	}
-	w := &publish.WAL{Dir: walDir, Beat: beatName, Subject: subject}
+	w := &publish.WAL{Dir: walDir, Beat: beatName, Subject: subject, MaxBytes: wal.MaxBytes, MaxAge: wal.MaxAge, SyncInterval: wal.SyncInterval}
 	pub := &publish.WALPublisher[Out]{WAL: w, Next: publish.NewJetPublisher[Out](js)}
 	return pub, w.Close, nil
 }

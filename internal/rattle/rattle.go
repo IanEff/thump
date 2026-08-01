@@ -51,6 +51,12 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		return 1
 	}
 
+	query, err := LoadQueryConfig(cfg.QueryConfig)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load query config: %v\n", err)
+		return 1
+	}
+
 	// backendTLS is nil in the offline path (cfg.TLSCertFile unset) and dials
 	// PROM_URL in the clear, same as today — L4/L5's declared exception. In
 	// the broker path it's the beat's own leaf, ready the day Prometheus
@@ -120,6 +126,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 
 	var pub publish.Publisher[signal.Detection]
 	var walPub *publish.WALPublisher[signal.Detection]
+	var walConfig beat.WALConfig
 	if lc.NATSURL != "" {
 		js, closeNC, err := broker.Connect(ctx, cfg.NATSURL, tlsx.Config{
 			CertFile: cfg.TLSCertFile,
@@ -131,7 +138,12 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			return 1
 		}
 		defer closeNC()
-		p, _, err := beat.NewWALPublisher[signal.Detection](js, cfg.WALDir, "rattle", "thump.detections")
+		walConfig, err = beat.LoadWALConfig(cfg.WALConfig)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+			return 1
+		}
+		p, _, err := beat.NewWALPublisher[signal.Detection](js, cfg.WALDir, "rattle", "thump.detections", walConfig)
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, err)
 			return 1
@@ -168,7 +180,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
-	r := newReconciler(cfg.PromURL, slos, topo, traffic, backendTLS)
+	r := newReconciler(cfg.PromURL, slos, topo, traffic, backendTLS, query)
 
 	if walPub != nil {
 		sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
@@ -179,7 +191,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		defer func() { _ = walPub.WAL.Drain(ctx, sink) }()
 		g, gctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			beat.RunShipper(gctx, walPub.WAL, sink)
+			beat.RunShipper(gctx, walPub.WAL, sink, walConfig.ShipInterval)
 			return nil
 		})
 		g.Go(func() error {
@@ -198,8 +210,10 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 // itself is only reachable with a live PROM_URL. backendTLS is nil offline
 // and non-nil in the broker path (see Main) — NewPromSource's own client
 // only applies when it's nil.
-func newReconciler(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource, backendTLS *tls.Config) *Reconciler {
+func newReconciler(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource, backendTLS *tls.Config, query QueryConfig) *Reconciler {
 	src := NewPromSource(promURL)
+	src.Step = query.Step
+	src.Window = query.Window
 	if backendTLS != nil {
 		src.Client = httpx.Client(httpx.DefaultBackendTimeout, backendTLS)
 	}

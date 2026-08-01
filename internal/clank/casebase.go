@@ -38,6 +38,9 @@ var ErrUnprovenancedCase = errors.New("click: a case that can't be traced is poi
 // directly — only Alignment feeds back into scoring, and only once
 // corroborated.
 type CaseBase struct {
+	// MaxCases bounds how many Cases Append retains; zero means maxCases.
+	MaxCases int
+
 	mu    sync.RWMutex
 	cases []Case
 }
@@ -47,10 +50,10 @@ func NewCaseBase() *CaseBase {
 }
 
 // Append records c, evicting the oldest case first once the base holds
-// maxCases (10000) — bounded so a long-running process doesn't grow it
-// forever. A Case missing its fingerprint, outcome ref, decision ref, or
-// result is rejected as ErrUnprovenancedCase: a case that can't be traced
-// back to a decision can't be trusted as a corroborating vote.
+// MaxCases — bounded so a long-running process doesn't grow it forever. A
+// Case missing its fingerprint, outcome ref, decision ref, or result is
+// rejected as ErrUnprovenancedCase: a case that can't be traced back to a
+// decision can't be trusted as a corroborating vote.
 func (cb *CaseBase) Append(c Case) error {
 	if c.Fingerprint == "" || c.OutcomeRef == "" || c.DecisionRef == "" || c.Result == "" {
 		return fmt.Errorf("%w: %v", ErrUnprovenancedCase, c)
@@ -58,7 +61,11 @@ func (cb *CaseBase) Append(c Case) error {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	if len(cb.cases) >= maxCases {
+	limit := cb.MaxCases
+	if limit <= 0 {
+		limit = maxCases
+	}
+	if len(cb.cases) >= limit {
 		// Shift everything left by 1 to drop index 0
 		copy(cb.cases, cb.cases[1:])
 		cb.cases[len(cb.cases)-1] = c

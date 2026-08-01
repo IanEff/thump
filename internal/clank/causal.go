@@ -33,8 +33,8 @@ type CausalScore = proposal.CausalScore
 
 // CausalScorerImpl is the production CausalScorer. Its zero value has a nil
 // Prior — belief-formation defence 1 still holds even then, because an
-// uncorroborated historical score is capped at historicalAloneCap regardless
-// of whether a case base exists to corroborate it.
+// uncorroborated historical score is capped at weights.HistoricalAloneCap
+// regardless of whether a case base exists to corroborate it.
 type CausalScorerImpl struct {
 	Prior Prior
 }
@@ -60,19 +60,13 @@ func (s *CausalScorerImpl) Score(fingerprint string, change proposal.ChangeSnaps
 	return scores
 }
 
-const (
-	caseBaseBaseline      = 0.9 // uncorroborated historical baseline, before freshness decay
-	historicalAloneCap    = 0.5 // defence 1: historical alignment alone can never clear this likelihood
-	negativeSignalPenalty = 0.2 // defence 3: each predicted-but-absent signal costs this much likelihood
-)
-
 func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.TopologySnapshot, weights ScoringWeights, prior Prior) CausalScore {
 	node, inPath := findNode(topo, e.Target)
 
 	temporal := temporalScore(e.Age, weights.TemporalHalfLife)
 	topological := topologicalScore(node, inPath)
 
-	base, corroborated := caseBaseBaseline, false // 0.9 — the uncorroborated stub, unchanged
+	base, corroborated := weights.CaseBaseBaseline, false // the uncorroborated stub, unchanged
 	if prior != nil {
 		if rate, ok := prior.Alignment(fingerprint); ok {
 			base, corroborated = rate, true
@@ -102,9 +96,9 @@ func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.Topolo
 
 	for _, sig := range e.PredictedSignals {
 		if !signalObserved(topo, sig) {
-			likelihood -= negativeSignalPenalty
+			likelihood -= weights.NegativeSignalPenalty
 		}
-		rationale = append(rationale, fmt.Sprintf("defence 3: predicted %q absent -> %.2f", sig, negativeSignalPenalty))
+		rationale = append(rationale, fmt.Sprintf("defence 3: predicted %q absent -> %.2f", sig, weights.NegativeSignalPenalty))
 	}
 
 	if !inPath {
