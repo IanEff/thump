@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -272,5 +273,38 @@ func TestWALPublisher_PropagatesTheWALsAppendError(t *testing.T) {
 	}
 	if next.called {
 		t.Error("Next.Publish must not run when the WAL append failed")
+	}
+}
+
+// failingPublisher always fails Next.Publish — the WAL leg is healthy, only
+// the stream leg errors, mirroring thump.held's actual permissions failure.
+type failingPublisher struct {
+	err error
+}
+
+func (f *failingPublisher) Publish(context.Context, string, signal.Detection) error {
+	return f.err
+}
+
+func TestWALPublisher_ReturnsTheStreamPublishErrorRatherThanSwallowingIt(t *testing.T) {
+	t.Parallel()
+	// thump.held's permissions violation was described as "masked by the WAL
+	// leg succeeding". The masking was observational, not structural —
+	// Publish (wal.go:372) does return Next's error. Pinned here so the
+	// running notes' phrasing doesn't harden into a code-level belief that
+	// sends someone rewriting a leg that is already correct.
+	dir := t.TempDir()
+	w := &publish.WAL{Dir: dir, Beat: "rattle", Subject: "thump.detections"}
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+
+	wantErr := errors.New("permissions violation: no publish grant")
+	pub := &publish.WALPublisher[signal.Detection]{WAL: w, Next: &failingPublisher{err: wantErr}}
+
+	err := pub.Publish(context.Background(), "thump.held", signal.Detection{Fingerprint: "fp-1"})
+	if err == nil {
+		t.Fatal("Publish() error = nil, want non-nil when Next fails — the stream error must not be swallowed")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Errorf("Publish() error = %v, want it to wrap %v", err, wantErr)
 	}
 }

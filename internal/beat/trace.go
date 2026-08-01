@@ -3,7 +3,6 @@ package beat
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/ianeff/thump/internal/tlsx"
@@ -40,12 +39,11 @@ type exporterFactory func(ctx context.Context, endpoint string) (sdktrace.SpanEx
 // independently, through autoexport rather than otlpDialOptions below — it
 // needs a full URL, not the bare host:port otlpDialOptions itself would
 // accept, so the value must always carry a scheme.
-func Tracer(ctx context.Context, beatName string, tlsCfg tlsx.Config) (trace.Tracer, Shutdown, error) {
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+func Tracer(ctx context.Context, beatName string, otlpEndpoint string, tlsCfg tlsx.Config) (trace.Tracer, Shutdown, error) {
 	factory := func(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
 		return newOTLPExporter(ctx, endpoint, tlsCfg)
 	}
-	return newTracer(ctx, beatName, endpoint, factory)
+	return newTracer(ctx, beatName, otlpEndpoint, factory)
 }
 
 func newTracer(ctx context.Context, beatName, endpoint string, newExporter exporterFactory) (trace.Tracer, Shutdown, error) {

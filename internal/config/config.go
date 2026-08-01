@@ -23,6 +23,7 @@ type Clank struct {
 	FailureClasses   string        // FAILURE_CLASSES - required; the authored failure-class definitions YAML
 	DedupeWindow     time.Duration // DEDUPE_WINDOW — optional; how far back Engine.Propose looks for a live set on the same fingerprint before suppressing a redelivery; defaults to 1h
 	NATSURL          string        // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
+	OTLPEndpoint     string        // OTEL_EXPORTER_OTLP_ENDPOINT — optional; empty means unconfigured
 	PromURL          string        // PROM_URL — optional; empty disables the metrics tool
 	EvidenceQueries  string        // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	LokiURL          string        // LOKI_URL — optional; empty disables the loki tool
@@ -61,6 +62,7 @@ func LoadClank(broker bool) (Clank, error) {
 		FailureClasses:   l.Require("FAILURE_CLASSES"),
 		DedupeWindow:     l.OptionalDuration("DEDUPE_WINDOW", time.Hour),
 		NATSURL:          l.OptionalURL("NATS_URL", "nats", "tls"),
+		OTLPEndpoint:     l.OptionalURL("OTEL_EXPORTER_OTLP_ENDPOINT", "http", "https"),
 		PromURL:          l.Optional("PROM_URL"),
 		EvidenceQueries:  l.Optional("EVIDENCE_QUERIES"),
 		LokiURL:          l.Optional("LOKI_URL"),
@@ -100,19 +102,20 @@ func LoadClank(broker bool) (Clank, error) {
 // the validated string, the same division whir/contract draw between
 // "where's the file" (env) and "what's in it" (the beat's own YAML parse).
 type Hiss struct {
-	Policy      string // HISS_POLICY — required
-	NATSURL     string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
-	Inbox       string // HISS_INBOX — required only in the offline (non-broker) path
-	Outbox      string // HISS_OUTBOX — required only in the offline path
-	WALDir      string // WAL_DIR — required only in the broker path
-	S3Endpoint  string // S3_ENDPOINT — required only in the broker path
-	S3Bucket    string // S3_BUCKET — required only in the broker path
-	S3AccessKey string // S3_ACCESS_KEY — required only in the broker path
-	S3SecretKey string // S3_SECRET_KEY — required only in the broker path
-	TLSCertFile string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
-	TLSKeyFile  string // TLS_KEY_FILE — required only in the broker path
-	TLSCAFile   string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
-	SealKey     []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
+	Policy       string // HISS_POLICY — required
+	NATSURL      string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
+	OTLPEndpoint string // OTEL_EXPORTER_OTLP_ENDPOINT — optional; empty means unconfigured
+	Inbox        string // HISS_INBOX — required only in the offline (non-broker) path
+	Outbox       string // HISS_OUTBOX — required only in the offline path
+	WALDir       string // WAL_DIR — required only in the broker path
+	S3Endpoint   string // S3_ENDPOINT — required only in the broker path
+	S3Bucket     string // S3_BUCKET — required only in the broker path
+	S3AccessKey  string // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey  string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile  string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile   string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile    string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
+	SealKey      []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
 
 	ApprovalRequestsEnabled bool // APPROVALREQUESTS_ENABLED — optional, default false; runs the ApprovalRequest controller against hiss's in-cluster identity. Off means trim is the only path that releases a hold.
 }
@@ -127,8 +130,9 @@ type Hiss struct {
 func LoadHiss(broker bool) (Hiss, error) {
 	l := &loader{}
 	h := Hiss{
-		Policy:  l.Require("HISS_POLICY"),
-		NATSURL: l.OptionalURL("NATS_URL", "nats", "tls"),
+		Policy:       l.Require("HISS_POLICY"),
+		NATSURL:      l.OptionalURL("NATS_URL", "nats", "tls"),
+		OTLPEndpoint: l.OptionalURL("OTEL_EXPORTER_OTLP_ENDPOINT", "http", "https"),
 	}
 	if broker {
 		h.Inbox = l.Optional("HISS_INBOX")
@@ -157,6 +161,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 type Rattle struct {
 	PromURL          string // PROM_URL — required unconditionally, not broker-gated
 	NATSURL          string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
+	OTLPEndpoint     string // OTEL_EXPORTER_OTLP_ENDPOINT — optional; empty means unconfigured
 	WhirCatalog      string // WHIR_CATALOG — optional; pairs with WhirStateQueries
 	WhirStateQueries string // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
 	Traffic          string // RATTLE_TRAFFIC — optional; empty disables the Hubble traffic source
@@ -182,6 +187,7 @@ func LoadRattle(broker bool) (Rattle, error) {
 	r := Rattle{
 		PromURL:          l.Require("PROM_URL"),
 		NATSURL:          l.OptionalURL("NATS_URL", "nats", "tls"),
+		OTLPEndpoint:     l.OptionalURL("OTEL_EXPORTER_OTLP_ENDPOINT", "http", "https"),
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
 		WatchPath:        l.Require("RATTLE_WATCH"),
@@ -210,6 +216,7 @@ type Thump struct {
 	Executor        string // THUMP_EXECUTOR - "dry" (default) | "live"
 	KillSwitchPath  string // THUMP_KILLSWITCH -- path to armed:bool file; only read in live mode
 	NATSURL         string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
+	OTLPEndpoint    string // OTEL_EXPORTER_OTLP_ENDPOINT — optional; empty means unconfigured
 	PromURL         string // PROM_URL — optional; empty disables the automatic reversal watcher
 	EvidenceQueries string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	SlackWebhookURL string // SLACK_WEBHOOK_URL - optional; empty means no Notifier is wired.
@@ -236,6 +243,7 @@ func LoadThump(broker bool) (Thump, error) {
 		Executor:        l.Optional("THUMP_EXECUTOR"),
 		KillSwitchPath:  l.Optional("THUMP_KILLSWITCH"),
 		NATSURL:         l.OptionalURL("NATS_URL", "nats", "tls"),
+		OTLPEndpoint:    l.OptionalURL("OTEL_EXPORTER_OTLP_ENDPOINT", "http", "https"),
 		PromURL:         l.Optional("PROM_URL"),
 		EvidenceQueries: l.Optional("EVIDENCE_QUERIES"),
 		SlackWebhookURL: l.Optional("SLACK_WEBHOOK_URL"),
