@@ -37,13 +37,11 @@ avoid it. It fails in three ways at once:
   `if` statement inside the reasoner, where it is invisible, untestable, and
   impossible to tighten without editing the thing that reasons.
 
-thump answers each of those with a separation, not a guardrail bolted on
-afterward. Facts are produced by something that is structurally incapable of
-interpreting them. Interpretation is done by something structurally incapable of
-acting. Permission is decided by something structurally incapable of
-re-reasoning. Action is taken by something structurally incapable of deciding.
-
-That's the whole idea. The rest of this document is what it looks like in Go.
+thump answers each of those with a separation rather than a guardrail bolted on
+afterward. Facts come from something that cannot interpret them; interpretation
+from something that cannot act. Permission comes from something that cannot
+re-reason; action from something that cannot decide. The rest of this document is
+what those four seams look like in Go.
 
 ---
 
@@ -204,7 +202,7 @@ a blob you have to trust.
 handled differently on purpose:
 
 - a ref naming **no catalogued action at all** is `contract.ErrOutsideCatalog` and
-  fails the run outright — the autonomy boundary, enforced here, not hoped for;
+  fails the run outright — this is where the autonomy boundary is enforced;
 - a ref naming a **real action that doesn't apply to the failure class the model
   itself declared** is `errClassMismatch`, which becomes an auditable `no_action`
   decline. The model does not get an "I don't know" escape hatch that quietly
@@ -213,7 +211,7 @@ handled differently on purpose:
 A candidate citing evidence the run never gathered is `errUngroundedCitation` —
 also a decline, because it's a checkable mistake rather than an escape.
 
-**Confidence is computed, not vibed** (`internal/clank/confidence.go`). Each
+**Confidence is computed** (`internal/clank/confidence.go`). Each
 candidate's emitted confidence is a product of what the run actually grounded:
 
 ```
@@ -371,8 +369,8 @@ second half of one governed transaction, not a new one.
 thump's `Outcome` flows back into clank's case base (`Click.Absorb`) and the
 calibration metrics (`Recorder`). Historical alignment is one of the terms in the
 confidence product above — discounted by freshness decay, and unable to raise
-confidence on its own without live corroboration. That's the loop closed, in
-about two hundred lines of wiring rather than a sixth service.
+confidence on its own without live corroboration. The loop closes in `click.go`
+and `metrics.go` — 325 lines of wiring, no sixth service.
 
 ---
 
@@ -476,11 +474,12 @@ Named so it isn't mistaken for an oversight. Fuller reasoning in
 ## Provenance
 
 The four-plane architecture, the boundary-object discipline, the incident-response
-loop, and the belief-formation defenses are drawn from *Agentic Reliability
-Engineering* (chapters 6–9). Build method comes from *The Power of Go: Tools* and
-*The Power of Go: Tests*; delivery and layout conventions from *Shipping Go*.
+loop, and the belief-formation defenses are David Jambor's, from *Agentic
+Reliability Engineering* (O'Reilly), chapters 6–9. Build method comes from John
+Arundel's *The Power of Go: Tools* and *The Power of Go: Tests*; delivery and
+layout conventions from Joel Holmes's *Shipping Go*.
 
-**You do not need any of those books to read this repo or contribute to it.**
+You don't need any of the three to read this repo or contribute to it.
 Where a rule here comes from one of them, `invariants.md` says so and says what
 it constrains in *this* code. Where the project knowingly does something
 different, `design-decisions.md` says that too, with the reasoning. The rule the

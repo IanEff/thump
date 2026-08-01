@@ -2,10 +2,9 @@
 
 ## Supported versions
 
-thump is pre-release and unversioned — there is no tagged release, and
-therefore no supported-version matrix. Every report is evaluated against the
-tip of `main`, because that's the only thing that exists to report against.
-This will grow a real table the day a `v0.1.0` ships.
+thump is pre-1.0. `v0.1.0` is the only tag, and there is no
+supported-version matrix behind it — every report is evaluated against the tip
+of `main`. This grows a real table when there's more than one line to put in it.
 
 ## Reporting a vulnerability
 
@@ -71,7 +70,7 @@ check, not a review convention.
 
 | Leg | Carries | Protection |
 |---|---|---|
-| beat ↔ NATS JetStream | every boundary object — `Detection`, `ProposalSet`, `Governed`, `Outcome`, `Approval` | mTLS; each beat's client cert maps by SAN email to a NATS user whose publish grants **are** the charter's producer table — `hiss@thump.svc` is the only identity with publish on `thump.decisions`, `clank@thump.svc` cannot publish it at all |
+| beat ↔ NATS JetStream | every boundary object — `Detection`, `ProposalSet`, `Governed`, `Outcome`, `Approval` | mTLS; each beat's client cert maps by SAN email to a NATS user whose publish grants **are** the one-producer-per-object rule — `hiss@thump.svc` is the only identity with publish on `thump.decisions`, `clank@thump.svc` cannot publish it at all |
 | beat → S3/GCS | sealed WAL segments, sealed clank transcripts | HTTPS, refused at config load if the URL isn't `https://`; payload sealed independently (see **At rest**, below) |
 | clank → Anthropic | the model conversation, evidence digests included | HTTPS, SDK default, public CA |
 | rattle/clank/thump → Prometheus, clank → Loki | PromQL/logQL queries and results | **plaintext HTTP** — the declared exception; see below |
@@ -103,14 +102,14 @@ would have skipped, until you check the base.
 
 | Store | Holds | Protection |
 |---|---|---|
-| WAL active/sealed segments | every published boundary object, as JSON lines | plaintext on `emptyDir`, modes `0o600`/`0o750` — defended rather than fixed: nothing outlives the pod, and this is the copy `trim` and the `debug-transcript` skill read during an incident |
+| WAL active/sealed segments | every published boundary object, as JSON lines | plaintext on `emptyDir`, modes `0o600`/`0o750` — defended rather than fixed: nothing outlives the pod, and this is the copy `trim` reads during an incident |
 | NATS JetStream store | up to 48h of every subject | JetStream's native encryption at rest — `cipher: chachapoly` (ChaCha20-Poly1305), key from a `$JS_KEY` env var sourced from a Secret, never the ConfigMap (`deploy/chart/thump/templates/nats.yaml`, `secret.yaml`). Chart-wired; the live restart-and-`strings`-over-`/data` proof against the rig is still owed |
 | GCS bucket | shipped WAL segments and clank transcripts | `AES-256-GCM` sealed in-process before `PutObject` (`internal/sealbox`), so the bucket holds ciphertext regardless of who can read it; bucket-side, `public_access_prevention: enforced` is provisioned in the rig repo |
 | k3s datastore | `ANTHROPIC_API_KEY`, the S3 HMAC pair, the Slack webhook, the seal key, every beat's TLS private key | `secrets-encryption: true`, provisioned in the rig repo — a cluster-create setting, not a runtime flag |
 | Ceph OSD block devices | objects the rig's traffic generator writes | declined, with reason: no `encryptedDevice`, superseded by msgr2 transport encryption for this threat model |
 
 **Why the bucket is sealed client-side instead of left to Google-managed
-keys.** Since Phase S, a clank transcript carries `ToolCalls` and
+keys.** A clank transcript carries `ToolCalls` and
 `ToolResults` with call/result pairing (`internal/clank/store.go`), so a
 reader of the bucket doesn't just see what the model said — they reconstruct
 which piece of evidence answered which question, for every run. That's the

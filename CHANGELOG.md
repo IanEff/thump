@@ -4,11 +4,11 @@ All notable changes to thump are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
-This file is written by robot, from the phase history, not generated from
+This file is hand-written from the phase history rather than generated from
 `git log` — it describes what the engine can *do*, not which commits touched
-it. (GitHub also generates a commit-based release changelog per tag; that's
-a different artifact — see `.goreleaser.yml`'s `changelog:` block — and
-doesn't replace this one.)
+it. GitHub also generates a commit-based release changelog per tag (see
+`.goreleaser.yml`'s `changelog:` block); that's a different artifact and
+doesn't replace this one.
 
 ## [Unreleased]
 
@@ -16,12 +16,10 @@ doesn't replace this one.)
 
 - **The public docs are rewritten for a reader with no internal context.**
   `docs/architecture.md`, `docs/invariants.md`, and `docs/onboarding.md` were
-  provisional ports from the author's private design notes, banners and all;
-  they're now written for outside developers and users. The provisional banners
-  are gone because the rewrite is done, not because someone forgot to remove
-  them. `docs/invariants.md` regains the per-rule sourcing the port dropped —
-  which is the property that makes "nothing here is vibes" checkable rather than
-  asserted — plus, for each rule, the test that would go red.
+  provisional ports from private design notes, banners and all; they're now
+  written for outside developers and users, and the banners are gone.
+  `docs/invariants.md` regains the per-rule sourcing the port dropped, plus, for
+  each rule, the test that would go red.
 - **New: `docs/design-decisions.md`** — the public record of where this project
   knowingly departs from the book it's built from, what it does instead, and
   why, including the entries that are parked and the ones that were declined
@@ -56,7 +54,7 @@ at each beat's seams.
   floor, freshness decay, negative-signal check, partial-convergence
   tracking, forced-live-citation); evidence enters as digests only, never
   raw payloads; WAL-backed transcript persistence for audit; model
-  adapters for both native and Gemini backends with backoff/retry.
+  adapters for the Anthropic and Gemini backends with backoff/retry.
 - **hiss** — governance: authority and confidence validation, blast-tier
   and risk-band authoring, an append-only decision ledger; the gate is a
   conjunction of minimums (budget ∧ dedup ∧ evidence) — one failing
@@ -108,8 +106,7 @@ coverage total on every PR.
 
 ### Known gaps
 
-Not in 0.1.0, on purpose — this build exists to give contributors and
-early lookers something runnable, not to claim completeness:
+Not in 0.1.0, on purpose:
 
 - No real infrastructure integration beyond what's cataloged; the LLM's
   autonomy is bounded to a fixed action set and a `MaxSteps` loop limit.

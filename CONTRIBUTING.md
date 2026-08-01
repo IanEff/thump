@@ -1,19 +1,12 @@
 # Contributing to thump
 
-Help is welcome. This is a learning project as much as a build — the author is
-using it to get fluent in Go — so the bar is "did we both understand why this is
-right," not just "does it pass."
-
-Read `README.md` first for what thump is. This file is about how to work here.
+Help is welcome. Read `README.md` first for what thump is. This file is about
+how to work here.
 
 ---
 
 ## The working agreement
 
-- **The repo owner reviews and lands every commit.** Edits, tests, and
-  `task ci` are fair game for anyone helping out (including an AI pairing
-  partner); the commit itself is always the owner's to make. Open a PR, or hand
-  over a diff.
 - **`task ci` green is the definition of done.** That chain is
   fmt-check → vet → **lint** → vulncheck → chart-lint → race → build. GitHub
   runs everything up to `test`, but not `race` — doubling every CI run's
@@ -22,9 +15,8 @@ Read `README.md` first for what thump is. This file is about how to work here.
   GitHub is *not* the same claim — a red lint with green tests has silently
   broken `main` here before, and the race detector is the same story.
 - **Red→green is the default shape, held loosely.** Write the test for new
-  behavior first and watch it fail for the reason you predicted. It's a spine to
-  work from, not a ritual to enforce on every change; sometimes a spike comes
-  first, and that's fine.
+  behavior first and watch it fail for the reason you predicted. A spike that
+  comes before the test is fine; a seam that never gets one isn't.
 - **Go conventions live in `AGENTS.md`** — error wrapping, doc-comment voice,
   ACE-style table-test names, `cmp.Diff(want, got)` argument order. Read it
   before touching any `.go` file. It is not a style suggestion; it's what makes
@@ -81,9 +73,8 @@ deliberately named `acme` for exactly this reason: the day onboarding needs a
 domain-specific Go discriminator, `test/onboarding/` is where it shows up.
 
 **4 · Honest absence.** A missing measurement is `nil`, rendered `unmeasured` —
-never `0` sitting next to a real value looking like a clean result. Declining
-out loud beats guessing quietly, and that applies to this project's own status
-page as much as its runtime.
+never `0` sitting next to a real value looking like a clean result. Absence gets
+its own state instead of borrowing a value that already means something else.
 
 ## Getting set up
 
@@ -128,5 +119,4 @@ contribution) or a bug worth reporting. Read the ⚠️ in point 1 above first.
 
 Explain the *why* — what was wrong or missing, and why this is the right shape.
 The subject line is `type(scope): summary` (`feat(clank):`, `fix(thump):`,
-`test(actuate):`, `docs:`). Please don't add AI-assistant attribution trailers
-or footers; the author credits agent use in prose, on their own terms.
+`test(actuate):`, `docs:`). No attribution trailers or footers.
