@@ -73,6 +73,15 @@ approvalRequests:
 # agree with internal/beat.Tracer's own gRPC transport and Tempo's
 # grpc-tempo-otlp Service port. VERIFY against the lab like
 # prometheus.url/loki.url.
+#
+# The metrics half additionally sets OTEL_METRICS_EXPORTER=otlp-breaker
+# rather than leaving autoexport on its own bare "otlp" default — internal/
+# beat.otelmetrics.go registers that name with a metric.Exporter that stops
+# retrying once a target proves (via a gRPC status code, not just "an error")
+# it will never accept OTLP metrics, e.g. codes.Unimplemented against an
+# endpoint with no MetricsService. Don't "simplify" this back to plain
+# "otlp": that reintroduces a metrics-collection-interval log line, forever,
+# on any endpoint that's traces-only.
 tracing:
   endpoint: ""
 
