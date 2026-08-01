@@ -107,19 +107,21 @@ func TestSeam_RattleDetectionDrivesClankToADeliveredProposal(t *testing.T) {
 
 func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 	t.Parallel()
-	// scripted model: step 1 investigate — TWO live citations, so
-	// scoreConfidence's grounding clears hiss's floor the way a real
-	// well-corroborated run does; step 2 propose a catalogued, REVERSIBLE
-	// candidate that REQUESTS A BAND (both trap dodges — see the banner above).
+	// scripted model: step 1 investigate — TWO live citations from TWO
+	// backends, so scoreConfidence's grounding clears hiss's floor the way a
+	// real well-corroborated run does (the tier counts distinct tools, so two
+	// metrics queries would be corroborated once); step 2 propose a
+	// catalogued, REVERSIBLE candidate that REQUESTS A BAND (both trap dodges
+	// — see the banner above).
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation, // in newTestEngine's catalog
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				Citations: []string{`{"q":"burn"}`, `{"q":"latency_p99"}`},
+				Citations: []string{`{"q":"burn"}`, `{"namespace":"payments"}`},
 				ReversalPath: &proposal.ReversalPath{ // trap 1: without this, hiss's I-12 veto fires
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},
@@ -194,13 +196,13 @@ func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
 	// four-beat seam, which explains them.
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				Citations: []string{`{"q":"burn"}`, `{"q":"latency_p99"}`},
+				Citations: []string{`{"q":"burn"}`, `{"namespace":"payments"}`},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},

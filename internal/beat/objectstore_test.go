@@ -66,6 +66,52 @@ func TestEncryptingSink_PutStoresSealedBytesAtTheInnerSink(t *testing.T) {
 	}
 }
 
+// TestUnsealSegment_RecoversTheLinesEncryptingSinkShipped is a round trip on
+// purpose: the two halves are the only pair in the tree, and pinning either
+// against a hand-built fixture would pin the fixture rather than the pairing.
+// A segment nobody can read back is an audit trail in name only.
+func TestUnsealSegment_RecoversTheLinesEncryptingSinkShipped(t *testing.T) {
+	t.Parallel()
+	inner := newFakeSink()
+	key := newTestSealKey(t)
+	sink := &beat.EncryptingSink{Inner: inner, Key: key}
+	// One segment holds many boundary objects, so the trailing newline the WAL
+	// writes must not decode as a final empty line.
+	segment := []byte("{\"name\":\"set-1\"}\n{\"name\":\"set-2\"}\n")
+
+	if err := sink.Put(context.Background(), "clank/thump.proposals/seg-1", bytes.NewReader(segment)); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := beat.UnsealSegment(key, bytes.NewReader(inner.puts["clank/thump.proposals/seg-1"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]byte{[]byte(`{"name":"set-1"}`), []byte(`{"name":"set-2"}`)}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("unsealing a shipped segment didn't recover its lines (-want +got)\n", diff)
+	}
+}
+
+// TestUnsealSegment_RefusesTheWrongKeyRatherThanReturningGarbage pins the
+// failure an operator actually hits: kubectl returns the Secret's value
+// encoded on top of THUMP_SEAL_KEY's own encoding, so the key that reaches
+// this function is the right length and the wrong bytes.
+func TestUnsealSegment_RefusesTheWrongKeyRatherThanReturningGarbage(t *testing.T) {
+	t.Parallel()
+	inner := newFakeSink()
+	sink := &beat.EncryptingSink{Inner: inner, Key: newTestSealKey(t)}
+	if err := sink.Put(context.Background(), "clank/thump.proposals/seg-1", bytes.NewReader([]byte("{}\n"))); err != nil {
+		t.Fatal(err)
+	}
+
+	var other sealbox.Key
+	other[0] = 1
+	if _, err := beat.UnsealSegment(other, bytes.NewReader(inner.puts["clank/thump.proposals/seg-1"])); err == nil {
+		t.Error("unsealing with the wrong key must fail, not return whatever the cipher produced")
+	}
+}
+
 func TestEncryptingSink_PutPropagatesAnInnerSinkError(t *testing.T) {
 	t.Parallel()
 	inner := newFakeSink()

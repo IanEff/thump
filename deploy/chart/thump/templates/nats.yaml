@@ -83,10 +83,28 @@ data:
           permissions: {
             publish: {
               allow: [
-                "thump.decisions", "thump.declines",
+                # thump.approvals: the ApprovalRequestController's own
+                # publish, once a human's kubectl patch is translated to an
+                # Approval — hiss.go's approveHandler is what reads it back,
+                # via the his-approvals consumer grant below. Found missing
+                # live: the CR patched cleanly and got its approver stamped,
+                # but the republish failed with a permissions violation
+                # because only trim (below) had ever been granted this
+                # subject — this controller's own publish grant was never
+                # added when it was wired in.
+                "thump.decisions", "thump.declines", "thump.approvals",
                 "thump.proposals.dlq", "thump.approvals.dlq",
                 "$JS.API.CONSUMER.INFO.THUMP.hiss", "$JS.API.CONSUMER.MSG.NEXT.THUMP.hiss", "$JS.ACK.THUMP.hiss.>",
-                "$JS.API.CONSUMER.INFO.THUMP.his-approvals", "$JS.API.CONSUMER.MSG.NEXT.THUMP.his-approvals", "$JS.ACK.THUMP.his-approvals.>"
+                "$JS.API.CONSUMER.INFO.THUMP.his-approvals", "$JS.API.CONSUMER.MSG.NEXT.THUMP.his-approvals", "$JS.ACK.THUMP.his-approvals.>",
+                # rebuildHolds (internal/hiss/rebuild.go) mints a fresh,
+                # randomly-named ephemeral consumer on thump.decisions every
+                # startup to replay PendingHolds — the wildcard token covers
+                # that random name, unlike every other grant above which
+                # names a fixed durable. All three of create, fetch (MSG.NEXT),
+                # and ack are needed: FetchNoWait and msg.Ack() both address
+                # the consumer by that same random name, not by filter subject.
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.decisions",
+                "$JS.API.CONSUMER.MSG.NEXT.THUMP.*", "$JS.ACK.THUMP.*.>"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }
@@ -96,6 +114,15 @@ data:
           permissions: {
             publish: {
               allow: [
+                # thump.held: HeldPub's leg for a hold verdict — records that
+                # the fingerprint stays open, never declined. Found live
+                # alongside the thump.approvals gap below: same cause, same
+                # session — a permissions violation on every hold, masked
+                # because HeldPub is a WALPublisher and the local WAL/S3 leg
+                # still succeeds, so nothing crashed and nothing else
+                # noticed a message never reached the stream.
+                "thump.held",
+                "thump.orders",
                 "thump.outcomes",
                 "thump.decisions.dlq",
                 "$JS.API.CONSUMER.INFO.THUMP.thump", "$JS.API.CONSUMER.MSG.NEXT.THUMP.thump", "$JS.ACK.THUMP.thump.>"

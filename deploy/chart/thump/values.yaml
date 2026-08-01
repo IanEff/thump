@@ -52,12 +52,26 @@ approvalRequests:
   enabled: false
   approvers: []
 
-# Empty by default — internal/beat.Tracer treats an empty
-# OTEL_EXPORTER_OTLP_ENDPOINT as "unconfigured" and falls back to a noop
-# Tracer, so a cluster with no OTel collector/Tempo deployed still starts
-# clean. Set per-cluster (bare host:port, no scheme — otlptracegrpc.
-# WithEndpoint's convention, unlike prometheus.url/loki.url above) once
-# Tempo is actually reachable there. VERIFY against the lab like
+# Empty by default. The deployment templates fan this one value out to two
+# independent OTel init paths: internal/beat.Tracer (hand-rolled OTLP/gRPC,
+# treats an empty OTEL_EXPORTER_OTLP_ENDPOINT as "unconfigured" and falls
+# back to a noop Tracer) and the otelc compile-time auto-instrumentation
+# layer (.otelc-build, wired via go.mod's `tool` directive — reads the same
+# env var through go.opentelemetry.io/contrib/exporters/autoexport). The
+# templates set OTEL_{TRACES,METRICS,LOGS}_EXPORTER=none when this is empty
+# so otelc's layer goes quiet too, instead of falling back to autoexport's
+# OTLP-spec default endpoint (localhost:4318) and retrying forever with
+# nothing listening — a cluster with no OTel collector/Tempo deployed still
+# starts clean on both layers.
+#
+# Set per-cluster as a full `http://host:port` URL (not bare host:port —
+# otelc's autoexport needs a real URL to parse a host out of; the bare form
+# used to silently mis-parse to an empty host and spam
+# `Post "https:///v1/traces": http: no Host in request URL` every batch).
+# The templates also set a fixed OTEL_EXPORTER_OTLP_PROTOCOL=grpc alongside
+# it — not a second value to manage per cluster, just what makes autoexport
+# agree with internal/beat.Tracer's own gRPC transport and Tempo's
+# grpc-tempo-otlp Service port. VERIFY against the lab like
 # prometheus.url/loki.url.
 tracing:
   endpoint: ""

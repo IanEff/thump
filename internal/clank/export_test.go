@@ -1,6 +1,7 @@
 package clank
 
 import (
+	"context"
 	"crypto/tls"
 	"path/filepath"
 	"sync"
@@ -8,6 +9,8 @@ import (
 
 	"go.opentelemetry.io/otel/trace/noop"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/ianeff/thump/api/v1/proposal"
@@ -141,11 +144,25 @@ func ToolSpecsForTest(e *Engine) []ToolSpec {
 	return e.toolSpecs()
 }
 
-// BuildIntakeForTest exposes buildIntake to clank_test — the seam W0b's
-// silent-fallback warnings hang off, and where W1's ArgoCD change source
-// plugs in next.
-func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface) (*Intake, error) {
-	return buildIntake(cfg, backendTLS, argo)
+// BuildIntakeForTest exposes buildIntake to clank_test — the seam the
+// silent-fallback warnings hang off, and where the ArgoCD change source and
+// its subject rules are wired together.
+func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex) (*Intake, error) {
+	return buildIntake(cfg, backendTLS, argo, subjects)
+}
+
+// BuildToolsForTest exposes buildTools to clank_test — the seam that decides
+// which evidence tools exist and whether each one can name the topology node
+// its citations concern.
+func BuildToolsForTest(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]Tool {
+	return buildTools(cfg, backendTLS, ev, kube)
+}
+
+// ClientsForTest exposes clientsFor to clank_test — the half of the
+// in-cluster path that doesn't need a cluster, so the nil-on-failure contract
+// its callers' nil checks depend on can actually be exercised.
+func ClientsForTest(restConfig *rest.Config) (kubernetes.Interface, dynamic.Interface) {
+	return clientsFor(restConfig)
 }
 
 // IntakeTopologyForTest exposes the Intake's wired TopologySource.
@@ -156,4 +173,18 @@ func IntakeTopologyForTest(i *Intake) TopologySource {
 // IntakeChangeForTest exposes the Intake's wired ChangeSource.
 func IntakeChangeForTest(i *Intake) ChangeSource {
 	return i.change
+}
+
+func NewIdentifierMaskerForTest() *identifierMasker { return newIdentifierMasker() }
+
+func (m *identifierMasker) RegisterForTest(name string)   { m.register(name) }
+func (m *identifierMasker) MaskForTest(s string) string   { return m.mask(s) }
+func (m *identifierMasker) UnmaskForTest(s string) string { return m.unmask(s) }
+
+func NewMaskingModelForTest(model Model, mask *identifierMasker) Model {
+	return &maskingModel{Model: model, mask: mask}
+}
+
+func ContextWithMaskerForTest(ctx context.Context, mask *identifierMasker) context.Context {
+	return contextWithMasker(ctx, mask)
 }

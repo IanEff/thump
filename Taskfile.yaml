@@ -3,10 +3,10 @@ version: "3"
 vars:
   PROJECT: thump
   REGISTRY: '{{.REGISTRY | default "ghcr.io/ianeff"}}'
-  BEATS: "clank rattle hiss thump trim bootstrap"
-  # The four long-running services that actually run as cluster pods. trim is
-  # an operator-run CLI — no internal/beat runtime, no Helm Deployment — and
-  # ships only as a binary (build/goreleaser), never as a container image.
+  BEATS: "clank rattle hiss thump trim bootstrap unseal"
+  # The four long-running services that actually run as cluster pods. trim and
+  # unseal are operator-run CLIs — no internal/beat runtime, no Helm Deployment
+  # — and ship only as binaries (build/goreleaser), never as container images.
   SERVICE_BEATS: "clank rattle hiss thump"
   # bootstrap (R6c) is neither: it's a one-shot Kubernetes Job, not a
   # long-running service, but unlike trim it runs in-cluster and needs a
@@ -278,6 +278,22 @@ tasks:
     desc: go run ./cmd/trim
     cmds:
       - go run ./cmd/trim
+
+  # The bucket pull stays the operator's job: which object store, which
+  # credentials, and which segments are worth reading are all site facts, and
+  # a tool that fetched for you would need cluster reach it has no business
+  # having.
+  unseal:
+    desc: "Decrypt sealed WAL segments pulled from the bucket: task unseal SEG=<path>... (needs THUMP_SEAL_KEY)"
+    requires:
+      vars: [SEG]
+    cmds:
+      - go run ./cmd/unseal {{.SEG}}
+
+  seal-key:
+    desc: "Print THUMP_SEAL_KEY from the cluster, both base64 layers handled — export it before task unseal"
+    cmds:
+      - kubectl get secret thump-seal -n thump -o jsonpath='{.data.key}' | base64 -d
 
   tidy:
     desc: go mod tidy

@@ -1,0 +1,17 @@
+# Keeps Tilt's file-watcher off the same junk .dockerignore keeps out of the
+# build context (2026-07-31 investigation — see .dockerignore's header for
+# the full story). Without this, Tilt was watching .otelc-build/gocache's
+# 12GB Go build cache, which churns on nearly every local `go build` /
+# `task otelc:generate` run — noise that can trigger rebuilds with no source
+# change behind them, on top of the build-context bloat .dockerignore fixes.
+
+.otelc-build/gocache
+.otelc-build/debug
+.otelc-build/debug.log
+.otelc-build/build-plan.log
+.otelc-build/matched.json
+.otelc-build/added_imports.*.json
+
+bin
+dist
+coverage.out

@@ -20,6 +20,9 @@ import (
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/publish/publishtest"
 	"github.com/ianeff/thump/internal/thump"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubefake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/yaml"
 )
 
@@ -43,21 +46,23 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "node-death.yaml")
 
-	// scripted model: step 1 gather two pieces of LIVE evidence (metricsTool
-	// → Live:true, clears both the gate's evidenceOK and scoreConfidence's
-	// two-corroborated-citation tier); step 2 propose hold-rebalance — a
-	// catalogued action for the fixture's class+tier — carrying a
-	// ReversalPath (or hiss Claim 5 vetoes) and a requested band (or the
-	// grant defaults to observe).
+	// scripted model: step 1 gather two pieces of LIVE evidence from TWO
+	// backends (both Live:true, clearing the gate's evidenceOK and
+	// scoreConfidence's two-source grounding tier — that tier counts distinct
+	// backends, so two Prometheus queries would land a tier lower); step 2
+	// propose hold-rebalance — a catalogued action for the fixture's
+	// class+tier — carrying a ReversalPath (or hiss Claim 5 vetoes) and a
+	// requested band (or the grant defaults to observe).
+	const mons = `{"namespace":"rook-ceph","labels":{"app":"rook-ceph-mon"}}`
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osd_capacity"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(mons)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded, // in defaultCatalog's hold-rebalance
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-				Citations: []string{"ceph_health", "osd_capacity"},
+				Citations: []string{"ceph_health", `{namespace="rook-ceph", app="rook-ceph-mon"}`},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -68,6 +73,8 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
+	logs := goldenLokiServer(t)
+	defer logs.Close()
 
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
@@ -76,7 +83,16 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 				"ceph_health":  "ceph_health_status",
 				"osd_capacity": "ceph_osd_capacity_ratio",
 			},
+			// node-death.yaml's OriginService is ceph-cluster; goldenEngine's
+			// fakeTopo carries no topology at all, so the self-match clause
+			// of gate.go's coherentSubject is the only path to clearing the
+			// gate under W3's fail-closed ruling.
+			Subjects: map[string]string{
+				"ceph_health":  "ceph-cluster",
+				"osd_capacity": "ceph-cluster",
+			},
 		},
+		"loki": &clank.LokiTool{BaseURL: logs.URL, Subjects: goldenCephSubjects()},
 	}
 
 	eng, sink := goldenEngine(model, tools)
@@ -154,8 +170,9 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	defer ts.Close()
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
-			BaseURL: ts.URL,
-			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+			BaseURL:  ts.URL,
+			Queries:  map[string]string{"ceph_health": "ceph_health_status"},
+			Subjects: map[string]string{"ceph_health": "ceph-cluster"}, // self-match, see the sibling test above
 		},
 	}
 
@@ -219,13 +236,21 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	defer ts.Close()
 
 	// the two named queries a real evidence-queries.yaml resolves these to —
-	// see config/whir/evidence-queries.yaml, group 2.
+	// see config/whir/evidence-queries.yaml, group 2. Both carry subject:
+	// ceph-cluster in production (they're ceph-health's own decomposition,
+	// same relationship group 8's raw ratios have to their SLO) — self-match
+	// against node-death.yaml's OriginService here, same reasoning as the
+	// other goldenpath tests above.
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]string{
 				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
 				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
+			},
+			Subjects: map[string]string{
+				"osds_down":       "ceph-cluster",
+				"pgs_backfilling": "ceph-cluster",
 			},
 		},
 	}
@@ -430,15 +455,19 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "node-death.yaml")
 
+	// The second backend here is the cluster tool rather than the log tool,
+	// so the selector path — the narrowing a kube citation's subject claim
+	// depends on — is exercised end to end in a golden run too.
+	const mons = `{"resource":"pods","namespace":"rook-ceph","selector":{"app":"rook-ceph-mon"}}`
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "kube", Args: json.RawMessage(mons)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-				Citations: []string{"osds_down", "pgs_backfilling"},
+				Citations: []string{"osds_down", mons},
 				// bare — no ReversalPath, no GovernanceLevel
 			}},
 		})}}},
@@ -453,6 +482,21 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
 				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
 			},
+			Subjects: map[string]string{
+				"osds_down":       "ceph-cluster",
+				"pgs_backfilling": "ceph-cluster",
+			},
+		},
+		"kube": &clank.KubeTool{
+			Client: kubefake.NewSimpleClientset(&corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rook-ceph-mon-a",
+					Namespace: "rook-ceph",
+					Labels:    map[string]string{"app": "rook-ceph-mon"},
+				},
+				Status: corev1.PodStatus{Phase: corev1.PodRunning},
+			}),
+			Subjects: goldenCephSubjects(),
 		},
 	}
 
@@ -666,6 +710,39 @@ func assertGolden(t *testing.T, name string, v any) {
 	}
 	if diff := cmp.Diff(string(want), string(got)); diff != "" {
 		t.Errorf("%s drifted from golden (-want +got):\n%s", name, diff)
+	}
+}
+
+// goldenLokiServer is the second backend the golden path needs to reach the
+// two-source grounding tier at all — that tier counts distinct backends, so a
+// run citing Prometheus twice is corroborated once. Like
+// goldenPrometheusServer it answers every query the same way; what the golden
+// path is proving is the loop, not the backend.
+func goldenLokiServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"status": "success",
+			"data": {
+				"resultType": "streams",
+				"result": [
+					{"stream": {"namespace": "rook-ceph"},
+					 "values": [["1783535136846051765", "osd marked down"]]}
+				]
+			}
+		}`))
+	}))
+}
+
+// goldenCephSubjects is the rule set the golden path's log and cluster tools
+// resolve through. It names ceph-cluster because the node-death fixture's
+// OriginService is ceph-cluster and goldenEngine's fakeTopo carries no
+// topology at all, so coherentSubject's self-match clause is the only path
+// to clearing the gate.
+func goldenCephSubjects() clank.SubjectIndex {
+	return clank.SubjectIndex{
+		{Subject: "ceph-cluster", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-mon"}},
 	}
 }
 

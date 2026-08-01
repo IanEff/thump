@@ -6,7 +6,7 @@ import "github.com/ianeff/thump/api/v1/proposal"
 // Candidate — every field already lives on the audit trail.
 type confidenceInputs struct {
 	SignalConfidence float64 // SignalSnapshot.Confidence — rattle's number, read-only
-	Corroborated     int     // this candidate's Citations resolving to a Live, in-topology EvidenceRef
+	Corroborated     int     // this candidate's distinct backends resolving to a Live, in-topology EvidenceRef
 	Alignment        float64 // Prior.Alignment's rate — meaningless unless AlignmentOK
 	AlignmentOK      bool    // true once the case base clears its own ≥2-vote floor (defence 1)
 	Likelihood       float64 // the strongest in-topology CausalScore.Likelihood this run produced — meaningless unless LikelihoodOK
@@ -14,12 +14,16 @@ type confidenceInputs struct {
 	SelfReported     float64 // the model's own stated confidence
 }
 
-// scoreConfidence computes a Candidate's emitted confidence as a product of
-// what this run actually grounded, then applies the model's self-report as
-// a ceiling — min(computed, in.SelfReported) — so a confident-sounding guess
-// with nothing behind it can only be pulled down, never talked up. A term
-// whose *OK flag is false drops out of the product entirely; it never
-// multiplies in as zero.
+// scoreConfidence computes a Candidate's emitted confidence from what this run
+// actually grounded, then applies the model's self-report as a ceiling —
+// min(computed, in.SelfReported) — so a confident-sounding guess with nothing
+// behind it can only be pulled down, never talked up. A term whose *OK flag is
+// false drops out entirely; it never multiplies in as zero.
+//
+// The causal term is added rather than multiplied. LikelihoodOK is false
+// whenever no change event resolved into the topology, so as a factor it
+// scored a run holding corroborating change data below the identical run
+// holding none — confidence falling as evidence arrives.
 func scoreConfidence(in confidenceInputs, w ScoringWeights) float64 {
 	grounding := w.GroundingNone
 	switch {
@@ -34,30 +38,31 @@ func scoreConfidence(in confidenceInputs, w ScoringWeights) float64 {
 		computed *= 0.5 + 0.5*in.Alignment
 	}
 	if in.LikelihoodOK {
-		computed *= in.Likelihood
+		computed = min(1, computed*(1+w.Causal*in.Likelihood))
 	}
 
 	return min(computed, in.SelfReported)
 }
 
-// coherentLiveCitations counts how many of cand's Citations resolve to an
-// EvidenceRef that is both Live and topologically coherent — the same test
-// gate.go's anyCoherentLive applies, counted here instead of just asked
-// yes/no, since scoreConfidence's grounding tiers care how many, not
-// whether any.
+// coherentLiveCitations counts the distinct backends behind cand's
+// Citations that resolve to a Live, topologically coherent EvidenceRef —
+// grouped by EvidenceRef.Tool, not one per ref, so a candidate can't clear
+// the ≥2-source grounding floor by querying one backend twice (defence 1).
+// The same test gate.go's anyCoherentLive applies, counted here instead of
+// just asked yes/no.
 func coherentLiveCitations(cand proposal.Candidate, evidence []proposal.EvidenceRef, sao *proposal.SAO) int {
 	cited := make(map[string]bool, len(cand.Citations))
 	for _, c := range cand.Citations {
 		cited[c] = true
 	}
 
-	n := 0
+	backends := make(map[string]bool)
 	for _, ref := range evidence {
 		if cited[ref.Query] && ref.Live && coherentSubject(ref, sao) {
-			n++
+			backends[ref.Tool] = true
 		}
 	}
-	return n
+	return len(backends)
 }
 
 // scoreConfidences overwrites every set.Proposals entry's Confidence with
@@ -68,9 +73,9 @@ func coherentLiveCitations(cand proposal.Candidate, evidence []proposal.Evidence
 //
 // Only scores whose event resolved into the signal's topology may contribute:
 // a change somewhere else in the cluster is not a weak cause, it is not a
-// cause, and letting it multiply in would make holding uncorrelatable change
-// data worse than holding none — the same trap defence 3 avoids by
-// decrementing on absent predicted signals rather than on silence.
+// cause, and letting it count would make holding uncorrelatable change data
+// worse than holding none — the same trap defence 3 avoids by decrementing on
+// absent predicted signals rather than on silence.
 func scoreConfidences(set *proposal.Set, sao proposal.SAO, prior Prior, fingerprint string, w ScoringWeights) {
 	var maxLikelihood float64
 	var likelihoodOK bool

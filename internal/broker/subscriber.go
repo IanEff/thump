@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ianeff/thump/internal/wire"
@@ -89,6 +90,7 @@ func (s *JetSubscriber[T]) Run(ctx context.Context, subject string, h Handler[T]
 		var obj T
 		if err := wire.Unmarshal(msg.Data(), &obj); err != nil {
 			// DOOR 1 — poison: never decodes. Dead-letter it now, no retry.
+			slog.Error("dead-lettering undecodable message", "subject", subject, "err", err)
 			_, _ = s.js.Publish(ctx, subject+".dlq", msg.Data())
 			_ = msg.TermWithReason("undecodable")
 			return
@@ -101,18 +103,26 @@ func (s *JetSubscriber[T]) Run(ctx context.Context, subject string, h Handler[T]
 
 		if err := h(msgCtx, obj, func() { _ = msg.InProgress() }); err != nil {
 			// DOOR 2 — transient: handler failed. Retry with backoff until
-			// the budget (maxDeliver) is spent, then dead-letter.
+			// the budget (maxDeliver) is spent, then dead-letter. The error
+			// is logged before either, because a nak is invisible from
+			// outside the broker: without this line a handler can fail on
+			// every delivery and exhaust its budget leaving no trace of why.
 			md, _ := msg.Metadata()
-			if md != nil && md.NumDelivered >= maxDeliver {
-				_, _ = s.js.Publish(ctx, subject+".dlq", msg.Data())
-				_ = msg.TermWithReason("retry budget exhausted")
-				return
-			}
 			var delivered uint64
 			if md != nil {
 				delivered = md.NumDelivered
 			}
-			_ = msg.NakWithDelay(s.backoffFor(delivered))
+			if md != nil && md.NumDelivered >= maxDeliver {
+				slog.Error("dead-lettering message after exhausting retry budget",
+					"subject", subject, "delivered", delivered, "maxDeliver", maxDeliver, "err", err)
+				_, _ = s.js.Publish(ctx, subject+".dlq", msg.Data())
+				_ = msg.TermWithReason("retry budget exhausted")
+				return
+			}
+			delay := s.backoffFor(delivered)
+			slog.Error("handler failed, redelivering",
+				"subject", subject, "delivered", delivered, "retryIn", delay, "err", err)
+			_ = msg.NakWithDelay(delay)
 			return
 		}
 

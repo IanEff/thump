@@ -43,8 +43,8 @@ func TestProductionWiring_ConfidenceIsTheProductOfBothBeatConstructors(t *testin
 	}
 }
 
-// TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors carries a
-// real rattle.Reconciler detection (seamDetection) through clank's and
+// TestProductionWiring_ThreeBeatsReachApprovedThroughRealConstructors carries
+// a real rattle.Reconciler detection (seamDetection) through clank's and
 // hiss's real production constructors — NewLoopForTest's Engine.Propose,
 // then hiss.Authority.Evaluate — to the first approved verdict on a
 // confidence hand-set nowhere in the wiring.
@@ -52,7 +52,7 @@ func TestProductionWiring_ConfidenceIsTheProductOfBothBeatConstructors(t *testin
 // Only three of five beats run here: rattle, clank, hiss. thump and click
 // aren't wired in yet — see the trailing comment below for what to copy in
 // once they are.
-func TestProductionWiring_FiveBeatsReachApprovedThroughRealConstructors(t *testing.T) {
+func TestProductionWiring_ThreeBeatsReachApprovedThroughRealConstructors(t *testing.T) {
 	t.Parallel()
 
 	loop := newApprovableTestLoop(t) // local builder below — the delta from newTestLoop
@@ -77,20 +77,20 @@ func newApprovableTestLoop(t *testing.T) testLoop {
 	t.Helper()
 	model := &fakeModel{script: []clank.Completion{
 		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
 		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				Citations:       []string{`{"q":"burn"}`, `{"q":"latency_p99"}`},
+				Citations:       []string{`{"q":"burn"}`, `{"namespace":"payments"}`},
 				ReversalPath:    &proposal.ReversalPath{Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery"},
 				GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 			}},
 		})}}},
 	}}
 
-	tools := map[string]clank.Tool{"metrics": metricsTool{}}
+	tools := map[string]clank.Tool{"metrics": metricsTool{}, "loki": logsTool{}}
 	store := clank.NewMemStore()
 
 	l := clank.NewLoopForTest(model, tools, noChangeIntake(), seamCatalog(), t.TempDir(), t.TempDir(), store)

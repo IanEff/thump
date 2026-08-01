@@ -183,12 +183,12 @@ func TestMetricsTool_RunStampsSubject(t *testing.T) {
 	}
 }
 
-// TestLoadEvidenceQueries_ParsesSubjectTags pins the on-disk contract:
-// evidence-queries.yaml's optional subject: field must land in the second
-// return value, keyed by query name, and a query with no subject: line must
-// be absent from it entirely — not present with an empty string — so
+// TestLoadEvidenceConfig_ParsesSubjectTags pins the on-disk contract:
+// evidence-queries.yaml's optional subject: field must land in Subjects,
+// keyed by query name, and a query with no subject: line must be absent from
+// it entirely — not present with an empty string — so
 // MetricsTool.Subjects[name] misses cleanly via the zero value.
-func TestLoadEvidenceQueries_ParsesSubjectTags(t *testing.T) {
+func TestLoadEvidenceConfig_ParsesSubjectTags(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "evidence-queries.yaml")
 	const doc = `
@@ -204,21 +204,81 @@ queries:
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	queries, subjects, err := clank.LoadEvidenceQueries(path)
+	ev, err := clank.LoadEvidenceConfig(path)
 	if err != nil {
-		t.Fatalf("LoadEvidenceQueries errored: %v", err)
+		t.Fatalf("LoadEvidenceConfig errored: %v", err)
 	}
 
 	wantQueries := map[string]string{
 		"argocd_apps_out_of_sync": `count(argocd_app_info{sync_status!="Synced"}) or vector(0)`,
 		"ceph_health":             `ceph_health_status{job="rook-ceph-mgr"}`,
 	}
-	if diff := cmp.Diff(wantQueries, queries); diff != "" {
+	if diff := cmp.Diff(wantQueries, ev.Queries); diff != "" {
 		t.Error("wrong queries map", diff)
 	}
 
 	wantSubjects := map[string]string{"argocd_apps_out_of_sync": "argocd"}
-	if diff := cmp.Diff(wantSubjects, subjects); diff != "" {
+	if diff := cmp.Diff(wantSubjects, ev.Subjects); diff != "" {
 		t.Error("wrong subjects map (untagged queries must be absent, not empty-string)", diff)
+	}
+}
+
+// TestLoadEvidenceConfig_ParsesSubjectRules pins the other half of the file's
+// contract: the subjects: block the log and cluster tools resolve through.
+// Its absence must yield an empty index, not an error — a rig running metrics
+// alone is a supported deployment, it just can't corroborate across backends.
+func TestLoadEvidenceConfig_ParsesSubjectRules(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		doc  string
+		want clank.SubjectIndex
+	}{
+		"LoadEvidenceConfig parses a subjects block into rules in file order": {
+			doc: `
+version: v1
+queries:
+  - name: ceph_health
+    query: ceph_health_status
+subjects:
+  - subject: ceph-osd
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-osd
+  - subject: acme-api
+    namespace: acme
+`,
+			want: clank.SubjectIndex{
+				{Subject: "ceph-osd", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
+				{Subject: "acme-api", Namespace: "acme"},
+			},
+		},
+		"LoadEvidenceConfig yields an empty index for a file with no subjects block": {
+			doc: `
+version: v1
+queries:
+  - name: ceph_health
+    query: ceph_health_status
+`,
+			want: nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "evidence-queries.yaml")
+			if err := os.WriteFile(path, []byte(tc.doc), 0o600); err != nil {
+				t.Fatalf("write fixture: %v", err)
+			}
+
+			ev, err := clank.LoadEvidenceConfig(path)
+			if err != nil {
+				t.Fatalf("LoadEvidenceConfig errored: %v", err)
+			}
+			if diff := cmp.Diff(tc.want, ev.Index); diff != "" {
+				t.Error("wrong subject rules parsed from the file (-want +got)\n", diff)
+			}
+		})
 	}
 }

@@ -7,7 +7,10 @@ import (
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/publish"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel/trace"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -25,6 +28,10 @@ func (tr *Transport) ApproveHandlerForTest(ctx context.Context, a approval.Appro
 
 func RebuildHoldsForTest(ctx context.Context, js jetstream.JetStream) (*PendingHolds, error) {
 	return rebuildHolds(ctx, js)
+}
+
+func BuildTransportForTest(ctx context.Context, js jetstream.JetStream, pub publish.Publisher[decision.Governed], pol Policy, approvals ApprovalRequests, tracer trace.Tracer, stages *beat.StageRecorder) (*Transport, error) {
+	return buildTransport(ctx, js, pub, pol, approvals, tracer, stages)
 }
 
 func TranslateDecisionForTest(spec ApprovalRequestSpec, approvedBy string, now time.Time) (approval.Approval, bool, error) {

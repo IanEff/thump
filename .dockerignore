@@ -1,0 +1,35 @@
+# Build context filter for docker_build(..., ".") in the Tiltfile — every
+# beat (rattle, clank, hiss, thump, bootstrap) builds from this same repo
+# root context, so anything left un-ignored here gets tarred, hashed, and
+# shipped to BuildKit five times over. No .dockerignore existed before this
+# (2026-07-31 investigation): the build context was the full ~14GB repo dir,
+# dominated by .otelc-build/gocache's 12GB local Go build cache.
+
+# otelc's generated instrumentation/pkg trees (go.mod replace targets, see
+# Dockerfile's `COPY .otelc-build ./.otelc-build`) ARE needed and must stay
+# out of this ignore list — mirrors .gitignore's same carve-out. Only the
+# scratch/cache byproducts of running the otelc tool locally are ignored.
+.otelc-build/gocache/
+.otelc-build/debug/
+.otelc-build/debug.log
+.otelc-build/build-plan.log
+.otelc-build/matched.json
+.otelc-build/added_imports.*.json
+
+# Build output — never an input to the image build
+bin/
+dist/
+*.test
+coverage.*
+
+# VCS metadata — not needed inside the build
+.git/
+
+# Secrets — never belongs in a build context
+.env
+.env.*
+
+# Editor/OS cruft
+.DS_Store
+.idea/
+.zed/

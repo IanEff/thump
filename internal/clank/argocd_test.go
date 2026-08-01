@@ -20,17 +20,24 @@ import (
 // subtest here fails loudly, which is the point.
 var applicationGVR = schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}
 
+// managed is one entry of the resource inventory ArgoCD publishes on an
+// Application — the coordinates a subject rule matches against.
+type managed struct {
+	kind      string
+	namespace string
+	name      string
+}
+
 // newApplication builds a minimal Application CRD instance — only the
-// fields ArgoChangeSource.Changes actually reads. resourceNames become the
-// status.resources inventory ArgoCD publishes for every managed object.
-func newApplication(namespace, name string, operationState map[string]any, resourceNames ...string) *unstructured.Unstructured {
+// fields ArgoChangeSource.Changes actually reads.
+func newApplication(namespace, name string, operationState map[string]any, resources ...managed) *unstructured.Unstructured {
 	status := map[string]any{"operationState": operationState}
-	if len(resourceNames) > 0 {
-		resources := make([]any, 0, len(resourceNames))
-		for _, rn := range resourceNames {
-			resources = append(resources, map[string]any{"kind": "Deployment", "namespace": namespace, "name": rn})
+	if len(resources) > 0 {
+		inventory := make([]any, 0, len(resources))
+		for _, r := range resources {
+			inventory = append(inventory, map[string]any{"kind": r.kind, "namespace": r.namespace, "name": r.name})
 		}
-		status["resources"] = resources
+		status["resources"] = inventory
 	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "argoproj.io/v1alpha1",
@@ -46,20 +53,42 @@ func newApplication(namespace, name string, operationState map[string]any, resou
 func TestArgoChanges(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
-		apps []*unstructured.Unstructured
-		now  time.Time
-		want proposal.ChangeSnapshot
+		apps     []*unstructured.Unstructured
+		subjects clank.SubjectIndex
+		now      time.Time
+		want     proposal.ChangeSnapshot
 	}{
-		"Changes names each resource an Application synced rather than the Application itself": {
-			// The whole point of the fan-out: a topology graph knows "cart"
-			// and "checkout", never the GitOps unit that deployed them, so an
-			// Application-named target can never resolve to a topology node.
+		"Changes names the topology node a synced resource belongs to rather than the Kubernetes object": {
+			// The two vocabularies genuinely differ: ArgoCD reports the
+			// CephBlockPool "replicapool", the catalog holds the entity
+			// "cephblockpool". Both are strings, so an untranslated target
+			// joins against nothing while every test stays green.
+			apps: []*unstructured.Unstructured{
+				newApplication("argocd", "rook-storage", map[string]any{
+					"phase":      "Succeeded",
+					"finishedAt": "2026-07-30T11:30:00Z",
+					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
+				}, managed{"CephBlockPool", "rook-ceph", "replicapool"}),
+			},
+			subjects: clank.SubjectIndex{
+				{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"},
+			},
+			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
+				{ID: "abc123", Type: "deploy", Target: "cephblockpool", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
+			}},
+		},
+		"Changes reports one event per topology node when an Application syncs several": {
 			apps: []*unstructured.Unstructured{
 				newApplication("argocd", "opentelemetry-demo", map[string]any{
 					"phase":      "Succeeded",
 					"finishedAt": "2026-07-30T11:30:00Z",
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
-				}, "cart", "checkout"),
+				}, managed{"Deployment", "otel-demo", "cart"}, managed{"Deployment", "otel-demo", "checkout"}),
+			},
+			subjects: clank.SubjectIndex{
+				{Subject: "cart", Namespace: "otel-demo", Kind: "Deployment", Name: "cart"},
+				{Subject: "checkout", Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
@@ -67,17 +96,38 @@ func TestArgoChanges(t *testing.T) {
 				{ID: "abc123", Type: "deploy", Target: "checkout", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
 			}},
 		},
-		"Changes counts a workload once when an Application manages several objects under one name": {
+		"Changes counts a topology node once when several of its objects synced together": {
+			// A Deployment and its Service are one node changing, not two —
+			// otherwise a node's causal weight scales with how many manifests
+			// happen to describe it.
 			apps: []*unstructured.Unstructured{
 				newApplication("argocd", "opentelemetry-demo", map[string]any{
 					"phase":      "Succeeded",
 					"finishedAt": "2026-07-30T11:30:00Z",
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
-				}, "cart", "cart"),
+				}, managed{"Deployment", "otel-demo", "cart"}, managed{"Service", "otel-demo", "cart"}),
 			},
-			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+			subjects: clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo"}},
+			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cart", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
+			}},
+		},
+		"Changes drops a synced resource no subject rule claims": {
+			// An unresolved Kubernetes name on a target is indistinguishable
+			// from a topology node that went missing, so it is not reported at
+			// all rather than reported as a node nothing can place.
+			apps: []*unstructured.Unstructured{
+				newApplication("argocd", "cert-manager", map[string]any{
+					"phase":      "Succeeded",
+					"finishedAt": "2026-07-30T11:30:00Z",
+					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
+				}, managed{"Deployment", "cert-manager", "cert-manager-webhook"}),
+			},
+			subjects: clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo"}},
+			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
+				{ID: "abc123", Type: "deploy", Target: "cert-manager", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
 			}},
 		},
 		"Changes falls back to the Application name when it reports no managed resources": {
@@ -88,7 +138,8 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}),
 			},
-			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+			subjects: clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo"}},
+			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cart", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
 			}},
@@ -102,11 +153,14 @@ func TestArgoChanges(t *testing.T) {
 						"initiatedBy": map[string]any{"automated": true},
 						"sync":        map[string]any{"revision": "def456"},
 					},
-				}, "rook-ceph-operator"),
+				}, managed{"Deployment", "rook-ceph", "rook-ceph-operator"}),
+			},
+			subjects: clank.SubjectIndex{
+				{Subject: "rook-operator", Namespace: "rook-ceph", Kind: "Deployment", Name: "rook-ceph-operator"},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
-				{ID: "def456", Type: "rollback", Target: "rook-ceph-operator", Age: time.Minute, HistoricalStaleness: time.Minute},
+				{ID: "def456", Type: "rollback", Target: "rook-operator", Age: time.Minute, HistoricalStaleness: time.Minute},
 			}},
 		},
 		"Changes drops a sync older than the lookback window": {
@@ -117,10 +171,11 @@ func TestArgoChanges(t *testing.T) {
 					"phase":      "Succeeded",
 					"finishedAt": "2026-07-30T08:00:00Z",
 					"operation":  map[string]any{"sync": map[string]any{"revision": "old000"}},
-				}, "cert-manager"),
+				}, managed{"Deployment", "cert-manager", "cert-manager"}),
 			},
-			now:  time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
-			want: proposal.ChangeSnapshot{},
+			subjects: clank.SubjectIndex{{Subject: "cert-manager", Namespace: "cert-manager"}},
+			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+			want:     proposal.ChangeSnapshot{},
 		},
 		"Changes reports no events when every Application is untouched": {
 			apps: nil,
@@ -133,9 +188,10 @@ func TestArgoChanges(t *testing.T) {
 					"phase":      "Succeeded",
 					"finishedAt": "2026-07-30T11:45:00Z",
 					"operation":  map[string]any{"sync": map[string]any{"revision": "ghi789"}},
-				}, "checkout"),
+				}, managed{"Deployment", "otel-demo", "checkout"}),
 			},
-			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+			subjects: clank.SubjectIndex{{Subject: "checkout", Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}},
+			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "ghi789", Type: "deploy", Target: "checkout", Age: 15 * time.Minute, HistoricalStaleness: 15 * time.Minute},
 			}},
@@ -151,7 +207,7 @@ func TestArgoChanges(t *testing.T) {
 			fake := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
 				map[schema.GroupVersionResource]string{applicationGVR: "ApplicationList"}, objs...)
 
-			src := clank.ArgoChangeSource{Client: fake, Now: func() time.Time { return tc.now }}
+			src := clank.ArgoChangeSource{Client: fake, Subjects: tc.subjects, Now: func() time.Time { return tc.now }}
 			got, err := src.Changes(t.Context(), signal.Detection{})
 			if err != nil {
 				t.Fatal(err)

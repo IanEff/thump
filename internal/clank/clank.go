@@ -74,33 +74,20 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 	}
 
-	tools := map[string]Tool{}
-	if cfg.PromURL == "" {
-		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
-	} else if cfg.EvidenceQueries != "" {
-		queries, subjects, err := LoadEvidenceQueries(cfg.EvidenceQueries)
+	var ev EvidenceConfig
+	if cfg.EvidenceQueries != "" {
+		ev, err = LoadEvidenceConfig(cfg.EvidenceQueries)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load evidence queries: %v\n", err)
 			return 1
 		}
-		tools["metrics"] = &MetricsTool{
-			BaseURL:  cfg.PromURL,
-			Queries:  queries,
-			Subjects: subjects,
-			Client:   httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
-		}
 	}
 
-	if cfg.LokiURL == "" {
-		slog.Warn("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action")
-	} else {
-		tools["loki"] = &LokiTool{BaseURL: cfg.LokiURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS)}
-	}
-
-	argoClient := registerInClusterTools(tools)
+	kubeClient, argoClient := inClusterClients()
+	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
 	model := NewAnthropicModel(cfg.AnthropicAPIKey)
-	intake, err := buildIntake(cfg, backendTLS, argoClient)
+	intake, err := buildIntake(cfg, backendTLS, argoClient, ev.Index)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
 		return 1
@@ -202,33 +189,89 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	return 0
 }
 
-// registerInClusterTools adds the kube evidence tool and returns the dynamic
-// client the ArgoCD change source needs, or nil for both when clank isn't
-// running as a pod. Every failure here degrades one capability rather than
-// stopping the beat, so each one says so at WARN and names what is now
-// missing.
-func registerInClusterTools(tools map[string]Tool) dynamic.Interface {
+// inClusterClients returns the typed client the kube evidence tool needs and
+// the dynamic client the ArgoCD change source needs, or nil for either when
+// clank isn't running as a pod. Every failure here degrades one capability
+// rather than stopping the beat, so each one says so at WARN and names what
+// is now missing.
+func inClusterClients() (kubernetes.Interface, dynamic.Interface) {
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		slog.Info("not running in-cluster — no kube evidence tool and no change source", "beat", "clank")
-		return nil
+		return nil, nil
 	}
+	return clientsFor(restConfig)
+}
 
-	kubeClient, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
+// clientsFor builds both clients from an already-resolved rest.Config,
+// returning a nil interface for either one that fails. Each is assigned
+// through its interface type and never through the concrete pointer: a nil
+// *Clientset handed back as a kubernetes.Interface is a non-nil interface,
+// and a caller's nil check would then wire a tool around a client that panics
+// on first use.
+func clientsFor(restConfig *rest.Config) (kubernetes.Interface, dynamic.Interface) {
+	var kube kubernetes.Interface
+	if kubeClient, err := kubernetes.NewForConfig(restConfig); err != nil {
 		slog.Warn("could not build a kube client — clank reasoning without cluster-object evidence",
 			"beat", "clank", "err", err)
 	} else {
-		tools["kube"] = &KubeTool{Client: kubeClient}
+		kube = kubeClient
 	}
 
-	argoClient, err := dynamic.NewForConfig(restConfig)
-	if err != nil {
+	var argo dynamic.Interface
+	if argoClient, err := dynamic.NewForConfig(restConfig); err != nil {
 		slog.Warn("could not build a dynamic client — causal scoring is inert",
 			"beat", "clank", "err", err)
-		return nil
+	} else {
+		argo = argoClient
 	}
-	return argoClient
+	return kube, argo
+}
+
+// buildTools assembles clank's read-only evidence tools from cfg — each one
+// registered only if its backend is configured, so a partial deployment loses
+// a tool rather than the process. The subject rules ride along with every
+// tool that can carry one: a tool holding an empty index returns Live refs
+// that can corroborate but never ground, which is a degradation worth saying
+// out loud rather than discovering from a gate that never passes.
+func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]Tool {
+	tools := map[string]Tool{}
+
+	switch {
+	case cfg.PromURL == "":
+		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
+	case cfg.EvidenceQueries == "":
+		slog.Warn("no EVIDENCE_QUERIES — clank has a Prometheus but no named queries to ask it",
+			"beat", "clank", "fix", "set EVIDENCE_QUERIES")
+	default:
+		tools["metrics"] = &MetricsTool{
+			BaseURL:  cfg.PromURL,
+			Queries:  ev.Queries,
+			Subjects: ev.Subjects,
+			Client:   httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
+		}
+	}
+
+	if cfg.LokiURL == "" {
+		slog.Warn("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action")
+	} else {
+		tools["loki"] = &LokiTool{
+			BaseURL:  cfg.LokiURL,
+			Client:   httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
+			Subjects: ev.Index,
+		}
+	}
+
+	if kube != nil {
+		tools["kube"] = &KubeTool{Client: kube, Subjects: ev.Index}
+	}
+
+	if len(ev.Index) == 0 && (tools["loki"] != nil || tools["kube"] != nil) {
+		slog.Warn("no subject rules configured — loki and kube evidence can corroborate but never ground",
+			"beat", "clank", "fix", "add a subjects: block to EVIDENCE_QUERIES")
+	}
+
+	return tools
 }
 
 // buildIntake assembles clank's Intake from cfg — WhirTopology when
@@ -238,7 +281,7 @@ func registerInClusterTools(tools map[string]Tool) dynamic.Interface {
 // buildIntake assumes cfg has already passed config.LoadClank's validation —
 // PROM_URL is cross-required there whenever both whir vars are set, so this
 // never needs to check that combination itself.
-func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface) (*Intake, error) {
+func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex) (*Intake, error) {
 	var topo TopologySource = noopTopology{}
 
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
@@ -265,8 +308,15 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interfac
 		slog.Warn("no change source configured — causal scoring is inert", "beat", "clank", "fix", "set ARGOCD_ENABLED=true")
 	case argo == nil:
 		slog.Warn("ARGOCD_ENABLED is set but clank has no in-cluster identity — causal scoring is inert", "beat", "clank")
+	case len(subjects) == 0:
+		// A change source with nothing to resolve against reports events whose
+		// targets name Kubernetes objects the topology graph has never heard
+		// of, so every score lands out of topology and the causal term drops
+		// out — inert, but inert while looking configured.
+		slog.Warn("no subject rules authored — every change event will resolve outside the topology and causal scoring is inert",
+			"beat", "clank", "fix", "author subjects: in the file EVIDENCE_QUERIES names")
 	default:
-		change = ArgoChangeSource{Client: argo}
+		change = ArgoChangeSource{Client: argo, Subjects: subjects}
 	}
 
 	return NewIntake(topo, change), nil

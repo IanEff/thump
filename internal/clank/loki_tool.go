@@ -29,6 +29,11 @@ type lokiInput struct {
 type LokiTool struct {
 	BaseURL string
 	Client  *http.Client
+	// Subjects resolves a query's namespace and labels to the topology node
+	// it is evidence about (EvidenceRef.Subject). Coordinates no rule claims
+	// stamp no Subject — the query makes no topology claim, so it can
+	// corroborate but never ground.
+	Subjects SubjectIndex
 }
 
 var _ Tool = (*LokiTool)(nil)
@@ -53,6 +58,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 	}
 
 	logQL := buildLogQL(input.Namespace, input.Labels, input.Query)
+	subject := l.Subjects.For(Coordinates{Namespace: input.Namespace, Labels: input.Labels})
 
 	lookback := input.Lookback
 	if lookback == "" {
@@ -65,6 +71,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 			Query:   logQL,
 			Summary: fmt.Sprintf("invalid lookback: %v", err),
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 
@@ -104,6 +111,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 			Query:   logQL,
 			Summary: fmt.Sprintf("loki request failed: %v", err),
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 	defer func() {
@@ -116,6 +124,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 			Query:   logQL,
 			Summary: fmt.Sprintf("loki returned status: %s", resp.Status),
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 
@@ -133,6 +142,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 			Query:   logQL,
 			Summary: fmt.Sprintf("decode loki response: %v", err),
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 
@@ -151,6 +161,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 			Query:   logQL,
 			Summary: "no matching log lines",
 			Live:    false,
+			Subject: subject,
 		}, nil
 	}
 
@@ -165,6 +176,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 		Summary: summary,
 		Ref:     lokiRef(input.Namespace, input.Labels),
 		Live:    true,
+		Subject: subject,
 	}, nil
 }
 

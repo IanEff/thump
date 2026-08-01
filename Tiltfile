@@ -104,6 +104,72 @@ local_resource(
     labels=["infra"],
 )
 
+# kubectl_local: every local_resource below drives kubectl against the target
+# cluster, and on the GCE rigs that cluster's API server is reachable only
+# through a single `gcloud compute start-iap-tunnel` relay on localhost:6443.
+# That relay drops connections under the burst of concurrent requests a
+# `tilt up` produces — surfacing as `net/http: TLS handshake timeout` or
+# `unexpected EOF` from whichever kubectl happened to be in flight.
+#
+# Tilt never retries a failed local_resource. So a two-second blip leaves the
+# resource red and every k8s resource that depends on it `pending` forever,
+# with no failing pod and no rolling log to point at — the run reads as hung
+# rather than failed, and the usual reflex (delete the namespace, re-trigger
+# resources by name) rebuilds it half-applied. Wrapping the body here is what
+# stops a transport hiccup from costing a whole session.
+#
+# Two guards, in order:
+#   1. Wait for the API to answer before running the body at all, so an
+#      unreachable cluster reports itself as one and names the tunnel.
+#   2. Retry the body. A genuine config error (.env missing, key unset) still
+#      fails on the first pass — those branches `exit 1`, which leaves the
+#      shell outright and never reaches the next iteration.
+def guarded(name, body):
+    kubectl = "kubectl --context " + cluster["context"]
+    preflight = (
+        "waited=0; "
+        + "until "
+        + kubectl
+        + " get --raw /readyz >/dev/null 2>&1; do "
+        + "waited=$((waited+2)); "
+        + "if [ $waited -ge 60 ]; then "
+        + 'echo "thump: API server for context '
+        + cluster["context"]
+        + ' unreachable after ${waited}s — is the IAP tunnel up? (just tunnel, in the rig repo)" >&2; exit 1; '
+        + "fi; sleep 2; done; "
+    )
+    return (
+        "bash -c '"
+        + "for attempt in 1 2 3; do "
+        + preflight
+        + "{ "
+        + body
+        + "; } && exit 0; "
+        + 'echo "thump: '
+        + name
+        + ' attempt $attempt failed (transport?), retrying in 5s" >&2; '
+        + "sleep 5; done; "
+        + 'echo "thump: '
+        + name
+        + ' failed 3 times — this is a real error, not a blip" >&2; exit 1'
+        + "'"
+    )
+
+
+def kubectl_local(name, body, labels=["infra"]):
+    local_resource(name, cmd=guarded(name, body), labels=labels)
+
+
+# ensure_ns: every secret resource needs the namespace to exist first, and
+# create-namespace-if-absent is the same three lines each time.
+ENSURE_NS = (
+    "kubectl --context "
+    + cluster["context"]
+    + " create namespace thump --dry-run=client -o yaml | kubectl --context "
+    + cluster["context"]
+    + " apply -f - >/dev/null"
+)
+
 # thump-anthropic-secret: clank's Secret is meant to pre-exist out-of-band
 # (the lab's SOPS flow owns it in prod — see deploy/chart/thump/templates/
 # secret.yaml's comment). Under Tilt there's no SOPS flow, so this is the dev
@@ -113,24 +179,17 @@ local_resource(
 # escape hatch, per the chart's own warning against committing a plaintext
 # key). --dry-run=client -o yaml | apply, not `create`, so re-running this
 # after rotating the key in .env updates the Secret instead of no-op'ing.
-local_resource(
+kubectl_local(
     "thump-anthropic-secret",
-    cmd="bash -c '"
-    + 'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected ANTHROPIC_API_KEY=\\"...\\""  >&2; exit 1; }; set +a; '
+    'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected ANTHROPIC_API_KEY=\\"...\\""  >&2; exit 1; }; set +a; '
     + '[ -n "$ANTHROPIC_API_KEY" ] || { echo "ANTHROPIC_API_KEY not set in .env" >&2; exit 1; }; '
-    + "kubectl --context "
-    + cluster["context"]
-    + " create namespace thump --dry-run=client -o yaml | kubectl --context "
-    + cluster["context"]
-    + " apply -f - >/dev/null && "
-    + "kubectl --context "
+    + ENSURE_NS
+    + " && kubectl --context "
     + cluster["context"]
     + " -n thump create secret generic thump-anthropic "
     + '--from-literal=api-key="$ANTHROPIC_API_KEY" --dry-run=client -o yaml | kubectl --context '
     + cluster["context"]
-    + " apply -f -"
-    + "'",
-    labels=["infra"],
+    + " apply -f -",
 )
 
 # thump-s3-secret: same posture as thump-anthropic-secret above — every beat
@@ -143,28 +202,21 @@ local_resource(
 # .env after every fresh `tofu apply` there, since the bucket (and its HMAC
 # key) gets torn down and recreated with `just destroy`/`just apply` same as
 # everything else on that rig.
-local_resource(
+kubectl_local(
     "thump-s3-secret",
-    cmd="bash -c '"
-    + 'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; '
+    'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; '
     + "for v in S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY; do "
     + '  [ -n "${!v}" ] || { echo "$v not set in .env" >&2; exit 1; }; '
     + "done; "
-    + "kubectl --context "
-    + cluster["context"]
-    + " create namespace thump --dry-run=client -o yaml | kubectl --context "
-    + cluster["context"]
-    + " apply -f - >/dev/null && "
-    + "kubectl --context "
+    + ENSURE_NS
+    + " && kubectl --context "
     + cluster["context"]
     + " -n thump create secret generic thump-s3 "
     + '--from-literal=endpoint="$S3_ENDPOINT" --from-literal=bucket="$S3_BUCKET" '
     + '--from-literal=access-key="$S3_ACCESS_KEY" --from-literal=secret-key="$S3_SECRET_KEY" '
     + "--dry-run=client -o yaml | kubectl --context "
     + cluster["context"]
-    + " apply -f -"
-    + "'",
-    labels=["infra"],
+    + " apply -f -",
 )
 
 # thump-seal-secret / thump-nats-js-key-secret: unlike thump-anthropic-secret
@@ -172,48 +224,54 @@ local_resource(
 # external system issues them, so there's nothing to source from .env. The
 # chart's own secret.yaml self-provisions them on a real `helm install` via
 # a `lookup`-guarded block, but `lookup` always reads empty under `helm
-# template` (what Tilt's helm() runs), so under Tilt that block would mint a
-# fresh random key on every Tiltfile reload and silently break whatever it
-# already sealed on disk. These local_resources are the Tilt-loop equivalent
-# of the chart's lookup guard: create-if-absent, never touch an existing one
-# (unlike thump-s3-secret's dry-run-apply, which is meant to re-sync every
-# run) — `kubectl get ... || kubectl create ...`, not `--dry-run=client -o
-# yaml | apply`.
-local_resource(
-    "thump-seal-secret",
-    cmd="bash -c '"
-    + "kubectl --context "
-    + cluster["context"]
-    + " create namespace thump --dry-run=client -o yaml | kubectl --context "
-    + cluster["context"]
-    + " apply -f - >/dev/null && "
-    + "kubectl --context "
-    + cluster["context"]
-    + " -n thump get secret thump-seal >/dev/null 2>&1 || "
-    + "kubectl --context "
-    + cluster["context"]
-    + ' -n thump create secret generic thump-seal --from-literal=key="$(openssl rand -base64 32)"'
-    + "'",
-    labels=["infra"],
-)
+# template` (what Tilt's helm() runs) — the k8s_yaml() call above now
+# filter_yaml()s both Secret objects out of the chart's rendered manifests
+# entirely, so that inert guard never gets a chance to matter under Tilt.
+# These local_resources are the *only* thing that ever creates or touches
+# either secret in a Tilt session: create-if-absent, never touch an existing
+# one (unlike thump-s3-secret's dry-run-apply, which is meant to re-sync
+# every run) — `kubectl get ... || kubectl create ...`, not `--dry-run=client
+# -o yaml | apply`.
+#
+# `get || create` is the obvious shape for create-if-absent and it is the wrong
+# one here: a `get` that fails because the API was unreachable is
+# indistinguishable from one that fails because the secret is absent, and the
+# `||` branch answers both by minting a fresh random key. On thump-seal that
+# orphans every sealed WAL segment; on nats-js-key it orphans the on-disk
+# JetStream store, which is exactly the failure recorded on 2026-07-31. So:
+# only a literal NotFound authorises a create. Any other error returns
+# non-zero so kubectl_local retries it, and says out loud that it declined to
+# mint a key rather than doing it quietly.
+def ensure_key_secret(resource, secret):
+    kubectl = "kubectl --context " + cluster["context"]
+    kubectl_local(
+        resource,
+        ENSURE_NS
+        + " && out=$("
+        + kubectl
+        + " -n thump get secret "
+        + secret
+        + ' 2>&1); if [ $? -eq 0 ]; then exit 0; fi; case "$out" in *NotFound*) '
+        + kubectl
+        + " -n thump create secret generic "
+        + secret
+        + ' --from-literal=key="$(openssl rand -base64 32)" ;; *) echo "thump: cannot tell whether secret '
+        + secret
+        + ' exists, refusing to mint a replacement key over data encrypted under the old one: $out" >&2; false ;; esac',
+    )
 
-local_resource(
-    "thump-nats-js-key-secret",
-    cmd="bash -c '"
-    + "kubectl --context "
-    + cluster["context"]
-    + " create namespace thump --dry-run=client -o yaml | kubectl --context "
-    + cluster["context"]
-    + " apply -f - >/dev/null && "
-    + "kubectl --context "
-    + cluster["context"]
-    + " -n thump get secret nats-js-key >/dev/null 2>&1 || "
-    + "kubectl --context "
-    + cluster["context"]
-    + ' -n thump create secret generic nats-js-key --from-literal=key="$(openssl rand -base64 32)"'
-    + "'",
-    labels=["infra"],
-)
+
+ensure_key_secret("thump-seal-secret", "thump-seal")
+ensure_key_secret("thump-nats-js-key-secret", "nats-js-key")
+
+# The namespace is filtered out of the chart's manifests (see the filter_yaml
+# block below for why), so something else has to create it — and it has to
+# exist before Tilt applies a single namespaced object. local() runs during
+# Tiltfile evaluation, ahead of every apply and every local_resource, which is
+# the ordering guarantee a local_resource can't give: Tilt's `uncategorized`
+# bucket isn't addressable by k8s_resource(), so it can't be told to wait.
+# Idempotent, so a reload re-runs it as a no-op rather than a teardown.
+local(guarded("thump-namespace", ENSURE_NS), quiet=True, echo_off=True)
 
 DEV_REGISTRY = cluster["registry"]
 
@@ -242,13 +300,71 @@ for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
         )
 
 
-# helm()'s k8s_yaml() below runs `helm template`, which — like `helm
-# upgrade` — never renders crds/. Applied directly instead, which also
-# means Tilt live-reloads it on edit, nicer than crds/'s install-once
-# behavior while this schema is still moving.
-k8s_yaml("deploy/chart/thump/crds/approvalrequest.yaml")
+# Unlike a bare `helm template` (what chart-lint runs, and why that path
+# needs its own CRD-blind kubeconform pass), Tilt's built-in helm() always
+# passes --include-crds, so crds/approvalrequest.yaml is already in this
+# k8s_yaml() call — a separate manual k8s_yaml() of the same file duplicated
+# the CRD and broke `tilt up` (2026-07-31). helm() watches the whole chart
+# dir, so crds/ edits still live-reload same as templates/.
+#
+# namespace= is load-bearing, not decoration. Without it `helm template`
+# resolves `.Release.Namespace` to "default", and three templates key off it:
+# rbac-approver, rbac-hiss-approvalrequests, and secret.yaml. Every other
+# template in the chart hardcodes `namespace: thump`, so 28 of 31 objects
+# landed correctly and only the RBAC quietly went to the `default` namespace —
+# where it grants nothing, since hiss's ServiceAccount lives in `thump`.
+# `kubectl auth can-i create approvalrequests.thump.dev` answering `no` on a
+# cluster whose CRD exists and whose Role exists (elsewhere) is the signature.
+# Diagnosed 2026-07-31 after two sessions blamed it on Tilt re-triggering.
+rendered = helm("deploy/chart/thump", namespace="thump", values=[cluster["values"]])
 
-k8s_yaml(helm("deploy/chart/thump", values=[cluster["values"]]))
+# secret.yaml's thump-seal and nats-js-key Secrets are guarded by
+# `{{- if not (lookup ...) }}` so a real `helm install` mints them once and
+# leaves them alone. `lookup` always reads empty under `helm template` (what
+# helm() above runs), so left in this manifest set, that guard is inert:
+# every Tiltfile reload re-renders a *freshly random* key and k8s_yaml
+# applies it over whatever's already live. That's what broke thump-test
+# 2026-07-31 — an unrelated chart edit (OTel env vars) triggered a reload
+# mid-session, silently rotated nats-js-key's value, and the running NATS
+# pod could no longer decrypt its own on-disk JetStream store ("unable to
+# recover keys" / stream "could not be recovered"). Strip both Secret
+# objects out of what k8s_yaml ever sees — thump-seal-secret and
+# thump-nats-js-key-secret below (create-if-absent) become the *only* thing
+# allowed to touch them under Tilt, enforcing the same once-only intent the
+# chart's lookup guard has for a real `helm install`, by manifest filtering
+# instead of a guard Tilt can't evaluate.
+_, rendered = filter_yaml(rendered, kind="Secret", name="thump-seal")
+_, rendered = filter_yaml(rendered, kind="Secret", name="nats-js-key")
+
+# Namespace/thump comes out for the same reason, and it is the big one.
+#
+# The chart owns its own namespace (templates/namespace.yaml), correct for a
+# real `helm install`. Under Tilt it means `Namespace/thump` is an object in
+# the managed set, and Tilt garbage-collects the previous set on any reload
+# that changes it. Deleting a Namespace is a *cascading* delete of everything
+# inside it, so a one-line chart edit mid-session tears down ConfigMaps,
+# Secrets, RBAC, and the `data-nats-0` PVC — and then Tilt re-applies into a
+# namespace that is still Terminating, which the API server refuses with
+# "unable to create new content in namespace thump because it is being
+# terminated". Observed verbatim in Tilt's own log, 2026-07-31:
+#
+#     Beginning garbage collecting Kubernetes objects
+#     Deleting kubernetes objects:
+#     → Namespace/thump
+#
+# This is the mechanism behind three separate sessions' worth of symptoms that
+# each got blamed on something else: the "clobbered" nats-js-key that left
+# JetStream unable to decrypt its own store (the Secret was cascade-deleted
+# with the namespace, then re-minted against a PVC that outlived it), the
+# ConfigMaps and Roles "a per-resource trigger pass missed" (they were deleted,
+# not skipped), and the namespace found stuck Terminating "for reasons not
+# established". None of it needed a finalizer to explain it.
+#
+# ENSURE_NS in each local_resource above already creates the namespace
+# create-if-absent, so nothing is lost by taking it away from Tilt — and once
+# no Tilt operation can delete it, none of the above can recur.
+_, rendered = filter_yaml(rendered, kind="Namespace", name="thump")
+k8s_yaml(rendered)
 
 # Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
 k8s_resource(

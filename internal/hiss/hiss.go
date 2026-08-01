@@ -17,6 +17,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/nats-io/nats.go/jetstream"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ianeff/thump/api/v1/approval"
@@ -145,12 +146,6 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	}
 	defer func() { _ = pub.WAL.Drain(ctx, sink) }()
 
-	holds, err := rebuildHolds(ctx, js)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
-		return 1
-	}
-
 	approvePub := publish.NewJetPublisher[approval.Approval](js)
 	controller, err := buildApprovalRequests(cfg, approvePub)
 	if err != nil {
@@ -167,7 +162,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 		approvals = controller
 	}
 
-	tr := &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: holds, Approvals: approvals, Tracer: tracer, Stages: stages}
+	tr, err := buildTransport(ctx, js, pub, pol, approvals, tracer, stages)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -188,6 +187,20 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	}
 
 	return beat.ExitOnError(ctx, g.Wait())
+}
+
+// buildTransport assembles runBroker's Transport, seeding Holds from
+// rebuildHolds rather than an empty PendingHolds — W0a's row 5:
+// PendingHolds is restart-lossy unless the composition root actually
+// replays thump.decisions. Extracted so a test can pin that a
+// fully-configured broker path reaches the real rebuild, the same guard
+// W1 wrote for clank's noopChange after finding it wired to nothing.
+func buildTransport(ctx context.Context, js jetstream.JetStream, pub publish.Publisher[decision.Governed], pol Policy, approvals ApprovalRequests, tracer trace.Tracer, stages *beat.StageRecorder) (*Transport, error) {
+	holds, err := rebuildHolds(ctx, js)
+	if err != nil {
+		return nil, fmt.Errorf("hiss: build transport: %w", err)
+	}
+	return &Transport{Pub: pub, Policy: pol, Log: NewDecisionLog(), Holds: holds, Approvals: approvals, Tracer: tracer, Stages: stages}, nil
 }
 
 // buildApprovalRequests returns the ApprovalRequest controller, or nil when

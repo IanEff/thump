@@ -57,8 +57,19 @@ spec:
               value: /etc/thump/tls/tls.key
             - name: TLS_CA_FILE
               value: /etc/thump/tls/ca.crt
+            {{- if .Values.tracing.endpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.tracing.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            {{- else }}
+            - name: OTEL_TRACES_EXPORTER
+              value: "none"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            {{- end }}
             - name: WAL_DIR
               value: /var/thump/wal
             - name: S3_ENDPOINT

@@ -2,13 +2,15 @@ evidence:
 - live: true
   query: ceph_health
   ref: metrics://ceph_health
+  subject: ceph-cluster
   summary: ceph_health = 1
   tool: metrics
 - live: true
-  query: osd_capacity
-  ref: metrics://osd_capacity
-  summary: osd_capacity = 1
-  tool: metrics
+  query: '{namespace="rook-ceph", app="rook-ceph-mon"}'
+  ref: loki://rook-ceph/app=rook-ceph-mon
+  subject: ceph-cluster
+  summary: '1 log line(s); last: osd marked down'
+  tool: loki
 failureClass: redundancy_degraded
 gate:
   budgetOK: true
@@ -23,7 +25,7 @@ proposals:
 - blastTier: med
   citations:
   - ceph_health
-  - osd_capacity
+  - '{namespace="rook-ceph", app="rook-ceph-mon"}'
   confidence: 0.9
   contractRef: hold-rebalance
   governanceLevel:

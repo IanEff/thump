@@ -120,6 +120,34 @@ func (s *EncryptingSink) Put(ctx context.Context, key string, r io.Reader) error
 	return s.Inner.Put(ctx, key, bytes.NewReader(sealed))
 }
 
+// UnsealSegment reverses EncryptingSink.Put for one bucket object, returning
+// the segment's JSON lines. Nothing in the running system calls it — a beat
+// only ever writes — but a segment nobody can read back is an audit trail in
+// name only, and the alternative is re-deriving the seal envelope by hand
+// during an incident.
+func UnsealSegment(key sealbox.Key, r io.Reader) ([][]byte, error) {
+	sealed, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("unseal segment: read: %w", err)
+	}
+	plain, err := key.Open(sealed)
+	if err != nil {
+		// The usual cause is a key that survived one base64 decode too few:
+		// kubectl hands back the Secret's stored value already encoded on top
+		// of THUMP_SEAL_KEY's own encoding, and a wrong key of the right
+		// length fails authentication exactly like a corrupt segment does.
+		return nil, fmt.Errorf("unseal segment: open (wrong seal key, or not a sealed segment): %w", err)
+	}
+
+	var lines [][]byte
+	for line := range bytes.SplitSeq(bytes.TrimSuffix(plain, []byte("\n")), []byte("\n")) {
+		if len(line) > 0 {
+			lines = append(lines, line)
+		}
+	}
+	return lines, nil
+}
+
 // RunShipper ships wal's sealed segments to sink on ShipInterval until ctx
 // is cancelled — the async half of the Mimir pattern: WALPublisher.Publish
 // already returned once the segment was durable on local disk, so a slow
