@@ -65,7 +65,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump", tlsx.Config{
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "thump", cfg.OTLPEndpoint, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,

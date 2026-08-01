@@ -157,7 +157,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	// entire readiness contract.
 	health.SetReady(true)
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle", tlsx.Config{
+	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle", cfg.OTLPEndpoint, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,

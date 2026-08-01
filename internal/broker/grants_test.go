@@ -4,8 +4,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -49,40 +50,44 @@ var durableOwners = map[string]string{
 func publishedSubjects(t *testing.T, pkgDir string) []string {
 	t.Helper()
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, pkgDir, func(fi fs.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	entries, err := os.ReadDir(pkgDir)
 	if err != nil {
-		t.Fatalf("parse %s: %v", pkgDir, err)
+		t.Fatalf("read %s: %v", pkgDir, err)
 	}
 
+	fset := token.NewFileSet()
 	found := make(map[string]bool)
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "Publish" || len(call.Args) < 2 {
-					return true
-				}
-				lit, ok := call.Args[1].(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
-					return true
-				}
-				subj, err := strconv.Unquote(lit.Value)
-				if err != nil {
-					return true
-				}
-				if strings.HasPrefix(subj, "thump.") {
-					found[subj] = true
-				}
-				return true
-			})
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
 		}
+		file, err := parser.ParseFile(fset, filepath.Join(pkgDir, name), nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Publish" || len(call.Args) < 2 {
+				return true
+			}
+			lit, ok := call.Args[1].(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			subj, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				return true
+			}
+			if strings.HasPrefix(subj, "thump.") {
+				found[subj] = true
+			}
+			return true
+		})
 	}
 	return slices.Sorted(maps.Keys(found))
 }
@@ -178,5 +183,62 @@ func TestNATSConfig_GrantsNoBeatASubjectItsOwnCodeNeverPublishes(t *testing.T) {
 				t.Error("nats.conf grants "+user+" publish on a subject internal/"+pkg+" never writes (-want +got)\n", diff)
 			}
 		})
+	}
+}
+
+func TestNATSConfig_GrantsTheJetStreamAPIsAndAckToEachDurablesOwner(t *testing.T) {
+	t.Parallel()
+	// Generalizes chart_test.go's old ACK-only check: a durable's owner needs
+	// three grants to operate it — CONSUMER.INFO (EnsureTopology's bind
+	// probe), CONSUMER.MSG.NEXT (Fetch), and $JS.ACK.<durable>.> (acking a
+	// delivered message — a reply-subject publish that never goes through
+	// $JS.API at all, see the nats.yaml file header). Missing INFO or
+	// MSG.NEXT fails loudly at startup; missing ACK doesn't (R6e). And
+	// checking only "some user holds it," as the old test did, would pass a
+	// grant attributed to the wrong beat — the thump.declines shape, one
+	// subject space over. This subsumes and replaces
+	// TestNATSConfig_GrantsAckOnEveryDurableAConsumerBindsTo in chart_test.go.
+	users := parseNATSUsers(t, renderNATSConf(t))
+	for _, subj := range broker.Subjects {
+		durable := broker.DurableFor(subj)
+		if durable == "" {
+			continue
+		}
+		owner, ok := durableOwners[durable]
+		if !ok {
+			t.Errorf("durable %q (reading %s) has no owner in durableOwners — cannot check its JetStream API/ACK grants", durable, subj)
+			continue
+		}
+		for _, want := range []string{
+			"$JS.API.CONSUMER.INFO.THUMP." + durable,
+			"$JS.API.CONSUMER.MSG.NEXT.THUMP." + durable,
+			"$JS.ACK.THUMP." + durable + ".>",
+		} {
+			if !slices.Contains(users[owner].Publish, want) {
+				t.Errorf("%s owns durable %q (reading %s) but nats.conf does not grant it %q", owner, durable, subj, want)
+			}
+		}
+	}
+}
+
+func TestNATSConfig_GrantsHissTheRebuildHoldsEphemeralConsumer(t *testing.T) {
+	t.Parallel()
+	// rebuildHolds (internal/hiss/rebuild.go) mints a fresh, randomly-named
+	// ephemeral consumer on thump.decisions every startup to replay
+	// PendingHolds. The random name means these three grants can't be
+	// derived from broker.Subjects × DurableFor like the durable grants
+	// above — there's no fixed durable to name, only the wildcard token
+	// nats.conf already carries. Authored rather than derived: a single case
+	// doesn't earn its own derivation, but a silent absence here is the same
+	// class of bug as everything else in this file.
+	users := parseNATSUsers(t, renderNATSConf(t))
+	for _, want := range []string{
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.decisions",
+		"$JS.API.CONSUMER.MSG.NEXT.THUMP.*",
+		"$JS.ACK.THUMP.*.>",
+	} {
+		if !slices.Contains(users["hiss@thump.svc"].Publish, want) {
+			t.Errorf("hiss@thump.svc does not hold %q — rebuildHolds's ephemeral consumer replay of PendingHolds cannot create/fetch/ack without it", want)
+		}
 	}
 }

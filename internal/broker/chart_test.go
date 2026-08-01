@@ -129,27 +129,3 @@ func TestNATSConfig_GrantsNobodyButHissPublishOnDecisions(t *testing.T) {
 		}
 	}
 }
-
-func TestNATSConfig_GrantsAckOnEveryDurableAConsumerBindsTo(t *testing.T) {
-	t.Parallel()
-
-	users := parseNATSUsers(t, renderNATSConf(t))
-	for _, subj := range broker.Subjects {
-		durable := broker.DurableFor(subj)
-		if durable == "" {
-			continue
-		}
-		ackPrefix := "$JS.ACK.THUMP." + durable + ".>"
-		found := false
-		for _, u := range users {
-			if slices.Contains(u.Publish, ackPrefix) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("no user may publish %q — consumer %q (reading %s) cannot ack without this grant; see thump-running-notes R6e for the six-redelivery cost of getting this wrong",
-				ackPrefix, durable, subj)
-		}
-	}
-}
