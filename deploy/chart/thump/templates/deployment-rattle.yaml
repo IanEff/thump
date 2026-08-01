@@ -12,7 +12,7 @@ spec:
     metadata:
       labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "rattle") .) | nindent 8 }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap-whir.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-rattle.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-whir.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-rattle.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-wal.yaml") . | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -74,6 +74,8 @@ spec:
             {{- end }}
             - name: WAL_DIR
               value: /var/thump/wal
+            - name: WAL_CONFIG
+              value: /etc/thump/wal/wal.yaml
             - name: S3_ENDPOINT
               valueFrom:
                 secretKeyRef:
@@ -109,6 +111,8 @@ spec:
               value: /etc/thump/rattle/traffic-queries.yaml
             - name: RATTLE_WATCH
               value: /etc/thump/rattle/watch.yaml
+            - name: RATTLE_QUERY_CONFIG
+              value: /etc/thump/rattle/query.yaml
           volumeMounts:
             - name: wal
               mountPath: /var/thump/wal
@@ -116,6 +120,8 @@ spec:
               mountPath: /etc/thump/whir
             - name: rattle-config
               mountPath: /etc/thump/rattle
+            - name: wal-config
+              mountPath: /etc/thump/wal
             - name: tls
               mountPath: /etc/thump/tls
           resources: {{- toYaml .Values.beats.rattle.resources | nindent 12 }}
@@ -132,6 +138,9 @@ spec:
         - name: rattle-config
           configMap:
             name: thump-rattle
+        - name: wal-config
+          configMap:
+            name: thump-wal
         - name: tls
           secret:
             secretName: rattle-tls

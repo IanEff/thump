@@ -12,7 +12,7 @@ spec:
     metadata:
       labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "hiss") .) | nindent 8 }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap-hiss.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-hiss.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-wal.yaml") . | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -74,8 +74,12 @@ spec:
             {{- end }}
             - name: WAL_DIR
               value: /var/thump/wal
+            - name: WAL_CONFIG
+              value: /etc/thump/wal/wal.yaml
             - name: APPROVALREQUESTS_ENABLED
               value: {{ .Values.approvalRequests.enabled | quote }}
+            - name: APPROVALREQUEST_RETENTION
+              value: {{ .Values.beats.hiss.approvalRetention | quote }}
             - name: S3_ENDPOINT
               valueFrom:
                 secretKeyRef:
@@ -108,6 +112,8 @@ spec:
               mountPath: /var/thump/wal
             - name: hiss-config
               mountPath: /etc/thump/hiss
+            - name: wal-config
+              mountPath: /etc/thump/wal
             - name: tls
               mountPath: /etc/thump/tls
           resources: {{- toYaml .Values.beats.hiss.resources | nindent 12 }}
@@ -121,6 +127,9 @@ spec:
         - name: hiss-config
           configMap:
             name: thump-hiss
+        - name: wal-config
+          configMap:
+            name: thump-wal
         - name: tls
           secret:
             secretName: hiss-tls

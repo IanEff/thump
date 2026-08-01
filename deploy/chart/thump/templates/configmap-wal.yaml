@@ -1,0 +1,14 @@
+# WAL sealing and shipping cadence is global, not per-site — one config
+# surface every beat mounts identically, since publish.WAL's segment sizing
+# and beat.RunShipper's poll interval are common code, not per-beat tuning.
+# See configmap-whir.yaml for the .Files.Get / config-symlink note.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-wal
+  namespace: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
+data:
+  wal.yaml: |
+{{ .Files.Get "config/wal.yaml" | indent 4 }}

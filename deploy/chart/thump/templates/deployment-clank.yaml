@@ -12,7 +12,7 @@ spec:
     metadata:
       labels: {{- include "thump.beatSelectorLabels" (merge (dict "component" "clank") .) | nindent 8 }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap-whir.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-actions.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-clank.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-whir.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-actions.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-clank.yaml") . | sha256sum }}-{{ include (print $.Template.BasePath "/configmap-wal.yaml") . | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -74,6 +74,8 @@ spec:
             {{- end }}
             - name: WAL_DIR
               value: /var/thump/wal
+            - name: WAL_CONFIG
+              value: /etc/thump/wal/wal.yaml
             - name: S3_ENDPOINT
               valueFrom:
                 secretKeyRef:
@@ -119,6 +121,8 @@ spec:
               value: {{ .Values.beats.clank.dedupeWindow | quote }}
             - name: CLANK_WEIGHTS
               value: /etc/thump/clank/weights.yaml
+            - name: CLANK_LIMITS
+              value: /etc/thump/clank/limits.yaml
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -133,6 +137,8 @@ spec:
               mountPath: /etc/thump/actions
             - name: clank-config
               mountPath: /etc/thump/clank
+            - name: wal-config
+              mountPath: /etc/thump/wal
             - name: tls
               mountPath: /etc/thump/tls
           resources: {{- toYaml .Values.beats.clank.resources | nindent 12 }}
@@ -149,6 +155,9 @@ spec:
         - name: actions-config
           configMap:
             name: thump-actions
+        - name: wal-config
+          configMap:
+            name: thump-wal
         - name: clank-config
           configMap:
             name: thump-clank
