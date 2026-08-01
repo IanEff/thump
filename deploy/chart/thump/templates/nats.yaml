@@ -92,7 +92,7 @@ data:
                 # because only trim (below) had ever been granted this
                 # subject — this controller's own publish grant was never
                 # added when it was wired in.
-                "thump.decisions", "thump.declines", "thump.approvals",
+                "thump.decisions", "thump.approvals",
                 "thump.proposals.dlq", "thump.approvals.dlq",
                 "$JS.API.CONSUMER.INFO.THUMP.hiss", "$JS.API.CONSUMER.MSG.NEXT.THUMP.hiss", "$JS.ACK.THUMP.hiss.>",
                 "$JS.API.CONSUMER.INFO.THUMP.his-approvals", "$JS.API.CONSUMER.MSG.NEXT.THUMP.his-approvals", "$JS.ACK.THUMP.his-approvals.>",
@@ -124,6 +124,7 @@ data:
                 "thump.held",
                 "thump.orders",
                 "thump.outcomes",
+                "thump.declines",
                 "thump.decisions.dlq",
                 "$JS.API.CONSUMER.INFO.THUMP.thump", "$JS.API.CONSUMER.MSG.NEXT.THUMP.thump", "$JS.ACK.THUMP.thump.>"
               ]
