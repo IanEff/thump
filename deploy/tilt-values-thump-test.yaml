@@ -19,14 +19,25 @@
 #     --context thump-test get storageclass` — no "standard" class here
 #     either) — control-plane node affinity stays at chart default for the
 #     same reason (a real k3s server node, schedulable).
-#   - tracing.endpoint: Tempo is deployed here too (tempo-0, namespace
-#     tracing), OTLP/gRPC on the "grpc-tempo-otlp" Service port — confirmed
-#     live via `kubectl --context thump-test -n tracing get svc tempo -o
-#     jsonpath='{.spec.ports}'`, same port (4317) as rook-gce-k3s. Written as
-#     a full `http://host:port` URL, not bare host:port — the deployment
-#     templates hand this same value to two independent OTel exporters
-#     (internal/beat/trace.go's hand-rolled one and the otelc auto-export
-#     layer) and only the URL form parses correctly for both.
+#   - tracing.endpoint: points at the OTel Collector
+#     (otel-collector-opentelemetry-collector, namespace tracing), not
+#     straight at Tempo — confirmed live via `kubectl --context thump-test -n
+#     tracing get svc` (2026-08-01). Tempo only implements the OTLP traces
+#     service; pointing metrics at it directly is what produced `failed to
+#     upload metrics: ... Unimplemented` on every beat, forever. The
+#     collector already runs both pipelines the rig needs: traces forward
+#     unchanged to tempo.tracing.svc.cluster.local:4317 (its own otlp
+#     exporter), and metrics land via its prometheus exporter (:8889) behind
+#     a ServiceMonitor that's already deployed and picked up cluster-wide
+#     (same `serviceMonitorSelectorNilUsesHelmValues: false` posture as this
+#     file's own `serviceMonitor.enabled` block below) — no new
+#     NetworkPolicy/CiliumNetworkPolicy needed, since the existing
+#     tracing-namespace egress rule already covers this Service on the same
+#     port (4317). Written as a full `http://host:port` URL, not bare
+#     host:port — the deployment templates hand this same value to two
+#     independent OTel exporters (internal/beat/trace.go's hand-rolled one
+#     and the otelc auto-export layer) and only the URL form parses
+#     correctly for both.
 #   - cilium.apiserverEgress: thump-test runs Cilium (confirmed live), same
 #     as every other GCE-based profile — the live executor needs the
 #     CiliumNetworkPolicy to reach the apiserver.
@@ -71,7 +82,7 @@ serviceMonitor:
   enabled: true
 
 tracing:
-  endpoint: http://tempo.tracing.svc.cluster.local:4317
+  endpoint: http://otel-collector-opentelemetry-collector.tracing.svc.cluster.local:4317
 
 cilium:
   apiserverEgress: true
