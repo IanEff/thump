@@ -1,0 +1,14 @@
+# Scoring weights are global, not per-site, same as configmap-actions.yaml —
+# unlike whir/rattle's ConfigMaps, this one never interpolates
+# .Values.configProfile. See configmap-whir.yaml for the .Files.Get /
+# config-symlink note.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-clank
+  namespace: thump
+  labels:
+    {{- include "thump.labels" . | nindent 4 }}
+data:
+  weights.yaml: |
+{{ .Files.Get "config/clank/weights.yaml" | indent 4 }}

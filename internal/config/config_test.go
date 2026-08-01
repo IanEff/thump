@@ -30,6 +30,7 @@ func setClankEnv(t *testing.T) {
 		"WHIR_CATALOG":       "/etc/catalog-info.yaml",
 		"WHIR_STATE_QUERIES": "/etc/state-queries.yaml",
 		"CLANK_TRANSCRIPTS":  "/var/run/transcripts",
+		"CLANK_WEIGHTS":      "/etc/clank/weights.yaml",
 		"CLANK_INBOX":        "/var/run/inbox",
 		"CLANK_OUTBOX":       "/var/run/outbox",
 		"CLANK_OUTCOMES":     "/var/run/outcomes",
@@ -74,6 +75,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 		WhirCatalog:      "/etc/catalog-info.yaml",
 		WhirStateQueries: "/etc/state-queries.yaml",
 		Transcripts:      "/var/run/transcripts",
+		Weights:          "/etc/clank/weights.yaml",
 		Inbox:            "/var/run/inbox",
 		Outbox:           "/var/run/outbox",
 		Outcomes:         "/var/run/outcomes",
@@ -90,6 +92,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
+	t.Setenv("CLANK_WEIGHTS", "/etc/clank/weights.yaml")
 	t.Setenv("CLANK_INBOX", "/var/run/inbox")
 	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
 	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
@@ -107,6 +110,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 		ActionCatalog:   "/etc/actions/catalog.yaml",
 		FailureClasses:  "/etc/actions/failure-classes.yaml",
 		DedupeWindow:    time.Hour,
+		Weights:         "/etc/clank/weights.yaml",
 		Inbox:           "/var/run/inbox",
 		Outbox:          "/var/run/outbox",
 		Outcomes:        "/var/run/outcomes",
@@ -152,6 +156,7 @@ func TestLoadClank_BrokerMode_OfflineTrioNotRequired(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
+	t.Setenv("CLANK_WEIGHTS", "/etc/clank/weights.yaml")
 	t.Setenv("WAL_DIR", "/var/run/wal")
 	t.Setenv("S3_ENDPOINT", "https://storage.googleapis.com")
 	t.Setenv("S3_BUCKET", "thump-wal")
@@ -178,6 +183,7 @@ func TestLoadClank_BrokerMode_RequiresWALAndS3(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
+	t.Setenv("CLANK_WEIGHTS", "/etc/clank/weights.yaml")
 	for _, name := range []string{"WAL_DIR", "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
 		t.Setenv(name, "")
 	}

@@ -57,6 +57,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
+	weights, err := LoadWeightsFile(cfg.Weights)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load weights: %v\n", err)
+		return 1
+	}
+
 	// backendTLS is nil in the offline path (cfg.TLSCertFile unset) and dials
 	// PROM_URL/LOKI_URL in the clear, same as today — L4/L5's declared
 	// exception. In the broker path it's the beat's own leaf, ready the day
@@ -144,7 +150,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, tracer, recorder, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, weights, tracer, recorder, stages, health, stderr)
 	}
 
 	health.SetReady(true)
@@ -154,7 +160,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// cfg.Inbox/Outbox/Outcomes are this path's env, not the process's —
 	// config.LoadClank only requires them when broker is false (mirrors
 	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
-	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages, recorder)
+	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages, recorder, weights)
 	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine}
 	re := l.ReturnEdge
 	de := l.DeclineEdge

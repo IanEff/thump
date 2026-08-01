@@ -23,7 +23,7 @@ type loop struct {
 	OutcomeInbox string
 }
 
-func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder) *loop {
+func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	cases := NewCaseBase()        // ONE case base
 	eng := &Engine{
@@ -44,7 +44,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 		MaxSteps:       8,
 		Tracer:         tracer,
 		Stages:         stages,
-		Weights:        DefaultScoringWeights(),
+		Weights:        weights,
 	}
 	re := &ReturnEdge{
 		Inbox: outcomes, // thump's outbox — NOT outbox, which is hiss's inbox
@@ -60,7 +60,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder) *Engine {
+func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights) *Engine {
 	return &Engine{
 		Intake:         intake,
 		Model:          model,
@@ -79,7 +79,7 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 		MaxSteps:       8,
 		Tracer:         tracer,
 		Stages:         stages,
-		Weights:        DefaultScoringWeights(),
+		Weights:        weights,
 	}
 }
 
@@ -101,5 +101,8 @@ func DefaultScoringWeights() ScoringWeights {
 		GroundingOne:      0.7,
 		GroundingMany:     1.0,
 		Causal:            0.5,
+		// Promoted out of causal.go's unexported consts by X2b; same values.
+		TemporalHalfLife:   30 * time.Minute,
+		HistoricalAloneCap: 0.5,
 	}
 }

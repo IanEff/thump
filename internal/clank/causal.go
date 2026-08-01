@@ -69,7 +69,7 @@ const (
 func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.TopologySnapshot, weights ScoringWeights, prior Prior) CausalScore {
 	node, inPath := findNode(topo, e.Target)
 
-	temporal := temporalScore(e.Age)
+	temporal := temporalScore(e.Age, weights.TemporalHalfLife)
 	topological := topologicalScore(node, inPath)
 
 	base, corroborated := caseBaseBaseline, false // 0.9 — the uncorroborated stub, unchanged
@@ -96,8 +96,8 @@ func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.Topolo
 	}
 
 	if !liveCorroborated {
-		likelihood = min(likelihood, historicalAloneCap) // historicalAloneCap = 0.5
-		rationale = append(rationale, fmt.Sprintf("defence 1: uncorroborated -> capped at %.2f", historicalAloneCap))
+		likelihood = min(likelihood, weights.HistoricalAloneCap)
+		rationale = append(rationale, fmt.Sprintf("defence 1: uncorroborated -> capped at %.2f", weights.HistoricalAloneCap))
 	}
 
 	for _, sig := range e.PredictedSignals {
@@ -134,10 +134,8 @@ func findNode(topo proposal.TopologySnapshot, name string) (proposal.NodeState, 
 	return proposal.NodeState{}, false
 }
 
-const temporalHalfLife = 30 * time.Minute
-
-func temporalScore(age time.Duration) float64 {
-	return math.Exp2(-float64(age) / float64(temporalHalfLife))
+func temporalScore(age time.Duration, halflife time.Duration) float64 {
+	return math.Exp2(-float64(age) / float64(halflife))
 }
 
 func topologicalScore(node proposal.NodeState, inPath bool) float64 {

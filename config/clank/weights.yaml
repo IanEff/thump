@@ -1,0 +1,10 @@
+temporal: 0.3333333333333333
+topological: 0.3333333333333333
+historical: 0.3333333333333333
+freshnessHalfLife: 720h   # 30 days
+groundingNone: 0.3
+groundingOne: 0.7
+groundingMany: 1.0
+causal: 0.5
+temporalHalfLife: 30m
+historicalAloneCap: 0.5
