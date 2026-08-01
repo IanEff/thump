@@ -1,9 +1,8 @@
 # AGENTS.md
 
-Guidance for coding agents (and new contributors) working in this repository. This file
-covers **Go conventions, comment/doc-comment style, and testing standards only** — for
-project architecture, scope, and history, see `CLAUDE.md` and the package docs under
-`internal/` and `api/`.
+House rules for anyone writing Go in this repository. This file covers **Go conventions,
+comment/doc-comment style, and testing standards only** — for architecture and scope, see
+`README.md`, `docs/`, and the package docs under `internal/` and `api/`.
 
 ## Go house rules
 

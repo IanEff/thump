@@ -11,8 +11,8 @@ There is no log line at the failure point, no error returned to the beat's
 `Main`, and no crash. The pod sits `1/1 Running`, healthy by every check that
 exists today, while every span it ever emits is dropped on the floor.
 
-This is a known, declared gap — see `thump-charter.md` I-17's stated
-exception. Fixing it for real needs a `/readyz`-adjacent liveness check or an
+This is a known, declared gap — the OTLP row in `../design-decisions.md`'s D-13
+sweep is the record of it. Fixing it needs a `/readyz`-adjacent liveness check or an
 OTel exporter health callback (SDK-side visibility into exporter retry
 state), both bigger than this runbook. Until then, diagnosis is manual.
 

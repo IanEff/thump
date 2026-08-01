@@ -1,11 +1,11 @@
 # Onboarding a domain to thump
 
-**The claim:** making thump reason about, govern, and remediate a system it has
-never heard of takes **no Go**. Seven authored YAML files are the whole
-surface for that. Detection is one further requirement, live-only and outside
-those seven files — see the note at the end of §3.1.
+Making thump reason about, govern, and remediate a system it has never heard of
+takes **no Go**. Seven authored YAML files are the whole surface for that.
+Detection is one further requirement, live-only and outside those seven files —
+see the note at the end of §3.1.
 
-**The proof:** `test/onboarding/onboard_test.go`'s
+`test/onboarding/onboard_test.go`'s
 `TestOperator_OnboardsANewDomainInConfigAlone` onboards a synthetic service
 called `acme` from `test/onboarding/testdata/acme/` and drives it through every
 beat — signal, reasoning, governance, execution — as part of `task ci`, with no
@@ -259,7 +259,7 @@ the existing description before you widen it; if your new action's fix shape
 doesn't match what's already written there, either the description needs
 broadening (name both fix shapes explicitly) or your action belongs under a
 different class. A description that quietly contradicts one of its own
-actions is exactly the mislabel risk the discriminator advice above warns
+actions is exactly the mislabel risk the discriminator note below warns
 about, just introduced by the file being edited instead of by the model.
 
 Write the *discriminator* explicitly. Not "the dependency is saturated" but "cite
@@ -489,7 +489,7 @@ its success criteria, its reversal — and nothing is touched. The outcome recor
 `{mode: dry_run, result: rendered}`.
 
 Run it that way first, against real signals, until you've read enough rendered
-orders to believe them. That is the whole point of the mode existing.
+orders to believe them.
 
 **Going live needs two independent things:**
 

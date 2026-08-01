@@ -7,8 +7,8 @@ Read `architecture.md` first for the shape these rules constrain.
 
 **Every rule below names three things** — where it comes from, what a violation
 looks like in *this* codebase, and (where one exists) the test that would go red.
-That third column is the point. An invariant nobody tests is decorative, and this
-project would rather say "not enforced yet" out loud than let you assume it is.
+That third column is the point — an invariant nobody tests is decorative. Where a
+rule isn't enforced yet, it says so.
 
 **Sourcing.** Rules marked *(ARE ch-N)* come from *Agentic Reliability
 Engineering*, the book this architecture is drawn from — chapter 6 is the
@@ -78,9 +78,8 @@ reversal — **never** by the reasoner's judgment. The model proposes *from* the
 catalog; anything outside it is a hard error, not a soft ignore. Execution cannot
 run what isn't catalogued.
 
-That's the safety property, not a limitation. It's also why the execution verb
-set is closed: config *picks* a compiled mechanism and names its targets, it never
-*describes* a new one.
+That bound is why the execution verb set is closed too: config *picks* a compiled
+mechanism and names its targets, it never *describes* a new one.
 
 *Enforced by:* `contract.ErrOutsideCatalog` in `internal/clank/engine.go`'s
 `enforceCatalog` (a run that proposes off-catalog fails outright);
@@ -225,18 +224,12 @@ All four have been operational since automatic reversal moved from stamped to
 (2026-07-16). The ceiling is cleared, not aspirational; the rule stands as the
 bar any *future* increase in write authority has to re-clear.
 
-## I-13 · Every wave stays red→green, and every commit is reviewed
+## I-13 · Every wave stays red→green
 
 *(ours, amended 2026-07-25)*
 
-No untested seam crosses into the next beat. **Contributors and AI pairing
-partners may edit and test; the repo owner reviews and lands every commit.**
-Nothing enters history unread.
-
-*(This previously read "agents don't touch the repo." It was amended because it
-confused authorship with review — review is the property that actually protects
-the tree — and because, read literally, it forbade the outside contributors this
-project invites.)*
+No untested seam crosses into the next beat. Every commit is read before it
+enters history.
 
 ## I-14 · Delivery is at-least-once; identity is the fingerprint
 

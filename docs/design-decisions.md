@@ -10,11 +10,9 @@ The rule the project holds itself to:
 > isn't.** Write the entry *before* you diverge, not after someone notices.
 
 Two things this file is not. It isn't a changelog (that's `CHANGELOG.md`), and it
-isn't the dated working journal — the day-by-day trail of what was tried, what
-broke on a live cluster, and what got decided at 11pm lives in the author's
-private notes. Pointing you at a file you can't open would be worse than saying
-that plainly. **What's load-bearing has been brought here in full**, so nothing
-below requires the journal to make sense.
+isn't the dated working journal — the day-by-day trail of what was tried and what
+broke on a live cluster stays in private notes. Everything load-bearing from it
+is here in full, so nothing below needs the journal to make sense.
 
 Numbering is stable and gappy on purpose — entries keep their original IDs so a
 review comment citing "D-10" stays valid.
@@ -338,11 +336,11 @@ that was silently wrong, and the only client on this list that mutates a
 cluster. Every other row was already correctly postured; this entry is their
 first audit against source, not a behavior change.
 
-**Proposed, not yet in the vault charter — I-17:** *Every client this engine
-dials has an authored retry policy, an authored timeout, and a failure that
-reaches an operator. A silent client is a violation.* Recorded here so the
-wording exists; ratifying it into `thump-charter.md` is a decision for that
-document, not this one.
+**Proposed as an invariant, not yet ratified:** *every client this engine dials
+has an authored retry policy, an authored timeout, and a failure that reaches an
+operator. A silent client is a violation.* Recorded here so the wording exists;
+it earns a number in `invariants.md` when the OTLP row above stops being a
+counterexample.
 
 ---
 
@@ -352,7 +350,7 @@ The D-ledger above is indexed against one book, *Agentic Reliability
 Engineering* — that's what this file exists to track. But some packages in
 this repo are built directly off a different book's own chapter, and depart
 from *that* source too. Recorded here rather than in the numbered ledger,
-because folding a DRAL-divergence and a departure from an unrelated book into
+because folding a Jambor departure and a departure from an unrelated book into
 the same numbering would make "which book?" a question every citation had to
 answer.
 
