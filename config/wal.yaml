@@ -1,0 +1,4 @@
+maxBytes: 67108864
+maxAge: 10m
+syncInterval: 5s
+shipInterval: 30s

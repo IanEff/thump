@@ -169,22 +169,28 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		return 1
 	}
 
-	orderPub, _, err := beat.NewWALPublisher[Order](js, cfg.WALDir, "thump", "thump.orders")
+	walConfig, err := beat.LoadWALConfig(cfg.WALConfig)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+		return 1
+	}
+
+	orderPub, _, err := beat.NewWALPublisher[Order](js, cfg.WALDir, "thump", "thump.orders", walConfig)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	outcomePub, _, err := beat.NewWALPublisher[outcome.Outcome](js, cfg.WALDir, "thump", "thump.outcomes")
+	outcomePub, _, err := beat.NewWALPublisher[outcome.Outcome](js, cfg.WALDir, "thump", "thump.outcomes", walConfig)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	declinePub, _, err := beat.NewWALPublisher[decision.Decision](js, cfg.WALDir, "thump", "thump.declines")
+	declinePub, _, err := beat.NewWALPublisher[decision.Decision](js, cfg.WALDir, "thump", "thump.declines", walConfig)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	heldPub, _, err := beat.NewWALPublisher[HeldAction](js, cfg.WALDir, "thump", "thump.held")
+	heldPub, _, err := beat.NewWALPublisher[HeldAction](js, cfg.WALDir, "thump", "thump.held", walConfig)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -232,19 +238,19 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		})
 	}
 	g.Go(func() error {
-		beat.RunShipper(gctx, orderPub.WAL, sink)
+		beat.RunShipper(gctx, orderPub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {
-		beat.RunShipper(gctx, outcomePub.WAL, sink)
+		beat.RunShipper(gctx, outcomePub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {
-		beat.RunShipper(gctx, declinePub.WAL, sink)
+		beat.RunShipper(gctx, declinePub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {
-		beat.RunShipper(gctx, heldPub.WAL, sink)
+		beat.RunShipper(gctx, heldPub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {

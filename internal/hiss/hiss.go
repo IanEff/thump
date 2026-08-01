@@ -133,7 +133,13 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 		return 1
 	}
 
-	pub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "hiss", "thump.decisions")
+	walConfig, err := beat.LoadWALConfig(cfg.WALConfig)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+		return 1
+	}
+
+	pub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "hiss", "thump.decisions", walConfig)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
@@ -170,7 +176,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		beat.RunShipper(gctx, pub.WAL, sink)
+		beat.RunShipper(gctx, pub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {
@@ -215,7 +221,7 @@ func buildApprovalRequests(cfg config.Hiss, approvePub publish.Publisher[approva
 			"beat", "hiss", "fix", "set APPROVALREQUESTS_ENABLED=true")
 		return nil, nil
 	}
-	return NewApprovalRequestController(approvePub)
+	return NewApprovalRequestController(approvePub, cfg.ApprovalRetention)
 }
 
 // LoadPolicy reads path as a YAML file and unmarshals it into a Policy — the
