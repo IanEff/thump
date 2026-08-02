@@ -1,4 +1,4 @@
-package clank_test
+package anthropic_test
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/ianeff/thump/internal/clank"
+	anthropicpkg "github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/reason"
 )
 
@@ -111,7 +111,7 @@ func TestToAnthropicMessageParams_BuildsTheBlocksTheAPIExpects(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if diff := cmp.Diff(tc.want, blockTypes(clank.ToAnthropicMessageParamsForTest(tc.msgs))); diff != "" {
+			if diff := cmp.Diff(tc.want, blockTypes(anthropicpkg.ToAnthropicMessageParamsForTest(tc.msgs))); diff != "" {
 				t.Error("wrong blocks on the wire (-want +got)\n", diff)
 			}
 		})
@@ -141,7 +141,7 @@ func TestToAnthropicMessageParams_RolesTheTurnsTheWayTheAPIReadsThem(t *testing.
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := clank.ToAnthropicMessageParamsForTest([]reason.Message{tc.msg})
+			got := anthropicpkg.ToAnthropicMessageParamsForTest([]reason.Message{tc.msg})
 			if len(got) != 1 {
 				t.Fatalf("want exactly one rendered message, got %d", len(got))
 			}
@@ -175,7 +175,7 @@ func TestFromAnthropicMessage_MapsUsageOntoCompletion(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			resp := &anthropic.Message{Usage: tc.usage}
-			got := clank.FromAnthropicForTest(resp)
+			got := anthropicpkg.FromAnthropicForTest(resp)
 			if diff := cmp.Diff(tc.want, got.Usage); diff != "" {
 				t.Error("wrong usage mapped onto Completion (-want +got)\n", diff)
 			}
@@ -209,7 +209,7 @@ func TestToAnthropicMessageParams_MarksTheLastMessagesLastBlockCacheable(t *test
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := cacheBreakpoints(clank.ToAnthropicMessageParamsForTest(tc.msgs))
+			got := cacheBreakpoints(anthropicpkg.ToAnthropicMessageParamsForTest(tc.msgs))
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Error("wrong blocks carry CacheControl (-want +got)\n", diff)
 			}
@@ -235,7 +235,7 @@ func TestToAnthropicToolParams_MarksTheLastToolCacheable(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := toolCacheBreakpoints(clank.ToAnthropicToolParamsForTest(tc.tools))
+			got := toolCacheBreakpoints(anthropicpkg.ToAnthropicToolParamsForTest(tc.tools))
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Error("wrong tools carry CacheControl (-want +got)\n", diff)
 			}

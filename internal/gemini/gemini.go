@@ -1,4 +1,9 @@
-package clank
+// Package gemini is a second reason.Model adaptor: Gemini behind the genai
+// SDK, isolating it from clank the same way internal/anthropic isolates the
+// Anthropic SDK. It has never completed a call against a live backend: Main
+// does not select it, so treat it as a second implementation of the
+// interface, not a proven second provider.
+package gemini
 
 import (
 	"context"
@@ -9,19 +14,17 @@ import (
 	"google.golang.org/genai"
 )
 
-// GeminiModel is a second reason.Model adaptor: Gemini 2.5 Flash Lite behind the
+// Model is a second reason.Model adaptor: Gemini 2.5 Flash Lite behind the
 // genai SDK, the cheapest Gemini model on record. It satisfies the same
-// reason.Model interface as AnthropicModel, so the reason loop cannot tell which
-// provider it's talking to. It has never completed a call against a live
-// backend: Main does not select it and no test exercises it, so treat it as
-// a second implementation of the interface, not a proven second provider.
-type GeminiModel struct {
+// reason.Model interface as internal/anthropic's Model, so the reason
+// loop cannot tell which provider it's talking to.
+type Model struct {
 	client *genai.Client
 }
 
-// NewGeminiModel builds a GeminiModel authenticated with apiKey against the
-// Gemini API backend.
-func NewGeminiModel(ctx context.Context, apiKey string) (*GeminiModel, error) {
+// NewModel builds a Model authenticated with apiKey against the Gemini API
+// backend.
+func NewModel(ctx context.Context, apiKey string) (*Model, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
@@ -30,14 +33,14 @@ func NewGeminiModel(ctx context.Context, apiKey string) (*GeminiModel, error) {
 		return nil, fmt.Errorf("gemini client: %w", err)
 	}
 
-	return &GeminiModel{client: client}, nil
+	return &Model{client: client}, nil
 }
 
 // Complete sends msgs and tools to Gemini and folds the response into a
 // reason.Completion: resp.Text becomes the assistant reason.Message, and each FunctionCall
 // becomes a reason.ToolCall with its args re-marshaled to JSON, so both reason.Model
 // implementations hand the engine the same reason.ToolCall shape.
-func (m *GeminiModel) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
+func (m *Model) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
 	resp, err := m.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", // cheapest Gemini model on record
 		toGeminiContents(msgs),
 		&genai.GenerateContentConfig{

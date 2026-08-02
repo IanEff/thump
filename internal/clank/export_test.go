@@ -12,7 +12,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
@@ -140,18 +139,6 @@ var shippedClasses = sync.OnceValue(func() []contract.FailureClassDefinition {
 	}
 	return defs
 })
-
-func FromAnthropicForTest(resp *anthropic.Message) reason.Completion {
-	return fromAnthropicMessage(resp)
-}
-
-func ToAnthropicMessageParamsForTest(msgs []reason.Message) []anthropic.MessageParam {
-	return toAnthropicMessageParams(msgs)
-}
-
-func ToAnthropicToolParamsForTest(tools []reason.ToolSpec) []anthropic.ToolUnionParam {
-	return toAnthropicToolParams(tools)
-}
 
 // ToolSpecsForTest exposes Engine.toolSpecs, the one place tool order gets
 // fixed before it's sent to the model — clank_test needs it to pin that

@@ -17,6 +17,7 @@ import (
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/reason"
 )
 
@@ -484,7 +485,7 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 			}
 
 			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),
-				NewAnthropicModel(apiKey), tools,
+				anthropic.NewModel(apiKey, modelRequestTimeout), tools,
 				NewIntake(noopTopology{}, noopChange{}),
 				shippedCatalog(),
 				shippedClasses(),

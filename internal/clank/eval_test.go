@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/reason"
 	"sigs.k8s.io/yaml"
 )
@@ -348,7 +349,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 			tools := map[string]reason.Tool{"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries}}
 
 			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),
-				NewAnthropicModel(apiKey), tools,
+				anthropic.NewModel(apiKey, modelRequestTimeout), tools,
 				NewIntake(noopTopology{}, noopChange{}),
 				shippedCatalog(),
 				shippedClasses(),

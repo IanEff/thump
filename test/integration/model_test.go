@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/reason"
 )
@@ -24,7 +25,7 @@ func newModel(t *testing.T) reason.Model {
 	if key == "" {
 		t.Skip("skipping integration test: ANTHROPIC_API_KEY not set (and no .env)")
 	}
-	return clank.NewAnthropicModel(key)
+	return anthropic.NewModel(key, 120*time.Second)
 }
 
 func apiKey(t *testing.T) string {
