@@ -24,9 +24,9 @@ const (
 	outPath         = "internal/clank/testdata/corpus/corpus.json"
 )
 
-// Main mines every shopped proposal.Set and outcome.Outcome of S3_BUCKET,
+// Main mines every shipped proposal.Set and outcome.Outcome of S3_BUCKET,
 // joins them into a clank.Corpus, and writes it to outPath.
-// Returns 0 on succes, 1 on any failure.
+// Returns 0 on success, 1 on any failure.
 func Main(_ []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
 

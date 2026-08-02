@@ -14,14 +14,14 @@ import (
 )
 
 // Getter is the object-store read this package needs beyond listing -
-// satistifed by *s3.client.
+// satisfied by *s3.client.
 type Getter interface {
 	GetObject(ctx context.Context, in *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
-// Walk lists every objct under prefix in a bucket, unseals each with key,
+// Walk lists every object under prefix in a bucket, unseals each with key,
 // and returns the segment keys walked alongside every decoded line
-// across off of them, in listing order.
+// across them, in listing order.
 func Walk(ctx context.Context, lister s3.ListObjectsV2APIClient, getter Getter, key sealbox.Key, bucket, prefix string) ([]string, [][]byte, error) {
 	var segmentKeys []string
 	var lines [][]byte
