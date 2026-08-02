@@ -25,6 +25,7 @@ import (
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
+	"github.com/ianeff/thump/internal/health"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
@@ -112,7 +113,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // runBroker is hiss's NATS branch: consume thump.proposals, evaluate
 // authority, publish thump.decisions, and ship the decisions WAL's sealed
 // segments to object storage in the background.
-func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy, tracer trace.Tracer, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 

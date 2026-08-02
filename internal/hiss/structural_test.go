@@ -44,6 +44,7 @@ func TestHissClientGoConfinedToController(t *testing.T) {
 		`"github.com/ianeff/thump/internal/beat"`:    true,
 		`"github.com/ianeff/thump/internal/broker"`:  true,
 		`"github.com/ianeff/thump/internal/config"`:  true,
+		`"github.com/ianeff/thump/internal/health"`:  true,
 		`"github.com/ianeff/thump/internal/ledger"`:  true,
 		`"github.com/ianeff/thump/internal/publish"`: true,
 		`"github.com/ianeff/thump/internal/sealbox"`: true,

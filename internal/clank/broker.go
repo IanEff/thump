@@ -15,6 +15,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/health"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"go.opentelemetry.io/otel/trace"
@@ -28,7 +29,7 @@ import (
 // sealed segments to object storage in the background. The two-subscriber
 // shape is clank's own; the beat kit supplies the consumer/publisher
 // primitives but leaves this composition here.
-func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, limits Limits, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, limits Limits, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 
