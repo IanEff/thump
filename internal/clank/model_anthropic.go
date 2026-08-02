@@ -8,6 +8,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // modelRequestTimeout bounds one call to the model. Longer than
@@ -16,9 +17,9 @@ import (
 // reason loop's own call, not a telemetry read.
 const modelRequestTimeout = 120 * time.Second
 
-// AnthropicModel is the production Model: Claude Haiku behind the Messages
+// AnthropicModel is the production reason.Model: Claude Haiku behind the Messages
 // API, the cheapest model on record for this loop. It's the adaptor Main
-// wires in — GeminiModel exists as a second Model implementation but Main
+// wires in — GeminiModel exists as a second reason.Model implementation but Main
 // doesn't select it yet.
 type AnthropicModel struct {
 	client anthropic.Client
@@ -32,10 +33,10 @@ func NewAnthropicModel(apiKey string) *AnthropicModel {
 }
 
 // Complete sends msgs and tools to Claude Haiku and folds the response into
-// a Completion via fromAnthropicMessage. A tool the model wasn't offered in
+// a reason.Completion via fromAnthropicMessage. A tool the model wasn't offered in
 // tools can never come back here — the SDK only echoes tool calls for tools
 // it was given a spec for.
-func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []ToolSpec) (Completion, error) {
+func (m *AnthropicModel) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
 	resp, err := m.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeHaiku4_5_20251001, // cheapest model on record
 		MaxTokens: 4096,
@@ -43,16 +44,16 @@ func (m *AnthropicModel) Complete(ctx context.Context, msgs []Message, tools []T
 		Tools:     toAnthropicToolParams(tools),
 	})
 	if err != nil {
-		return Completion{}, fmt.Errorf("anthropic complete: %w", err)
+		return reason.Completion{}, fmt.Errorf("anthropic complete: %w", err)
 	}
 	return fromAnthropicMessage(resp), nil
 }
 
 // toAnthropicMessageParams renders msgs into the SDK's wire shape. Role
-// follows the API's turn model, not Message.Role directly — a tool turn
+// follows the API's turn model, not reason.Message.Role directly — a tool turn
 // carries a tool_result block, and tool_result is defined as a user block, so
 // "tool" renders as MessageParamRoleUser alongside plain "user" turns.
-func toAnthropicMessageParams(msgs []Message) []anthropic.MessageParam {
+func toAnthropicMessageParams(msgs []reason.Message) []anthropic.MessageParam {
 	params := make([]anthropic.MessageParam, 0, len(msgs))
 	for _, msg := range msgs {
 		var blocks []anthropic.ContentBlockParamUnion
@@ -110,7 +111,7 @@ func toolInput(args json.RawMessage) any {
 	return input
 }
 
-func toAnthropicToolParams(tools []ToolSpec) []anthropic.ToolUnionParam {
+func toAnthropicToolParams(tools []reason.ToolSpec) []anthropic.ToolUnionParam {
 	if len(tools) == 0 {
 		return nil
 	}
@@ -162,12 +163,12 @@ func toAnthropicInputSchema(raw json.RawMessage) anthropic.ToolInputSchemaParam 
 	return schema
 }
 
-// fromAnthropicMessage folds resp into a Completion — text blocks concatenate
-// into the assistant Message, each ToolUseBlock becomes a ToolCall, and
-// resp.Usage always maps onto Completion.Usage, zero fields and all, since
+// fromAnthropicMessage folds resp into a reason.Completion — text blocks concatenate
+// into the assistant reason.Message, each ToolUseBlock becomes a reason.ToolCall, and
+// resp.Usage always maps onto reason.Completion.Usage, zero fields and all, since
 // the SDK reports it as a required struct rather than an optional one.
-func fromAnthropicMessage(resp *anthropic.Message) Completion {
-	var comp Completion
+func fromAnthropicMessage(resp *anthropic.Message) reason.Completion {
+	var comp reason.Completion
 	comp.Message.Role = "assistant"
 
 	for _, block := range resp.Content {
@@ -175,14 +176,14 @@ func fromAnthropicMessage(resp *anthropic.Message) Completion {
 		case anthropic.TextBlock:
 			comp.Message.Content += b.Text
 		case anthropic.ToolUseBlock:
-			comp.ToolCalls = append(comp.ToolCalls, ToolCall{
+			comp.ToolCalls = append(comp.ToolCalls, reason.ToolCall{
 				ID:   b.ID,
 				Name: b.Name,
 				Args: json.RawMessage(b.JSON.Input.Raw()),
 			})
 		}
 	}
-	comp.Usage = Usage{
+	comp.Usage = reason.Usage{
 		InputTokens:              int(resp.Usage.InputTokens),
 		CacheCreationInputTokens: int(resp.Usage.CacheCreationInputTokens),
 		CacheReadInputTokens:     int(resp.Usage.CacheReadInputTokens),

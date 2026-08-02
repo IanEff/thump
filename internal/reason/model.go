@@ -1,4 +1,4 @@
-package clank
+package reason
 
 import (
 	"context"
@@ -9,8 +9,7 @@ import (
 // faked in every test with a scripted Completion sequence. Complete is the
 // whole interface — no streaming, no state kept between calls beyond msgs —
 // so a fake needs only a queue of Completions to drive the loop
-// deterministically. The concrete adaptors (AnthropicModel, GeminiModel) live
-// in model_anthropic.go and model_gemini.go, each isolating its own SDK.
+// deterministically.
 type Model interface {
 	Complete(ctx context.Context, msgs []Message, tools []ToolSpec) (Completion, error)
 }

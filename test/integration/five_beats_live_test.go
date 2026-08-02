@@ -15,6 +15,7 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/thump"
 )
 
@@ -65,7 +66,7 @@ func liveCatalog() *contract.StaticCatalog {
 // has to survive all five beats instead of one.
 func TestGoldenPath_FiveBeatsAgainstTheRealModel(t *testing.T) {
 	metrics := &recordingTool{
-		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
+		spec: reason.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
 		ref: proposal.EvidenceRef{
 			Tool: "metrics", Query: "payments-db-cpu",
 			Summary: "payments-db CPU pinned at 99%, connection pool exhausted",

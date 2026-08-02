@@ -16,6 +16,7 @@ import (
 	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/poll"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/tlsx"
@@ -25,7 +26,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// Main is clank's process entry. It wires the Model (Anthropic, keyed by
+// Main is clank's process entry. It wires the reason.Model (Anthropic, keyed by
 // ANTHROPIC_API_KEY — Main refuses to start without it), the read-only tools
 // (metrics, loki, kube — each registered only if its backend is configured,
 // so a partial deployment loses tools, not the process), the intake sources,
@@ -250,8 +251,8 @@ func clientsFor(restConfig *rest.Config) (kubernetes.Interface, dynamic.Interfac
 // tool that can carry one: a tool holding an empty index returns Live refs
 // that can corroborate but never ground, which is a degradation worth saying
 // out loud rather than discovering from a gate that never passes.
-func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]Tool {
-	tools := map[string]Tool{}
+func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]reason.Tool {
+	tools := map[string]reason.Tool{}
 
 	switch {
 	case cfg.PromURL == "":
@@ -297,7 +298,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 // PROM_URL is cross-required there whenever both whir vars are set, so this
 // never needs to check that combination itself.
 func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects subjects.SubjectIndex, changeLookback time.Duration) (*Intake, error) {
-	var topo TopologySource = noopTopology{}
+	var topo reason.TopologySource = noopTopology{}
 
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
 		slog.Warn("no topology source configured — clank reasoning without a blast-radius map",
@@ -317,7 +318,7 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interfac
 		}
 	}
 
-	var change ChangeSource = noopChange{}
+	var change reason.ChangeSource = noopChange{}
 	switch {
 	case !cfg.ArgoEnabled:
 		slog.Warn("no change source configured — causal scoring is inert", "beat", "clank", "fix", "set ARGOCD_ENABLED=true")

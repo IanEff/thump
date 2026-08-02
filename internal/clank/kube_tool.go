@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/schema"
 	"github.com/ianeff/thump/internal/subjects"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,12 +34,12 @@ type KubeTool struct {
 	Subjects subjects.SubjectIndex
 }
 
-// Implement the Tool interface.
-var _ Tool = (*KubeTool)(nil)
+// Implement the reason.Tool interface.
+var _ reason.Tool = (*KubeTool)(nil)
 
 // Spec advertises the "kube" tool — resource currently supports only "pods".
-func (k *KubeTool) Spec() ToolSpec {
-	return ToolSpec{
+func (k *KubeTool) Spec() reason.ToolSpec {
+	return reason.ToolSpec{
 		Name: "kube",
 		Description: "read-only kubernetes resource query (supports resource: 'pods'). " +
 			"selector is an optional map of label equality pairs, e.g. {\"app\": \"cart\"} — " +

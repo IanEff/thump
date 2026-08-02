@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestEngine_GoldenPathAgainstRealModel_SignalToDeliveredProposalSet is the
@@ -18,7 +18,7 @@ import (
 // proposal in) rather than replaying a canned answer.
 func TestEngine_GoldenPathAgainstRealModel_SignalToDeliveredProposalSet(t *testing.T) {
 	metrics := &recordingTool{
-		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
+		spec: reason.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
 		ref: proposal.EvidenceRef{
 			Tool: "metrics", Query: "payments-db-cpu",
 			Summary: "payments-db CPU pinned at 99%, connection pool exhausted",
@@ -83,7 +83,7 @@ func TestEngine_GoldenPathAgainstRealModel_SignalToDeliveredProposalSet(t *testi
 // handles a decline correctly, which the hermetic twin already covers.
 func TestEngine_ThinEvidenceAgainstRealModel_YieldsNoActionAndDeliversNothing(t *testing.T) {
 	metrics := &recordingTool{
-		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
+		spec: reason.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
 		ref:  proposal.EvidenceRef{Tool: "metrics", Summary: "all services nominal; no anomaly on payments-db", Ref: "metrics://payments-db/cpu", Live: true},
 	}
 	catalog := contract.NewStaticCatalog([]contract.ActionContract{{

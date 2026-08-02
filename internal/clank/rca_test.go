@@ -17,6 +17,7 @@ import (
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // rcaCase is one graded root-cause scenario: a fixture whose evidence carries
@@ -449,7 +450,7 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 			det := loadDetectionFixture(t, tc.fixture)
 
 			prom := newFakePrometheus(t, promQLByName(queries), tc.evidence)
-			tools := map[string]Tool{
+			tools := map[string]reason.Tool{
 				// Each EvidenceQuery carries its own Subject now, so a
 				// citation against any of these queries stamps one and
 				// coherentSubject (gate.go:93) can ground on it — a metrics
@@ -460,7 +461,7 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 				// A second live backend, so a citation crossing Corroborated
 				// >= 2 is actually reachable — with "metrics" alone,
 				// coherentLiveCitations can never count past one distinct
-				// Tool value and GroundingMany is structurally dead. The
+				// reason.Tool value and GroundingMany is structurally dead. The
 				// model decides on its own whether to call this; it isn't
 				// scripted, so whether any row actually reaches
 				// GroundingMany is an empirical question this suite answers

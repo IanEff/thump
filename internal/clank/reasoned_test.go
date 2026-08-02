@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestPropose_LogsReasonedOnLLMCompleteFailure pins the actual 2026-07-14
@@ -48,8 +49,8 @@ func TestPropose_LogsReasonedOnLLMCompleteFailure(t *testing.T) {
 // (a structurally different mid-loop error) gets the same treatment.
 func TestPropose_LogsReasonedOnCheckpointFailure(t *testing.T) {
 	getLogs := captureLog(t)
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
 	}}
 	e, _ := newTestEngine(model)
 	e.Store = &failingStore{MemStore: clank.NewMemStore(), failOn: 0}
@@ -74,9 +75,9 @@ func TestPropose_LogsReasonedOnCheckpointFailure(t *testing.T) {
 // would double-log every successful run.
 func TestPropose_LogsReasonedOnSuccess(t *testing.T) {
 	getLogs := captureLog(t)
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},

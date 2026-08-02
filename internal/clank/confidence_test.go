@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestPropose_AnUnstatedConfidenceIsNoCeilingRatherThanAZeroOne pins the
@@ -27,9 +28,9 @@ func TestPropose_AnUnstatedConfidenceIsNoCeilingRatherThanAZeroOne(t *testing.T)
 	// against the first as a repeat of the same fingerprint.
 	propose := func(t *testing.T, cand proposal.Candidate) float64 {
 		t.Helper()
-		model := &fakeModel{script: []clank.Completion{
-			{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-			{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		model := &fakeModel{script: []reason.Completion{
+			{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+			{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 				FailureClass: proposal.ClassDependencySaturation,
 				Proposals:    []proposal.Candidate{cand},
 			})}}},

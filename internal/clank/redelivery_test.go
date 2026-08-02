@@ -9,9 +9,9 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
-	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestRedelivery_IsAFingerprintNoOp proves the JetStream path reuses the
@@ -37,9 +37,9 @@ func TestRedelivery_IsAFingerprintNoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"burn"}`}}},

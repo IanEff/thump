@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/s3test"
 	"github.com/ianeff/thump/internal/sealbox"
 )
@@ -23,7 +24,7 @@ func TestStore_PendingReturnsACheckpointedTurn(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := clank.NewMemStore()
-	want := clank.Turn{RunID: "r1", Step: 0, Msgs: []clank.Message{{Role: "user", Content: "hi"}}}
+	want := clank.Turn{RunID: "r1", Step: 0, Msgs: []reason.Message{{Role: "user", Content: "hi"}}}
 	if err := store.Checkpoint(ctx, want); err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +64,8 @@ func TestDirStore_CheckpointedTurnsRoundTripInOrder(t *testing.T) {
 	dir := t.TempDir()
 	store := clank.NewDirStore(dir)
 
-	turn0 := clank.Turn{RunID: "r1", Step: 0, Msgs: []clank.Message{{Role: "user", Content: "investigate"}}}
-	turn1 := clank.Turn{RunID: "r1", Step: 1, Msgs: []clank.Message{{Role: "assistant", Content: "proposing"}}}
+	turn0 := clank.Turn{RunID: "r1", Step: 0, Msgs: []reason.Message{{Role: "user", Content: "investigate"}}}
+	turn1 := clank.Turn{RunID: "r1", Step: 1, Msgs: []reason.Message{{Role: "assistant", Content: "proposing"}}}
 
 	if err := store.Checkpoint(ctx, turn0); err != nil {
 		t.Fatal(err)
@@ -151,7 +152,7 @@ func TestS3Store_CheckpointThenPersists(t *testing.T) {
 	key := newTestSealKey(t)
 	store := clank.NewS3Store(client, bucket, key)
 
-	want := clank.Turn{RunID: "r1", Step: 0, Msgs: []clank.Message{{Role: "user", Content: "investigate"}}}
+	want := clank.Turn{RunID: "r1", Step: 0, Msgs: []reason.Message{{Role: "user", Content: "investigate"}}}
 	if err := store.Checkpoint(ctx, want); err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +179,7 @@ func TestS3Store_SealsTranscriptsBeforePersisting(t *testing.T) {
 	key := newTestSealKey(t)
 	store := clank.NewS3Store(client, bucket, key)
 
-	turn := clank.Turn{RunID: "r1", Step: 0, Msgs: []clank.Message{{Role: "user", Content: "investigate"}}}
+	turn := clank.Turn{RunID: "r1", Step: 0, Msgs: []reason.Message{{Role: "user", Content: "investigate"}}}
 	if err := store.Checkpoint(ctx, turn); err != nil {
 		t.Fatal(err)
 	}

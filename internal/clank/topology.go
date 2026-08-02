@@ -8,7 +8,7 @@ import (
 	"github.com/ianeff/thump/internal/whir"
 )
 
-// WhirTopology is the real TopologySource: it resolves a signal's upstream
+// WhirTopology is the real reason.TopologySource: it resolves a signal's upstream
 // dependencies from whir's static catalog-info.yaml graph, then asks the
 // Resolver for each dependency's live state. Main wires it in only when
 // WHIR_CATALOG and WHIR_STATE_QUERIES are both set; otherwise Main falls back

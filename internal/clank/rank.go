@@ -10,7 +10,7 @@ import (
 // Ranker orders a proposal.Set's candidates deterministically and
 // auditably — never a black box. Given the same candidates and velocity it
 // always returns the same order and proposal.RankingRationale, so it's
-// table-tested without a fake Model.
+// table-tested without a fake reason.Model.
 type Ranker struct {
 	//
 }

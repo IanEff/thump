@@ -24,7 +24,7 @@ var applicationGVR = schema.GroupVersionResource{Group: "argoproj.io", Version: 
 // Candidate's confidence enough to justify its weight in the SAO.
 const DefaultChangeLookback = 2 * time.Hour
 
-// ArgoChangeSource is the concrete ChangeSource: it reports each resource an
+// ArgoChangeSource is the concrete reason.ChangeSource: it reports each resource an
 // Application recently synced as one change event, resolved through Subjects so
 // a ChangeEvent.Target names a topology node rather than a Kubernetes object.
 // The two vocabularies do not coincide — ArgoCD reports the CephBlockPool

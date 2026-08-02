@@ -9,8 +9,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 func TestSeam_ClankDeliveryGovernsToAnApprovedDecision(t *testing.T) {
@@ -19,10 +19,10 @@ func TestSeam_ClankDeliveryGovernsToAnApprovedDecision(t *testing.T) {
 	// backends, so scoreConfidence's grounding clears hiss's floor the way a
 	// real well-corroborated run does, not just the gate; step 2 propose a
 	// catalogued, REVERSIBLE candidate (the seam trap, dodged).
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation, // in newTestEngine's catalog
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{

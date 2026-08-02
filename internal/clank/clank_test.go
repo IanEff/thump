@@ -18,6 +18,7 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/whir"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -229,17 +230,17 @@ type testLoop struct {
 // test fakes; the wiring itself is production code.
 func newTestLoop(t *testing.T) testLoop {
 	t.Helper()
-	model := &fakeModel{script: []clank.Completion{
+	model := &fakeModel{script: []reason.Completion{
 		// turn 1: gather live evidence — required for the gate's evidence floor.
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
 		// turn 2: propose a catalogued action.
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"burn"}`}}},
 		})}}},
 	}}
-	tools := map[string]clank.Tool{"metrics": metricsTool{}}
+	tools := map[string]reason.Tool{"metrics": metricsTool{}}
 	intake := clank.NewIntake(
 		fakeTopo{snap: proposal.TopologySnapshot{
 			Downstream: []proposal.NodeState{{Name: "payments-db", State: "degraded", TrafficShare: 0.7}},

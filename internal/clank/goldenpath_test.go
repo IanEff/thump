@@ -19,6 +19,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/publish/publishtest"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/thump"
 	corev1 "k8s.io/api/core/v1"
@@ -55,10 +56,10 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	// class+tier — carrying a ReversalPath (or hiss Claim 5 vetoes) and a
 	// requested band (or the grant defaults to observe).
 	const mons = `{"namespace":"rook-ceph","labels":{"app":"rook-ceph-mon"}}`
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(mons)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "loki", Args: json.RawMessage(mons)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded, // in defaultCatalog's hold-rebalance
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
@@ -77,7 +78,7 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	logs := goldenLokiServer(t)
 	defer logs.Close()
 
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			// node-death.yaml's OriginService is ceph-cluster; goldenEngine's
@@ -165,7 +166,7 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]clank.EvidenceQuery{
@@ -213,10 +214,10 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "node-death.yaml")
 
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"pgs_backfilling"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
@@ -239,7 +240,7 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	// same relationship group 8's raw ratios have to their SLO) — self-match
 	// against node-death.yaml's OriginService here, same reasoning as the
 	// other goldenpath tests above.
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]clank.EvidenceQuery{
@@ -288,16 +289,16 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "argocd-sync-burn.yaml")
 
-	const reason = "no catalogued action revives a stalled GitOps sync"
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(
-			`{"reason":"` + reason + `"}`)}}},
+	const declineReason = "no catalogued action revives a stalled GitOps sync"
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(
+			`{"reason":"` + declineReason + `"}`)}}},
 	}}
 
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
 
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "ceph_health_status"}},
@@ -337,9 +338,9 @@ func TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification(t *testin
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "argocd-sync-burn.yaml")
 
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "noisy_neighbor_misattribution", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
@@ -356,7 +357,7 @@ func TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification(t *testin
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
 
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]clank.EvidenceQuery{
@@ -397,10 +398,10 @@ func TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated(t *testing.T) {
 	ctx := context.Background()
 	det := loadDetectionFixtureExt(t, "argocd-sync-burn.yaml")
 
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rook_operator_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rook_operator_health"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rook_operator_cascade", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
@@ -417,7 +418,7 @@ func TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated(t *testing.T) {
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
 
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]clank.EvidenceQuery{
@@ -450,10 +451,10 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	// so the selector path — the narrowing a kube citation's subject claim
 	// depends on — is exercised end to end in a golden run too.
 	const mons = `{"resource":"pods","namespace":"rook-ceph","selector":{"app":"rook-ceph-mon"}}`
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "kube", Args: json.RawMessage(mons)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"osds_down"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "kube", Args: json.RawMessage(mons)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
@@ -466,7 +467,7 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]clank.EvidenceQuery{
@@ -536,10 +537,10 @@ func TestGoldenPath_InTopologyFillerCantCarryAnOutOfDomainAction(t *testing.T) {
 	// metric, from a domain this signal has no declared relationship to. The
 	// recommendation's own grounding is what the gate must read — filler in
 	// the evidence list can't stand in for it.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rook_operator_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"rook_operator_health"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"product_catalog_error_ratio"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassServiceFailure,
 			Hypotheses:   []proposal.Hypothesis{{Name: "cross_domain_bridge", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
@@ -551,7 +552,7 @@ func TestGoldenPath_InTopologyFillerCantCarryAnOutOfDomainAction(t *testing.T) {
 
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
 			Queries: map[string]clank.EvidenceQuery{
@@ -585,9 +586,9 @@ func TestGoldenPath_InTopologyFillerCantCarryAnOutOfDomainAction(t *testing.T) {
 // each pass).
 func goldenNodeDeathModel(t *testing.T) *fakeModel {
 	t.Helper()
-	return &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	return &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
@@ -606,7 +607,7 @@ func goldenNodeDeathModel(t *testing.T) *fakeModel {
 // this suite). Topology/change sources are empty so intake falls back to the
 // Detection's own observed topology — the realistic path Main takes today
 // with noop sources. A nil model may be set later via eng.Model.
-func goldenEngine(model clank.Model, tools map[string]clank.Tool) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+func goldenEngine(model reason.Model, tools map[string]reason.Tool) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
 	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
 		Intake:       clank.NewIntake(fakeTopo{}, fakeChange{}),

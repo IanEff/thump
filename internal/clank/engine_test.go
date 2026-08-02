@@ -14,15 +14,16 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish/publishtest"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
+	model := &fakeModel{script: []reason.Completion{
 		// turn 1: gather live evidence
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
 		// turn 2: propose - hypothesis + a candidate drawn from the catalog
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
@@ -52,10 +53,10 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	t.Parallel()
 	tool := fakeTool{name: "logs", digest: "no live signal", ref: "loki:xyz", live: false, query: "log_scan"}
-	model := &fakeModel{script: []clank.Completion{
+	model := &fakeModel{script: []reason.Completion{
 		// turn 1: gather evidence that is never Live
-		{ToolCalls: []clank.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"log_scan"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{ToolCalls: []reason.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"log_scan"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{"log_scan"}}},
@@ -63,7 +64,7 @@ func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	}}
 
 	e, sink := newTestEngine(model)
-	e.Tools = map[string]clank.Tool{"logs": tool}
+	e.Tools = map[string]reason.Tool{"logs": tool}
 	got, err := e.Propose(context.Background(), sigBurnAccel())
 	if err != nil {
 		t.Fatalf("Propose errored: %v", err)
@@ -88,9 +89,9 @@ func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 
 func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			// bare — no ReversalPath, no GovernanceLevel, exactly what production omits
@@ -132,9 +133,9 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 		// Reversal deliberately zero-value — this action genuinely can't be undone
 	}})
 
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9, Citations: []string{`{"q":"latency_p99"}`}}},
@@ -163,9 +164,9 @@ func TestPropose_IrreversibleContractLeavesReversalNil(t *testing.T) {
 // reduction against. hold-rebalance authors a 0.7 baseline.
 func TestPropose_StampsPredictedImpactFromTheCatalog(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"ceph_health"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassRedundancyDegraded,
 			Hypotheses:   []proposal.Hypothesis{{Name: "redundancy_degraded", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.82, Citations: []string{`{"q":"ceph_health"}`}}},
@@ -202,9 +203,9 @@ func TestPropose_UnforecastContractLeavesPredictedImpactNil(t *testing.T) {
 		// SuccessCriteria.SeverityReductionPct deliberately zero — this action forecasts nothing
 	}})
 
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "cordon-node", Confidence: 0.9, Citations: []string{`{"q":"latency_p99"}`}}},
@@ -357,9 +358,9 @@ func TestPropose_AnUncorroboratedCandidateCannotKeepItsSelfReportedConfidence(t 
 	// itself — otherwise the emitted number is the model's opinion wearing
 	// the audit trail's clothes.
 	const selfReported = 0.95
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "history", Args: json.RawMessage(`{"q":"past_incidents"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "history", Args: json.RawMessage(`{"q":"past_incidents"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
@@ -392,9 +393,9 @@ func TestPropose_ASelfReportLowersButNeverRaisesTheComputedConfidence(t *testing
 	// self-report above the computed grounding can't push the emitted
 	// number past it; a self-report below it still pulls the number down.
 	run := func(selfReported float64) float64 {
-		model := &fakeModel{script: []clank.Completion{
-			{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-			{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		model := &fakeModel{script: []reason.Completion{
+			{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+			{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 				FailureClass: proposal.ClassDependencySaturation,
 				Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 				Proposals: []proposal.Candidate{{
@@ -432,7 +433,7 @@ func TestPropose_ASelfReportLowersButNeverRaisesTheComputedConfidence(t *testing
 func TestEngine_ToolSpecsAreSortedByName(t *testing.T) {
 	t.Parallel()
 
-	e := &clank.Engine{Tools: map[string]clank.Tool{
+	e := &clank.Engine{Tools: map[string]reason.Tool{
 		"metrics": fakeTool{name: "metrics"},
 		"kube":    fakeTool{name: "kube"},
 		"loki":    fakeTool{name: "loki"},
@@ -451,25 +452,25 @@ func TestEngine_ToolSpecsAreSortedByName(t *testing.T) {
 }
 
 type fakeModel struct {
-	script        []clank.Completion
+	script        []reason.Completion
 	err           error // when set, Complete fails on every call regardless of script — simulates a Model outage
 	i             int
 	calls         int
-	received      [][]clank.Message
-	receivedTools [][]clank.ToolSpec
+	received      [][]reason.Message
+	receivedTools [][]reason.ToolSpec
 }
 
-func (m *fakeModel) Complete(_ context.Context, msgs []clank.Message, tools []clank.ToolSpec) (clank.Completion, error) {
+func (m *fakeModel) Complete(_ context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
 	m.calls++
-	cp := make([]clank.Message, len(msgs))
+	cp := make([]reason.Message, len(msgs))
 	copy(cp, msgs)
 	m.received = append(m.received, cp)
 	m.receivedTools = append(m.receivedTools, tools)
 	if m.err != nil {
-		return clank.Completion{}, m.err
+		return reason.Completion{}, m.err
 	}
 	if m.i >= len(m.script) {
-		return clank.Completion{}, nil // ran out of script -> no tool calls -> loop ends
+		return reason.Completion{}, nil // ran out of script -> no tool calls -> loop ends
 	}
 	c := m.script[m.i]
 	m.i++
@@ -503,8 +504,8 @@ func (metricsTool) Run(_ context.Context, args json.RawMessage) (proposal.Eviden
 	}, nil
 }
 
-func (metricsTool) Spec() clank.ToolSpec {
-	return clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query"}
+func (metricsTool) Spec() reason.ToolSpec {
+	return reason.ToolSpec{Name: "metrics", Description: "read-only telemetry query"}
 }
 
 // logsTool is the second backend the test engine needs to reach the
@@ -524,11 +525,11 @@ func (logsTool) Run(_ context.Context, args json.RawMessage) (proposal.EvidenceR
 	}, nil
 }
 
-func (logsTool) Spec() clank.ToolSpec {
-	return clank.ToolSpec{Name: "loki", Description: "read-only log query"}
+func (logsTool) Spec() reason.ToolSpec {
+	return reason.ToolSpec{Name: "loki", Description: "read-only log query"}
 }
 
-func newTestEngine(model clank.Model) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+func newTestEngine(model reason.Model) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
 	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
 		Intake: clank.NewIntake(
@@ -540,7 +541,7 @@ func newTestEngine(model clank.Model) (*clank.Engine, *publishtest.CapturePublis
 			}}},
 		),
 		Model: model,
-		Tools: map[string]clank.Tool{"metrics": metricsTool{}, "loki": logsTool{}},
+		Tools: map[string]reason.Tool{"metrics": metricsTool{}, "loki": logsTool{}},
 		Catalog: contract.NewStaticCatalog([]contract.ActionContract{{
 			Name:                     "throttle-non-critical-paths",
 			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
@@ -570,7 +571,7 @@ func testWeights() clank.ScoringWeights {
 	return w
 }
 
-func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+func newTestEngineWithCatalog(model reason.Model, cat *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
 	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
 		Intake: clank.NewIntake(
@@ -582,7 +583,7 @@ func newTestEngineWithCatalog(model clank.Model, cat *contract.StaticCatalog) (*
 			}}},
 		),
 		Model:        model,
-		Tools:        map[string]clank.Tool{"metrics": metricsTool{}, "loki": logsTool{}},
+		Tools:        map[string]reason.Tool{"metrics": metricsTool{}, "loki": logsTool{}},
 		Catalog:      cat,
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},
@@ -636,11 +637,11 @@ func (f fakeTool) Run(_ context.Context, _ json.RawMessage) (proposal.EvidenceRe
 	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live, Query: f.query}, nil
 }
 
-func (f fakeTool) Spec() clank.ToolSpec {
-	return clank.ToolSpec{Name: f.name, Description: "read-only"}
+func (f fakeTool) Spec() reason.ToolSpec {
+	return reason.ToolSpec{Name: f.name, Description: "read-only"}
 }
 
-func specsContain(specs []clank.ToolSpec, name string) bool {
+func specsContain(specs []reason.ToolSpec, name string) bool {
 	for _, s := range specs {
 		if s.Name == name {
 			return true
@@ -649,7 +650,7 @@ func specsContain(specs []clank.ToolSpec, name string) bool {
 	return false
 }
 
-func specNames(specs []clank.ToolSpec) []string {
+func specNames(specs []reason.ToolSpec) []string {
 	names := make([]string, len(specs))
 	for i, s := range specs {
 		names[i] = s.Name
@@ -666,8 +667,8 @@ func openProposalFor(fp string) proposal.Set {
 
 func TestPropose_WhenModelDeclines_YieldsNoAction(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{
 			Name: "insufficient",
 			Args: json.RawMessage(`{"reason":"no live corroboration for the topology hypothesis"}`),
 		}}},
@@ -694,8 +695,8 @@ func TestPropose_InsufficientRecordsTheDiagnosedClass(t *testing.T) {
 	// A correct diagnosis with no catalogued remedy must survive as audit
 	// data, not vanish into a bare decline — which classes accumulate
 	// insufficient calls is the evidence any catalog addition waits on.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{
 			Name: "insufficient",
 			Args: json.RawMessage(`{"reason":"no catalogued action lists this class","failureClass":"dependency_saturation"}`),
 		}}},
@@ -714,8 +715,8 @@ func TestPropose_InsufficientRecordsTheDiagnosedClass(t *testing.T) {
 
 func TestPropose_StopsAtMaxSteps_YieldsBudgetExhausted(t *testing.T) {
 	t.Parallel()
-	metrics := clank.Completion{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}}
-	model := &fakeModel{script: []clank.Completion{metrics, metrics, metrics, metrics}}
+	metrics := reason.Completion{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}}
+	model := &fakeModel{script: []reason.Completion{metrics, metrics, metrics, metrics}}
 	e, sink := newTestEngine(model)
 
 	e.MaxSteps = 3
@@ -737,9 +738,9 @@ func TestPropose_StopsAtMaxSteps_YieldsBudgetExhausted(t *testing.T) {
 
 func TestPropose_HaltsWhenCheckpointFails(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"y"}`)}}}, // never reached
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"y"}`)}}}, // never reached
 	}}
 	e, _ := newTestEngine(model)
 	e.Store = &failingStore{MemStore: clank.NewMemStore(), failOn: 0}
@@ -756,12 +757,12 @@ func TestPropose_AppendsTheToolDigestToTheConversation(t *testing.T) {
 	t.Parallel()
 	const digest = "503 rate 12%/min on /checkout"
 	tool := fakeTool{name: "logs", digest: digest, ref: "loki:abc", live: true}
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"errors"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"errors"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
 	}}
 	e, _ := newTestEngine(model)
-	e.Tools = map[string]clank.Tool{"logs": tool}
+	e.Tools = map[string]reason.Tool{"logs": tool}
 
 	if _, err := e.Propose(context.Background(), sigBurnAccel()); err != nil {
 		t.Fatal(err)
@@ -783,8 +784,8 @@ func TestPropose_AppendsTheToolDigestToTheConversation(t *testing.T) {
 
 func TestPropose_WhenModelEndsTurnWithoutATool_YieldsSyntheticReason(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{Message: clank.Message{Role: "assistant", Content: "I'm not sure what to do here."}},
+	model := &fakeModel{script: []reason.Completion{
+		{Message: reason.Message{Role: "assistant", Content: "I'm not sure what to do here."}},
 	}}
 	e, sink := newTestEngine(model)
 	got, err := e.Propose(context.Background(), sigBurnAccel())
@@ -809,8 +810,8 @@ func TestPropose_ToolMessagesCarryTheCitableKeyVerbatim(t *testing.T) {
 	// by exact string equality, so every gathered ref's Query must appear
 	// verbatim in a tool message the model received — a key the engine
 	// validates but never showed is a check the model can only pass by luck.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
 	}}
 	eng, _ := newTestEngine(model)
 
@@ -835,8 +836,8 @@ func TestPropose_ToolMessagesCarryTheCitableKeyVerbatim(t *testing.T) {
 
 func TestEngine_Propose_NeverSendsARealChangeTargetToTheModel(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"no evidence yet"}`)}}},
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"no evidence yet"}`)}}},
 	}}
 	e, _ := newTestEngine(model)
 
@@ -855,8 +856,8 @@ func TestEngine_Propose_NeverSendsARealChangeTargetToTheModel(t *testing.T) {
 
 func TestEngine_Propose_ChecksPointsTheRealChangeTargetDespiteMasking(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"no evidence yet"}`)}}},
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"no evidence yet"}`)}}},
 	}}
 	store := &checkpointSpyStore{MemStore: clank.NewMemStore()}
 	e, _ := newTestEngine(model)
@@ -888,12 +889,12 @@ func TestEngine_Propose_ChecksPointsTheRealChangeTargetDespiteMasking(t *testing
 // recorded at dispatch time.
 func TestEngine_Propose_MatchesACitationTheModelEchoedBackThroughTheMask(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
+	model := &fakeModel{script: []reason.Completion{
 		// turn 1: query "checkout" — sig.OriginService, always registered first
 		// and so always {{mask-1}}, regardless of what else the SAO registers.
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"checkout"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"checkout"}`)}}},
 		// turn 2: cite exactly the masked key — simulating what the model actually saw
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
@@ -916,7 +917,7 @@ func TestEngine_Propose_MatchesACitationTheModelEchoedBackThroughTheMask(t *test
 // receivedToolContent reports whether any tool-role message in one conversation
 // snapshot contains the key verbatim — substring, not equality, because the key
 // rides inside the digest line rather than replacing it.
-func receivedToolContent(msgs []clank.Message, key string) bool {
+func receivedToolContent(msgs []reason.Message, key string) bool {
 	for _, m := range msgs {
 		if m.Role != "tool" {
 			continue
@@ -933,7 +934,7 @@ func receivedToolContent(msgs []clank.Message, key string) bool {
 // receivedToolDigest reports whether any message snapshot shown to the model
 // carries the digest as a tool-role message — i.e. the engine forwarded the
 // one-line EvidenceRef.Summary into the conversation.
-func receivedToolDigest(snapshots [][]clank.Message, digest string) bool {
+func receivedToolDigest(snapshots [][]reason.Message, digest string) bool {
 	for _, msgs := range snapshots {
 		for _, m := range msgs {
 			if m.Role != "tool" {
@@ -951,9 +952,9 @@ func receivedToolDigest(snapshots [][]clank.Message, digest string) bool {
 
 func TestPropose_OffersReadOnlyToolsAndControlVerbs(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}}}}
+	model := &fakeModel{script: []reason.Completion{{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}}}}
 	e, _ := newTestEngine(model)
-	e.Tools = map[string]clank.Tool{
+	e.Tools = map[string]reason.Tool{
 		"metrics":  metricsTool{},
 		"casebase": fakeTool{name: "casebase", digest: "similar incident 3w ago", ref: "cb:1"},
 	}
@@ -985,9 +986,9 @@ func TestPropose_OffersReadOnlyToolsAndControlVerbs(t *testing.T) {
 
 func TestPropose_RejectsACandidateOutsideTheCatalog(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Proposals:    []proposal.Candidate{{ID: "neerdowell", ContractRef: "rm -rf"}},
 		})}}},
@@ -1023,9 +1024,9 @@ func TestPropose_ClassMismatchBecomesAnAuditableDecline(t *testing.T) {
 		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassResourceExhaustion},
 		ApplicableTiers:          []string{"tier-1"},
 	}})
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassUnknown,
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "hold-rebalance"}},
 		})}}},
@@ -1054,9 +1055,9 @@ func TestPropose_RecordsTheCitationsEachCandidateCarries(t *testing.T) {
 	// cited is what the audit trail carries — the gate and the confidence
 	// function read this list, so a dropped or reordered citation would change
 	// what the machine believes it verified.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
@@ -1085,9 +1086,9 @@ func TestPropose_DeclinesACandidateCitingEvidenceTheRunNeverGathered(t *testing.
 	// no inspectable basis — the run must end as an auditable no_action, never
 	// a delivered set. This is the same refusal shape as a class-mismatched
 	// contract ref: recorded and loud, not silent.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
@@ -1114,9 +1115,9 @@ func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	sig := sigBurnAccel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89, Citations: []string{`{"q":"x"}`}}},
 		})}}},
@@ -1140,9 +1141,9 @@ func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 
 func TestPropose_FreezesTheSAOIntoTheSet(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Citations: []string{`{"q":"x"}`}}},
 		})}}},
@@ -1160,9 +1161,9 @@ func TestPropose_FreezesTheSAOIntoTheSet(t *testing.T) {
 
 func TestPropose_AttachesCausalScoresToTheSet(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Citations: []string{`{"q":"x"}`}}},
 		})}}},

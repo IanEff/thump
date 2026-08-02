@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 func TestIdentifierMasker_MasksAndRestoresRegisteredNames(t *testing.T) {
@@ -71,14 +72,14 @@ func TestIdentifierMasker_UnmasksTenOrMorePlaceholdersWithoutPrefixCollision(t *
 
 func TestMaskingModel_Complete_SendsPlaceholdersToTheWrappedModelAndRestoresRealNamesInTheResponse(t *testing.T) {
 	t.Parallel()
-	fake := &fakeModel{script: []clank.Completion{
-		{Message: clank.Message{Role: "assistant", Content: "{{mask-1}} looks healthy"}},
+	fake := &fakeModel{script: []reason.Completion{
+		{Message: reason.Message{Role: "assistant", Content: "{{mask-1}} looks healthy"}},
 	}}
 	mask := clank.NewIdentifierMaskerForTest()
 	mask.RegisterForTest("cart")
 	mm := clank.NewMaskingModelForTest(fake, mask)
 
-	comp, err := mm.Complete(t.Context(), []clank.Message{{Role: "user", Content: "investigate cart"}}, nil)
+	comp, err := mm.Complete(t.Context(), []reason.Message{{Role: "user", Content: "investigate cart"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,12 +93,12 @@ func TestMaskingModel_Complete_SendsPlaceholdersToTheWrappedModelAndRestoresReal
 
 func TestMaskingModel_Complete_NeverMutatesTheCallersMessageSlice(t *testing.T) {
 	t.Parallel()
-	fake := &fakeModel{script: []clank.Completion{{Message: clank.Message{Role: "assistant", Content: "ok"}}}}
+	fake := &fakeModel{script: []reason.Completion{{Message: reason.Message{Role: "assistant", Content: "ok"}}}}
 	mask := clank.NewIdentifierMaskerForTest()
 	mask.RegisterForTest("cart")
 	mm := clank.NewMaskingModelForTest(fake, mask)
 
-	msgs := []clank.Message{{Role: "user", Content: "investigate cart"}}
+	msgs := []reason.Message{{Role: "user", Content: "investigate cart"}}
 	if _, err := mm.Complete(t.Context(), msgs, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -108,14 +109,14 @@ func TestMaskingModel_Complete_NeverMutatesTheCallersMessageSlice(t *testing.T) 
 
 func TestMaskingModel_Complete_RestoresPlaceholdersInsideToolCallArgsSoTheRealToolCanDispatchThem(t *testing.T) {
 	t.Parallel()
-	fake := &fakeModel{script: []clank.Completion{{
-		ToolCalls: []clank.ToolCall{{ID: "1", Name: "kube", Args: []byte(`{"namespace":"{{mask-1}}"}`)}},
+	fake := &fakeModel{script: []reason.Completion{{
+		ToolCalls: []reason.ToolCall{{ID: "1", Name: "kube", Args: []byte(`{"namespace":"{{mask-1}}"}`)}},
 	}}}
 	mask := clank.NewIdentifierMaskerForTest()
 	mask.RegisterForTest("prod")
 	mm := clank.NewMaskingModelForTest(fake, mask)
 
-	comp, err := mm.Complete(t.Context(), []clank.Message{{Role: "user", Content: "check prod"}}, nil)
+	comp, err := mm.Complete(t.Context(), []reason.Message{{Role: "user", Content: "check prod"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

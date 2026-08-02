@@ -15,6 +15,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/reason"
 	"sigs.k8s.io/yaml"
 )
 
@@ -57,11 +58,11 @@ func TestTransport_ADetectionInTheInboxIsProposedAndArchived(t *testing.T) {
 // is proving Transport → Propose → delivered file, so the script never varies.
 func newProposingEngine(t *testing.T, outbox string) *clank.Engine {
 	t.Helper()
-	model := &fakeModel{script: []clank.Completion{
+	model := &fakeModel{script: []reason.Completion{
 		// turn 1: gather live evidence — required for the gate's evidence floor.
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
 		// turn 2: propose a catalogued action.
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"burn"}`}}},
@@ -78,7 +79,7 @@ func newProposingEngine(t *testing.T, outbox string) *clank.Engine {
 			}}},
 		),
 		Model: model,
-		Tools: map[string]clank.Tool{"metrics": metricsTool{}},
+		Tools: map[string]reason.Tool{"metrics": metricsTool{}},
 		Catalog: contract.NewStaticCatalog([]contract.ActionContract{{
 			Name:                     "throttle-non-critical-paths",
 			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},
@@ -109,8 +110,8 @@ func yamlCount(t *testing.T, dir string) int {
 
 type erroringModel struct{ err error }
 
-func (m erroringModel) Complete(context.Context, []clank.Message, []clank.ToolSpec) (clank.Completion, error) {
-	return clank.Completion{}, m.err
+func (m erroringModel) Complete(context.Context, []reason.Message, []reason.ToolSpec) (reason.Completion, error) {
+	return reason.Completion{}, m.err
 }
 
 func TestTransport_GivesUpAfterFiveFailures(t *testing.T) {

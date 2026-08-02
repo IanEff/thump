@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // blockCacheControl reports b's cache breakpoint, or nil if none was set.
@@ -75,34 +76,34 @@ func blockTypes(params []anthropic.MessageParam) []string {
 func TestToAnthropicMessageParams_BuildsTheBlocksTheAPIExpects(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
-		msgs []clank.Message
+		msgs []reason.Message
 		want []string // block types, in order, flattened across messages
 	}{
 		"a tool-only assistant turn sends a tool_use block and no empty text": {
-			msgs: []clank.Message{{Role: "assistant", ToolCalls: []clank.ToolCall{
+			msgs: []reason.Message{{Role: "assistant", ToolCalls: []reason.ToolCall{
 				{ID: "t1", Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
 			}}},
 			want: []string{"tool_use"},
 		},
 		"a narrated tool turn sends text and tool_use together, in that order": {
-			msgs: []clank.Message{{Role: "assistant", Content: "checking burn", ToolCalls: []clank.ToolCall{
+			msgs: []reason.Message{{Role: "assistant", Content: "checking burn", ToolCalls: []reason.ToolCall{
 				{ID: "t1", Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
 			}}},
 			want: []string{"text", "tool_use"},
 		},
 		"one turn's parallel results ride in one message": {
-			msgs: []clank.Message{{Role: "tool", ToolResults: []clank.ToolResult{
+			msgs: []reason.Message{{Role: "tool", ToolResults: []reason.ToolResult{
 				{CallID: "t1", Digest: "burn = 4"},
 				{CallID: "t2", Digest: "errors = 0"},
 			}}},
 			want: []string{"tool_result", "tool_result"},
 		},
 		"a message carrying nothing at all is dropped rather than sent empty": {
-			msgs: []clank.Message{{Role: "assistant"}},
+			msgs: []reason.Message{{Role: "assistant"}},
 			want: nil,
 		},
 		"the seed prompt still sends one text block": {
-			msgs: []clank.Message{{Role: "user", Content: "signal on ceph-rgw"}},
+			msgs: []reason.Message{{Role: "user", Content: "signal on ceph-rgw"}},
 			want: []string{"text"},
 		},
 	}
@@ -120,19 +121,19 @@ func TestToAnthropicMessageParams_BuildsTheBlocksTheAPIExpects(t *testing.T) {
 func TestToAnthropicMessageParams_RolesTheTurnsTheWayTheAPIReadsThem(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
-		msg  clank.Message
+		msg  reason.Message
 		want anthropic.MessageParamRole
 	}{
 		"an assistant turn is sent as the assistant": {
-			msg:  clank.Message{Role: "assistant", Content: "checking"},
+			msg:  reason.Message{Role: "assistant", Content: "checking"},
 			want: anthropic.MessageParamRoleAssistant,
 		},
 		"a tool turn is sent as the user, because tool_result is a user block": {
-			msg:  clank.Message{Role: "tool", ToolResults: []clank.ToolResult{{CallID: "t1", Digest: "burn = 4"}}},
+			msg:  reason.Message{Role: "tool", ToolResults: []reason.ToolResult{{CallID: "t1", Digest: "burn = 4"}}},
 			want: anthropic.MessageParamRoleUser,
 		},
 		"the seed prompt is sent as the user": {
-			msg:  clank.Message{Role: "user", Content: "signal on ceph-rgw"},
+			msg:  reason.Message{Role: "user", Content: "signal on ceph-rgw"},
 			want: anthropic.MessageParamRoleUser,
 		},
 	}
@@ -140,7 +141,7 @@ func TestToAnthropicMessageParams_RolesTheTurnsTheWayTheAPIReadsThem(t *testing.
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := clank.ToAnthropicMessageParamsForTest([]clank.Message{tc.msg})
+			got := clank.ToAnthropicMessageParamsForTest([]reason.Message{tc.msg})
 			if len(got) != 1 {
 				t.Fatalf("want exactly one rendered message, got %d", len(got))
 			}
@@ -155,19 +156,19 @@ func TestFromAnthropicMessage_MapsUsageOntoCompletion(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
 		usage anthropic.Usage
-		want  clank.Usage
+		want  reason.Usage
 	}{
 		"a response with a cache read reports the read and input counts": {
 			usage: anthropic.Usage{CacheReadInputTokens: 1800, InputTokens: 200},
-			want:  clank.Usage{CacheReadInputTokens: 1800, InputTokens: 200},
+			want:  reason.Usage{CacheReadInputTokens: 1800, InputTokens: 200},
 		},
 		"a response with no cache activity reports zeros, not omission": {
 			usage: anthropic.Usage{InputTokens: 500},
-			want:  clank.Usage{InputTokens: 500},
+			want:  reason.Usage{InputTokens: 500},
 		},
 		"a response that wrote a new cache entry reports the write count": {
 			usage: anthropic.Usage{CacheCreationInputTokens: 3200, InputTokens: 3200},
-			want:  clank.Usage{CacheCreationInputTokens: 3200, InputTokens: 3200},
+			want:  reason.Usage{CacheCreationInputTokens: 3200, InputTokens: 3200},
 		},
 	}
 	for name, tc := range cases {
@@ -185,18 +186,18 @@ func TestFromAnthropicMessage_MapsUsageOntoCompletion(t *testing.T) {
 func TestToAnthropicMessageParams_MarksTheLastMessagesLastBlockCacheable(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
-		msgs []clank.Message
+		msgs []reason.Message
 		want []int // flattened block indices carrying CacheControl
 	}{
 		"a single user turn marks its only block": {
-			msgs: []clank.Message{{Role: "user", Content: "seed prompt"}},
+			msgs: []reason.Message{{Role: "user", Content: "seed prompt"}},
 			want: []int{0},
 		},
 		"a turn ending in tool_result marks the tool_result block, not an earlier text block": {
-			msgs: []clank.Message{
+			msgs: []reason.Message{
 				{Role: "user", Content: "seed"},
-				{Role: "assistant", ToolCalls: []clank.ToolCall{{ID: "t1", Name: "kube"}}},
-				{Role: "user", ToolResults: []clank.ToolResult{{CallID: "t1", Digest: "ok"}}},
+				{Role: "assistant", ToolCalls: []reason.ToolCall{{ID: "t1", Name: "kube"}}},
+				{Role: "user", ToolResults: []reason.ToolResult{{CallID: "t1", Digest: "ok"}}},
 			},
 			want: []int{2},
 		},
@@ -219,11 +220,11 @@ func TestToAnthropicMessageParams_MarksTheLastMessagesLastBlockCacheable(t *test
 func TestToAnthropicToolParams_MarksTheLastToolCacheable(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
-		tools []clank.ToolSpec
+		tools []reason.ToolSpec
 		want  []int
 	}{
 		"multiple tools mark only the last one": {
-			tools: []clank.ToolSpec{{Name: "insufficient"}, {Name: "kube"}, {Name: "loki"}},
+			tools: []reason.ToolSpec{{Name: "insufficient"}, {Name: "kube"}, {Name: "loki"}},
 			want:  []int{2},
 		},
 		"no tools marks nothing": {

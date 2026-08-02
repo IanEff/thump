@@ -9,6 +9,7 @@ import (
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // loop is the offline (dir-poll) composition root: one Engine, one
@@ -33,7 +34,7 @@ func proposalFilename(ps proposal.Set) string {
 	return ps.Name
 }
 
-func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *loop {
+func newLoop(_, outbox, outcomes, declines string, model reason.Model, tools map[string]reason.Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	ledger.LedgerRetention = limits.LedgerRetention
 	cases := NewCaseBase() // ONE case base
@@ -72,7 +73,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *Engine {
+func newBrokerEngine(model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *Engine {
 	return &Engine{
 		Intake:         intake,
 		Model:          model,
