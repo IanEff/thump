@@ -7,7 +7,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
-// Corpus is the calibration record: every closed loop thi
+// Corpus is the calibration record: every closed loop the
 // engine has emitted, joined from a shaped WAL rather than
 // computed.
 type Corpus struct {
@@ -45,7 +45,7 @@ type FloorSupport struct {
 	Floor         float64
 	AdmittedTotal int // cases with Confidence >= Floor
 	AdmittedWins  int // of those, Result == ResultSuccess
-	RefusedTotal  int // cases blow flor
+	RefusedTotal  int // cases below floor
 	RefusedWins   int // of those, Result == ResultSuccess
 }
 
