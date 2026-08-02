@@ -21,7 +21,7 @@ type Reconciler struct {
 	Detector          AccelerationDetector   // always runs first
 	Correlation       *CorrelationDetector   // nil disables the correlation branch
 	CorrelationSource MultiSignalSource      // required alongside Correlation
-	Envelope          *EnvelopeDetector      // nil disables the historical-envelope branch
+	EnvelopeDetector  *EnvelopeDetector      // nil disables the historical-envelope branch
 	BaselineSource    BaselineSource         // required alongside Envelope
 	Sustained         *SustainedBurnDetector // nil disables the sustained-burn branch
 	Debounce          *Debouncer             // nil disables debouncing entirely
@@ -71,12 +71,12 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 				detectorType = "multi_signal_correlation"
 			}
 		}
-		if !fired && r.Envelope != nil && r.BaselineSource != nil {
+		if !fired && r.EnvelopeDetector != nil && r.BaselineSource != nil {
 			baseline, err := r.BaselineSource.BaselineSamples(ctx, slo)
 			if err != nil {
 				return nil, fmt.Errorf("baseline samples for %s: %w", slo.ID, err)
 			}
-			if fired = r.Envelope.Fires(baseline, window); fired {
+			if fired = r.EnvelopeDetector.Fires(baseline, window); fired {
 				accel = 0 // EnvelopeDetector has no acceleration figure
 				detectorType = "historical_envelope_breach"
 			}
@@ -109,7 +109,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) 
 
 // fingerprint is the dedup key every Detector-driven signal shares: kind
 // (the detector-agnostic object category) plus the affected object name.
-func fingerprint(env Envelope) string {
+func fingerprint(env Watched) string {
 	return env.Kind() + ":" + env.AffectedObject()
 }
 

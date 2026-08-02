@@ -21,7 +21,7 @@ func TestEnrichTopology_PopulatesObservedDependencyState(t *testing.T) {
 	got := rattle.EnrichTopology(context.Background(), signal.Detection{}, slo, topo)
 
 	want := signal.TopologyContext{
-		Upstream: []signal.ObservedNode{{Service: "payment-gateway", State: "degraded"}},
+		Upstream: []signal.ObservedNode{{Name: "payment-gateway", State: "degraded"}},
 	}
 	if diff := cmp.Diff(want, got.Topology); diff != "" {
 		t.Error("wrong observed topology state", diff)

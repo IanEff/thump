@@ -79,7 +79,7 @@ func TestReconcile_EmitsOnEnvelopeBreachEvenWithoutAcceleration(t *testing.T) {
 	t.Parallel()
 	slo := rattle.SLO{ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1"}
 	r := newTestReconciler([]rattle.SLO{slo}, fakeSource{slo.ID: window(1, 2, 3, 4)})
-	r.Envelope = &rattle.EnvelopeDetector{K: 2}
+	r.EnvelopeDetector = &rattle.EnvelopeDetector{K: 2}
 	r.BaselineSource = fakeBaselineSource{slo.ID: window(1, 1.1, 0.9, 1.0, 1.05)}
 
 	got, err := r.Reconcile(context.Background())
@@ -232,7 +232,7 @@ func goldenDetection() signal.Detection {
 			Trajectory: "accelerating", // SignalFor hardcodes this for the accel detector
 		},
 		Topology: signal.TopologyContext{
-			Upstream: []signal.ObservedNode{{Service: "ceph-osd", State: "degrade"}}, // EnrichTopology
+			Upstream: []signal.ObservedNode{{Name: "ceph-osd", State: "degrade"}}, // EnrichTopology
 		},
 		Traffic: signal.TrafficContext{AffectedPct: 0.4}, // EnrichTraffic: last trafficWindow point
 		Impact: signal.Impact{

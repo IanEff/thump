@@ -61,12 +61,12 @@ func TestCaseBase_RingEviction(t *testing.T) {
 
 	// Seed exactly maxCases (10,000)
 	cases := make([]clank.Case, 10000)
-	cases[0] = clank.Case{Fingerprint: "oldest"}
+	cases[0] = clank.Case{SignalRef: "oldest"}
 	cb.SetCasesForTest(cases)
 
 	// Action
 	err := cb.Append(clank.Case{
-		Fingerprint: "newest",
+		SignalRef:   "newest",
 		OutcomeRef:  "ref",
 		DecisionRef: "ref",
 		Result:      "success",

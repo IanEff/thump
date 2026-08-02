@@ -13,7 +13,7 @@ import (
 // Reconcile, would report a number nobody chose. SignalFor takes the fired
 // value as an argument instead of recomputing it, so there is exactly one
 // place accel and trajectory get computed.
-func SignalFor(env Envelope, detectorType string, accel float64, traj string, now time.Time, contract *SignalContract) signal.Detection {
+func SignalFor(env Watched, detectorType string, accel float64, traj string, now time.Time, contract *SignalContract) signal.Detection {
 	d := signal.Detection{
 		Name:          env.AffectedObject() + "-burn-accel",
 		Fingerprint:   fingerprint(env),

@@ -17,8 +17,8 @@ import (
 var applicationGVR = schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}
 
 // DefaultChangeLookback bounds how far back a sync still counts as a change
-// worth scoring — four temporal half-lives (causal.go's temporalHalfLife),
-// past which an event's recency component is under 0.07 and cannot move a
+// worth scoring — four half-lives of ScoringWeights.RecencyHalfLife, past
+// which an event's recency component is under 0.07 and cannot move a
 // Candidate's confidence enough to justify its weight in the SAO.
 const DefaultChangeLookback = 2 * time.Hour
 

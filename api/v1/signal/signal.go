@@ -79,8 +79,8 @@ type TopologyContext struct {
 // ObservedNode is one service rattle observed upstream or downstream of the
 // detection — a name plus a coarse health read, not a full topology record.
 type ObservedNode struct {
-	Service string
-	State   string // "healthy" | "degraded" | "down" by rattle's convention, not a compiler-enforced enum — flows unchanged into proposal.NodeState.State, where the causal scorer's negative-signal check tests for exactly "degraded"
+	Name  string
+	State string // "healthy" | "degraded" | "down" by rattle's convention, not a compiler-enforced enum — flows unchanged into proposal.NodeState.State, where the causal scorer's negative-signal check tests for exactly "degraded"
 }
 
 // TrafficContext is rattle's own traffic-share reading for the affected

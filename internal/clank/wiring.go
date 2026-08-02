@@ -105,16 +105,16 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 // zero value.
 func DefaultScoringWeights() ScoringWeights {
 	return ScoringWeights{
-		Temporal:          1.0 / 3,
-		Topological:       1.0 / 3,
-		Historical:        1.0 / 3,
-		FreshnessHalfLife: 30 * 24 * time.Hour,
-		GroundingNone:     0.3,
-		GroundingOne:      0.7,
-		GroundingMany:     1.0,
-		Causal:            0.5,
+		Temporal:           1.0 / 3,
+		Topological:        1.0 / 3,
+		Historical:         1.0 / 3,
+		HistoricalHalfLife: 30 * 24 * time.Hour,
+		GroundingNone:      0.3,
+		GroundingOne:       0.7,
+		GroundingMany:      1.0,
+		Causal:             0.5,
 		// Promoted out of causal.go's unexported consts by X2b; same values.
-		TemporalHalfLife:      30 * time.Minute,
+		RecencyHalfLife:       30 * time.Minute,
 		HistoricalAloneCap:    0.5,
 		CaseBaseBaseline:      0.9,
 		NegativeSignalPenalty: 0.2,

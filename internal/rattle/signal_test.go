@@ -44,7 +44,7 @@ func TestSignalFor_QuotesTheAccelerationInDivergence(t *testing.T) {
 
 func TestSignalFor_StillStampsTheSameFingerprintThroughEnvelope(t *testing.T) {
 	t.Parallel()
-	var env rattle.Envelope = rattle.SLO{Object: "ceph-rgw", Tier: "tier-1", ContractRef: "ceph-rgw-availability:v1"}
+	var env rattle.Watched = rattle.SLO{Object: "ceph-rgw", Tier: "tier-1", ContractRef: "ceph-rgw-availability:v1"}
 
 	got := rattle.SignalFor(env, "burn_rate_acceleration", 2.0, "accelerating", time.Unix(1000, 0), nil)
 
