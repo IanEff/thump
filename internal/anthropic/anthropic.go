@@ -1,4 +1,8 @@
-package clank
+// Package anthropic is the reason.Model adaptor for Claude: it renders
+// reason.Message/reason.ToolSpec into the Messages API's wire shapes and
+// folds the response back into a reason.Completion, so the reason loop never
+// depends on the SDK directly.
+package anthropic
 
 import (
 	"context"
@@ -11,24 +15,21 @@ import (
 	"github.com/ianeff/thump/internal/reason"
 )
 
-// modelRequestTimeout bounds one call to the model. Longer than
-// httpx.DefaultBackendTimeout on purpose — a Haiku completion carrying tool
-// results legitimately runs longer than a PromQL query, and this is the
-// reason loop's own call, not a telemetry read.
-const modelRequestTimeout = 120 * time.Second
-
-// AnthropicModel is the production reason.Model: Claude Haiku behind the Messages
+// Model is the production reason.Model: Claude Haiku behind the Messages
 // API, the cheapest model on record for this loop. It's the adaptor Main
-// wires in — GeminiModel exists as a second reason.Model implementation but Main
-// doesn't select it yet.
-type AnthropicModel struct {
+// wires in — internal/gemini exists as a second reason.Model implementation
+// but Main doesn't select it yet.
+type Model struct {
 	client anthropic.Client
 }
 
-// NewAnthropicModel builds an AnthropicModel authenticated with apiKey.
-func NewAnthropicModel(apiKey string) *AnthropicModel {
-	return &AnthropicModel{
-		client: anthropic.NewClient(option.WithAPIKey(apiKey), option.WithRequestTimeout(modelRequestTimeout)),
+// NewModel builds a Model authenticated with apiKey. timeout bounds every
+// call to the SDK — clank.go provisions it against the broker's AckWait, so
+// it stays the caller's to set rather than a constant this package would
+// otherwise have no way to justify.
+func NewModel(apiKey string, timeout time.Duration) *Model {
+	return &Model{
+		client: anthropic.NewClient(option.WithAPIKey(apiKey), option.WithRequestTimeout(timeout)),
 	}
 }
 
@@ -36,7 +37,7 @@ func NewAnthropicModel(apiKey string) *AnthropicModel {
 // a reason.Completion via fromAnthropicMessage. A tool the model wasn't offered in
 // tools can never come back here — the SDK only echoes tool calls for tools
 // it was given a spec for.
-func (m *AnthropicModel) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
+func (m *Model) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
 	resp, err := m.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeHaiku4_5_20251001, // cheapest model on record
 		MaxTokens: 4096,

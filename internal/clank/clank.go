@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
@@ -25,6 +26,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
+
+// modelRequestTimeout bounds one call to the model. Longer than
+// httpx.DefaultBackendTimeout on purpose — a Haiku completion carrying tool
+// results legitimately runs longer than a PromQL query, and this is the
+// reason loop's own call, not a telemetry read.
+const modelRequestTimeout = 120 * time.Second
 
 // Main is clank's process entry. It wires the reason.Model (Anthropic, keyed by
 // ANTHROPIC_API_KEY — Main refuses to start without it), the read-only tools
@@ -103,7 +110,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	kubeClient, argoClient := inClusterClients()
 	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
-	model := NewAnthropicModel(cfg.AnthropicAPIKey)
+	model := anthropic.NewModel(cfg.AnthropicAPIKey, modelRequestTimeout)
 	intake, err := buildIntake(cfg, backendTLS, argoClient, ev.Index, limits.ChangeLookback)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)

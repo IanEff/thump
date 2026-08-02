@@ -1,10 +1,11 @@
-package clank
+package gemini_test
 
 import (
 	"encoding/json"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/internal/gemini"
 	"github.com/ianeff/thump/internal/reason"
 	"google.golang.org/genai"
 )
@@ -58,7 +59,7 @@ func TestToGeminiContents_BuildsThePartsTheAPIExpects(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if diff := cmp.Diff(tc.want, partKinds(toGeminiContents(tc.msgs))); diff != "" {
+			if diff := cmp.Diff(tc.want, partKinds(gemini.ToGeminiContentsForTest(tc.msgs))); diff != "" {
 				t.Error("wrong parts on the wire (-want +got)\n", diff)
 			}
 		})
@@ -70,7 +71,7 @@ func TestToGeminiContents_BuildsThePartsTheAPIExpects(t *testing.T) {
 // parallel turn's answers back into anonymous digests.
 func TestToGeminiContents_KeepsTheProvidersOwnCallIdentifier(t *testing.T) {
 	t.Parallel()
-	got := toGeminiContents([]reason.Message{{Role: "tool", ToolResults: []reason.ToolResult{
+	got := gemini.ToGeminiContentsForTest([]reason.Message{{Role: "tool", ToolResults: []reason.ToolResult{
 		{CallID: "t1", Name: "metrics", Digest: "burn = 4"},
 	}}})
 	if len(got) != 1 || len(got[0].Parts) != 1 || got[0].Parts[0].FunctionResponse == nil {

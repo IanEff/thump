@@ -3,8 +3,9 @@ package integration_test
 import (
 	"context"
 	"testing"
+	"time"
 
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/reason"
 )
 
@@ -13,7 +14,7 @@ import (
 // costs no API call and needs no key. The key is a dummy — irrelevant to the
 // behavior under test.
 func TestAnthropicModel_ReturnsErrorOnCancelledContext(t *testing.T) {
-	model := clank.NewAnthropicModel("dummy key")
+	model := anthropic.NewModel("dummy key", 120*time.Second)
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
