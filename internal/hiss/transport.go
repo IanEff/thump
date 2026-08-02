@@ -12,6 +12,7 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/publish"
 )
 
@@ -59,7 +60,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) error {
 	now := beat.Clock(tr.Now)
 	var d decision.Decision
-	_ = beat.Stage(ctx, beat.TracerOrNoop(tr.Tracer), tr.Stages, "govern", func(context.Context) error {
+	_ = beat.Stage(ctx, otelx.TracerOrNoop(tr.Tracer), tr.Stages, "govern", func(context.Context) error {
 		var auth Authority
 		d = auth.Evaluate(ps, tr.Policy, now())
 		return nil

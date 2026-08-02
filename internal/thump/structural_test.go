@@ -78,6 +78,11 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// gated by its own leaf tripwire — same risk profile as beat's S3
 		// client before it moved, not a new capability.
 		`"github.com/ianeff/thump/internal/objectstore"`: true,
+		// C1d: the OTel provider/exporter wiring beat.Tracer used to build.
+		// Same OTel trace SDK + otlp exporter + grpc credentials already
+		// implied by the beat entry above, gated by its own leaf tripwire —
+		// not a new capability, just named where it actually lives now.
+		`"github.com/ianeff/thump/internal/otelx"`: true,
 		// pure goroutine-lifecycle plumbing (WithContext + Go + Wait) — no net,
 		// no os/exec, no client. runBroker uses it to run the WAL shipper(s)
 		// alongside the consumer loop, the same composition clank/broker.go

@@ -1,4 +1,9 @@
-package beat
+// Package otelx is thump's thin layer over the OpenTelemetry SDK — the
+// provider/exporter wiring every beat's Main calls once at startup, plus the
+// otlp-breaker autoexport reader registered by otlpbreaker.go's init. It
+// mints no domain vocabulary of its own; internal/tracing owns trace
+// identity (fingerprint → TraceID), and this package never touches it.
+package otelx
 
 import (
 	"context"
@@ -16,11 +21,6 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// Shutdown releases whatever Tracer allocated — never nil, so a caller can
-// unconditionally `defer shutdown(ctx)` even on the unconfigured path, with
-// no nil check standing between every beat and the same one-liner.
-type Shutdown func(context.Context) error
-
 // exporterFactory builds the span exporter newTracer batches through once an
 // endpoint is configured — the seam that lets tests supply a fake exporter
 // instead of dialing a real collector.
@@ -33,13 +33,15 @@ type exporterFactory func(ctx context.Context, endpoint string) (sdktrace.SpanEx
 // OTLP/gRPC exporter, and the resulting provider is registered as otel's
 // process-global default — internal/broker's and internal/publish's
 // propagation.TraceContext{} read that global, so they need no wiring of
-// their own.
+// their own. The returned shutdown func is beat.Shutdown's underlying type —
+// Go's named-function-type assignability makes the two interchangeable at
+// every call site without otelx importing beat.
 //
 // The otelc auto-instrumentation layer (.otelc-build) reads this same var
 // independently, through autoexport rather than otlpDialOptions below — it
 // needs a full URL, not the bare host:port otlpDialOptions itself would
 // accept, so the value must always carry a scheme.
-func Tracer(ctx context.Context, beatName string, otlpEndpoint string, tlsCfg tlsx.Config) (trace.Tracer, Shutdown, error) {
+func Tracer(ctx context.Context, beatName string, otlpEndpoint string, tlsCfg tlsx.Config) (trace.Tracer, func(context.Context) error, error) {
 	factory := func(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
 		return newOTLPExporter(ctx, endpoint, tlsCfg)
 	}
@@ -55,17 +57,17 @@ func TracerOrNoop(t trace.Tracer) trace.Tracer {
 	return t
 }
 
-func newTracer(ctx context.Context, beatName, endpoint string, newExporter exporterFactory) (trace.Tracer, Shutdown, error) {
+func newTracer(ctx context.Context, beatName, endpoint string, newExporter exporterFactory) (trace.Tracer, func(context.Context) error, error) {
 	if endpoint == "" {
 		return noop.Tracer{}, func(context.Context) error { return nil }, nil
 	}
 	if _, err := otlpDialOptions(endpoint); err != nil {
-		return nil, nil, fmt.Errorf("beat: %w", err)
+		return nil, nil, fmt.Errorf("otelx: %w", err)
 	}
 
 	exp, err := newExporter(ctx, endpoint)
 	if err != nil {
-		return nil, nil, fmt.Errorf("beat: build span exporter for %q: %w", endpoint, err)
+		return nil, nil, fmt.Errorf("otelx: build span exporter for %q: %w", endpoint, err)
 	}
 
 	// Every beat's binary is copied into its image as the literal filename
@@ -77,7 +79,7 @@ func newTracer(ctx context.Context, beatName, endpoint string, newExporter expor
 	// "hiss" actually discriminates.
 	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(semconv.ServiceNameKey.String(beatName)))
 	if err != nil {
-		return nil, nil, fmt.Errorf("beat: build resource for %q: %w", beatName, err)
+		return nil, nil, fmt.Errorf("otelx: build resource for %q: %w", beatName, err)
 	}
 
 	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp), sdktrace.WithResource(res))
@@ -118,7 +120,7 @@ func otlpDialOptions(endpoint string) (otlpDial, error) {
 		return otlpDial{Host: strings.TrimPrefix(endpoint, "http://"), Insecure: true}, nil
 	case strings.Contains(endpoint, "://"):
 		scheme, _, _ := strings.Cut(endpoint, "://")
-		return otlpDial{}, fmt.Errorf("beat %q: unmappable OTLP scheme %q, want http or https", endpoint, scheme)
+		return otlpDial{}, fmt.Errorf("otelx %q: unmappable OTLP scheme %q, want http or https", endpoint, scheme)
 	default:
 		return otlpDial{Host: endpoint, Insecure: true}, nil
 	}

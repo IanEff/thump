@@ -27,6 +27,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/health"
 	"github.com/ianeff/thump/internal/objectstore"
+	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
@@ -60,7 +61,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "hiss", cfg.OTLPEndpoint, tlsx.Config{
+	tracer, shutdownTracer, err := otelx.Tracer(ctx, "hiss", cfg.OTLPEndpoint, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,

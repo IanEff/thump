@@ -18,6 +18,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/objectstore"
+	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
@@ -171,7 +172,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	// entire readiness contract.
 	health.SetReady(true)
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "rattle", cfg.OTLPEndpoint, tlsx.Config{
+	tracer, shutdownTracer, err := otelx.Tracer(ctx, "rattle", cfg.OTLPEndpoint, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
