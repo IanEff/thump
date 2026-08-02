@@ -8,6 +8,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/subjects"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -54,7 +55,7 @@ func TestArgoChanges(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
 		apps     []*unstructured.Unstructured
-		subjects clank.SubjectIndex
+		subjects subjects.SubjectIndex
 		now      time.Time
 		want     proposal.ChangeSnapshot
 	}{
@@ -70,8 +71,8 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}, managed{"CephBlockPool", "rook-ceph", "replicapool"}),
 			},
-			subjects: clank.SubjectIndex{
-				{Subject: "cephblockpool", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
+			subjects: subjects.SubjectIndex{
+				{Subject: "cephblockpool", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
@@ -86,9 +87,9 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}, managed{"Deployment", "otel-demo", "cart"}, managed{"Deployment", "otel-demo", "checkout"}),
 			},
-			subjects: clank.SubjectIndex{
-				{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "cart"}},
-				{Subject: "checkout", Coordinates: clank.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}},
+			subjects: subjects.SubjectIndex{
+				{Subject: "cart", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "cart"}},
+				{Subject: "checkout", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
@@ -107,7 +108,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}, managed{"Deployment", "otel-demo", "cart"}, managed{"Service", "otel-demo", "cart"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo"}}},
+			subjects: subjects.SubjectIndex{{Subject: "cart", Coordinates: subjects.Coordinates{Namespace: "otel-demo"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cart", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
@@ -124,7 +125,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}, managed{"Deployment", "cert-manager", "cert-manager-webhook"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo"}}},
+			subjects: subjects.SubjectIndex{{Subject: "cart", Coordinates: subjects.Coordinates{Namespace: "otel-demo"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cert-manager", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
@@ -138,7 +139,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo"}}},
+			subjects: subjects.SubjectIndex{{Subject: "cart", Coordinates: subjects.Coordinates{Namespace: "otel-demo"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cart", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
@@ -155,8 +156,8 @@ func TestArgoChanges(t *testing.T) {
 					},
 				}, managed{"Deployment", "rook-ceph", "rook-ceph-operator"}),
 			},
-			subjects: clank.SubjectIndex{
-				{Subject: "rook-operator", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "Deployment", Name: "rook-ceph-operator"}},
+			subjects: subjects.SubjectIndex{
+				{Subject: "rook-operator", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Kind: "Deployment", Name: "rook-ceph-operator"}},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
@@ -173,7 +174,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "old000"}},
 				}, managed{"Deployment", "cert-manager", "cert-manager"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cert-manager", Coordinates: clank.Coordinates{Namespace: "cert-manager"}}},
+			subjects: subjects.SubjectIndex{{Subject: "cert-manager", Coordinates: subjects.Coordinates{Namespace: "cert-manager"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want:     proposal.ChangeSnapshot{},
 		},
@@ -190,7 +191,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "ghi789"}},
 				}, managed{"Deployment", "otel-demo", "checkout"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "checkout", Coordinates: clank.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}}},
+			subjects: subjects.SubjectIndex{{Subject: "checkout", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "ghi789", Type: "deploy", Target: "checkout", Age: 15 * time.Minute, HistoricalStaleness: 15 * time.Minute},

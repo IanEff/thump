@@ -8,6 +8,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/subjects"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -36,7 +37,7 @@ type ArgoChangeSource struct {
 	// Subjects is the same authored index the evidence tools resolve through,
 	// so a rig states once which cluster coordinates belong to which node.
 	// Empty means no resource resolves and every event scores out of topology.
-	Subjects SubjectIndex
+	Subjects subjects.SubjectIndex
 
 	// ChangeLookback bounds how old a sync may be and still be reported;
 	// zero means DefaultChangeLookback. Without it every Application that
@@ -74,7 +75,7 @@ func (a ArgoChangeSource) Changes(ctx context.Context, _ signal.Detection) (prop
 // a name the topology graph recognizes into ChangeEvent.Target. An Application
 // whose last sync did not succeed, cannot be dated, or finished outside
 // lookback yields nothing.
-func appEvents(app unstructured.Unstructured, now time.Time, lookback time.Duration, subjects SubjectIndex) []proposal.ChangeEvent {
+func appEvents(app unstructured.Unstructured, now time.Time, lookback time.Duration, idx subjects.SubjectIndex) []proposal.ChangeEvent {
 	phase, _, _ := unstructured.NestedString(app.Object, "status", "operationState", "phase")
 	if phase != "Succeeded" {
 		return nil
@@ -100,7 +101,7 @@ func appEvents(app unstructured.Unstructured, now time.Time, lookback time.Durat
 	// An Application reporting no managed resources still changed something,
 	// so it falls back to naming itself rather than vanishing — the score
 	// will carry InTopology false and stay out of the confidence product.
-	targets := managedSubjects(app, subjects)
+	targets := managedSubjects(app, idx)
 	if len(targets) == 0 {
 		targets = []string{app.GetName()}
 	}
@@ -125,7 +126,7 @@ func appEvents(app unstructured.Unstructured, now time.Time, lookback time.Durat
 // entry no rule claims is dropped: it names an object the graph cannot place,
 // and an unresolved Kubernetes name on a ChangeEvent.Target is
 // indistinguishable from a node name that simply went missing.
-func managedSubjects(app unstructured.Unstructured, subjects SubjectIndex) []string {
+func managedSubjects(app unstructured.Unstructured, idx subjects.SubjectIndex) []string {
 	resources, _, err := unstructured.NestedSlice(app.Object, "status", "resources")
 	if err != nil {
 		return nil
@@ -142,7 +143,7 @@ func managedSubjects(app unstructured.Unstructured, subjects SubjectIndex) []str
 		kind, _, _ := unstructured.NestedString(res, "kind")
 		namespace, _, _ := unstructured.NestedString(res, "namespace")
 
-		subject := subjects.For(Coordinates{Namespace: namespace, Kind: kind, Name: name})
+		subject := idx.For(subjects.Coordinates{Namespace: namespace, Kind: kind, Name: name})
 		if subject == "" || seen[subject] {
 			continue
 		}

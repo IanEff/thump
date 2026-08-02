@@ -18,6 +18,7 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/whir"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -295,7 +296,7 @@ func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T
 
 	ev := clank.EvidenceConfig{
 		Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "ceph_health_status", Subject: "ceph-cluster"}},
-		Index:   clank.SubjectIndex{{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}}},
+		Index:   subjects.SubjectIndex{{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}}},
 	}
 	cfg := config.Clank{
 		PromURL:         "http://prom:9090",
@@ -448,7 +449,7 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 	// Subject rules are part of "fully configured" for a change source: without
 	// them every resolved target is empty and the source reports nothing the
 	// topology can place, so buildIntake declines to build one.
-	subjects := clank.SubjectIndex{{Subject: "cephblockpool", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}}
+	subjects := subjects.SubjectIndex{{Subject: "cephblockpool", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}}
 	cfg := config.Clank{ArgoEnabled: true}
 	intake, err := clank.BuildIntakeForTest(cfg, nil, fake, subjects, 2*time.Hour)
 	if err != nil {

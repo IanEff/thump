@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/subjects"
 )
 
 func TestMetricsTool_Run(t *testing.T) {
@@ -227,7 +228,7 @@ func TestLoadEvidenceConfig_ParsesSubjectRules(t *testing.T) {
 
 	tests := map[string]struct {
 		doc  string
-		want clank.SubjectIndex
+		want subjects.SubjectIndex
 	}{
 		"LoadEvidenceConfig parses a subjects block into rules in file order": {
 			doc: `
@@ -243,9 +244,9 @@ subjects:
   - subject: acme-api
     namespace: acme
 `,
-			want: clank.SubjectIndex{
-				{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
-				{Subject: "acme-api", Coordinates: clank.Coordinates{Namespace: "acme"}},
+			want: subjects.SubjectIndex{
+				{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+				{Subject: "acme-api", Coordinates: subjects.Coordinates{Namespace: "acme"}},
 			},
 		},
 		"LoadEvidenceConfig yields an empty index for a file with no subjects block": {

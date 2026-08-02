@@ -1,4 +1,7 @@
-package clank
+// Package subjects resolves cluster coordinates to a topology node — the one
+// index both the evidence plane and the change plane consult so that a
+// citation and a change event name a subject the same way.
+package subjects
 
 // Coordinates are the cluster facts a caller can state about one piece of
 // evidence or one change event. Callers know different subsets — a log query

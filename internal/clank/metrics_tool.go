@@ -12,6 +12,8 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/schema"
+	"github.com/ianeff/thump/internal/subjects"
 	"sigs.k8s.io/yaml"
 )
 
@@ -60,7 +62,7 @@ func (m *MetricsTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "metrics",
 		Description: "read-only telemetry query. Valid q values: " + strings.Join(names, ", "),
-		InputSchema: SchemaOf[metricsInput](),
+		InputSchema: schema.Of[metricsInput](),
 	}
 }
 
@@ -141,7 +143,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 // are authored in one file per rig.
 type EvidenceConfig struct {
 	Queries map[string]EvidenceQuery // query name → EvidenceQuery
-	Index   SubjectIndex             // the log and cluster tools' coordinate rules
+	Index   subjects.SubjectIndex    // the log and cluster tools' coordinate rules
 }
 
 // LoadEvidenceConfig parses evidence-queries.yaml. A query with no subject:
@@ -154,8 +156,8 @@ func LoadEvidenceConfig(path string) (EvidenceConfig, error) {
 	}
 
 	var file struct {
-		Queries  []EvidenceQuery `json:"queries"`
-		Subjects []SubjectRule   `json:"subjects"`
+		Queries  []EvidenceQuery        `json:"queries"`
+		Subjects []subjects.SubjectRule `json:"subjects"`
 	}
 	if err := yaml.Unmarshal(raw, &file); err != nil {
 		return EvidenceConfig{}, fmt.Errorf("parse evidence queries: %w", err)
