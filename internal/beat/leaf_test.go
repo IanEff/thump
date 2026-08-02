@@ -1,11 +1,9 @@
 package beat_test
 
 import (
-	"go/parser"
-	"go/token"
-	"os"
-	"strings"
 	"testing"
+
+	"github.com/ianeff/thump/internal/leaftest"
 )
 
 // TestBeatImportsNoBeat pins the kit's load-bearing invariant: internal/beat
@@ -18,7 +16,7 @@ import (
 // the credentials.TransportCredentials otlptracegrpc.WithTLSCredentials
 // requires — and stage.go's Stage, which every beat's loop stages run
 // through), the OTel metrics SDK plus autoexport and grpc/codes+status
-// (otelmetrics.go's breakerExporter, which registers as the
+// (otlpbreaker.go's breakerExporter, which registers as the
 // OTEL_METRICS_EXPORTER=otlp-breaker factory autoexport's compile-time
 // instrumentation layer selects, and classifies gRPC failures from the
 // wrapped otlpmetricgrpc exporter to decide whether to trip), the Prometheus
@@ -37,67 +35,36 @@ import (
 // import.
 func TestBeatImportsNoBeat(t *testing.T) {
 	t.Parallel()
-	allowed := map[string]bool{
-		`"github.com/ianeff/thump/internal/broker"`:                           true,
-		`"github.com/ianeff/thump/internal/publish"`:                          true,
-		`"github.com/nats-io/nats.go/jetstream"`:                              true,
-		`"github.com/prometheus/client_golang/prometheus"`:                    true,
-		`"github.com/prometheus/client_golang/prometheus/promhttp"`:           true,
-		`"go.opentelemetry.io/otel"`:                                          true,
-		`"go.opentelemetry.io/otel/codes"`:                                    true,
-		`"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"`:   true,
-		`"go.opentelemetry.io/otel/sdk/resource"`:                             true,
-		`"go.opentelemetry.io/otel/sdk/trace"`:                                true,
-		`"go.opentelemetry.io/otel/semconv/v1.26.0"`:                          true,
-		`"go.opentelemetry.io/otel/trace"`:                                    true,
-		`"go.opentelemetry.io/otel/trace/noop"`:                               true,
-		`"github.com/aws/aws-sdk-go-v2/aws"`:                                  true,
-		`"github.com/aws/aws-sdk-go-v2/config"`:                               true,
-		`"github.com/aws/aws-sdk-go-v2/credentials"`:                          true,
-		`"github.com/aws/aws-sdk-go-v2/service/s3"`:                           true,
-		`"github.com/aws/smithy-go/middleware"`:                               true,
-		`"github.com/aws/smithy-go/transport/http"`:                           true,
-		`"github.com/ianeff/thump/internal/tlsx"`:                             true,
-		`"github.com/ianeff/thump/internal/sealbox"`:                          true,
-		`"google.golang.org/grpc/credentials"`:                                true,
-		`"go.opentelemetry.io/contrib/exporters/autoexport"`:                  true,
-		`"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"`: true,
-		`"go.opentelemetry.io/otel/sdk/metric"`:                               true,
-		`"go.opentelemetry.io/otel/sdk/metric/metricdata"`:                    true,
-		`"google.golang.org/grpc/codes"`:                                      true,
-		`"google.golang.org/grpc/status"`:                                     true,
-		`"sigs.k8s.io/yaml"`:                                                  true,
-	}
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	fset := token.NewFileSet()
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, name, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, imp := range f.Imports {
-			path := imp.Path.Value
-			if isStdlib(path) || allowed[path] {
-				continue
-			}
-			t.Errorf("%s imports %s — internal/beat must stay transport-only (stdlib + broker/publish/jetstream)",
-				name, path)
-		}
-	}
-}
-
-// isStdlib reports whether a quoted import path is a standard-library package:
-// stdlib paths have no dot in their first segment (no domain), where third-party
-// paths look like "github.com/...".
-func isStdlib(quoted string) bool {
-	p := strings.Trim(quoted, `"`)
-	first, _, _ := strings.Cut(p, "/")
-	return !strings.Contains(first, ".")
+	leaftest.AssertLeaf(t,
+		leaftest.Stdlib,
+		"github.com/ianeff/thump/internal/broker",
+		"github.com/ianeff/thump/internal/publish",
+		"github.com/nats-io/nats.go/jetstream",
+		"github.com/prometheus/client_golang/prometheus",
+		"github.com/prometheus/client_golang/prometheus/promhttp",
+		"go.opentelemetry.io/otel",
+		"go.opentelemetry.io/otel/codes",
+		"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+		"go.opentelemetry.io/otel/sdk/resource",
+		"go.opentelemetry.io/otel/sdk/trace",
+		"go.opentelemetry.io/otel/semconv/v1.26.0",
+		"go.opentelemetry.io/otel/trace",
+		"go.opentelemetry.io/otel/trace/noop",
+		"github.com/aws/aws-sdk-go-v2/aws",
+		"github.com/aws/aws-sdk-go-v2/config",
+		"github.com/aws/aws-sdk-go-v2/credentials",
+		"github.com/aws/aws-sdk-go-v2/service/s3",
+		"github.com/aws/smithy-go/middleware",
+		"github.com/aws/smithy-go/transport/http",
+		"github.com/ianeff/thump/internal/tlsx",
+		"github.com/ianeff/thump/internal/sealbox",
+		"google.golang.org/grpc/credentials",
+		"go.opentelemetry.io/contrib/exporters/autoexport",
+		"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc",
+		"go.opentelemetry.io/otel/sdk/metric",
+		"go.opentelemetry.io/otel/sdk/metric/metricdata",
+		"google.golang.org/grpc/codes",
+		"google.golang.org/grpc/status",
+		"sigs.k8s.io/yaml",
+	)
 }
