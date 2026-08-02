@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -87,44 +86,15 @@ func (h *HubbleTrafficSource) TrafficSamples(ctx context.Context, slo SLO) ([]Tr
 // instant runs one /api/v1/query. A nil *float64 with nil error means "no
 // series" (quiet); a non-nil error means the query itself failed (loud).
 func (h *HubbleTrafficSource) instant(ctx context.Context, query string) (*float64, error) {
-	u, err := url.Parse(h.BaseURL + "/api/v1/query")
-	if err != nil {
-		return nil, fmt.Errorf("hubble base url: %w", err)
-	}
-	u.RawQuery = url.Values{"query": {query}}.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("build hubble request: %w", err)
-	}
-	client := h.Client
-	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
-	}
-	resp, err := client.Do(req)
+	result, err := httpx.InstantQuery(ctx, h.Client, h.BaseURL, query)
 	if err != nil {
 		return nil, fmt.Errorf("query hubble: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("hubble returned %s", resp.Status)
-	}
-
-	var body struct {
-		Data struct {
-			Result []struct {
-				Value [2]json.RawMessage `json:"value"`
-			} `json:"result"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, fmt.Errorf("decode hubble body: %w", err)
-	}
-	if len(body.Data.Result) == 0 {
+	if len(result.Data.Result) == 0 {
 		return nil, nil // no series — quiet absence
 	}
 	var raw string
-	if err := json.Unmarshal(body.Data.Result[0].Value[1], &raw); err != nil {
+	if err := json.Unmarshal(result.Data.Result[0].Value[1], &raw); err != nil {
 		return nil, fmt.Errorf("parse hubble value: %w", err)
 	}
 	f, err := strconv.ParseFloat(raw, 64)

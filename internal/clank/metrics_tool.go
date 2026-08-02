@@ -3,9 +3,9 @@ package clank
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -82,59 +82,34 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 	}
 	promQL, subject := eq.Query, eq.Subject
 
-	u, err := url.Parse(m.BaseURL + "/api/v1/query")
+	result, err := httpx.InstantQuery(ctx, m.Client, m.BaseURL, promQL)
 	if err != nil {
-		return proposal.EvidenceRef{}, fmt.Errorf("parse url: %w", err)
-	}
-	u.RawQuery = url.Values{"query": {promQL}}.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return proposal.EvidenceRef{}, fmt.Errorf("new request: %w", err)
-	}
-
-	client := m.Client
-	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return proposal.EvidenceRef{
-			Tool:    "metrics",
-			Query:   input.Q,
-			Summary: fmt.Sprintf("prometheus request failed: %v", err),
-			Live:    false,
-			Subject: subject,
-		}, nil
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return proposal.EvidenceRef{
-			Tool:    "metrics",
-			Query:   input.Q,
-			Summary: fmt.Sprintf("prometheus returned status: %s", resp.Status),
-			Live:    false,
-			Subject: subject,
-		}, nil
+		switch {
+		case errors.Is(err, httpx.ErrBuildInstantQuery):
+			return proposal.EvidenceRef{}, fmt.Errorf("build query: %w", err)
+		case errors.Is(err, httpx.ErrDecodeInstantResult):
+			return proposal.EvidenceRef{}, nil
+		default:
+			if statusErr, ok := errors.AsType[*httpx.StatusError](err); ok {
+				return proposal.EvidenceRef{
+					Tool:    "metrics",
+					Query:   input.Q,
+					Summary: fmt.Sprintf("prometheus returned status: %s", statusErr.Status),
+					Live:    false,
+					Subject: subject,
+				}, nil
+			}
+			return proposal.EvidenceRef{
+				Tool:    "metrics",
+				Query:   input.Q,
+				Summary: fmt.Sprintf("prometheus request failed: %v", err),
+				Live:    false,
+				Subject: subject,
+			}, nil
+		}
 	}
 
-	var body struct {
-		Data struct {
-			Result []struct {
-				Value [2]json.RawMessage `json:"value"`
-			} `json:"result"`
-		} `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return proposal.EvidenceRef{}, nil
-	}
-
-	if len(body.Data.Result) == 0 {
+	if len(result.Data.Result) == 0 {
 		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
@@ -145,7 +120,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 	}
 
 	var v string
-	if err := json.Unmarshal(body.Data.Result[0].Value[1], &v); err != nil {
+	if err := json.Unmarshal(result.Data.Result[0].Value[1], &v); err != nil {
 		return proposal.EvidenceRef{}, fmt.Errorf("decode value string: %w", err)
 	}
 
