@@ -13,7 +13,6 @@ import (
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/notify/slack"
-	"github.com/ianeff/thump/internal/thump"
 )
 
 func TestWebhookNotify_PostsTheHeldDigestToTheWebhook(t *testing.T) {
@@ -72,8 +71,8 @@ func TestWebhookNotify_ReturnsErrWebhookStatusWhenSlackRejects(t *testing.T) {
 
 // heldAction is a redundancy_degraded hold whose recommended Candidate is the
 // high-blast accelerate-recovery action — the shape a live hold delivers.
-func heldAction() thump.HeldAction {
-	return thump.HeldAction{
+func heldAction() decision.Governed {
+	return decision.Governed{
 		Decision: decision.Decision{
 			SignalRef:    "slo_burn:ceph-data",
 			CandidateRef: "p1",

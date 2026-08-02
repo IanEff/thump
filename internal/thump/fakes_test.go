@@ -226,9 +226,9 @@ func readOneDecline(t *testing.T, outbox string) decision.Decision {
 	return d
 }
 
-func readOneHeld(t *testing.T, outbox string) thump.HeldAction {
+func readOneHeld(t *testing.T, outbox string) decision.Governed {
 	t.Helper()
-	var h thump.HeldAction
+	var h decision.Governed
 	readOneYAML(t, filepath.Join(outbox, "held"), &h)
 	return h
 }
@@ -237,11 +237,11 @@ func readOneHeld(t *testing.T, outbox string) thump.HeldAction {
 // a programmable error, so a test can drive both the delivered and the
 // degrades-gracefully-on-failure paths.
 type fakeNotifier struct {
-	notified []thump.HeldAction
+	notified []decision.Governed
 	err      error
 }
 
-func (f *fakeNotifier) Notify(_ context.Context, h thump.HeldAction) error {
+func (f *fakeNotifier) Notify(_ context.Context, h decision.Governed) error {
 	f.notified = append(f.notified, h)
 	return f.err
 }
@@ -282,9 +282,9 @@ func newTestTransport(inbox, outbox string) *thump.Transport {
 			Dir:  filepath.Join(outbox, "declines"),
 			Name: func(d decision.Decision) string { return d.SignalRef },
 		},
-		HeldPub: &publish.DirPublisher[thump.HeldAction]{
+		HeldPub: &publish.DirPublisher[decision.Governed]{
 			Dir:  filepath.Join(outbox, "held"),
-			Name: func(h thump.HeldAction) string { return h.Decision.SignalRef },
+			Name: func(g decision.Governed) string { return g.Decision.SignalRef },
 		},
 		Catalog: richCatalog(),
 		Log:     thump.NewOutcomeLog(),

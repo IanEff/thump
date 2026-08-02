@@ -126,9 +126,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			Dir:  filepath.Join(cfg.Outbox, "declines"),
 			Name: func(d decision.Decision) string { return d.SignalRef },
 		},
-		HeldPub: &publish.DirPublisher[HeldAction]{
+		HeldPub: &publish.DirPublisher[decision.Governed]{
 			Dir:  filepath.Join(cfg.Outbox, "held"),
-			Name: func(h HeldAction) string { return h.Decision.SignalRef },
+			Name: func(g decision.Governed) string { return g.Decision.SignalRef },
 		},
 		Catalog:  cat,
 		Log:      NewOutcomeLog(),
@@ -190,7 +190,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	heldPub, _, err := beat.NewWALPublisher[HeldAction](js, cfg.WALDir, "thump", "thump.held", walConfig)
+	heldPub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "thump", "thump.held", walConfig)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -308,13 +308,12 @@ func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 }
 
 // buildNotifier turns cfg's Slack webhook URL into a Notifier via ctor.
-// Unlike buildExecutor/buildReversalWatcher above, this package can't
-// construct the concrete client itself — internal/notify/slack imports
-// internal/thump for HeldAction, so the reverse import would cycle. ctor is
-// supplied by cmd/thump's composition root, which is free to import the
-// Slack package; an empty URL (SLACK_WEBHOOK_URL unset) means no notifier,
-// not a broken one — a hold still publishes to HeldPub, it just pages
-// nobody (handle nil-checks Notifier at transport.go:161).
+// Unlike buildExecutor/buildReversalWatcher above, this package never
+// constructs the concrete client itself — ctor is supplied by cmd/thump's
+// composition root, which is free to import the Slack package; an empty URL
+// (SLACK_WEBHOOK_URL unset) means no notifier, not a broken one — a hold
+// still publishes to HeldPub, it just pages nobody (handle nil-checks
+// Notifier at transport.go:161).
 func buildNotifier(cfg config.Thump, ctor func(url string) Notifier) Notifier {
 	if cfg.SlackWebhookURL == "" {
 		slog.Warn("no Slack webhook configured - held actions will page nobody", "beat", "thump", "fix", "set SLACK_WEBHOOK_URL")

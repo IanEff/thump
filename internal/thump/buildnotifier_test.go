@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/internal/config"
 )
 
@@ -13,14 +14,13 @@ import (
 // see the unexported buildNotifier).
 type stubNotifier struct{}
 
-func (stubNotifier) Notify(context.Context, HeldAction) error { return nil }
+func (stubNotifier) Notify(context.Context, decision.Governed) error { return nil }
 
-// buildNotifier can't construct *slack.Webhook itself — internal/notify/slack
-// imports internal/thump for HeldAction, so the reverse import would cycle.
-// ctor is supplied by cmd/thump's composition root, which is free to import
-// the Slack package; buildNotifier's own job is just "empty URL means nil,
-// non-empty means call ctor" — so the test proves exactly that, with a ctor
-// that carries no dependency of its own.
+// buildNotifier never constructs *slack.Webhook itself — ctor is supplied by
+// cmd/thump's composition root, which is free to import the Slack package;
+// buildNotifier's own job is just "empty URL means nil, non-empty means call
+// ctor" — so the test proves exactly that, with a ctor that carries no
+// dependency of its own.
 func TestBuildNotifier_URLSetCallsCtor(t *testing.T) {
 	t.Parallel()
 	var gotURL string
