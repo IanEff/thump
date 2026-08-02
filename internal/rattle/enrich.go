@@ -60,7 +60,7 @@ func EnrichTopology(ctx context.Context, d signal.Detection, slo SLO, src Topolo
 		if err != nil {
 			continue
 		}
-		d.Topology.Upstream = append(d.Topology.Upstream, signal.ObservedNode{Service: dep.Name, State: state})
+		d.Topology.Upstream = append(d.Topology.Upstream, signal.ObservedNode{Name: dep.Name, State: state})
 	}
 	return d
 }

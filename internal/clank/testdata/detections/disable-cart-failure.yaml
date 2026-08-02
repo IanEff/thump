@@ -41,9 +41,9 @@ ServiceTier: tier-1
 Topology:
   Downstream: null
   Upstream:
-  - Service: checkout
+  - Name: checkout
     State: degraded
-  - Service: flagd
+  - Name: flagd
     State: healthy
 Traffic:
   AffectedPct: 0

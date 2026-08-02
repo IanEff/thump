@@ -46,13 +46,13 @@ ServiceTier: tier-1
 Topology:
   Downstream: null
   Upstream:
-  - Service: cephblockpool
+  - Name: cephblockpool
     State: healthy
-  - Service: ceph-node-1
+  - Name: ceph-node-1
     State: healthy
-  - Service: ceph-node-2
+  - Name: ceph-node-2
     State: healthy
-  - Service: ceph-node-3
+  - Name: ceph-node-3
     State: healthy
 Traffic:
   AffectedPct: 0

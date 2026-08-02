@@ -20,10 +20,10 @@ var ErrIncompleteWeights = errors.New("weights file is missing one or more requi
 // hiss's confidence floors, they shape how the scorer weighs evidence, not
 // what the system is allowed to act on, which is why they stay in clank.
 type ScoringWeights struct {
-	Temporal          float64
-	Topological       float64
-	Historical        float64
-	FreshnessHalfLife time.Duration // how fast historical alignment decays by topology staleness (defence 2)
+	Temporal           float64
+	Topological        float64
+	Historical         float64
+	HistoricalHalfLife time.Duration // how fast historical alignment decays by topology staleness (defence 2)
 
 	// GroundingNone, GroundingOne, and GroundingMany are scoreConfidence's
 	// multiplier for a candidate whose citations resolve to 0, 1, or 2+
@@ -40,8 +40,8 @@ type ScoringWeights struct {
 	// below the same run holding none.
 	Causal float64
 
-	// TemporalHalfLife is how fast a change event's temporalScore decays.
-	TemporalHalfLife time.Duration
+	// RecencyHalfLife is how fast a change event's temporalScore decays.
+	RecencyHalfLife time.Duration
 
 	// HistoricalAloneCap is the ceiling on an uncorroborated historical
 	// score.
@@ -69,12 +69,12 @@ type weightsFile struct {
 	Temporal              *float64 `json:"temporal"`
 	Topological           *float64 `json:"topological"`
 	Historical            *float64 `json:"historical"`
-	FreshnessHalfLife     *string  `json:"freshnessHalfLife"`
+	HistoricalHalfLife    *string  `json:"historicalHalfLife"`
 	GroundingNone         *float64 `json:"groundingNone"`
 	GroundingOne          *float64 `json:"groundingOne"`
 	GroundingMany         *float64 `json:"groundingMany"`
 	Causal                *float64 `json:"causal"`
-	TemporalHalfLife      *string  `json:"temporalHalfLife"`
+	RecencyHalfLife       *string  `json:"recencyHalfLife"`
 	HistoricalAloneCap    *float64 `json:"historicalAloneCap"`
 	CaseBaseBaseline      *float64 `json:"caseBaseBaseline"`
 	NegativeSignalPenalty *float64 `json:"negativeSignalPenalty"`
@@ -102,12 +102,12 @@ func LoadWeightsFile(path string) (ScoringWeights, error) {
 	need("temporal", wf.Temporal != nil)
 	need("topological", wf.Topological != nil)
 	need("historical", wf.Historical != nil)
-	need("freshnessHalfLife", wf.FreshnessHalfLife != nil)
+	need("historicalHalfLife", wf.HistoricalHalfLife != nil)
 	need("groundingNone", wf.GroundingNone != nil)
 	need("groundingOne", wf.GroundingOne != nil)
 	need("groundingMany", wf.GroundingMany != nil)
 	need("causal", wf.Causal != nil)
-	need("temporalHalfLife", wf.TemporalHalfLife != nil)
+	need("recencyHalfLife", wf.RecencyHalfLife != nil)
 	need("historicalAloneCap", wf.HistoricalAloneCap != nil)
 	need("caseBaseBaseline", wf.CaseBaseBaseline != nil)
 	need("negativeSignalPenalty", wf.NegativeSignalPenalty != nil)
@@ -116,25 +116,25 @@ func LoadWeightsFile(path string) (ScoringWeights, error) {
 		return ScoringWeights{}, fmt.Errorf("%w: %s", ErrIncompleteWeights, strings.Join(missing, ", "))
 	}
 
-	freshness, err := time.ParseDuration(*wf.FreshnessHalfLife)
+	historicalHalfLife, err := time.ParseDuration(*wf.HistoricalHalfLife)
 	if err != nil {
-		return ScoringWeights{}, fmt.Errorf("weights file freshnessHalfLife: %w", err)
+		return ScoringWeights{}, fmt.Errorf("weights file historicalHalfLife: %w", err)
 	}
-	temporalHalfLife, err := time.ParseDuration(*wf.TemporalHalfLife)
+	recencyHalfLife, err := time.ParseDuration(*wf.RecencyHalfLife)
 	if err != nil {
-		return ScoringWeights{}, fmt.Errorf("weights file temporalHalfLife: %w", err)
+		return ScoringWeights{}, fmt.Errorf("weights file recencyHalfLife: %w", err)
 	}
 
 	return ScoringWeights{
 		Temporal:              *wf.Temporal,
 		Topological:           *wf.Topological,
 		Historical:            *wf.Historical,
-		FreshnessHalfLife:     freshness,
+		HistoricalHalfLife:    historicalHalfLife,
 		GroundingNone:         *wf.GroundingNone,
 		GroundingOne:          *wf.GroundingOne,
 		GroundingMany:         *wf.GroundingMany,
 		Causal:                *wf.Causal,
-		TemporalHalfLife:      temporalHalfLife,
+		RecencyHalfLife:       recencyHalfLife,
 		HistoricalAloneCap:    *wf.HistoricalAloneCap,
 		CaseBaseBaseline:      *wf.CaseBaseBaseline,
 		NegativeSignalPenalty: *wf.NegativeSignalPenalty,

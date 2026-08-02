@@ -34,16 +34,16 @@ func stddev(xs []float64, m float64) float64 {
 	return math.Sqrt(sumSq / float64(len(xs)))
 }
 
-// Envelope is what a detector needs from a watched object to fingerprint it
+// Watched is what a detector needs from a watched object to fingerprint it
 // and populate a signal.Detection — object identity, tier, action-catalog
 // contract, and a fingerprint-prefix Kind. SLO is rattle's only
 // implementation today, but nothing in this package assumes SLO specifically
 // past this interface.
-type Envelope interface {
+type Watched interface {
 	AffectedObject() string
 	DeclaredTier() string
 	Contract() string
 	Kind() string // fingerprint prefix
 }
 
-var _ Envelope = SLO{}
+var _ Watched = SLO{}

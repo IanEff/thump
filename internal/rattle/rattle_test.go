@@ -118,8 +118,8 @@ func TestWhirTopologySource_EnrichesWithUnknownVisible(t *testing.T) {
 	got := rattle.EnrichTopology(context.Background(), signal.Detection{}, slo, src)
 
 	want := []signal.ObservedNode{
-		{Service: "rook-operator", State: "healthy"},
-		{Service: "cephobjectstore", State: "unknown"}, // no Queries entry -> unknown, not dropped
+		{Name: "rook-operator", State: "healthy"},
+		{Name: "cephobjectstore", State: "unknown"}, // no Queries entry -> unknown, not dropped
 	}
 	if diff := cmp.Diff(want, got.Topology.Upstream); diff != "" {
 		t.Errorf("Topology.Upstream (-want +got):\n%s", diff)

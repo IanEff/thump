@@ -17,7 +17,7 @@ const maxCases = 10000 // CaseBase caps here; Append evicts the oldest case firs
 // fingerprint. It exists to compute Alignment — bookkeeping for the scorer's
 // Prior, not a belief in its own right; the proposal.Set stays the audit unit.
 type Case struct {
-	Fingerprint  string
+	SignalRef    string
 	DecisionRef  string
 	OutcomeRef   string
 	ContractRef  string
@@ -55,7 +55,7 @@ func NewCaseBase() *CaseBase {
 // rejected as ErrUnprovenancedCase: a case that can't be traced back to a
 // decision can't be trusted as a corroborating vote.
 func (cb *CaseBase) Append(c Case) error {
-	if c.Fingerprint == "" || c.OutcomeRef == "" || c.DecisionRef == "" || c.Result == "" {
+	if c.SignalRef == "" || c.OutcomeRef == "" || c.DecisionRef == "" || c.Result == "" {
 		return fmt.Errorf("%w: %v", ErrUnprovenancedCase, c)
 	}
 	cb.mu.Lock()
@@ -81,7 +81,7 @@ func (cb *CaseBase) Cases(fingerprint string) []Case {
 	defer cb.mu.RUnlock()
 	var out []Case
 	for _, c := range cb.cases {
-		if c.Fingerprint == fingerprint {
+		if c.SignalRef == fingerprint {
 			out = append(out, c)
 		}
 	}
@@ -106,7 +106,7 @@ func (cb *CaseBase) Alignment(fingerprint string) (float64, bool) {
 	defer cb.mu.RUnlock()
 	var votes, successes int
 	for _, c := range cb.cases {
-		if c.Fingerprint != fingerprint || c.Mode != outcome.ModeLive {
+		if c.SignalRef != fingerprint || c.Mode != outcome.ModeLive {
 			continue
 		}
 		switch c.Result {

@@ -88,10 +88,10 @@ func (in *Intake) Assemble(ctx context.Context, sig signal.Detection) (proposal.
 func topologyFromSignal(t signal.TopologyContext) proposal.TopologySnapshot {
 	var snap proposal.TopologySnapshot
 	for _, n := range t.Upstream {
-		snap.Upstream = append(snap.Upstream, proposal.NodeState{Name: n.Service, State: n.State})
+		snap.Upstream = append(snap.Upstream, proposal.NodeState{Name: n.Name, State: n.State})
 	}
 	for _, n := range t.Downstream {
-		snap.Downstream = append(snap.Downstream, proposal.NodeState{Name: n.Service, State: n.State})
+		snap.Downstream = append(snap.Downstream, proposal.NodeState{Name: n.Name, State: n.State})
 	}
 	return snap
 }
