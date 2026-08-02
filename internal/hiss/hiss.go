@@ -26,6 +26,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/health"
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
@@ -106,7 +107,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Tracer: tracer,
 		Stages: stages,
 	}
-	beat.PollLoop(ctx, beat.DefaultPollConfig, tr.Tick)
+	poll.Loop(ctx, poll.DefaultConfig, tr.Tick)
 	return 0
 }
 

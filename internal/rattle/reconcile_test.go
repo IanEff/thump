@@ -9,7 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/rattle"
 )
 
@@ -287,6 +287,6 @@ func TestReconciler_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T)
 		}
 
 		cancel()
-		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tick)
+		poll.Loop(ctx, poll.Config{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tick)
 	})
 }

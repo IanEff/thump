@@ -1,4 +1,4 @@
-package beat_test
+package poll_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/poll"
 )
 
 // TestWithTimeout_CutsATickThatOverrunsItsDeadline pins the bound one level
@@ -16,7 +16,7 @@ import (
 // length of the watch list.
 func TestWithTimeout_CutsATickThatOverrunsItsDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		tick := beat.WithTimeout(45*time.Second, func(ctx context.Context) error {
+		tick := poll.WithTimeout(45*time.Second, func(ctx context.Context) error {
 			<-ctx.Done()
 			return ctx.Err()
 		})
@@ -39,7 +39,7 @@ func TestWithTimeout_CutsATickThatOverrunsItsDeadline(t *testing.T) {
 func TestWithTimeout_ZeroLeavesTheTickUnbounded(t *testing.T) {
 	t.Parallel()
 	var gotDeadline bool
-	err := beat.WithTimeout(0, func(ctx context.Context) error {
+	err := poll.WithTimeout(0, func(ctx context.Context) error {
 		_, gotDeadline = ctx.Deadline()
 		return nil
 	})(t.Context())
@@ -48,5 +48,30 @@ func TestWithTimeout_ZeroLeavesTheTickUnbounded(t *testing.T) {
 	}
 	if gotDeadline {
 		t.Error("a zero timeout must not put a deadline on the tick's context")
+	}
+}
+
+func TestLoop_ReturnsPromptlyOnCancel(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled: the loop must return without ever ticking
+
+	ticked := false
+	done := make(chan struct{})
+	go func() {
+		poll.Loop(ctx, poll.Config{Interval: time.Hour}, func(context.Context) error {
+			ticked = true
+			return nil
+		})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Loop did not return on a cancelled context")
+	}
+	if ticked {
+		t.Error("Loop ticked despite the context being cancelled")
 	}
 }

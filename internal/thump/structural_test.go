@@ -69,6 +69,10 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// liveness flag and an HTTP handler, not a new capability split out
 		// of beat.
 		`"github.com/ianeff/thump/internal/health"`: true,
+		// C1b: the offline dir-poll ticker beat.PollLoop used to be. Stdlib
+		// only per its own leaf tripwire — a select loop over a
+		// time.Ticker/time.Timer, not a new capability.
+		`"github.com/ianeff/thump/internal/poll"`: true,
 		// pure goroutine-lifecycle plumbing (WithContext + Go + Wait) — no net,
 		// no os/exec, no client. runBroker uses it to run the WAL shipper(s)
 		// alongside the consumer loop, the same composition clank/broker.go

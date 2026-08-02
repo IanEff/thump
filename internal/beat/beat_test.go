@@ -6,7 +6,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
 
@@ -91,31 +90,6 @@ func TestNewWALPublisher_RejectsEmptyWALDir(t *testing.T) {
 	_, _, err := beat.NewWALPublisher[int](nil, "", "hiss", "thump.decisions", publish.DefaultWALConfig())
 	if err == nil {
 		t.Fatal("an empty WAL_DIR must be rejected, got nil error")
-	}
-}
-
-func TestPollLoop_ReturnsPromptlyOnCancel(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // already cancelled: the loop must return without ever ticking
-
-	ticked := false
-	done := make(chan struct{})
-	go func() {
-		beat.PollLoop(ctx, beat.PollConfig{Interval: time.Hour}, func(context.Context) error {
-			ticked = true
-			return nil
-		})
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("PollLoop did not return on a cancelled context")
-	}
-	if ticked {
-		t.Error("PollLoop ticked despite the context being cancelled")
 	}
 }
 

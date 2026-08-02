@@ -17,6 +17,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
@@ -250,7 +251,7 @@ func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.P
 
 	for {
 		var detections []signal.Detection
-		err := beat.WithTimeout(reconcileTimeout, func(ctx context.Context) error {
+		err := poll.WithTimeout(reconcileTimeout, func(ctx context.Context) error {
 			var rErr error
 			detections, rErr = r.Reconcile(ctx)
 			return rErr

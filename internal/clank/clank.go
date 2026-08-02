@@ -13,6 +13,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/whir"
@@ -187,8 +188,8 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 		return tickErr
 	}
-	beat.PollLoop(ctx, beat.PollConfig{
-		Backoff: &beat.BackoffConfig{
+	poll.Loop(ctx, poll.Config{
+		Backoff: &poll.BackoffConfig{
 			Base:          5 * time.Second,
 			Cap:           5 * time.Minute,
 			JitterDivisor: 4,

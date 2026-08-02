@@ -12,7 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/thump"
 )
 
@@ -210,6 +210,6 @@ func TestTransport_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) 
 		}
 
 		cancel()
-		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
+		poll.Loop(ctx, poll.Config{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
 	})
 }

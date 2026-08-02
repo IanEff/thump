@@ -1,4 +1,4 @@
-package beat_test
+package poll_test
 
 import (
 	"go/ast"
@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/poll"
 )
 
-// TestAllPollLoopCallsitesBoundTheirTick is PollLoop's sibling to
-// TestOnlyHttpxBuildsAnHTTPClient: PollConfig.Timeout's doc comment says every
+// TestAllPollLoopCallsitesBoundTheirTick is Loop's sibling to
+// TestOnlyHttpxBuildsAnHTTPClient: Config.Timeout's doc comment says every
 // call site must choose a number, but nothing enforced it. WithTimeout(0,
 // tick) returns tick unchanged with no log or metric, so a call site that
 // omits Timeout — or a future one that copies an existing site and forgets it
@@ -48,19 +48,19 @@ func TestAllPollLoopCallsitesBoundTheirTick(t *testing.T) {
 			if !ok || !isPollLoopCall(call.Fun) || len(call.Args) < 2 {
 				return true
 			}
-			if isDefaultPollConfigRef(call.Args[1]) {
-				// TestDefaultPollConfigHasANonZeroTimeout proves this one's
+			if isDefaultConfigRef(call.Args[1]) {
+				// TestDefaultConfigHasANonZeroTimeout proves this one's
 				// Timeout directly; no source-level re-derivation needed here.
 				return true
 			}
 			cfg, ok := call.Args[1].(*ast.CompositeLit)
 			if !ok {
-				t.Errorf("%s:%d builds PollConfig from something other than a literal — this tripwire can't verify Timeout is set here",
+				t.Errorf("%s:%d builds Config from something other than a literal — this tripwire can't verify Timeout is set here",
 					path, fset.Position(call.Pos()).Line)
 				return true
 			}
 			if !hasNonZeroTimeout(cfg) {
-				t.Errorf("%s:%d calls PollLoop with no non-zero Timeout — the tick is unbounded",
+				t.Errorf("%s:%d calls Loop with no non-zero Timeout — the tick is unbounded",
 					path, fset.Position(call.Pos()).Line)
 			}
 			return true
@@ -72,42 +72,40 @@ func TestAllPollLoopCallsitesBoundTheirTick(t *testing.T) {
 	}
 }
 
-// TestDefaultPollConfigHasANonZeroTimeout is what actually backs
-// isDefaultPollConfigRef's trust: a call site that passes
-// beat.DefaultPollConfig is exempted from the literal-Timeout check above
-// only because this test independently proves the shared value itself is
-// bounded.
-func TestDefaultPollConfigHasANonZeroTimeout(t *testing.T) {
+// TestDefaultConfigHasANonZeroTimeout is what actually backs
+// isDefaultConfigRef's trust: a call site that passes poll.DefaultConfig is
+// exempted from the literal-Timeout check above only because this test
+// independently proves the shared value itself is bounded.
+func TestDefaultConfigHasANonZeroTimeout(t *testing.T) {
 	t.Parallel()
-	if beat.DefaultPollConfig.Timeout == 0 {
-		t.Error("DefaultPollConfig.Timeout is 0 — every PollLoop call site sharing it would tick unbounded")
+	if poll.DefaultConfig.Timeout == 0 {
+		t.Error("DefaultConfig.Timeout is 0 — every Loop call site sharing it would tick unbounded")
 	}
 }
 
-// isDefaultPollConfigRef reports whether expr references
-// beat.DefaultPollConfig — qualified (every other package's call sites) or
-// bare (PollLoop's own package, matching isPollLoopCall's symmetry).
-func isDefaultPollConfigRef(expr ast.Expr) bool {
+// isDefaultConfigRef reports whether expr references poll.DefaultConfig —
+// qualified (every beat's call sites) or bare (Loop's own package, matching
+// isPollLoopCall's symmetry).
+func isDefaultConfigRef(expr ast.Expr) bool {
 	switch v := expr.(type) {
 	case *ast.Ident:
-		return v.Name == "DefaultPollConfig"
+		return v.Name == "DefaultConfig"
 	case *ast.SelectorExpr:
 		id, ok := v.X.(*ast.Ident)
-		return ok && id.Name == "beat" && v.Sel.Name == "DefaultPollConfig"
+		return ok && id.Name == "poll" && v.Sel.Name == "DefaultConfig"
 	}
 	return false
 }
 
-// isPollLoopCall matches both the qualified call every other package makes
-// (beat.PollLoop) and the unqualified one PollLoop's own package uses
-// (objectstore.go).
+// isPollLoopCall matches both the qualified call every beat makes
+// (poll.Loop) and the unqualified one Loop's own package would use.
 func isPollLoopCall(fun ast.Expr) bool {
 	switch v := fun.(type) {
 	case *ast.Ident:
-		return v.Name == "PollLoop"
+		return v.Name == "Loop"
 	case *ast.SelectorExpr:
 		id, ok := v.X.(*ast.Ident)
-		return ok && id.Name == "beat" && v.Sel.Name == "PollLoop"
+		return ok && id.Name == "poll" && v.Sel.Name == "Loop"
 	}
 	return false
 }

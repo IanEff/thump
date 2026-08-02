@@ -29,6 +29,7 @@ import (
 	"github.com/ianeff/thump/internal/converge"
 	"github.com/ianeff/thump/internal/health"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
@@ -139,9 +140,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Stages:   stages,
 	}
 	if sw != nil {
-		go beat.PollLoop(ctx, beat.DefaultPollConfig, sw.Reload)
+		go poll.Loop(ctx, poll.DefaultConfig, sw.Reload)
 	}
-	beat.PollLoop(ctx, beat.DefaultPollConfig, tr.Tick)
+	poll.Loop(ctx, poll.DefaultConfig, tr.Tick)
 	return 0
 }
 
@@ -233,7 +234,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	g, gctx := errgroup.WithContext(ctx)
 	if sw != nil {
 		g.Go(func() error {
-			beat.PollLoop(gctx, beat.DefaultPollConfig, sw.Reload)
+			poll.Loop(gctx, poll.DefaultConfig, sw.Reload)
 			return nil
 		})
 	}
