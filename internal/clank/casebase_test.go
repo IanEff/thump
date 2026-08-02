@@ -15,7 +15,7 @@ import (
 func TestCaseBase_RefusesAnUnprovenancedCase(t *testing.T) {
 	t.Parallel()
 	cases := map[string]func(c *clank.Case){
-		"Append refuses a case with no fingerprint":  func(c *clank.Case) { c.Fingerprint = "" },
+		"Append refuses a case with no fingerprint":  func(c *clank.Case) { c.SignalRef = "" },
 		"Append refuses a case with no outcome ref":  func(c *clank.Case) { c.OutcomeRef = "" },
 		"Append refuses a case with no decision ref": func(c *clank.Case) { c.DecisionRef = "" },
 		"Append refuses a case with no result":       func(c *clank.Case) { c.Result = "" },
@@ -43,7 +43,7 @@ func TestCaseBase_WhatClickLearnedIsQueryable(t *testing.T) {
 	second := goldenCase()
 	second.OutcomeRef, second.Result = "out:slo_burn:ceph-rgw:2000", outcome.ResultFailure
 	other := goldenCase()
-	other.Fingerprint, other.OutcomeRef = "slo_burn:somebody-else", "out:slo_burn:somebody-else:1000"
+	other.SignalRef, other.OutcomeRef = "slo_burn:somebody-else", "out:slo_burn:somebody-else:1000"
 
 	for _, c := range []clank.Case{first, second, other} {
 		if err := cb.Append(c); err != nil {
@@ -139,7 +139,7 @@ func TestCaseBase_AlignmentIsTheObservedSuccessRate(t *testing.T) {
 
 func goldenCase() clank.Case {
 	return clank.Case{
-		Fingerprint:  "slo_burn:ceph-rgw",                // Outcome.SignalRef — five beats, one string
+		SignalRef:    "slo_burn:ceph-rgw",                // Outcome.SignalRef — five beats, one string
 		DecisionRef:  "dec:slo_burn:ceph-rgw:1000",       // Outcome.DecisionRef — the grant
 		OutcomeRef:   "out:slo_burn:ceph-rgw:1000",       // Outcome.ID — the leaf this case summarizes
 		ContractRef:  "throttle-non-critical-paths",      // Outcome.ContractRef

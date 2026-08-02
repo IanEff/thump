@@ -22,9 +22,9 @@ ServiceTier: tier-1
 Topology:
   Downstream: null
   Upstream:
-  - Service: cephcluster
+  - Name: cephcluster
     State: degraded
-  - Service: rook-operator
+  - Name: rook-operator
     State: healthy
 Traffic:
   AffectedPct: 0

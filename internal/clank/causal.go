@@ -63,7 +63,7 @@ func (s *CausalScorerImpl) Score(fingerprint string, change proposal.ChangeSnaps
 func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.TopologySnapshot, weights ScoringWeights, prior Prior) CausalScore {
 	node, inPath := findNode(topo, e.Target)
 
-	temporal := temporalScore(e.Age, weights.TemporalHalfLife)
+	temporal := temporalScore(e.Age, weights.RecencyHalfLife)
 	topological := topologicalScore(node, inPath)
 
 	base, corroborated := weights.CaseBaseBaseline, false // the uncorroborated stub, unchanged
@@ -72,7 +72,7 @@ func scoreEvent(fingerprint string, e proposal.ChangeEvent, topo proposal.Topolo
 			base, corroborated = rate, true
 		}
 	}
-	historical := base * freshnessFactor(e.HistoricalStaleness, weights.FreshnessHalfLife)
+	historical := base * freshnessFactor(e.HistoricalStaleness, weights.HistoricalHalfLife)
 
 	liveCorroborated := inPath && node.State == "degraded"
 

@@ -108,7 +108,7 @@ func TestMineCorpus_JoinsAnOutcomeToTheSetOpenWhenItSettled(t *testing.T) {
 	got := clank.MineCorpus([]proposal.Set{older, newer}, []outcome.Outcome{o})
 
 	want := []clank.Case{{
-		Fingerprint:  "fp:cephblockpool",
+		SignalRef:    "fp:cephblockpool",
 		FailureClass: "",
 		Confidence:   0.87,
 		Result:       outcome.ResultSuccess,

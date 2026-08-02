@@ -266,7 +266,7 @@ func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
 	if len(cases) != 1 {
 		t.Fatalf("one outcome must mean one case, got %d", len(cases))
 	}
-	if diff := cmp.Diff(fp, cases[0].Fingerprint); diff != "" {
+	if diff := cmp.Diff(fp, cases[0].SignalRef); diff != "" {
 		t.Error("fingerprint didn't survive five beats (-want +got)", diff)
 	}
 	if diff := cmp.Diff(0.87, cases[0].Confidence); diff != "" {
