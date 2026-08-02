@@ -14,7 +14,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/unseal"
 )
@@ -146,7 +146,7 @@ func TestMain_ReadsASealedSegmentEndToEnd(t *testing.T) {
 	// Sealed through EncryptingSink rather than sealbox directly, so this test
 	// fails if the shipping side's envelope ever changes.
 	inner := &captureSink{}
-	sink := &beat.EncryptingSink{Inner: inner, Key: key}
+	sink := &objectstore.EncryptingSink{Inner: inner, Key: key}
 	if err := sink.Put(context.Background(), "clank/thump.proposals/seg-1", bytes.NewReader(append(line, '\n'))); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestMain_ExitsNonZeroForTheWrongKey(t *testing.T) {
 	key[0] = 9
 
 	inner := &captureSink{}
-	sink := &beat.EncryptingSink{Inner: inner, Key: key}
+	sink := &objectstore.EncryptingSink{Inner: inner, Key: key}
 	if err := sink.Put(context.Background(), "clank/thump.proposals/seg-1", bytes.NewReader([]byte("{}\n"))); err != nil {
 		t.Fatal(err)
 	}

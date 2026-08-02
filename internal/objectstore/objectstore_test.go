@@ -1,4 +1,4 @@
-package beat_test
+package objectstore_test
 
 import (
 	"bytes"
@@ -9,13 +9,13 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
 )
 
 // fakeSink is the in-memory publish.SegmentSink double proven in
 // internal/publish/shipper_test.go — reproduced here rather than shared
-// because it's a handful of lines and internal/beat must not import a
+// because it's a handful of lines and internal/objectstore must not import a
 // _test.go helper from another package.
 type fakeSink struct {
 	puts  map[string][]byte
@@ -42,7 +42,7 @@ func TestEncryptingSink_PutStoresSealedBytesAtTheInnerSink(t *testing.T) {
 	t.Parallel()
 	inner := newFakeSink()
 	key := newTestSealKey(t)
-	sink := &beat.EncryptingSink{Inner: inner, Key: key}
+	sink := &objectstore.EncryptingSink{Inner: inner, Key: key}
 	plaintext := []byte(`{"fingerprint":"fp-1"}`)
 
 	if err := sink.Put(context.Background(), "rattle/thump.detections/seg-1", bytes.NewReader(plaintext)); err != nil {
@@ -74,7 +74,7 @@ func TestUnsealSegment_RecoversTheLinesEncryptingSinkShipped(t *testing.T) {
 	t.Parallel()
 	inner := newFakeSink()
 	key := newTestSealKey(t)
-	sink := &beat.EncryptingSink{Inner: inner, Key: key}
+	sink := &objectstore.EncryptingSink{Inner: inner, Key: key}
 	// One segment holds many boundary objects, so the trailing newline the WAL
 	// writes must not decode as a final empty line.
 	segment := []byte("{\"name\":\"set-1\"}\n{\"name\":\"set-2\"}\n")
@@ -83,7 +83,7 @@ func TestUnsealSegment_RecoversTheLinesEncryptingSinkShipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := beat.UnsealSegment(key, bytes.NewReader(inner.puts["clank/thump.proposals/seg-1"]))
+	got, err := objectstore.UnsealSegment(key, bytes.NewReader(inner.puts["clank/thump.proposals/seg-1"]))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,14 +100,14 @@ func TestUnsealSegment_RecoversTheLinesEncryptingSinkShipped(t *testing.T) {
 func TestUnsealSegment_RefusesTheWrongKeyRatherThanReturningGarbage(t *testing.T) {
 	t.Parallel()
 	inner := newFakeSink()
-	sink := &beat.EncryptingSink{Inner: inner, Key: newTestSealKey(t)}
+	sink := &objectstore.EncryptingSink{Inner: inner, Key: newTestSealKey(t)}
 	if err := sink.Put(context.Background(), "clank/thump.proposals/seg-1", bytes.NewReader([]byte("{}\n"))); err != nil {
 		t.Fatal(err)
 	}
 
 	var other sealbox.Key
 	other[0] = 1
-	if _, err := beat.UnsealSegment(other, bytes.NewReader(inner.puts["clank/thump.proposals/seg-1"])); err == nil {
+	if _, err := objectstore.UnsealSegment(other, bytes.NewReader(inner.puts["clank/thump.proposals/seg-1"])); err == nil {
 		t.Error("unsealing with the wrong key must fail, not return whatever the cipher produced")
 	}
 }
@@ -116,7 +116,7 @@ func TestEncryptingSink_PutPropagatesAnInnerSinkError(t *testing.T) {
 	t.Parallel()
 	inner := newFakeSink()
 	inner.errOn = "hiss/thump.decisions/seg-1"
-	sink := &beat.EncryptingSink{Inner: inner, Key: newTestSealKey(t)}
+	sink := &objectstore.EncryptingSink{Inner: inner, Key: newTestSealKey(t)}
 
 	err := sink.Put(context.Background(), "hiss/thump.decisions/seg-1", bytes.NewReader([]byte("payload")))
 	if err == nil {

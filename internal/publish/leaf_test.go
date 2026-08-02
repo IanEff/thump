@@ -17,6 +17,7 @@ func TestPublishIsALeafPackage(t *testing.T) {
 		"sigs.k8s.io/yaml",
 		"github.com/ianeff/thump/internal/wire",
 		"github.com/ianeff/thump/internal/configfile",
+		"github.com/ianeff/thump/internal/poll",
 		"github.com/aws/aws-sdk-go-v2/aws",
 		"github.com/aws/aws-sdk-go-v2/service/s3",
 		"github.com/nats-io/nats.go",

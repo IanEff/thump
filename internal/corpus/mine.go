@@ -11,9 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/unseal"
 )
@@ -40,7 +40,7 @@ func Main(_ []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
 	}
-	client, err := beat.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
+	client, err := objectstore.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1

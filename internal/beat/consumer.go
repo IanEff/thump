@@ -63,7 +63,7 @@ func AwaitConsumers(ctx context.Context, js jetstream.JetStream, ready *health.H
 // this twice. An empty walDir is rejected here so the caller reports it once.
 // Returns the concrete *publish.WALPublisher, not the Publisher[Out]
 // interface, so a caller can reach .WAL directly to hand it to
-// beat.RunShipper — it still satisfies Publisher[Out] everywhere that's
+// publish.RunShipper — it still satisfies Publisher[Out] everywhere that's
 // what's wanted, so no other call site changes shape.
 func NewWALPublisher[Out any](js jetstream.JetStream, walDir, beatName, subject string, wal WALConfig) (*publish.WALPublisher[Out], func(context.Context) error, error) {
 	if walDir == "" {

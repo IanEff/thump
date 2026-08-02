@@ -185,7 +185,7 @@ func TestLoadClank_BrokerMode_RequiresWALAndS3(t *testing.T) {
 	// The offline trio (CLANK_INBOX/OUTBOX/OUTCOMES) is optional in broker
 	// mode, but WAL_DIR and the S3 fields flip the other way — unset in
 	// offline mode, required once the broker path is what's actually going
-	// to run (it's what beat.RunShipper ships the proposals WAL through).
+	// to run (it's what publish.RunShipper ships the proposals WAL through).
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ACTION_CATALOG", "/etc/actions/catalog.yaml")
 	t.Setenv("FAILURE_CLASSES", "/etc/actions/failure-classes.yaml")
