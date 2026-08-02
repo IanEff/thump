@@ -29,6 +29,7 @@ import (
 	"github.com/ianeff/thump/internal/converge"
 	"github.com/ianeff/thump/internal/health"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
@@ -197,7 +198,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		return 1
 	}
 
-	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
+	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
@@ -239,19 +240,19 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		})
 	}
 	g.Go(func() error {
-		beat.RunShipper(gctx, orderPub.WAL, sink, walConfig.ShipInterval)
+		publish.RunShipper(gctx, orderPub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {
-		beat.RunShipper(gctx, outcomePub.WAL, sink, walConfig.ShipInterval)
+		publish.RunShipper(gctx, outcomePub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {
-		beat.RunShipper(gctx, declinePub.WAL, sink, walConfig.ShipInterval)
+		publish.RunShipper(gctx, declinePub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {
-		beat.RunShipper(gctx, heldPub.WAL, sink, walConfig.ShipInterval)
+		publish.RunShipper(gctx, heldPub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 	g.Go(func() error {

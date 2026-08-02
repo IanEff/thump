@@ -17,6 +17,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
@@ -184,7 +185,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	r := newReconciler(cfg.PromURL, slos, topo, traffic, backendTLS, query)
 
 	if walPub != nil {
-		sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
+		sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1
@@ -192,7 +193,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		defer func() { _ = walPub.WAL.Drain(ctx, sink) }()
 		g, gctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			beat.RunShipper(gctx, walPub.WAL, sink, walConfig.ShipInterval)
+			publish.RunShipper(gctx, walPub.WAL, sink, walConfig.ShipInterval)
 			return nil
 		})
 		g.Go(func() error {

@@ -16,6 +16,8 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/health"
+	"github.com/ianeff/thump/internal/objectstore"
+	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"go.opentelemetry.io/otel/trace"
@@ -61,7 +63,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 		return 1
 	}
 
-	sink, err := beat.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
+	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
@@ -86,7 +88,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		beat.RunShipper(gctx, proposalPub.WAL, sink, walConfig.ShipInterval)
+		publish.RunShipper(gctx, proposalPub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 

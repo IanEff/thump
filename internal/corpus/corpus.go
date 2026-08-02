@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
 )
 
@@ -54,7 +54,7 @@ func getSegment(ctx context.Context, getter Getter, key sealbox.Key, bucket, obj
 	}
 	defer func() { _ = out.Body.Close() }()
 
-	lines, err := beat.UnsealSegment(key, out.Body)
+	lines, err := objectstore.UnsealSegment(key, out.Body)
 	if err != nil {
 		return nil, fmt.Errorf("corpus: unseal %s: %w", objKey, err)
 	}

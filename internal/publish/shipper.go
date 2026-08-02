@@ -8,6 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
+
+	"github.com/ianeff/thump/internal/poll"
 )
 
 // SegmentSink is where a sealed WAL segment goes once WAL.Ship uploads it —
@@ -80,4 +83,16 @@ func (w *WAL) shipOne(ctx context.Context, sink SegmentSink, path string) error 
 		return fmt.Errorf("wal: ship: remove %s: %w", path, err)
 	}
 	return nil
+}
+
+// RunShipper ships wal's sealed segments to sink on shipInterval until ctx
+// is cancelled — the async half of the Mimir pattern: WALPublisher.Publish
+// already returned once the segment was durable on local disk, so a slow
+// or failing ship never sits in the hot path. Meant to run under an
+// errgroup alongside a beat's consumer loop, same shape as
+// clank/broker.go's two-subscriber composition.
+func RunShipper(ctx context.Context, wal *WAL, sink SegmentSink, shipInterval time.Duration) {
+	poll.Loop(ctx, poll.Config{Interval: shipInterval, Timeout: 4 * shipInterval}, func(ctx context.Context) error {
+		return wal.Ship(ctx, sink)
+	})
 }

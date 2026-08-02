@@ -59,10 +59,10 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// transports already allowed above. Its own leaf tripwire forbids it
 		// from ever importing a beat package (rattle/clank/hiss/thump), not
 		// from importing infrastructure-reaching SDKs — it already carries the
-		// OTel exporter and now the S3 client. What keeps that safe for thump
-		// is that neither SDK's types cross this import boundary: beat hands
-		// back trace.Tracer and publish.SegmentSink, both interfaces thump
-		// already trusts, never the concrete otlptracegrpc/aws-sdk-go-v2 types.
+		// OTel exporter. What keeps that safe for thump is that the SDK's
+		// types never cross this import boundary: beat hands back a bare
+		// trace.Tracer, an interface thump already trusts, never the
+		// concrete otlptracegrpc type.
 		`"github.com/ianeff/thump/internal/beat"`: true,
 		// C1a: the /healthz + /readyz surface beat.Metrics used to build
 		// inline. net/http + sync/atomic only per its own leaf tripwire — a
@@ -73,6 +73,11 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// only per its own leaf tripwire — a select loop over a
 		// time.Ticker/time.Timer, not a new capability.
 		`"github.com/ianeff/thump/internal/poll"`: true,
+		// C1c: the sealed S3 segment sink beat.NewS3SegmentSink used to
+		// build. The AWS SDK and its smithy-go transport live here now,
+		// gated by its own leaf tripwire — same risk profile as beat's S3
+		// client before it moved, not a new capability.
+		`"github.com/ianeff/thump/internal/objectstore"`: true,
 		// pure goroutine-lifecycle plumbing (WithContext + Go + Wait) — no net,
 		// no os/exec, no client. runBroker uses it to run the WAL shipper(s)
 		// alongside the consumer loop, the same composition clank/broker.go

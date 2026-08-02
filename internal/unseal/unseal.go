@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
 )
 
@@ -87,7 +87,7 @@ func printSegment(w io.Writer, key sealbox.Key, path string, raw bool) error {
 	}
 	defer func() { _ = f.Close() }()
 
-	lines, err := beat.UnsealSegment(key, f)
+	lines, err := objectstore.UnsealSegment(key, f)
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}

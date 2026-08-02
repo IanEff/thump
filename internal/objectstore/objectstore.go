@@ -1,13 +1,16 @@
-package beat
+// Package objectstore builds the S3-compatible client and sealed
+// publish.SegmentSink every WAL shipper writes through, and reverses the
+// seal for an incident reader. internal/corpus and internal/unseal (neither
+// a beat) depend on it directly, without pulling in a beat's transport or
+// lifecycle kit.
+package objectstore
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"time"
 
-	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 
@@ -32,7 +35,7 @@ func NewS3Client(ctx context.Context, endpoint, accessKey, secretKey string) (*s
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("beat: load s3 config: %w", err)
+		return nil, fmt.Errorf("objectstore: load s3 config: %w", err)
 	}
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
@@ -142,16 +145,4 @@ func UnsealSegment(key sealbox.Key, r io.Reader) ([][]byte, error) {
 		}
 	}
 	return lines, nil
-}
-
-// RunShipper ships wal's sealed segments to sink on shipInterval until ctx
-// is cancelled — the async half of the Mimir pattern: WALPublisher.Publish
-// already returned once the segment was durable on local disk, so a slow
-// or failing ship never sits in the hot path. Meant to run under an
-// errgroup alongside a beat's consumer loop, same shape as
-// clank/broker.go's two-subscriber composition.
-func RunShipper(ctx context.Context, wal *publish.WAL, sink publish.SegmentSink, shipInterval time.Duration) {
-	poll.Loop(ctx, poll.Config{Interval: shipInterval, Timeout: 4 * shipInterval}, func(ctx context.Context) error {
-		return wal.Ship(ctx, sink)
-	})
 }

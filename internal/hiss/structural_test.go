@@ -41,16 +41,17 @@ func TestHissClientGoConfinedToController(t *testing.T) {
 		`"github.com/ianeff/thump/api/v1/decision"`: true,
 		`"github.com/ianeff/thump/api/v1/proposal"`: true,
 		// runtime kit and transports
-		`"github.com/ianeff/thump/internal/beat"`:    true,
-		`"github.com/ianeff/thump/internal/broker"`:  true,
-		`"github.com/ianeff/thump/internal/config"`:  true,
-		`"github.com/ianeff/thump/internal/health"`:  true,
-		`"github.com/ianeff/thump/internal/ledger"`:  true,
-		`"github.com/ianeff/thump/internal/poll"`:    true,
-		`"github.com/ianeff/thump/internal/publish"`: true,
-		`"github.com/ianeff/thump/internal/sealbox"`: true,
-		`"github.com/ianeff/thump/internal/tlsx"`:    true,
-		`"github.com/ianeff/thump/internal/wire"`:    true,
+		`"github.com/ianeff/thump/internal/beat"`:        true,
+		`"github.com/ianeff/thump/internal/broker"`:      true,
+		`"github.com/ianeff/thump/internal/config"`:      true,
+		`"github.com/ianeff/thump/internal/health"`:      true,
+		`"github.com/ianeff/thump/internal/ledger"`:      true,
+		`"github.com/ianeff/thump/internal/objectstore"`: true,
+		`"github.com/ianeff/thump/internal/poll"`:        true,
+		`"github.com/ianeff/thump/internal/publish"`:     true,
+		`"github.com/ianeff/thump/internal/sealbox"`:     true,
+		`"github.com/ianeff/thump/internal/tlsx"`:        true,
+		`"github.com/ianeff/thump/internal/wire"`:        true,
 	}
 
 	entries, err := os.ReadDir(".")

@@ -13,6 +13,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
@@ -114,7 +115,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	var store Store = NewMemStore()
 	switch {
 	case lc.NATSURL != "":
-		client, err := beat.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
+		client, err := objectstore.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "transcripts s3 client: %v\n", err)
 			return 1

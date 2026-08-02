@@ -13,7 +13,7 @@ var ErrIncompleteWALConfig = errors.New("wal config file is missing one or more 
 
 // WALConfig bounds every beat's WAL sealing and shipping cadence — one
 // surface shared identically across beats, since WAL's segment sizing and
-// beat.RunShipper's poll interval are common code, not per-beat tuning.
+// RunShipper's poll interval are common code, not per-beat tuning.
 type WALConfig struct {
 	// MaxBytes seals a WAL's active segment once it reaches this size.
 	MaxBytes int64
