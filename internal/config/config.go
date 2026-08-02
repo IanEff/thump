@@ -307,6 +307,31 @@ func LoadBootstrap() (Bootstrap, error) {
 	return c, l.err()
 }
 
+// Corpus is the Y1 WAL miner's environment (cmd/corpus) — the same S3 quad
+// every beat's broker path requires, unconditionally required here since the
+// miner has no offline mode to fall back to. THUMP_SEAL_KEY is deliberately
+// not a field: unseal.KeyFromEnv reads it instead, carrying the
+// kubectl-double-base64 hint an operator running this by hand needs and a
+// generic RequireBase64Key error does not.
+type Corpus struct {
+	S3Endpoint  string // S3_ENDPOINT — required
+	S3Bucket    string // S3_BUCKET — required
+	S3AccessKey string // S3_ACCESS_KEY — required
+	S3SecretKey string // S3_SECRET_KEY — required
+}
+
+// LoadCorpus reads the WAL miner's environment once.
+func LoadCorpus() (Corpus, error) {
+	l := &loader{}
+	c := Corpus{
+		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "https"),
+		S3Bucket:    l.Require("S3_BUCKET"),
+		S3AccessKey: l.Require("S3_ACCESS_KEY"),
+		S3SecretKey: l.Require("S3_SECRET_KEY"),
+	}
+	return c, l.err()
+}
+
 // loader accumulates every missing-required var instead of stopping at the
 // first — each Require/Optional call reads its var once; err joins whatever
 // Require calls came back empty into a single error.

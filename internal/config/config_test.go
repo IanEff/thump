@@ -848,6 +848,54 @@ func TestLoadBootstrap_RefusesAPlaintextNATSURL(t *testing.T) {
 	}
 }
 
+func TestLoadCorpus_MissingRequired_ReportsAllAtOnce(t *testing.T) {
+	for _, name := range []string{"S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		t.Setenv(name, "")
+	}
+
+	_, err := config.LoadCorpus()
+	if err == nil {
+		t.Fatal("LoadCorpus: want an error, got nil")
+	}
+	for _, want := range []string{"S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("LoadCorpus error %q does not mention %s", err, want)
+		}
+	}
+}
+
+func TestLoadCorpus_Valid_PopulatesStruct(t *testing.T) {
+	t.Setenv("S3_ENDPOINT", "https://s3.thump.svc:9000")
+	t.Setenv("S3_BUCKET", "thump-wal")
+	t.Setenv("S3_ACCESS_KEY", "access")
+	t.Setenv("S3_SECRET_KEY", "secret")
+
+	got, err := config.LoadCorpus()
+	if err != nil {
+		t.Fatalf("LoadCorpus: %v", err)
+	}
+	want := config.Corpus{
+		S3Endpoint:  "https://s3.thump.svc:9000",
+		S3Bucket:    "thump-wal",
+		S3AccessKey: "access",
+		S3SecretKey: "secret",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("LoadCorpus (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadCorpus_RefusesAPlaintextS3Endpoint(t *testing.T) {
+	t.Setenv("S3_ENDPOINT", "http://s3.thump.svc:9000")
+	t.Setenv("S3_BUCKET", "thump-wal")
+	t.Setenv("S3_ACCESS_KEY", "access")
+	t.Setenv("S3_SECRET_KEY", "secret")
+
+	if _, err := config.LoadCorpus(); err == nil {
+		t.Error("LoadCorpus must refuse a plaintext S3_ENDPOINT — the miner reads the same bucket every beat ships sealed segments to")
+	}
+}
+
 func TestEveryBrokerLoader_RequiresTLSFilesNotJustClanks(t *testing.T) {
 	cases := map[string]struct {
 		load func(bool) error

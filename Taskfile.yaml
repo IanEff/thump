@@ -151,6 +151,11 @@ tasks:
     cmds:
       - go test -tags eval ./internal/clank -run TestRCA_ReachesTheCorrectFailureClassNotTheDecoy -v
 
+  corpus:
+    desc: Mine the sealed WAL into testdata/corpus/ — every (Confidence, FailureClass, Result) triple this engine has produced (needs S3_*/THUMP_SEAL_KEY; rig-free, object-store creds only)
+    cmds:
+      - go run ./cmd/corpus
+
   capture-detection:
     desc: "Farm a live detection into a fixture: task capture-detection SRC=<path to .yaml> NAME=<fixture-name>"
     requires:
