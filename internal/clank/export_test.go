@@ -17,6 +17,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/subjects"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
@@ -161,7 +162,7 @@ func ToolSpecsForTest(e *Engine) []ToolSpec {
 // BuildIntakeForTest exposes buildIntake to clank_test — the seam the
 // silent-fallback warnings hang off, and where the ArgoCD change source and
 // its subject rules are wired together.
-func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex, changeLookback time.Duration) (*Intake, error) {
+func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects subjects.SubjectIndex, changeLookback time.Duration) (*Intake, error) {
 	return buildIntake(cfg, backendTLS, argo, subjects, changeLookback)
 }
 

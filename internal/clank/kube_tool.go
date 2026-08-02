@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/schema"
+	"github.com/ianeff/thump/internal/subjects"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
@@ -28,7 +30,7 @@ type KubeTool struct {
 	// it is evidence about (EvidenceRef.Subject). Coordinates no rule claims
 	// stamp no Subject — a namespace holding several nodes is evidence about
 	// none of them, so it can corroborate but never ground.
-	Subjects SubjectIndex
+	Subjects subjects.SubjectIndex
 }
 
 // Implement the Tool interface.
@@ -42,7 +44,7 @@ func (k *KubeTool) Spec() ToolSpec {
 			"selector is an optional map of label equality pairs, e.g. {\"app\": \"cart\"} — " +
 			"narrow to one workload with it; an unnarrowed namespace query spans every " +
 			"workload in it and cannot be evidence about any one of them.",
-		InputSchema: SchemaOf[kubeInput](),
+		InputSchema: schema.Of[kubeInput](),
 	}
 }
 
@@ -54,7 +56,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 	if err := json.Unmarshal(args, &input); err != nil {
 		return proposal.EvidenceRef{}, fmt.Errorf("decode kube args: %w", err)
 	}
-	subject := k.Subjects.For(Coordinates{Namespace: input.Namespace, Labels: input.Selector})
+	subject := k.Subjects.For(subjects.Coordinates{Namespace: input.Namespace, Labels: input.Selector})
 
 	var summary string
 

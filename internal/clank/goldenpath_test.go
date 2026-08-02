@@ -19,6 +19,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/publish/publishtest"
+	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/thump"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -722,9 +723,9 @@ func goldenLokiServer(t *testing.T) *httptest.Server {
 // OriginService is ceph-cluster and goldenEngine's fakeTopo carries no
 // topology at all, so coherentSubject's self-match clause is the only path
 // to clearing the gate.
-func goldenCephSubjects() clank.SubjectIndex {
-	return clank.SubjectIndex{
-		{Subject: "ceph-cluster", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-mon"}}},
+func goldenCephSubjects() subjects.SubjectIndex {
+	return subjects.SubjectIndex{
+		{Subject: "ceph-cluster", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-mon"}}},
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/subjects"
 )
 
 func TestLokiTool_Run(t *testing.T) {
@@ -114,8 +115,8 @@ func TestLokiTool_Run(t *testing.T) {
 func TestLokiTool_Run_StampsTheSubjectItsCoordinatesResolveTo(t *testing.T) {
 	t.Parallel()
 
-	index := clank.SubjectIndex{
-		{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"ceph_daemon_type": "osd"}}},
+	index := subjects.SubjectIndex{
+		{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"ceph_daemon_type": "osd"}}},
 	}
 
 	tests := map[string]struct {

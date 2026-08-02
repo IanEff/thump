@@ -13,6 +13,8 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/schema"
+	"github.com/ianeff/thump/internal/subjects"
 )
 
 type lokiInput struct {
@@ -33,7 +35,7 @@ type LokiTool struct {
 	// it is evidence about (EvidenceRef.Subject). Coordinates no rule claims
 	// stamp no Subject — the query makes no topology claim, so it can
 	// corroborate but never ground.
-	Subjects SubjectIndex
+	Subjects subjects.SubjectIndex
 }
 
 var _ Tool = (*LokiTool)(nil)
@@ -45,7 +47,7 @@ func (l *LokiTool) Spec() ToolSpec {
 			"app, ceph_daemon_id, ceph_daemon_type, component, container, instance, job, " +
 			"node_name, pod, service_name. query is an optional line-filter substring " +
 			"(NOT LogQL syntax) — do not pass raw LogQL, it will be escaped as a literal.",
-		InputSchema: SchemaOf[lokiInput](),
+		InputSchema: schema.Of[lokiInput](),
 	}
 }
 
@@ -58,7 +60,7 @@ func (l *LokiTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 	}
 
 	logQL := buildLogQL(input.Namespace, input.Labels, input.Query)
-	subject := l.Subjects.For(Coordinates{Namespace: input.Namespace, Labels: input.Labels})
+	subject := l.Subjects.For(subjects.Coordinates{Namespace: input.Namespace, Labels: input.Labels})
 
 	lookback := input.Lookback
 	if lookback == "" {

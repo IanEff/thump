@@ -17,6 +17,7 @@ import (
 	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/sealbox"
+	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/whir"
 	"k8s.io/client-go/dynamic"
@@ -295,7 +296,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 // buildIntake assumes cfg has already passed config.LoadClank's validation —
 // PROM_URL is cross-required there whenever both whir vars are set, so this
 // never needs to check that combination itself.
-func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects SubjectIndex, changeLookback time.Duration) (*Intake, error) {
+func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects subjects.SubjectIndex, changeLookback time.Duration) (*Intake, error) {
 	var topo TopologySource = noopTopology{}
 
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
