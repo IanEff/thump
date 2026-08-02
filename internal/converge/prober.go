@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/ianeff/thump/internal/httpx"
@@ -62,45 +61,16 @@ func (p *Prober) Severity(ctx context.Context, query string) (value float64, ok 
 }
 
 func (p *Prober) query(ctx context.Context, query string) (float64, bool) {
-	u, err := url.Parse(p.BaseURL + "/api/v1/query")
+	result, err := httpx.InstantQuery(ctx, p.Client, p.BaseURL, query)
 	if err != nil {
 		return 0, false
 	}
-	u.RawQuery = url.Values{"query": {query}}.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return 0, false
-	}
-	client := p.Client
-	if client == nil {
-		client = httpx.Client(httpx.DefaultBackendTimeout, nil)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, false
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return 0, false
-	}
-
-	var body struct {
-		Data struct {
-			Result []struct {
-				Value [2]json.RawMessage `json:"value"`
-			} `json:"result"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return 0, false
-	}
-	if len(body.Data.Result) == 0 {
+	if len(result.Data.Result) == 0 {
 		return 0, false
 	}
 
 	var v string
-	if err := json.Unmarshal(body.Data.Result[0].Value[1], &v); err != nil {
+	if err := json.Unmarshal(result.Data.Result[0].Value[1], &v); err != nil {
 		return 0, false
 	}
 	f, err := strconv.ParseFloat(v, 64)
