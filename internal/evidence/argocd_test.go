@@ -1,4 +1,4 @@
-package clank_test
+package evidence_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/subjects"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -208,7 +208,7 @@ func TestArgoChanges(t *testing.T) {
 			fake := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
 				map[schema.GroupVersionResource]string{applicationGVR: "ApplicationList"}, objs...)
 
-			src := clank.ArgoChangeSource{Client: fake, Subjects: tc.subjects, Now: func() time.Time { return tc.now }}
+			src := evidence.ArgoChangeSource{Client: fake, Subjects: tc.subjects, Now: func() time.Time { return tc.now }}
 			got, err := src.Changes(t.Context(), signal.Detection{})
 			if err != nil {
 				t.Fatal(err)

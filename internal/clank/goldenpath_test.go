@@ -17,6 +17,7 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/publish/publishtest"
 	"github.com/ianeff/thump/internal/reason"
@@ -79,18 +80,18 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	defer logs.Close()
 
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
 			// node-death.yaml's OriginService is ceph-cluster; goldenEngine's
 			// fakeTopo carries no topology at all, so the self-match clause
 			// of gate.go's coherentSubject is the only path to clearing the
 			// gate under W3's fail-closed ruling.
-			Queries: map[string]clank.EvidenceQuery{
+			Queries: map[string]evidence.Query{
 				"ceph_health":  {Query: "ceph_health_status", Subject: "ceph-cluster"},
 				"osd_capacity": {Query: "ceph_osd_capacity_ratio", Subject: "ceph-cluster"},
 			},
 		},
-		"loki": &clank.LokiTool{BaseURL: logs.URL, Subjects: goldenCephSubjects()},
+		"loki": &evidence.LokiTool{BaseURL: logs.URL, Subjects: goldenCephSubjects()},
 	}
 
 	eng, sink := goldenEngine(model, tools)
@@ -167,9 +168,9 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]clank.EvidenceQuery{
+			Queries: map[string]evidence.Query{
 				"ceph_health": {Query: "ceph_health_status", Subject: "ceph-cluster"}, // self-match, see the sibling test above
 			},
 		},
@@ -241,9 +242,9 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	// against node-death.yaml's OriginService here, same reasoning as the
 	// other goldenpath tests above.
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]clank.EvidenceQuery{
+			Queries: map[string]evidence.Query{
 				"osds_down":       {Query: "count(ceph_osd_up == 0) or vector(0)", Subject: "ceph-cluster"},
 				"pgs_backfilling": {Query: "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)", Subject: "ceph-cluster"},
 			},
@@ -299,9 +300,9 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 	defer ts.Close()
 
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "ceph_health_status"}},
+			Queries: map[string]evidence.Query{"ceph_health": {Query: "ceph_health_status"}},
 		},
 	}
 
@@ -358,9 +359,9 @@ func TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification(t *testin
 	defer ts.Close()
 
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]clank.EvidenceQuery{
+			Queries: map[string]evidence.Query{
 				"product_catalog_error_ratio": {Query: "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))", Subject: "product-catalog"},
 			},
 		},
@@ -419,9 +420,9 @@ func TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated(t *testing.T) {
 	defer ts.Close()
 
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]clank.EvidenceQuery{
+			Queries: map[string]evidence.Query{
 				"product_catalog_error_ratio": {Query: "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))", Subject: "product-catalog"},
 				"rook_operator_health":        {Query: "rook_operator_health_status", Subject: "rook-operator"},
 			},
@@ -468,14 +469,14 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]clank.EvidenceQuery{
+			Queries: map[string]evidence.Query{
 				"osds_down":       {Query: "count(ceph_osd_up == 0) or vector(0)", Subject: "ceph-cluster"},
 				"pgs_backfilling": {Query: "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)", Subject: "ceph-cluster"},
 			},
 		},
-		"kube": &clank.KubeTool{
+		"kube": &evidence.KubeTool{
 			Client: kubefake.NewSimpleClientset(&corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "rook-ceph-mon-a",
@@ -553,9 +554,9 @@ func TestGoldenPath_InTopologyFillerCantCarryAnOutOfDomainAction(t *testing.T) {
 	ts := goldenPrometheusServer(t)
 	defer ts.Close()
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{
+		"metrics": &evidence.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]clank.EvidenceQuery{
+			Queries: map[string]evidence.Query{
 				"rook_operator_health":        {Query: "rook_operator_health_status", Subject: "rook-operator"},
 				"product_catalog_error_ratio": {Query: "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))", Subject: "product-catalog"},
 			},

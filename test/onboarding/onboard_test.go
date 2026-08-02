@@ -25,6 +25,7 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/configtest"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/publish/publishtest"
 	"github.com/ianeff/thump/internal/rattle"
@@ -159,7 +160,7 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load acme state queries: %v", err)
 	}
-	ev, err := clank.LoadEvidenceConfig(acmeDir("whir", "evidence-queries.yaml"))
+	ev, err := evidence.LoadEvidenceConfig(acmeDir("whir", "evidence-queries.yaml"))
 	if err != nil {
 		t.Fatalf("load acme evidence queries: %v", err)
 	}
@@ -227,8 +228,8 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 		),
 		Model: model,
 		Tools: map[string]reason.Tool{
-			"metrics": &clank.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries},
-			"loki":    &clank.LokiTool{BaseURL: loki.URL, Subjects: ev.Index},
+			"metrics": &evidence.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries},
+			"loki":    &evidence.LokiTool{BaseURL: loki.URL, Subjects: ev.Index},
 		},
 		Catalog:        cat,
 		FailureClasses: classes,

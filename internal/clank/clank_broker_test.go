@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/reason"
 )
 
 func TestNewBrokerEngine_WiresMetricsTool(t *testing.T) {
 	// 1. Arrange: provide the tools map we expect Main to build
 	tools := map[string]reason.Tool{
-		"metrics": &clank.MetricsTool{},
+		"metrics": &evidence.MetricsTool{},
 	}
 
 	// 2. Act: construct the broker engine exactly as runBroker does

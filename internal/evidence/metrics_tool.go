@@ -1,4 +1,4 @@
-package clank
+package evidence
 
 import (
 	"context"
@@ -18,8 +18,8 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// EvidenceQuery represents a single named query from the evidence-queries.yaml file.
-type EvidenceQuery struct {
+// Query represents a single named query from the evidence-queries.yaml file.
+type Query struct {
 	Name    string `json:"name"`
 	Query   string `json:"query"`
 	Subject string `json:"subject,omitempty"` // the whir catalog-info.yaml entity this query's result is about; omitting it makes no topology claim — see EvidenceRef.Subject
@@ -35,7 +35,7 @@ type MetricsTool struct {
 	// (EvidenceRef.Subject). A zero-value Subject stamps no Subject — the
 	// query makes no topology claim, so its Live citation is never
 	// attenuated.
-	Queries map[string]EvidenceQuery
+	Queries map[string]Query
 }
 
 // Ensure MetricsTool implements the reason.Tool interface.
@@ -137,35 +137,35 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 	}, nil
 }
 
-// EvidenceConfig is one rig's evidence surface: the named PromQL the metrics
+// Config is one rig's evidence surface: the named PromQL the metrics
 // tool exposes, the topology node each of those queries is about, and the
 // coordinate rules that tell the log and cluster tools the same thing. All
 // three answer one question — which node is this evidence about? — so they
 // are authored in one file per rig.
-type EvidenceConfig struct {
-	Queries map[string]EvidenceQuery // query name → EvidenceQuery
-	Index   subjects.SubjectIndex    // the log and cluster tools' coordinate rules
+type Config struct {
+	Queries map[string]Query      // query name → Query
+	Index   subjects.SubjectIndex // the log and cluster tools' coordinate rules
 }
 
 // LoadEvidenceConfig parses evidence-queries.yaml. A query with no subject:
-// tag stores an EvidenceQuery with an empty Subject, so MetricsTool stamps
+// tag stores an Query with an empty Subject, so MetricsTool stamps
 // none for it via the zero value (see EvidenceRef.Subject).
-func LoadEvidenceConfig(path string) (EvidenceConfig, error) {
+func LoadEvidenceConfig(path string) (Config, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config file path, not user input
 	if err != nil {
-		return EvidenceConfig{}, fmt.Errorf("read evidence queries file %s: %w", path, err)
+		return Config{}, fmt.Errorf("read evidence queries file %s: %w", path, err)
 	}
 
 	var file struct {
-		Queries  []EvidenceQuery        `json:"queries"`
+		Queries  []Query                `json:"queries"`
 		Subjects []subjects.SubjectRule `json:"subjects"`
 	}
 	if err := yaml.Unmarshal(raw, &file); err != nil {
-		return EvidenceConfig{}, fmt.Errorf("parse evidence queries: %w", err)
+		return Config{}, fmt.Errorf("parse evidence queries: %w", err)
 	}
 
-	cfg := EvidenceConfig{
-		Queries: make(map[string]EvidenceQuery, len(file.Queries)),
+	cfg := Config{
+		Queries: make(map[string]Query, len(file.Queries)),
 		Index:   file.Subjects,
 	}
 	for _, q := range file.Queries {

@@ -18,6 +18,7 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/whir"
@@ -295,8 +296,8 @@ func unmatchedCount(t *testing.T, inbox string) int {
 func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T) {
 	t.Parallel()
 
-	ev := clank.EvidenceConfig{
-		Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "ceph_health_status", Subject: "ceph-cluster"}},
+	ev := evidence.Config{
+		Queries: map[string]evidence.Query{"ceph_health": {Query: "ceph_health_status", Subject: "ceph-cluster"}},
 		Index:   subjects.SubjectIndex{{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}}},
 	}
 	cfg := config.Clank{
@@ -307,7 +308,7 @@ func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T
 
 	tools := clank.BuildToolsForTest(cfg, nil, ev, kubefake.NewSimpleClientset())
 
-	metrics, ok := tools["metrics"].(*clank.MetricsTool)
+	metrics, ok := tools["metrics"].(*evidence.MetricsTool)
 	if !ok {
 		t.Fatalf("fully-configured buildTools must reach a real MetricsTool, got %T", tools["metrics"])
 	}
@@ -315,7 +316,7 @@ func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T
 		t.Error("the metrics tool must reach the per-query subject tags (-want +got)\n", diff)
 	}
 
-	loki, ok := tools["loki"].(*clank.LokiTool)
+	loki, ok := tools["loki"].(*evidence.LokiTool)
 	if !ok {
 		t.Fatalf("fully-configured buildTools must reach a real LokiTool, got %T", tools["loki"])
 	}
@@ -323,7 +324,7 @@ func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T
 		t.Error("the loki tool must reach the subject rules, not an empty index (-want +got)\n", diff)
 	}
 
-	kube, ok := tools["kube"].(*clank.KubeTool)
+	kube, ok := tools["kube"].(*evidence.KubeTool)
 	if !ok {
 		t.Fatalf("buildTools with an in-cluster client must reach a real KubeTool, got %T", tools["kube"])
 	}
@@ -339,7 +340,7 @@ func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T
 func TestBuildTools_RegistersNoKubeToolWithoutAnInClusterClient(t *testing.T) {
 	t.Parallel()
 
-	tools := clank.BuildToolsForTest(config.Clank{LokiURL: "http://loki:3100"}, nil, clank.EvidenceConfig{}, nil)
+	tools := clank.BuildToolsForTest(config.Clank{LokiURL: "http://loki:3100"}, nil, evidence.Config{}, nil)
 
 	if got, ok := tools["kube"]; ok {
 		t.Errorf("buildTools with no in-cluster client must register no kube tool, got %T", got)
@@ -389,7 +390,7 @@ func TestShippedEvidenceConfigs_NameRealTopologyNodes(t *testing.T) {
 				nodes[e.Name] = true
 			}
 
-			ev, err := clank.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
+			ev, err := evidence.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -458,7 +459,7 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 	}
 
 	got := clank.IntakeChangeForTest(intake)
-	if _, ok := got.(clank.ArgoChangeSource); !ok {
+	if _, ok := got.(evidence.ArgoChangeSource); !ok {
 		t.Errorf("fully-configured buildIntake must reach a real ArgoChangeSource, got %T", got)
 	}
 }
@@ -483,7 +484,7 @@ func TestShippedEvidenceConfigs_CarryRulesAChangedResourceCanMatch(t *testing.T)
 			t.Parallel()
 			dir := filepath.Join("..", "..", "config", rig, "whir")
 
-			ev, err := clank.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
+			ev, err := evidence.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -520,7 +521,7 @@ func TestArgoChangeSource_ResolvesTheShippedRigsOwnCoordinates(t *testing.T) {
 	for _, e := range cat.Entities {
 		nodes[e.Name] = true
 	}
-	ev, err := clank.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
+	ev, err := evidence.LoadEvidenceConfig(filepath.Join(dir, "evidence-queries.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,7 +548,7 @@ func TestArgoChangeSource_ResolvesTheShippedRigsOwnCoordinates(t *testing.T) {
 			{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}: "ApplicationList",
 		}, app)
 
-	src := clank.ArgoChangeSource{Client: fake, Subjects: ev.Index, Now: func() time.Time {
+	src := evidence.ArgoChangeSource{Client: fake, Subjects: ev.Index, Now: func() time.Time {
 		return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
 	}}
 	snap, err := src.Changes(t.Context(), signal.Detection{})

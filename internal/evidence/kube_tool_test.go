@@ -1,4 +1,4 @@
-package clank_test
+package evidence_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/subjects"
 	corev1 "k8s.io/api/core/v1"
@@ -71,7 +71,7 @@ func TestKubeTool_Run(t *testing.T) {
 				objs = append(objs, p)
 			}
 			clientset := fake.NewSimpleClientset(objs...)
-			tool := &clank.KubeTool{Client: clientset}
+			tool := &evidence.KubeTool{Client: clientset}
 
 			// Act
 			gotRef, err := tool.Run(context.Background(), json.RawMessage(tc.input))
@@ -103,7 +103,7 @@ func TestKubeTool_Run_ListsOnlyPodsMatchingTheSelector(t *testing.T) {
 			Status:     corev1.PodStatus{Phase: corev1.PodRunning},
 		},
 	)
-	tool := &clank.KubeTool{Client: clientset}
+	tool := &evidence.KubeTool{Client: clientset}
 
 	got, err := tool.Run(t.Context(), json.RawMessage(
 		`{"resource":"pods","namespace":"rook-ceph","selector":{"app":"rook-ceph-osd"}}`))
@@ -174,7 +174,7 @@ func TestKubeTool_Run_StampsTheSubjectItsCoordinatesResolveTo(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			tool := &clank.KubeTool{Client: fake.NewSimpleClientset(pods...), Subjects: index}
+			tool := &evidence.KubeTool{Client: fake.NewSimpleClientset(pods...), Subjects: index}
 
 			got, err := tool.Run(t.Context(), json.RawMessage(tc.input))
 			if err != nil {
@@ -192,7 +192,7 @@ func TestKubeTool_Run_RegistersEveryDiscoveredPodNameOnTheContextMasker(t *testi
 	clientset := fake.NewSimpleClientset(
 		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "osd-0", Namespace: "rook-ceph"}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
 	)
-	tool := &clank.KubeTool{Client: clientset}
+	tool := &evidence.KubeTool{Client: clientset}
 	masker := mask.NewIdentifierMasker()
 	ctx := mask.ContextWithMasker(context.Background(), masker)
 

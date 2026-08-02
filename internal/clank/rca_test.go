@@ -18,6 +18,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/anthropic"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/reason"
 )
 
@@ -438,7 +439,7 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 	}
 	t.Logf("transcripts (read these when a row misses): %s", transcripts)
 
-	ev, err := LoadEvidenceConfig(filepath.Join("..", "..", "config", "thump-test", "whir", "evidence-queries.yaml"))
+	ev, err := evidence.LoadEvidenceConfig(filepath.Join("..", "..", "config", "thump-test", "whir", "evidence-queries.yaml"))
 	if err != nil {
 		t.Fatalf("load evidence queries: %v", err)
 	}
@@ -458,7 +459,7 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 				// tool built without per-query subjects fails every citation
 				// closed and every propose row computes at GroundingNone
 				// regardless of what it cited.
-				"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries},
+				"metrics": &evidence.MetricsTool{BaseURL: prom.URL, Queries: queries},
 				// A second live backend, so a citation crossing Corroborated
 				// >= 2 is actually reachable — with "metrics" alone,
 				// coherentLiveCitations can never count past one distinct
@@ -471,7 +472,7 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 				// hand-rolled table — real subject names differ from what
 				// the golden-path tests use (ceph-osd/ceph-rgw/rook-operator/
 				// cart, not a single "ceph-cluster").
-				"kube": &KubeTool{
+				"kube": &evidence.KubeTool{
 					Client: kubefake.NewSimpleClientset(&corev1.Pod{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "rook-ceph-mon-a",
