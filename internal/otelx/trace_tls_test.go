@@ -1,4 +1,4 @@
-package beat_test
+package otelx_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/tlsxtest"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -104,7 +104,7 @@ func TestNewOTLPExporter_ExportsSpansOverTLSAgainstATrustedCA(t *testing.T) {
 
 	addr, collector := startFakeCollector(t, serverCfg)
 
-	exp, err := beat.NewOTLPExporterForTest(context.Background(), "https://"+addr, clientCfg)
+	exp, err := otelx.NewOTLPExporterForTest(context.Background(), "https://"+addr, clientCfg)
 	if err != nil {
 		t.Fatalf("NewOTLPExporterForTest: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestNewOTLPExporter_RefusesACollectorCertificateFromAnUntrustedCA(t *testin
 
 	addr, collector := startFakeCollector(t, serverCfg)
 
-	exp, err := beat.NewOTLPExporterForTest(context.Background(), "https://"+addr, beatLeaf)
+	exp, err := otelx.NewOTLPExporterForTest(context.Background(), "https://"+addr, beatLeaf)
 	if err != nil {
 		t.Fatalf("NewOTLPExporterForTest: %v", err)
 	}
