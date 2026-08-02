@@ -294,9 +294,8 @@ func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T
 	t.Parallel()
 
 	ev := clank.EvidenceConfig{
-		Queries:  map[string]string{"ceph_health": "ceph_health_status"},
-		Subjects: map[string]string{"ceph_health": "ceph-cluster"},
-		Index:    clank.SubjectIndex{{Subject: "ceph-osd", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+		Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "ceph_health_status", Subject: "ceph-cluster"}},
+		Index:   clank.SubjectIndex{{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}}},
 	}
 	cfg := config.Clank{
 		PromURL:         "http://prom:9090",
@@ -310,7 +309,7 @@ func TestBuildTools_FullyConfiguredReachesSubjectAwareEvidenceTools(t *testing.T
 	if !ok {
 		t.Fatalf("fully-configured buildTools must reach a real MetricsTool, got %T", tools["metrics"])
 	}
-	if diff := cmp.Diff(ev.Subjects, metrics.Subjects); diff != "" {
+	if diff := cmp.Diff(ev.Queries, metrics.Queries); diff != "" {
 		t.Error("the metrics tool must reach the per-query subject tags (-want +got)\n", diff)
 	}
 
@@ -393,9 +392,9 @@ func TestShippedEvidenceConfigs_NameRealTopologyNodes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			for name, subject := range ev.Subjects {
-				if !nodes[subject] {
-					t.Errorf("query %q is tagged subject: %q, which names no entity in this rig's catalog-info.yaml", name, subject)
+			for name, q := range ev.Queries {
+				if q.Subject != "" && !nodes[q.Subject] {
+					t.Errorf("query %q is tagged subject: %q, which names no entity in this rig's catalog-info.yaml", name, q.Subject)
 				}
 			}
 			for _, rule := range ev.Index {
@@ -449,7 +448,7 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 	// Subject rules are part of "fully configured" for a change source: without
 	// them every resolved target is empty and the source reports nothing the
 	// topology can place, so buildIntake declines to build one.
-	subjects := clank.SubjectIndex{{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}
+	subjects := clank.SubjectIndex{{Subject: "cephblockpool", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}}
 	cfg := config.Clank{ArgoEnabled: true}
 	intake, err := clank.BuildIntakeForTest(cfg, nil, fake, subjects, 2*time.Hour)
 	if err != nil {

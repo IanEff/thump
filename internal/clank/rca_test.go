@@ -448,18 +448,15 @@ func TestRCA_ReachesTheCorrectFailureClassNotTheDecoy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			det := loadDetectionFixture(t, tc.fixture)
 
-			prom := newFakePrometheus(t, queries, tc.evidence)
+			prom := newFakePrometheus(t, promQLByName(queries), tc.evidence)
 			tools := map[string]Tool{
-				// Subjects: ev.Subjects was missing here before this table
-				// widened — every citation stamped no Subject, so
-				// coherentSubject (gate.go:93) failed for all of them and
-				// every propose row computed at GroundingNone regardless of
-				// what it cited. Pre-existing in eval_test.go too; fixing it
-				// only here since rca_test.go is what now grades the number
-				// this affects. Confirmed empirically: a run before this fix
-				// landed at computed=0.30 on rows this table already knew to
-				// be well-cited (node-death.yaml's own mustCite passed).
-				"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries, Subjects: ev.Subjects},
+				// Each EvidenceQuery carries its own Subject now, so a
+				// citation against any of these queries stamps one and
+				// coherentSubject (gate.go:93) can ground on it — a metrics
+				// tool built without per-query subjects fails every citation
+				// closed and every propose row computes at GroundingNone
+				// regardless of what it cited.
+				"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries},
 				// A second live backend, so a citation crossing Corroborated
 				// >= 2 is actually reachable — with "metrics" alone,
 				// coherentLiveCitations can never count past one distinct

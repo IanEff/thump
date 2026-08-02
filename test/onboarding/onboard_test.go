@@ -226,7 +226,7 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 		),
 		Model: model,
 		Tools: map[string]clank.Tool{
-			"metrics": &clank.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries, Subjects: ev.Subjects},
+			"metrics": &clank.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries},
 			"loki":    &clank.LokiTool{BaseURL: loki.URL, Subjects: ev.Index},
 		},
 		Catalog:        cat,

@@ -123,7 +123,7 @@ func TestKubeTool_Run_StampsTheSubjectItsCoordinatesResolveTo(t *testing.T) {
 	t.Parallel()
 
 	index := clank.SubjectIndex{
-		{Subject: "ceph-osd", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
+		{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
 	}
 	pods := []runtime.Object{
 		&corev1.Pod{

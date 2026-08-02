@@ -22,51 +22,51 @@ func TestSubjectIndex_For(t *testing.T) {
 		want   string
 	}{
 		"For resolves a namespace-only rule when the query carries no labels": {
-			index:  clank.SubjectIndex{{Subject: "acme-api", Namespace: "acme"}},
+			index:  clank.SubjectIndex{{Subject: "acme-api", Coordinates: clank.Coordinates{Namespace: "acme"}}},
 			coords: clank.Coordinates{Namespace: "acme"},
 			want:   "acme-api",
 		},
 		"For resolves a labelled rule when the query carries exactly its labels": {
-			index:  clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}},
+			index:  clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}}},
 			coords: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}},
 			want:   "cart",
 		},
 		"For resolves a labelled rule when the query carries extra labels beyond it": {
-			index:  clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}},
+			index:  clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}}},
 			coords: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "cart", "tier": "web"}},
 			want:   "cart",
 		},
 		"For prefers the labelled rule over a namespace-only one covering the same query": {
 			index: clank.SubjectIndex{
-				{Subject: "rook-operator", Namespace: "rook-ceph"},
-				{Subject: "ceph-osd", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
+				{Subject: "rook-operator", Coordinates: clank.Coordinates{Namespace: "rook-ceph"}},
+				{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
 			},
 			coords: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
 			want:   "ceph-osd",
 		},
 		"For resolves nothing when a namespace-wide query matches only per-workload rules": {
 			index: clank.SubjectIndex{
-				{Subject: "cart", Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}},
-				{Subject: "checkout", Namespace: "otel-demo", Labels: map[string]string{"app": "checkout"}},
+				{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}},
+				{Subject: "checkout", Coordinates: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "checkout"}}},
 			},
 			coords: clank.Coordinates{Namespace: "otel-demo"},
 			want:   "",
 		},
 		"For resolves nothing when two equally specific rules both match": {
 			index: clank.SubjectIndex{
-				{Subject: "ceph-osd", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
-				{Subject: "ceph-cluster", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
+				{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+				{Subject: "ceph-cluster", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
 			},
 			coords: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
 			want:   "",
 		},
 		"For resolves nothing when a rule names a label the query does not carry": {
-			index:  clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}},
+			index:  clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}}},
 			coords: clank.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "checkout"}},
 			want:   "",
 		},
 		"For resolves nothing for a namespace no rule claims": {
-			index:  clank.SubjectIndex{{Subject: "acme-api", Namespace: "acme"}},
+			index:  clank.SubjectIndex{{Subject: "acme-api", Coordinates: clank.Coordinates{Namespace: "acme"}}},
 			coords: clank.Coordinates{Namespace: "rook-ceph"},
 			want:   "",
 		},
@@ -80,28 +80,28 @@ func TestSubjectIndex_For(t *testing.T) {
 		// states labels. The same index answers both, which is the point: a rig
 		// declares once what belongs to a topology node.
 		"For resolves a changed resource by kind and name when the two vocabularies differ": {
-			index:  clank.SubjectIndex{{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
+			index:  clank.SubjectIndex{{Subject: "cephblockpool", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}},
 			coords: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"},
 			want:   "cephblockpool",
 		},
 		"For prefers a kind-and-name rule over a namespace-only rule matching the same resource": {
 			index: clank.SubjectIndex{
-				{Subject: "ceph-cluster", Namespace: "rook-ceph"},
-				{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"},
+				{Subject: "ceph-cluster", Coordinates: clank.Coordinates{Namespace: "rook-ceph"}},
+				{Subject: "cephblockpool", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
 			},
 			coords: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"},
 			want:   "cephblockpool",
 		},
 		"For distinguishes two resources sharing a name by their kind": {
 			index: clank.SubjectIndex{
-				{Subject: "ceph-osd", Namespace: "rook-ceph", Kind: "Deployment", Name: "rook-ceph-osd-0"},
-				{Subject: "ceph-control", Namespace: "rook-ceph", Kind: "Service", Name: "rook-ceph-osd-0"},
+				{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "Deployment", Name: "rook-ceph-osd-0"}},
+				{Subject: "ceph-control", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "Service", Name: "rook-ceph-osd-0"}},
 			},
 			coords: clank.Coordinates{Namespace: "rook-ceph", Kind: "Service", Name: "rook-ceph-osd-0"},
 			want:   "ceph-control",
 		},
 		"For resolves nothing for a resource whose name no rule claims": {
-			index:  clank.SubjectIndex{{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
+			index:  clank.SubjectIndex{{Subject: "cephblockpool", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}},
 			coords: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephFilesystem", Name: "myfs"},
 			want:   "",
 		},

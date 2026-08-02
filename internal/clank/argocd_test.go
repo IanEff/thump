@@ -71,7 +71,7 @@ func TestArgoChanges(t *testing.T) {
 				}, managed{"CephBlockPool", "rook-ceph", "replicapool"}),
 			},
 			subjects: clank.SubjectIndex{
-				{Subject: "cephblockpool", Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"},
+				{Subject: "cephblockpool", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
@@ -87,8 +87,8 @@ func TestArgoChanges(t *testing.T) {
 				}, managed{"Deployment", "otel-demo", "cart"}, managed{"Deployment", "otel-demo", "checkout"}),
 			},
 			subjects: clank.SubjectIndex{
-				{Subject: "cart", Namespace: "otel-demo", Kind: "Deployment", Name: "cart"},
-				{Subject: "checkout", Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"},
+				{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "cart"}},
+				{Subject: "checkout", Coordinates: clank.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
@@ -107,7 +107,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}, managed{"Deployment", "otel-demo", "cart"}, managed{"Service", "otel-demo", "cart"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo"}},
+			subjects: clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cart", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
@@ -124,7 +124,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}, managed{"Deployment", "cert-manager", "cert-manager-webhook"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo"}},
+			subjects: clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cert-manager", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
@@ -138,7 +138,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
 				}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cart", Namespace: "otel-demo"}},
+			subjects: clank.SubjectIndex{{Subject: "cart", Coordinates: clank.Coordinates{Namespace: "otel-demo"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "abc123", Type: "deploy", Target: "cart", Age: 30 * time.Minute, HistoricalStaleness: 30 * time.Minute},
@@ -156,7 +156,7 @@ func TestArgoChanges(t *testing.T) {
 				}, managed{"Deployment", "rook-ceph", "rook-ceph-operator"}),
 			},
 			subjects: clank.SubjectIndex{
-				{Subject: "rook-operator", Namespace: "rook-ceph", Kind: "Deployment", Name: "rook-ceph-operator"},
+				{Subject: "rook-operator", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Kind: "Deployment", Name: "rook-ceph-operator"}},
 			},
 			now: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
@@ -173,7 +173,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "old000"}},
 				}, managed{"Deployment", "cert-manager", "cert-manager"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "cert-manager", Namespace: "cert-manager"}},
+			subjects: clank.SubjectIndex{{Subject: "cert-manager", Coordinates: clank.Coordinates{Namespace: "cert-manager"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want:     proposal.ChangeSnapshot{},
 		},
@@ -190,7 +190,7 @@ func TestArgoChanges(t *testing.T) {
 					"operation":  map[string]any{"sync": map[string]any{"revision": "ghi789"}},
 				}, managed{"Deployment", "otel-demo", "checkout"}),
 			},
-			subjects: clank.SubjectIndex{{Subject: "checkout", Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}},
+			subjects: clank.SubjectIndex{{Subject: "checkout", Coordinates: clank.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "checkout"}}},
 			now:      time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 			want: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 				{ID: "ghi789", Type: "deploy", Target: "checkout", Age: 15 * time.Minute, HistoricalStaleness: 15 * time.Minute},

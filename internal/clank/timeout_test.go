@@ -32,7 +32,7 @@ func TestMetricsTool_ATimedOutQueryReturnsNonLiveEvidence(t *testing.T) {
 	tool := &clank.MetricsTool{
 		BaseURL: "http://prometheus.invalid",
 		Client:  &http.Client{Transport: timedOutTransport{}},
-		Queries: map[string]string{"ceph_health": "dummy_promql"},
+		Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "dummy_promql"}},
 	}
 
 	got, err := tool.Run(t.Context(), json.RawMessage(`{"q":"ceph_health"}`))
