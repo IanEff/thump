@@ -18,7 +18,6 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
-	"time"
 
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
@@ -139,9 +138,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Stages:   stages,
 	}
 	if sw != nil {
-		go beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, sw.Reload)
+		go beat.PollLoop(ctx, beat.DefaultPollConfig, sw.Reload)
 	}
-	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
+	beat.PollLoop(ctx, beat.DefaultPollConfig, tr.Tick)
 	return 0
 }
 
@@ -233,7 +232,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 	g, gctx := errgroup.WithContext(ctx)
 	if sw != nil {
 		g.Go(func() error {
-			beat.PollLoop(gctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, sw.Reload)
+			beat.PollLoop(gctx, beat.DefaultPollConfig, sw.Reload)
 			return nil
 		})
 	}

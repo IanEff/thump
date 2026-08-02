@@ -2,3 +2,4 @@ maxCases: 10000
 ledgerRetention: 24h
 changeLookback: 2h
 maxProposeAttempts: 5
+maxSteps: 8

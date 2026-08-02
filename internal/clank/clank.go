@@ -167,7 +167,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// config.LoadClank only requires them when broker is false (mirrors
 	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
 	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages, recorder, weights, limits)
-	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine, MaxAttempts: limits.MaxProposeAttempts}
+	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine, MaxProposeAttempts: limits.MaxProposeAttempts}
 	re := l.ReturnEdge
 	de := l.DeclineEdge
 
@@ -327,7 +327,7 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interfac
 		slog.Warn("no subject rules authored — every change event will resolve outside the topology and causal scoring is inert",
 			"beat", "clank", "fix", "author subjects: in the file EVIDENCE_QUERIES names")
 	default:
-		change = ArgoChangeSource{Client: argo, Subjects: subjects, Lookback: changeLookback}
+		change = ArgoChangeSource{Client: argo, Subjects: subjects, ChangeLookback: changeLookback}
 	}
 
 	return NewIntake(topo, change), nil

@@ -22,6 +22,7 @@ func limitsBeforeExtraction() clank.Limits {
 		LedgerRetention:    24 * time.Hour,
 		ChangeLookback:     2 * time.Hour,
 		MaxProposeAttempts: 5,
+		MaxSteps:           8,
 	}
 }
 

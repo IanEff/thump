@@ -14,21 +14,24 @@ import (
 // setting it.
 var ErrIncompleteLimits = errors.New("limits file is missing one or more required terms")
 
-// Limits bounds clank's case base, ledger, change lookback, and retry
-// budget — sizing and horizon knobs, not scoring math, which is why they
-// live apart from ScoringWeights.
+// Limits bounds clank's case base, ledger, change lookback, reason-loop
+// depth, and retry budget — sizing and horizon knobs, not scoring math,
+// which is why they live apart from ScoringWeights.
 type Limits struct {
 	// MaxCases bounds CaseBase.MaxCases.
 	MaxCases int
 
-	// LedgerRetention bounds MemProposalLog.Retention.
+	// LedgerRetention bounds MemProposalLog.LedgerRetention.
 	LedgerRetention time.Duration
 
-	// ChangeLookback bounds ArgoChangeSource.Lookback.
+	// ChangeLookback bounds ArgoChangeSource.ChangeLookback.
 	ChangeLookback time.Duration
 
-	// MaxProposeAttempts bounds Transport.MaxAttempts.
+	// MaxProposeAttempts bounds Transport.MaxProposeAttempts.
 	MaxProposeAttempts int
+
+	// MaxSteps bounds Engine.MaxSteps.
+	MaxSteps int
 }
 
 // limitsFile stages a limits.yaml before validation — every field a
@@ -39,6 +42,7 @@ type limitsFile struct {
 	LedgerRetention    *string `json:"ledgerRetention"`
 	ChangeLookback     *string `json:"changeLookback"`
 	MaxProposeAttempts *int    `json:"maxProposeAttempts"`
+	MaxSteps           *int    `json:"maxSteps"`
 }
 
 // LoadLimitsFile reads path as a YAML file and validates it into a
@@ -64,6 +68,7 @@ func LoadLimitsFile(path string) (Limits, error) {
 	need("ledgerRetention", lf.LedgerRetention != nil)
 	need("changeLookback", lf.ChangeLookback != nil)
 	need("maxProposeAttempts", lf.MaxProposeAttempts != nil)
+	need("maxSteps", lf.MaxSteps != nil)
 
 	if len(missing) > 0 {
 		return Limits{}, fmt.Errorf("%w: %s", ErrIncompleteLimits, strings.Join(missing, ", "))
@@ -83,5 +88,6 @@ func LoadLimitsFile(path string) (Limits, error) {
 		LedgerRetention:    ledgerRetention,
 		ChangeLookback:     changeLookback,
 		MaxProposeAttempts: *lf.MaxProposeAttempts,
+		MaxSteps:           *lf.MaxSteps,
 	}, nil
 }

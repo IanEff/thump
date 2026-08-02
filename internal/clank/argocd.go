@@ -38,10 +38,10 @@ type ArgoChangeSource struct {
 	// Empty means no resource resolves and every event scores out of topology.
 	Subjects SubjectIndex
 
-	// Lookback bounds how old a sync may be and still be reported; zero
-	// means DefaultChangeLookback. Without it every Application that ever
-	// synced reports forever, and the SAO grows without bound.
-	Lookback time.Duration
+	// ChangeLookback bounds how old a sync may be and still be reported;
+	// zero means DefaultChangeLookback. Without it every Application that
+	// ever synced reports forever, and the SAO grows without bound.
+	ChangeLookback time.Duration
 
 	Now func() time.Time
 }
@@ -57,7 +57,7 @@ func (a ArgoChangeSource) Changes(ctx context.Context, _ signal.Detection) (prop
 	}
 
 	now := beat.Clock(a.Now)
-	lookback := a.Lookback
+	lookback := a.ChangeLookback
 	if lookback <= 0 {
 		lookback = DefaultChangeLookback
 	}
