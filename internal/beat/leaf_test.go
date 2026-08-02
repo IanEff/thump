@@ -25,9 +25,11 @@ import (
 // client (metrics.go's Metrics, stage.go's StageRecorder), the AWS SDK plus
 // its underlying smithy-go transport (objectstore.go's NewS3SegmentSink,
 // which builds the S3 client a WAL ships sealed segments through, and the
-// finalize middleware it installs to work around a GCS signing quirk), and
+// finalize middleware it installs to work around a GCS signing quirk),
 // sealbox (objectstore.go's EncryptingSink, which seals a segment before
-// NewS3SegmentSink's inner sink ever sees it) — but NEVER a beat package.
+// NewS3SegmentSink's inner sink ever sees it), and sigs.k8s.io/yaml
+// (drain.go's DrainDir, which every beat's dir-poll Tick unmarshals its
+// inbox files through) — but NEVER a beat package.
 // A clank, rattle, hiss, or thump import appearing here means the runtime
 // kit has become a place where the planes mash together; this test is that
 // regression's tripwire. Widen the allowlist below when tracing, metrics,
@@ -64,6 +66,7 @@ func TestBeatImportsNoBeat(t *testing.T) {
 		`"go.opentelemetry.io/otel/sdk/metric/metricdata"`:                    true,
 		`"google.golang.org/grpc/codes"`:                                      true,
 		`"google.golang.org/grpc/status"`:                                     true,
+		`"sigs.k8s.io/yaml"`:                                                  true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

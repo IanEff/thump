@@ -46,6 +46,15 @@ func Tracer(ctx context.Context, beatName string, otlpEndpoint string, tlsCfg tl
 	return newTracer(ctx, beatName, otlpEndpoint, factory)
 }
 
+// TracerOrNoop returns t, or a no-op tracer when t is nil — a beat's Stage
+// calls never nil-check their own Tracer field before reaching this.
+func TracerOrNoop(t trace.Tracer) trace.Tracer {
+	if t == nil {
+		return noop.Tracer{}
+	}
+	return t
+}
+
 func newTracer(ctx context.Context, beatName, endpoint string, newExporter exporterFactory) (trace.Tracer, Shutdown, error) {
 	if endpoint == "" {
 		return noop.Tracer{}, func(context.Context) error { return nil }, nil

@@ -4,19 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/publish"
-	"sigs.k8s.io/yaml"
 )
 
 // Transport is hiss's directory-poll seam: it watches Inbox for proposal.Set
@@ -36,17 +32,6 @@ type Transport struct {
 	Stages    *beat.StageRecorder                  // RED metrics for "govern" — nil-safe, same discipline as Tracer
 }
 
-// tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
-// and every existing test keeps compiling untouched. handle never mints a
-// root or forces a TraceID: in production that context already arrived on
-// ctx, propagated from clank's publish over JetStream headers.
-func (tr *Transport) tracer() trace.Tracer {
-	if tr.Tracer == nil {
-		return noop.Tracer{}
-	}
-	return tr.Tracer
-}
-
 // Tick performs one poll pass: list Inbox, decode each file, evaluate it
 // through handle, and archive or quarantine the result. A file that fails to
 // unmarshal is quarantined, not deleted, and does not block the rest of the
@@ -55,33 +40,15 @@ func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	matches, err := filepath.Glob(filepath.Join(tr.Inbox, "*.yaml"))
-	if err != nil {
-		return fmt.Errorf("hiss: list inbox: %w", err)
-	}
-
-	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under tr.Inbox, not user input
-		if err != nil {
-			return fmt.Errorf("hiss: read %s: %w", path, err)
-		}
-
-		var ps proposal.Set
-		if err := yaml.Unmarshal(raw, &ps); err != nil {
-			if qErr := tr.quarantine(path); qErr != nil {
-				return fmt.Errorf("hiss: quarantine %s: %w", path, qErr)
-			}
-			continue // poison doesn't block the queue
-		}
-
+	return beat.DrainDir(tr.Inbox, "hiss", func(path string, ps proposal.Set) error {
 		if err := tr.handle(ctx, ps, nil); err != nil {
 			return fmt.Errorf("hiss: handle %s: %w", path, err)
 		}
-		if err := tr.archive(path); err != nil {
+		if err := beat.Disposition(tr.Inbox, path, "processed"); err != nil {
 			return fmt.Errorf("hiss: archive %s: %w", path, err)
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // handle evaluates one ProposalSet and publishes the Governed decision — the
@@ -90,12 +57,9 @@ func (tr *Transport) Tick(ctx context.Context) error {
 // Evaluate is fast enough that it never needs heartbeat, unlike clank's
 // reason loop — accepted only to satisfy broker.Handler[T]'s shape.
 func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) error {
-	now := time.Now
-	if tr.Now != nil {
-		now = tr.Now
-	}
+	now := beat.Clock(tr.Now)
 	var d decision.Decision
-	_ = beat.Stage(ctx, tr.tracer(), tr.Stages, "govern", func(context.Context) error {
+	_ = beat.Stage(ctx, beat.TracerOrNoop(tr.Tracer), tr.Stages, "govern", func(context.Context) error {
 		var auth Authority
 		d = auth.Evaluate(ps, tr.Policy, now())
 		return nil
@@ -117,22 +81,6 @@ func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) erro
 	return tr.Pub.Publish(ctx, "thump.decisions", decision.Governed{Decision: d, Set: ps})
 }
 
-func (tr *Transport) quarantine(path string) error {
-	dir := filepath.Join(tr.Inbox, "quarantine")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
-}
-
-func (tr *Transport) archive(path string) error {
-	dir := filepath.Join(tr.Inbox, "processed")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
-}
-
 func (tr *Transport) approveHandler(ctx context.Context, a approval.Approval, _ func()) error {
 	held, ok := tr.Holds.Take(a.SignalRef)
 	if !ok {
@@ -140,10 +88,7 @@ func (tr *Transport) approveHandler(ctx context.Context, a approval.Approval, _ 
 		return nil
 	}
 
-	now := time.Now
-	if tr.Now != nil {
-		now = tr.Now
-	}
+	now := beat.Clock(tr.Now)
 
 	d := held.Decision
 	d.ID = fmt.Sprintf("dec:%s:%d", d.SignalRef, now().Unix())

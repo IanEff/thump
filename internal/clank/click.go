@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
-	"sigs.k8s.io/yaml"
+	"github.com/ianeff/thump/internal/beat"
 )
 
 var (
@@ -98,47 +96,21 @@ func (re *ReturnEdge) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	matches, err := filepath.Glob(filepath.Join(re.Inbox, "*.yaml"))
-	if err != nil {
-		return fmt.Errorf("click: list inbox: %w", err)
-	}
-
-	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under re.Inbox, not user input
-		if err != nil {
-			return fmt.Errorf("click: read %s: %w", path, err)
-		}
-
-		var o outcome.Outcome
-		if err := yaml.Unmarshal(raw, &o); err != nil {
-			if qErr := re.disposition(path, "quarantine"); qErr != nil {
-				return fmt.Errorf("click: quarantine %s: %w", path, qErr)
-			}
-			continue
-		}
-
+	return beat.DrainDir(re.Inbox, "click", func(path string, o outcome.Outcome) error {
 		switch err := re.Click.Absorb(ctx, o); {
 		case err == nil:
-			if pErr := re.disposition(path, "processed"); pErr != nil {
+			if pErr := beat.Disposition(re.Inbox, path, "processed"); pErr != nil {
 				return fmt.Errorf("click: archive %s: %w", path, pErr)
 			}
 		case errors.Is(err, ErrNoOpenSet):
-			if uErr := re.disposition(path, "unmatched"); uErr != nil {
+			if uErr := beat.Disposition(re.Inbox, path, "unmatched"); uErr != nil {
 				return fmt.Errorf("click: unmatch %s: %w", path, uErr)
 			}
 		default: // unauditable / incoherent
-			if qErr := re.disposition(path, "quarantine"); qErr != nil {
+			if qErr := beat.Disposition(re.Inbox, path, "quarantine"); qErr != nil {
 				return fmt.Errorf("click: quarantine %s: %w", path, qErr)
 			}
 		}
-	}
-	return nil
-}
-
-func (re *ReturnEdge) disposition(path, sub string) error {
-	dir := filepath.Join(re.Inbox, sub)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
+		return nil
+	})
 }

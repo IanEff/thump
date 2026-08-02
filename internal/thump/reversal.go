@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/ianeff/thump/internal/beat"
 )
 
 // Converger reports both the reversal verdict and the normalized post-action
@@ -55,10 +57,7 @@ func (w ReversalWatcher) Watch(ctx context.Context, o Order) Settlement {
 }
 
 func (w ReversalWatcher) now() time.Time {
-	if w.Now != nil {
-		return w.Now()
-	}
-	return time.Now()
+	return beat.Clock(w.Now)()
 }
 
 // reversalOf renders the undo of a forward Order: it inherits the same grant
