@@ -1,11 +1,12 @@
-package clank_test
+package mask_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/reason"
 )
 
@@ -40,15 +41,15 @@ func TestIdentifierMasker_MasksAndRestoresRegisteredNames(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			m := clank.NewIdentifierMaskerForTest()
+			m := mask.NewIdentifierMasker()
 			for _, r := range tc.registered {
-				m.RegisterForTest(r)
+				m.Register(r)
 			}
-			gotMasked := m.MaskForTest(tc.text)
+			gotMasked := m.Mask(tc.text)
 			if diff := cmp.Diff(tc.wantMasked, gotMasked); diff != "" {
 				t.Error("wrong masked text (-want +got)\n", diff)
 			}
-			if diff := cmp.Diff(tc.text, m.UnmaskForTest(gotMasked)); diff != "" {
+			if diff := cmp.Diff(tc.text, m.Unmask(gotMasked)); diff != "" {
 				t.Error("mask/unmask did not round-trip to the original text (-want +got)\n", diff)
 			}
 		})
@@ -57,17 +58,38 @@ func TestIdentifierMasker_MasksAndRestoresRegisteredNames(t *testing.T) {
 
 func TestIdentifierMasker_UnmasksTenOrMorePlaceholdersWithoutPrefixCollision(t *testing.T) {
 	t.Parallel()
-	m := clank.NewIdentifierMaskerForTest()
+	m := mask.NewIdentifierMasker()
 	names := make([]string, 12)
 	for i := range names {
 		names[i] = "node-" + string(rune('a'+i))
-		m.RegisterForTest(names[i])
+		m.Register(names[i])
 	}
 	text := strings.Join(names, " ")
-	masked := m.MaskForTest(text)
-	if diff := cmp.Diff(text, m.UnmaskForTest(masked)); diff != "" {
+	masked := m.Mask(text)
+	if diff := cmp.Diff(text, m.Unmask(masked)); diff != "" {
 		t.Error("placeholders did not round-trip cleanly with twelve names registered (-want +got)\n", diff)
 	}
+}
+
+// fakeModel is a minimal reason.Model double: it plays back script in order
+// and records what it was called with, so a test can assert on exactly what
+// crossed the wrapped seam.
+type fakeModel struct {
+	script   []reason.Completion
+	i        int
+	received [][]reason.Message
+}
+
+func (m *fakeModel) Complete(_ context.Context, msgs []reason.Message, _ []reason.ToolSpec) (reason.Completion, error) {
+	cp := make([]reason.Message, len(msgs))
+	copy(cp, msgs)
+	m.received = append(m.received, cp)
+	if m.i >= len(m.script) {
+		return reason.Completion{}, nil
+	}
+	c := m.script[m.i]
+	m.i++
+	return c, nil
 }
 
 func TestMaskingModel_Complete_SendsPlaceholdersToTheWrappedModelAndRestoresRealNamesInTheResponse(t *testing.T) {
@@ -75,9 +97,9 @@ func TestMaskingModel_Complete_SendsPlaceholdersToTheWrappedModelAndRestoresReal
 	fake := &fakeModel{script: []reason.Completion{
 		{Message: reason.Message{Role: "assistant", Content: "{{mask-1}} looks healthy"}},
 	}}
-	mask := clank.NewIdentifierMaskerForTest()
-	mask.RegisterForTest("cart")
-	mm := clank.NewMaskingModelForTest(fake, mask)
+	masker := mask.NewIdentifierMasker()
+	masker.Register("cart")
+	mm := mask.NewMaskingModel(fake, masker)
 
 	comp, err := mm.Complete(t.Context(), []reason.Message{{Role: "user", Content: "investigate cart"}}, nil)
 	if err != nil {
@@ -94,9 +116,9 @@ func TestMaskingModel_Complete_SendsPlaceholdersToTheWrappedModelAndRestoresReal
 func TestMaskingModel_Complete_NeverMutatesTheCallersMessageSlice(t *testing.T) {
 	t.Parallel()
 	fake := &fakeModel{script: []reason.Completion{{Message: reason.Message{Role: "assistant", Content: "ok"}}}}
-	mask := clank.NewIdentifierMaskerForTest()
-	mask.RegisterForTest("cart")
-	mm := clank.NewMaskingModelForTest(fake, mask)
+	masker := mask.NewIdentifierMasker()
+	masker.Register("cart")
+	mm := mask.NewMaskingModel(fake, masker)
 
 	msgs := []reason.Message{{Role: "user", Content: "investigate cart"}}
 	if _, err := mm.Complete(t.Context(), msgs, nil); err != nil {
@@ -112,9 +134,9 @@ func TestMaskingModel_Complete_RestoresPlaceholdersInsideToolCallArgsSoTheRealTo
 	fake := &fakeModel{script: []reason.Completion{{
 		ToolCalls: []reason.ToolCall{{ID: "1", Name: "kube", Args: []byte(`{"namespace":"{{mask-1}}"}`)}},
 	}}}
-	mask := clank.NewIdentifierMaskerForTest()
-	mask.RegisterForTest("prod")
-	mm := clank.NewMaskingModelForTest(fake, mask)
+	masker := mask.NewIdentifierMasker()
+	masker.Register("prod")
+	mm := mask.NewMaskingModel(fake, masker)
 
 	comp, err := mm.Complete(t.Context(), []reason.Message{{Role: "user", Content: "check prod"}}, nil)
 	if err != nil {

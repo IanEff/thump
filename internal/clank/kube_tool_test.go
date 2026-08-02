@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/subjects"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -192,14 +193,14 @@ func TestKubeTool_Run_RegistersEveryDiscoveredPodNameOnTheContextMasker(t *testi
 		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "osd-0", Namespace: "rook-ceph"}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
 	)
 	tool := &clank.KubeTool{Client: clientset}
-	mask := clank.NewIdentifierMaskerForTest()
-	ctx := clank.ContextWithMaskerForTest(context.Background(), mask)
+	masker := mask.NewIdentifierMasker()
+	ctx := mask.ContextWithMasker(context.Background(), masker)
 
 	if _, err := tool.Run(ctx, json.RawMessage(`{"resource":"pods","namespace":"rook-ceph"}`)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if diff := cmp.Diff("{{mask-1}}", mask.MaskForTest("osd-0")); diff != "" {
+	if diff := cmp.Diff("{{mask-1}}", masker.Mask("osd-0")); diff != "" {
 		t.Error("KubeTool.Run did not register the discovered pod name on the run's masker (-want +got)\n", diff)
 	}
 }
