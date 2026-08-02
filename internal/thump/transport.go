@@ -5,19 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
-	"sigs.k8s.io/yaml"
 )
 
 // ErrRenderFailed marks a governed approval thump's Actuator couldn't render
@@ -48,17 +44,6 @@ type Transport struct {
 	Notifier   Notifier                             // delivers a held action to a human; nil means a hold publishes to HeldPub only
 }
 
-// tracer returns Tracer, or a no-op if unset — handle never has to nil-check,
-// and every existing test keeps compiling untouched. handle never mints a
-// root or forces a TraceID: in production that context already arrived on
-// ctx, propagated from hiss's publish over JetStream headers.
-func (tr *Transport) tracer() trace.Tracer {
-	if tr.Tracer == nil {
-		return noop.Tracer{}
-	}
-	return tr.Tracer
-}
-
 // Tick performs one poll pass: list inbox → unmarshal Governed → handle
 // (render → execute → publish) → disposition. Only inbox-level I/O failures
 // return an error; a bad envelope or an unrenderable approval is a
@@ -67,33 +52,15 @@ func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	matches, err := filepath.Glob(filepath.Join(tr.Inbox, "*.yaml"))
-	if err != nil {
-		return fmt.Errorf("thump: list inbox: %w", err)
-	}
-
-	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec // G304: inbox path is operator config, not user input
-		if err != nil {
-			return fmt.Errorf("thump: read %s: %w", path, err)
-		}
-
-		var g decision.Governed
-		if err := yaml.Unmarshal(raw, &g); err != nil {
-			if qErr := tr.disposition(path, "quarantine"); qErr != nil {
-				return fmt.Errorf("thump: quarantine %s: %w", path, qErr)
-			}
-			continue // poison doesn't block the queue
-		}
-
+	return beat.DrainDir(tr.Inbox, "thump", func(path string, g decision.Governed) error {
 		if err := tr.handle(ctx, g, nil); err != nil {
 			if errors.Is(err, ErrRenderFailed) {
 				// a governed approval thump can't render is evidence of a seam
 				// bug — same instinct as poison: keep it where a human will look.
-				if qErr := tr.disposition(path, "quarantine"); qErr != nil {
+				if qErr := beat.Disposition(tr.Inbox, path, "quarantine"); qErr != nil {
 					return fmt.Errorf("thump: quarantine %s: %w", path, qErr)
 				}
-				continue
+				return nil
 			}
 			return fmt.Errorf("thump: handle %s: %w", path, err) // a publish failure aborts the pass
 		}
@@ -102,11 +69,11 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		if g.Decision.Verdict != decision.VerdictApproved {
 			disp = "skipped" // a valid non-approval, just not ours to act on
 		}
-		if err := tr.disposition(path, disp); err != nil {
+		if err := beat.Disposition(tr.Inbox, path, disp); err != nil {
 			return fmt.Errorf("thump: archive %s: %w", path, err)
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // handle renders, dry-run-executes, and publishes one governed approval —
@@ -118,7 +85,7 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 	switch g.Decision.Verdict {
 	case decision.VerdictApproved:
 		var order Order
-		if err := beat.Stage(ctx, tr.tracer(), tr.Stages, "render", func(context.Context) error {
+		if err := beat.Stage(ctx, beat.TracerOrNoop(tr.Tracer), tr.Stages, "render", func(context.Context) error {
 			var err error
 			order, err = (Actuator{}).Render(g, tr.Catalog, tr.now())
 			return err
@@ -170,18 +137,7 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 // watchAndSettle goroutine it spawns both read, so a frozen test clock
 // covers both.
 func (tr *Transport) now() time.Time {
-	if tr.Now != nil {
-		return tr.Now()
-	}
-	return time.Now()
-}
-
-func (tr *Transport) disposition(path, sub string) error {
-	dir := filepath.Join(tr.Inbox, sub)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
+	return beat.Clock(tr.Now)()
 }
 
 // watchAndSettle blocks for order's success window, reads convergence once,

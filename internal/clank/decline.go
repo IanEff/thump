@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/ianeff/thump/api/v1/decision"
-	"sigs.k8s.io/yaml"
+	"github.com/ianeff/thump/internal/beat"
 )
 
 // DeclineEdge is clank's dir-poll consumer for governance's non-approvals —
@@ -29,47 +27,21 @@ func (de *DeclineEdge) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	matches, err := filepath.Glob(filepath.Join(de.Inbox, "*.yaml"))
-	if err != nil {
-		return fmt.Errorf("decline: list inbox: %w", err)
-	}
-
-	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under de.Inbox, not user input
-		if err != nil {
-			return fmt.Errorf("decline: read %s: %w", path, err)
-		}
-
-		var dec decision.Decision
-		if err := yaml.Unmarshal(raw, &dec); err != nil {
-			if qErr := de.disposition(path, "quarantine"); qErr != nil {
-				return fmt.Errorf("decline: quarantine %s: %w", path, qErr)
-			}
-			continue
-		}
-
+	return beat.DrainDir(de.Inbox, "decline", func(path string, dec decision.Decision) error {
 		switch _, err := de.Ledger.Decline(ctx, dec.SignalRef, dec.EvaluatedAt); {
 		case err == nil:
-			if pErr := de.disposition(path, "processed"); pErr != nil {
+			if pErr := beat.Disposition(de.Inbox, path, "processed"); pErr != nil {
 				return fmt.Errorf("decline: archive %s: %w", path, pErr)
 			}
 		case errors.Is(err, ErrNoOpenSet):
-			if uErr := de.disposition(path, "unmatched"); uErr != nil {
+			if uErr := beat.Disposition(de.Inbox, path, "unmatched"); uErr != nil {
 				return fmt.Errorf("decline: unmatch %s: %w", path, uErr)
 			}
 		default:
-			if qErr := de.disposition(path, "quarantine"); qErr != nil {
+			if qErr := beat.Disposition(de.Inbox, path, "quarantine"); qErr != nil {
 				return fmt.Errorf("decline: quarantine %s: %w", path, qErr)
 			}
 		}
-	}
-	return nil
-}
-
-func (de *DeclineEdge) disposition(path, sub string) error {
-	dir := filepath.Join(de.Inbox, sub)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
+		return nil
+	})
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/beat"
 )
 
 // Reconciler runs every watched SLO through its detectors OR'd together —
@@ -37,10 +38,7 @@ type Reconciler struct {
 // aborts the whole pass — Reconcile returns the error and no detections at
 // all, never a partial slice alongside the error.
 func (r *Reconciler) Reconcile(ctx context.Context) ([]signal.Detection, error) {
-	clock := time.Now
-	if r.Now != nil {
-		clock = r.Now
-	}
+	clock := beat.Clock(r.Now)
 	var out []signal.Detection
 	for _, slo := range r.SLOs {
 		window, err := r.Source.BurnSamples(ctx, slo)

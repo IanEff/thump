@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 
 	"github.com/ianeff/thump/api/v1/signal"
-	"sigs.k8s.io/yaml"
+	"github.com/ianeff/thump/internal/beat"
 )
 
 // Transport is clank's directory-poll ingestion path: it globs
@@ -38,23 +36,8 @@ func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	matches, err := filepath.Glob(filepath.Join(tr.Inbox, "*.yaml"))
-	if err != nil {
-		return fmt.Errorf("clank: list inbox: %w", err)
-	}
-	for _, path := range matches {
-		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under tr.Inbox, not user input
-		if err != nil {
-			return fmt.Errorf("clank: read %s: %w", path, err)
-		}
-		var det signal.Detection
-		if err := yaml.Unmarshal(raw, &det); err != nil {
-			if qErr := tr.disposition(path, "quarantine"); qErr != nil {
-				return fmt.Errorf("clank: quarantine %s: %w", path, qErr)
-			}
-			continue // poison doesn't block the queue — the hiss/thump/click rule
-		}
-		_, err = tr.Engine.Propose(ctx, det)
+	return beat.DrainDir(tr.Inbox, "clank", func(path string, det signal.Detection) error {
+		_, err := tr.Engine.Propose(ctx, det)
 		if err != nil {
 			maxAttempts := tr.MaxAttempts
 			if maxAttempts <= 0 {
@@ -67,27 +50,19 @@ func (tr *Transport) Tick(ctx context.Context) error {
 			if tr.attempts[path] >= maxAttempts {
 				slog.Error("giving up on detection", "path", path, "attempts", tr.attempts[path], "err", err)
 				delete(tr.attempts, path)
-				if dErr := tr.disposition(path, "stalled"); dErr != nil {
+				if dErr := beat.Disposition(tr.Inbox, path, "stalled"); dErr != nil {
 					return fmt.Errorf("clank: stall %s: %w", path, dErr)
 				}
-				continue
+				return nil
 			}
 			slog.Warn("propose failed, will retry", "path", path, "attempts", tr.attempts[path], "err", err)
-			continue
+			return nil
 		}
 		delete(tr.attempts, path)
 
-		if err := tr.disposition(path, "processed"); err != nil {
+		if err := beat.Disposition(tr.Inbox, path, "processed"); err != nil {
 			return fmt.Errorf("clank: archive %s: %w", path, err)
 		}
-	}
-	return nil
-}
-
-func (tr *Transport) disposition(path, sub string) error {
-	dir := filepath.Join(tr.Inbox, sub)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return os.Rename(path, filepath.Join(dir, filepath.Base(path)))
+		return nil
+	})
 }

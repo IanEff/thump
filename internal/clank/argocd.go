@@ -7,6 +7,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/beat"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,10 +56,7 @@ func (a ArgoChangeSource) Changes(ctx context.Context, _ signal.Detection) (prop
 		return proposal.ChangeSnapshot{}, fmt.Errorf("list argocd applications: %w", err)
 	}
 
-	now := time.Now
-	if a.Now != nil {
-		now = a.Now
-	}
+	now := beat.Clock(a.Now)
 	lookback := a.Lookback
 	if lookback <= 0 {
 		lookback = DefaultChangeLookback
