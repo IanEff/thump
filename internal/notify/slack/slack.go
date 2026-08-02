@@ -13,8 +13,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/internal/httpx"
-	"github.com/ianeff/thump/internal/thump"
 )
 
 // ErrWebhookStatus is returned when Slack answers a post with a non-2xx
@@ -31,7 +31,7 @@ type Webhook struct {
 // Notify posts the held action's digest to the webhook. A transport error or a
 // non-2xx status (ErrWebhookStatus) is returned to the caller — which treats
 // delivery as best-effort, so a failed notify logs but never blocks the hold.
-func (w *Webhook) Notify(ctx context.Context, h thump.HeldAction) error {
+func (w *Webhook) Notify(ctx context.Context, h decision.Governed) error {
 	body, err := json.Marshal(map[string]string{"text": digest(h)})
 	if err != nil {
 		return fmt.Errorf("slack: marshal held action: %w", err)
@@ -63,7 +63,7 @@ func (w *Webhook) client() *http.Client {
 // digest renders the single line a human reads to bless-or-kill: which action
 // held, on what, and why — drawn from the Decision and the Set's recommended
 // Candidate, never the raw evidence.
-func digest(h thump.HeldAction) string {
+func digest(h decision.Governed) string {
 	return fmt.Sprintf("held for review: %s (%s, %s) — risk %s over the auto-fire ceiling [%s]; signal %s",
 		h.Set.ContractRefFor(h.Decision.CandidateRef),
 		h.Set.FailureClass,

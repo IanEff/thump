@@ -18,10 +18,8 @@ func main() {
 }
 
 // newSlackNotifier is the one place in the repo that constructs a concrete
-// Slack client — internal/thump can't do it itself (internal/notify/slack
-// imports internal/thump for HeldAction, so the reverse import would cycle);
-// this closure crosses that boundary from the outside, where package main is
-// free to import both sides without one.
+// Slack client — internal/thump stays free of it, injected through the
+// Notifier interface like Exec.
 func newSlackNotifier(url string) thump.Notifier {
 	return &slack.Webhook{URL: url}
 }

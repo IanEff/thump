@@ -14,23 +14,11 @@ import (
 
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
-	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
-
-// HeldAction is a gate-clean Candidate whose computed risk exceeded
-// Policy.AutoBand — eligible, but waiting on a human ack rather than
-// auto-firing. Its fingerprint stays open (never declined, never executed),
-// so the dedupe ledger keeps suppressing a fresh proposal until the window
-// elapses. Carries the full audit chain (Decision + Set) rather than a
-// rendered summary — a Notifier adapter derives human-facing text from it.
-type HeldAction struct {
-	Decision decision.Decision `json:"decision" yaml:"decision,omitempty"`
-	Set      proposal.Set      `json:"set" yaml:"set,omitempty"`
-}
 
 // ErrRenderFailed marks a governed approval thump's Actuator couldn't render
 // — a deterministic seam bug (bad catalog ref, bad params), not a transient
@@ -49,7 +37,7 @@ type Transport struct {
 	OrderPub   publish.Publisher[Order]             // destination for rendered Orders — thump.orders in production
 	OutcomePub publish.Publisher[outcome.Outcome]   // destination for executed Outcomes — thump.outcomes in production
 	DeclinePub publish.Publisher[decision.Decision] // destination for non-approvals — thump.declines in production; closes clank's ledger row without ever going through Outcome
-	HeldPub    publish.Publisher[HeldAction]        // destination for holds — thump.held in production; never declined, so the fingerprint stays open
+	HeldPub    publish.Publisher[decision.Governed] // destination for holds — thump.held in production; never declined, so the fingerprint stays open
 	Catalog    *contract.StaticCatalog              // the authored actions Render may resolve a granted Candidate against
 	Log        *OutcomeLog                          // every Outcome produced, queryable by ByResult
 	Exec       Executor                             // how an Order is carried out — DryRun in v1
@@ -152,13 +140,12 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 			"contractRef", oc.ContractRef, "acted", true, "mode", oc.Mode, "result", oc.Result, "error", oc.Error)
 		return nil
 	case decision.VerdictHold:
-		held := HeldAction{Decision: g.Decision, Set: g.Set}
-		if err := tr.HeldPub.Publish(ctx, "thump.held", held); err != nil {
+		if err := tr.HeldPub.Publish(ctx, "thump.held", g); err != nil {
 			return fmt.Errorf("thump: publish held for %s: %w", g.Decision.SignalRef, err)
 		}
 		notified := false
 		if tr.Notifier != nil {
-			if err := tr.Notifier.Notify(ctx, held); err != nil {
+			if err := tr.Notifier.Notify(ctx, g); err != nil {
 				slog.Error("notify held action", "signalRef", g.Decision.SignalRef, "err", err)
 			} else {
 				notified = true
