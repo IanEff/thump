@@ -73,7 +73,19 @@ data:
                 "thump.detections.dlq", "thump.outcomes.dlq", "thump.declines.dlq",
                 "$JS.API.CONSUMER.INFO.THUMP.clank", "$JS.API.CONSUMER.MSG.NEXT.THUMP.clank", "$JS.ACK.THUMP.clank.>",
                 "$JS.API.CONSUMER.INFO.THUMP.click", "$JS.API.CONSUMER.MSG.NEXT.THUMP.click", "$JS.ACK.THUMP.click.>",
-                "$JS.API.CONSUMER.INFO.THUMP.clank-declines", "$JS.API.CONSUMER.MSG.NEXT.THUMP.clank-declines", "$JS.ACK.THUMP.clank-declines.>"
+                "$JS.API.CONSUMER.INFO.THUMP.clank-declines", "$JS.API.CONSUMER.MSG.NEXT.THUMP.clank-declines", "$JS.ACK.THUMP.clank-declines.>",
+                # rebuild.go's fetchSubject mints a fresh, randomly-named
+                # ephemeral consumer on each of these three subjects every
+                # startup, to replay MemProposalLog/CaseBase state — same
+                # pattern as hiss's rebuildHolds below, and the same reason
+                # the wildcard token is needed instead of a fixed durable
+                # name. Missing here until a real deploy crash-looped on it
+                # (2026-08-02): the unit tests mock JetStream, so this gap
+                # was never exercised live.
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.declines",
+                "$JS.API.CONSUMER.MSG.NEXT.THUMP.*", "$JS.ACK.THUMP.*.>"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }

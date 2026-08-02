@@ -1,0 +1,53 @@
+# Mined from the same 2026-08-02 live run as hold-rebalance-osd-down.yaml —
+# the same chaos fault (chaos/osd-pod-failure-accelerate.yaml) burns two
+# distinct rattle signals off one root cause: ceph-health (that fixture) and
+# ceph-redundancy, this one. clank proposed accelerate-recovery at
+# self-reported confidence 0.866 (computedConfidence 0.8660 — NOT ceiling
+# bound, the grounded computation is what got emitted), citing pgs_degraded,
+# pgs_undersized, severity_ceph_redundancy, ceph_health, recovery_ops_rate.
+# accelerate-recovery is the catalog's one high-blast action (catalog.yaml's
+# own comment: "a trade a human blesses"), so hiss correctly held on
+# risk_ceiling rather than auto-approving — approved by hand
+# (kubectl patch approvalrequest ar-fbcd0c79834c0bec --type=merge
+# -p '{"spec":{"decision":"approve"}}'), executed live 5s later
+# (mode=live result=applied, 11:51:08Z), mutation verified directly on the
+# cluster (rook-ceph-operator scaled to 0, osd_max_backfills/
+# osd_recovery_max_active both set to 16). Sealed Set:
+# clank/thump.proposals/00000000000000000000-1785671212466434324.jsonl
+# (S3, thump-wal bucket).
+#
+# Evidence below is real — queried against this rig's own live Prometheus at
+# the decision's own timestamp (11:35:31Z) — not pulled from the per-step
+# tool-call transcript itself (that pull wasn't done this session).
+ContractRef: ceph-redundancy:v1
+DetectedAt: "2026-08-02T11:35:07.526447489Z"
+DetectorType: sustained_burn
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 60 # approximate — the detector's own accel factor wasn't captured before rotation; order of magnitude only
+  Trajectory: accelerating
+Fingerprint: slo_burn:cephblockpool
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.6
+    Trajectory: accelerating
+Name: cephblockpool-burn-accel
+OriginService: cephblockpool
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: cephcluster
+    State: degraded
+  - Service: rook-operator
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""

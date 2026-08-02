@@ -23,7 +23,7 @@ type fakeBucket struct {
 	objects map[string][]byte // key -> sealed bytes
 }
 
-func (b *fakeBucket) ListObjectsV2(_ context.Context, in *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+func (b *fakeBucket) ListObjectsV2(_ context.Context, _ *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	var contents []types.Object
 	for key := range b.objects {
 		contents = append(contents, types.Object{Key: aws.String(key)})

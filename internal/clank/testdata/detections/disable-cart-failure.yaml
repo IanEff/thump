@@ -1,0 +1,51 @@
+# Mined live, 2026-08-02: cartFailure flagd flag flipped on directly (a
+# merge-patch on flagd-config's demo.flagd.json — flag-cart-on.sh from the
+# 2026-07-31/08-01 sessions was an ad-hoc script, never committed to this
+# repo, same as the acme walkthrough's own fault mechanism). Confirmed a real
+# fault immediately: cart's own log showed genuine FailedPrecondition/"Wasn't
+# able to connect to redis" errors against real load-generator traffic.
+# clank proposed disable-cart-failure at confidence 0.8406 (computedConfidence
+# 0.8406 — NOT ceiling bound, the grounded computation is what got emitted),
+# gate passed, auto-approved (act_reversible, floorApplied 0.75), executed
+# live within seconds of detection (mode=live result=applied), settled
+# success ten minutes later (observedSeverity 0.148, fired=false). This is
+# the first non-Ceph propose row in this table — genuinely different evidence
+# vocabulary (config/thump-test/whir/evidence-queries.yaml group 8), closing
+# the gap phase X's own close-out named ("no otel-demo/acme-domain fixture
+# exists yet"). Full trail in thump-running-notes.md (2026-08-02).
+#
+# Evidence queried against the live rig's own Prometheus at the decision's
+# own timestamp (11:46:52Z) — not pulled from the per-step tool-call
+# transcript (not done this session).
+ContractRef: cart-availability:v1
+DetectedAt: "2026-08-02T11:46:06.785322491Z"
+DetectorType: sustained_burn
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 50
+  Trajectory: accelerating
+Fingerprint: slo_burn:cart
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.5
+    Trajectory: accelerating
+Name: cart-burn-accel
+OriginService: cart
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: checkout
+    State: degraded
+  - Service: flagd
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""
