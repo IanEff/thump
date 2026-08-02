@@ -1,4 +1,9 @@
-package beat
+// Package poll is the offline-transport ticker every beat's dir-poll
+// (rather than broker-mode) path drives its Tick through — a plain
+// fixed-interval loop, or a jittered exponential backoff, both bounded per
+// tick by an authored timeout rather than left to inherit the beat's own
+// long-lived context.
+package poll
 
 import (
 	"context"
@@ -7,11 +12,11 @@ import (
 	"time"
 )
 
-// PollConfig selects the offline dir-poll cadence. A zero Backoff is the plain
+// Config selects the offline dir-poll cadence. A zero Backoff is the plain
 // fixed-interval ticker hiss and thump use; a non-nil Backoff opts into clank's
 // jittered exponential backoff, which slows a beat down while its inbox source
 // is failing and snaps back to Base once a tick succeeds.
-type PollConfig struct {
+type Config struct {
 	Interval time.Duration
 	Backoff  *BackoffConfig
 	// Timeout bounds one tick. A zero value leaves the tick unbounded — every
@@ -19,9 +24,9 @@ type PollConfig struct {
 	Timeout time.Duration
 }
 
-// DefaultPollConfig is the fixed-interval cadence hiss and thump's offline
+// DefaultConfig is the fixed-interval cadence hiss and thump's offline
 // dir-poll transports share: tick every 5s, bounded to 20s.
-var DefaultPollConfig = PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}
+var DefaultConfig = Config{Interval: 5 * time.Second, Timeout: 20 * time.Second}
 
 // BackoffConfig is the growth schedule for a failing poll loop: start at Base,
 // double on each failed tick up to Cap, reset to Base on success. When a tick
@@ -32,12 +37,12 @@ type BackoffConfig struct {
 	JitterDivisor int
 }
 
-// PollLoop drives tick on the configured cadence until ctx is cancelled,
+// Loop drives tick on the configured cadence until ctx is cancelled,
 // logging (never returning) a tick error. It is the offline transport: broker
 // mode uses RunConsumer instead. Single-threaded by construction — tick N+1
 // never starts until tick N returns, so cfg.Timeout is what keeps one slow
 // tick from stacking up behind the next.
-func PollLoop(ctx context.Context, cfg PollConfig, tick func(context.Context) error) {
+func Loop(ctx context.Context, cfg Config, tick func(context.Context) error) {
 	tick = WithTimeout(cfg.Timeout, tick)
 	if cfg.Backoff == nil {
 		pollFixed(ctx, cfg.Interval, tick)

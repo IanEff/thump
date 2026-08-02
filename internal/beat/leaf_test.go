@@ -10,7 +10,9 @@ import (
 // may import stdlib, the shared transport infrastructure (broker, publish,
 // and the jetstream types they surface), health (consumer.go's BrokerHooks
 // and AwaitConsumers take a *health.Health, and metrics.go's Metrics builds
-// one), tlsx (trace.go's Tracer and
+// one), poll (objectstore.go's RunShipper drives its ship cadence through
+// poll.Loop, the same offline ticker every beat's dir-poll Tick uses),
+// tlsx (trace.go's Tracer and
 // metrics.go's Metrics both build a *tls.Config from it rather than
 // constructing one inline), the OTel tracing SDK plus grpc/credentials
 // (trace.go's Tracer, which every beat's Main calls to build its span
@@ -41,6 +43,7 @@ func TestBeatImportsNoBeat(t *testing.T) {
 		leaftest.Stdlib,
 		"github.com/ianeff/thump/internal/broker",
 		"github.com/ianeff/thump/internal/health",
+		"github.com/ianeff/thump/internal/poll",
 		"github.com/ianeff/thump/internal/publish",
 		"github.com/nats-io/nats.go/jetstream",
 		"github.com/prometheus/client_golang/prometheus",

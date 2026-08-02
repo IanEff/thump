@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
@@ -155,6 +155,6 @@ func TestTransport_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) 
 		}
 
 		cancel()
-		beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
+		poll.Loop(ctx, poll.Config{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
 	})
 }

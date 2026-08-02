@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 
@@ -150,7 +151,7 @@ func UnsealSegment(key sealbox.Key, r io.Reader) ([][]byte, error) {
 // errgroup alongside a beat's consumer loop, same shape as
 // clank/broker.go's two-subscriber composition.
 func RunShipper(ctx context.Context, wal *publish.WAL, sink publish.SegmentSink, shipInterval time.Duration) {
-	PollLoop(ctx, PollConfig{Interval: shipInterval, Timeout: 4 * shipInterval}, func(ctx context.Context) error {
+	poll.Loop(ctx, poll.Config{Interval: shipInterval, Timeout: 4 * shipInterval}, func(ctx context.Context) error {
 		return wal.Ship(ctx, sink)
 	})
 }
