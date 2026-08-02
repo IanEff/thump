@@ -16,6 +16,7 @@ func TestPublishIsALeafPackage(t *testing.T) {
 		"os", "path/filepath", "sort", "strconv", "strings", "sync", "time",
 		"sigs.k8s.io/yaml",
 		"github.com/ianeff/thump/internal/wire",
+		"github.com/ianeff/thump/internal/configfile",
 		"github.com/aws/aws-sdk-go-v2/aws",
 		"github.com/aws/aws-sdk-go-v2/service/s3",
 		"github.com/nats-io/nats.go",

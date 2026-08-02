@@ -2,12 +2,9 @@ package clank
 
 import (
 	"errors"
-	"fmt"
-	"os"
-	"strings"
 	"time"
 
-	"sigs.k8s.io/yaml"
+	"github.com/ianeff/thump/internal/configfile"
 )
 
 // ErrIncompleteWeights means a weights file omitted a term rather
@@ -84,59 +81,28 @@ type weightsFile struct {
 // ScoringWeights — the only decoder for the tuning surface, mirroring
 // hiss.LoadPolicy's posture: fail at load, never at first use.
 func LoadWeightsFile(path string) (ScoringWeights, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config path, not user input
+	wf, err := configfile.Stage[weightsFile](path, "weights file")
 	if err != nil {
-		return ScoringWeights{}, fmt.Errorf("read weights file: %w", err)
-	}
-	var wf weightsFile
-	if err := yaml.Unmarshal(raw, &wf); err != nil {
-		return ScoringWeights{}, fmt.Errorf("parse weights file: %w", err)
+		return ScoringWeights{}, err
 	}
 
-	missing := []string{}
-	need := func(name string, present bool) {
-		if !present {
-			missing = append(missing, name)
-		}
+	r := configfile.Require("weights file", ErrIncompleteWeights)
+	out := ScoringWeights{
+		Temporal:              r.Float("temporal", wf.Temporal),
+		Topological:           r.Float("topological", wf.Topological),
+		Historical:            r.Float("historical", wf.Historical),
+		HistoricalHalfLife:    r.Duration("historicalHalfLife", wf.HistoricalHalfLife),
+		GroundingNone:         r.Float("groundingNone", wf.GroundingNone),
+		GroundingOne:          r.Float("groundingOne", wf.GroundingOne),
+		GroundingMany:         r.Float("groundingMany", wf.GroundingMany),
+		Causal:                r.Float("causal", wf.Causal),
+		RecencyHalfLife:       r.Duration("recencyHalfLife", wf.RecencyHalfLife),
+		HistoricalAloneCap:    r.Float("historicalAloneCap", wf.HistoricalAloneCap),
+		CaseBaseBaseline:      r.Float("caseBaseBaseline", wf.CaseBaseBaseline),
+		NegativeSignalPenalty: r.Float("negativeSignalPenalty", wf.NegativeSignalPenalty),
 	}
-	need("temporal", wf.Temporal != nil)
-	need("topological", wf.Topological != nil)
-	need("historical", wf.Historical != nil)
-	need("historicalHalfLife", wf.HistoricalHalfLife != nil)
-	need("groundingNone", wf.GroundingNone != nil)
-	need("groundingOne", wf.GroundingOne != nil)
-	need("groundingMany", wf.GroundingMany != nil)
-	need("causal", wf.Causal != nil)
-	need("recencyHalfLife", wf.RecencyHalfLife != nil)
-	need("historicalAloneCap", wf.HistoricalAloneCap != nil)
-	need("caseBaseBaseline", wf.CaseBaseBaseline != nil)
-	need("negativeSignalPenalty", wf.NegativeSignalPenalty != nil)
-
-	if len(missing) > 0 {
-		return ScoringWeights{}, fmt.Errorf("%w: %s", ErrIncompleteWeights, strings.Join(missing, ", "))
+	if err := r.Err(); err != nil {
+		return ScoringWeights{}, err
 	}
-
-	historicalHalfLife, err := time.ParseDuration(*wf.HistoricalHalfLife)
-	if err != nil {
-		return ScoringWeights{}, fmt.Errorf("weights file historicalHalfLife: %w", err)
-	}
-	recencyHalfLife, err := time.ParseDuration(*wf.RecencyHalfLife)
-	if err != nil {
-		return ScoringWeights{}, fmt.Errorf("weights file recencyHalfLife: %w", err)
-	}
-
-	return ScoringWeights{
-		Temporal:              *wf.Temporal,
-		Topological:           *wf.Topological,
-		Historical:            *wf.Historical,
-		HistoricalHalfLife:    historicalHalfLife,
-		GroundingNone:         *wf.GroundingNone,
-		GroundingOne:          *wf.GroundingOne,
-		GroundingMany:         *wf.GroundingMany,
-		Causal:                *wf.Causal,
-		RecencyHalfLife:       recencyHalfLife,
-		HistoricalAloneCap:    *wf.HistoricalAloneCap,
-		CaseBaseBaseline:      *wf.CaseBaseBaseline,
-		NegativeSignalPenalty: *wf.NegativeSignalPenalty,
-	}, nil
+	return out, nil
 }
