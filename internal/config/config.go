@@ -16,6 +16,39 @@ import (
 	"time"
 )
 
+// BrokerStore is the WAL/S3/TLS/seal-key block every beat's broker path
+// requires — one struct instead of four copies, so the next knob added to
+// it lands in one place.
+type BrokerStore struct {
+	WALDir      string // WAL_DIR — required only in the broker path
+	WALConfig   string // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
+	S3Endpoint  string // S3_ENDPOINT — required only in the broker path
+	S3Bucket    string // S3_BUCKET — required only in the broker path
+	S3AccessKey string // S3_ACCESS_KEY — required only in the broker path
+	S3SecretKey string // S3_SECRET_KEY — required only in the broker path
+	TLSCertFile string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
+	TLSKeyFile  string // TLS_KEY_FILE — required only in the broker path
+	TLSCAFile   string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
+	SealKey     []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments (and clank's transcripts) before they reach the bucket
+}
+
+// loadBrokerStore reads the ten broker-path vars every beat's Load* function
+// requires once it's running in broker mode.
+func loadBrokerStore(l *loader) BrokerStore {
+	return BrokerStore{
+		WALDir:      l.Require("WAL_DIR"),
+		WALConfig:   l.Require("WAL_CONFIG"),
+		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "https"),
+		S3Bucket:    l.Require("S3_BUCKET"),
+		S3AccessKey: l.Require("S3_ACCESS_KEY"),
+		S3SecretKey: l.Require("S3_SECRET_KEY"),
+		TLSCertFile: l.Require("TLS_CERT_FILE"),
+		TLSKeyFile:  l.Require("TLS_KEY_FILE"),
+		TLSCAFile:   l.Require("TLS_CA_FILE"),
+		SealKey:     l.RequireBase64Key("THUMP_SEAL_KEY", 32),
+	}
+}
+
 // Clank is clank's environment, one field per var its Main used to read ad
 // hoc with os.Getenv.
 type Clank struct {
@@ -36,16 +69,7 @@ type Clank struct {
 	Outbox           string        // CLANK_OUTBOX — required only in the offline path
 	Outcomes         string        // CLANK_OUTCOMES — required only in the offline path
 	Declines         string        // CLANK_DECLINES — required only in the offline path
-	WALDir           string        // WAL_DIR — required only in the broker path
-	WALConfig        string        // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
-	S3Endpoint       string        // S3_ENDPOINT — required only in the broker path
-	S3Bucket         string        // S3_BUCKET — required only in the broker path
-	S3AccessKey      string        // S3_ACCESS_KEY — required only in the broker path
-	S3SecretKey      string        // S3_SECRET_KEY — required only in the broker path
-	TLSCertFile      string        // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
-	TLSKeyFile       string        // TLS_KEY_FILE — required only in the broker path
-	TLSCAFile        string        // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
-	SealKey          []byte        // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments and transcripts before they reach the bucket
+	BrokerStore                    // WAL/S3/TLS/seal-key — required only in the broker path
 	Weights          string        // CLANK_WEIGHTS -- required; path to mounted weights.yaml
 	Limits           string        // CLANK_LIMITS -- required; path to mounted limits.yaml
 }
@@ -85,16 +109,7 @@ func LoadClank(broker bool) (Clank, error) {
 		c.Outbox = l.Optional("CLANK_OUTBOX")
 		c.Outcomes = l.Optional("CLANK_OUTCOMES")
 		c.Declines = l.Optional("CLANK_DECLINES")
-		c.WALDir = l.Require("WAL_DIR")
-		c.WALConfig = l.Require("WAL_CONFIG")
-		c.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
-		c.S3Bucket = l.Require("S3_BUCKET")
-		c.S3AccessKey = l.Require("S3_ACCESS_KEY")
-		c.S3SecretKey = l.Require("S3_SECRET_KEY")
-		c.TLSCertFile = l.Require("TLS_CERT_FILE")
-		c.TLSKeyFile = l.Require("TLS_KEY_FILE")
-		c.TLSCAFile = l.Require("TLS_CA_FILE")
-		c.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
+		c.BrokerStore = loadBrokerStore(l)
 	} else {
 		c.Inbox = l.Require("CLANK_INBOX")
 		c.Outbox = l.Require("CLANK_OUTBOX")
@@ -114,16 +129,7 @@ type Hiss struct {
 	OTLPEndpoint string // OTEL_EXPORTER_OTLP_ENDPOINT — optional; empty means unconfigured
 	Inbox        string // HISS_INBOX — required only in the offline (non-broker) path
 	Outbox       string // HISS_OUTBOX — required only in the offline path
-	WALDir       string // WAL_DIR — required only in the broker path
-	WALConfig    string // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
-	S3Endpoint   string // S3_ENDPOINT — required only in the broker path
-	S3Bucket     string // S3_BUCKET — required only in the broker path
-	S3AccessKey  string // S3_ACCESS_KEY — required only in the broker path
-	S3SecretKey  string // S3_SECRET_KEY — required only in the broker path
-	TLSCertFile  string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
-	TLSKeyFile   string // TLS_KEY_FILE — required only in the broker path
-	TLSCAFile    string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
-	SealKey      []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
+	BrokerStore         // WAL/S3/TLS/seal-key — required only in the broker path
 
 	ApprovalRequestsEnabled bool          // APPROVALREQUESTS_ENABLED — optional, default false; runs the ApprovalRequest controller against hiss's in-cluster identity. Off means trim is the only path that releases a hold.
 	ApprovalRetention       time.Duration // APPROVALREQUEST_RETENTION — optional; how long a Processed ApprovalRequest stays readable before the sweep reclaims it; defaults to 24h
@@ -146,16 +152,7 @@ func LoadHiss(broker bool) (Hiss, error) {
 	if broker {
 		h.Inbox = l.Optional("HISS_INBOX")
 		h.Outbox = l.Optional("HISS_OUTBOX")
-		h.WALDir = l.Require("WAL_DIR")
-		h.WALConfig = l.Require("WAL_CONFIG")
-		h.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
-		h.S3Bucket = l.Require("S3_BUCKET")
-		h.S3AccessKey = l.Require("S3_ACCESS_KEY")
-		h.S3SecretKey = l.Require("S3_SECRET_KEY")
-		h.TLSCertFile = l.Require("TLS_CERT_FILE")
-		h.TLSKeyFile = l.Require("TLS_KEY_FILE")
-		h.TLSCAFile = l.Require("TLS_CA_FILE")
-		h.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
+		h.BrokerStore = loadBrokerStore(l)
 		h.ApprovalRequestsEnabled = l.OptionalBool("APPROVALREQUESTS_ENABLED")
 		h.ApprovalRetention = l.OptionalDuration("APPROVALREQUEST_RETENTION", 24*time.Hour)
 	} else {
@@ -179,16 +176,7 @@ type Rattle struct {
 	Outbox           string // RATTLE_OUTBOX — optional even offline; unset means detections are logged, not published
 	WatchPath        string // RATTLE_WATCH - required unconditionally
 	QueryConfig      string // RATTLE_QUERY_CONFIG - required unconditionally; path to mounted query.yaml
-	WALDir           string // WAL_DIR — required only in the broker path
-	WALConfig        string // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
-	S3Endpoint       string // S3_ENDPOINT — required only in the broker path
-	S3Bucket         string // S3_BUCKET — required only in the broker path
-	S3AccessKey      string // S3_ACCESS_KEY — required only in the broker path
-	S3SecretKey      string // S3_SECRET_KEY — required only in the broker path
-	TLSCertFile      string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
-	TLSKeyFile       string // TLS_KEY_FILE — required only in the broker path
-	TLSCAFile        string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
-	SealKey          []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
+	BrokerStore             // WAL/S3/TLS/seal-key — required only in the broker path
 }
 
 // LoadRattle reads rattle's environment once. broker is whether Main
@@ -209,16 +197,7 @@ func LoadRattle(broker bool) (Rattle, error) {
 		Outbox:           l.Optional("RATTLE_OUTBOX"),
 	}
 	if broker {
-		r.WALDir = l.Require("WAL_DIR")
-		r.WALConfig = l.Require("WAL_CONFIG")
-		r.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
-		r.S3Bucket = l.Require("S3_BUCKET")
-		r.S3AccessKey = l.Require("S3_ACCESS_KEY")
-		r.S3SecretKey = l.Require("S3_SECRET_KEY")
-		r.TLSCertFile = l.Require("TLS_CERT_FILE")
-		r.TLSKeyFile = l.Require("TLS_KEY_FILE")
-		r.TLSCAFile = l.Require("TLS_CA_FILE")
-		r.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
+		r.BrokerStore = loadBrokerStore(l)
 	}
 	return r, l.err()
 }
@@ -237,16 +216,7 @@ type Thump struct {
 	SlackWebhookURL string // SLACK_WEBHOOK_URL - optional; empty means no Notifier is wired.
 	Inbox           string // THUMP_INBOX — required only in the offline (non-broker) path
 	Outbox          string // THUMP_OUTBOX — required only in the offline path
-	WALDir          string // WAL_DIR — required only in the broker path
-	WALConfig       string // WAL_CONFIG — required only in the broker path; path to mounted wal.yaml
-	S3Endpoint      string // S3_ENDPOINT — required only in the broker path
-	S3Bucket        string // S3_BUCKET — required only in the broker path
-	S3AccessKey     string // S3_ACCESS_KEY — required only in the broker path
-	S3SecretKey     string // S3_SECRET_KEY — required only in the broker path
-	TLSCertFile     string // TLS_CERT_FILE — required only in the broker path; this beat's own leaf, shared across every TLS leg it dials or serves
-	TLSKeyFile      string // TLS_KEY_FILE — required only in the broker path
-	TLSCAFile       string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
-	SealKey         []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments before they reach the bucket
+	BrokerStore            // WAL/S3/TLS/seal-key — required only in the broker path
 }
 
 // LoadThump reads thump's environment once. broker is whether Main resolved
@@ -267,16 +237,7 @@ func LoadThump(broker bool) (Thump, error) {
 	if broker {
 		t.Inbox = l.Optional("THUMP_INBOX")
 		t.Outbox = l.Optional("THUMP_OUTBOX")
-		t.WALDir = l.Require("WAL_DIR")
-		t.WALConfig = l.Require("WAL_CONFIG")
-		t.S3Endpoint = l.RequireURL("S3_ENDPOINT", "https")
-		t.S3Bucket = l.Require("S3_BUCKET")
-		t.S3AccessKey = l.Require("S3_ACCESS_KEY")
-		t.S3SecretKey = l.Require("S3_SECRET_KEY")
-		t.TLSCertFile = l.Require("TLS_CERT_FILE")
-		t.TLSKeyFile = l.Require("TLS_KEY_FILE")
-		t.TLSCAFile = l.Require("TLS_CA_FILE")
-		t.SealKey = l.RequireBase64Key("THUMP_SEAL_KEY", 32)
+		t.BrokerStore = loadBrokerStore(l)
 	} else {
 		t.Inbox = l.Require("THUMP_INBOX")
 		t.Outbox = l.Require("THUMP_OUTBOX")
