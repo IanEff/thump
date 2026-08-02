@@ -1,4 +1,4 @@
-package beat
+package otelx
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func TestNewTracer(t *testing.T) {
 	cases := map[string]struct {
 		endpoint string
 		factory  exporterFactory
-		check    func(t *testing.T, tr trace.Tracer, shutdown Shutdown, err error)
+		check    func(t *testing.T, tr trace.Tracer, shutdown func(context.Context) error, err error)
 	}{
 		"newTracer returns a noop tracer and never calls the factory when the endpoint is empty": {
 			endpoint: "",
@@ -59,7 +59,7 @@ func TestNewTracer(t *testing.T) {
 				t.Fatal("exporter factory must not be called when the endpoint is unconfigured")
 				return nil, nil
 			},
-			check: func(t *testing.T, tr trace.Tracer, shutdown Shutdown, err error) {
+			check: func(t *testing.T, tr trace.Tracer, shutdown func(context.Context) error, err error) {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -81,7 +81,7 @@ func TestNewTracer(t *testing.T) {
 			factory: func(context.Context, string) (sdktrace.SpanExporter, error) {
 				return nil, errBoom
 			},
-			check: func(t *testing.T, tr trace.Tracer, shutdown Shutdown, err error) {
+			check: func(t *testing.T, tr trace.Tracer, shutdown func(context.Context) error, err error) {
 				if !errors.Is(err, errBoom) {
 					t.Fatalf("newTracer err = %v, want wrapping %v", err, errBoom)
 				}
@@ -95,7 +95,7 @@ func TestNewTracer(t *testing.T) {
 			factory: func(context.Context, string) (sdktrace.SpanExporter, error) {
 				return emittedExporter, nil
 			},
-			check: func(t *testing.T, tr trace.Tracer, shutdown Shutdown, err error) {
+			check: func(t *testing.T, tr trace.Tracer, shutdown func(context.Context) error, err error) {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}

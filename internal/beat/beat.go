@@ -26,6 +26,15 @@ type Version struct {
 	Version, Commit, Date string
 }
 
+// Shutdown releases whatever a listener or tracer allocated — never nil, so a
+// caller can unconditionally `defer shutdown(ctx)` even on an unconfigured
+// path, with no nil check standing between every beat and the same
+// one-liner. otelx.Tracer returns the bare func(context.Context) error
+// rather than this named type — Go's function-type assignability makes the
+// two interchangeable at every call site, so otelx never needs to import
+// beat to hand one back.
+type Shutdown func(context.Context) error
+
 // Lifecycle is what Start hands back for the running (non-exit) path: the
 // shutdown-aware context every beat loops on, the NATS URL that selects broker
 // vs. offline mode ("" ⇒ offline dir-poll), and the Stop that releases the

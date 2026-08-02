@@ -13,6 +13,7 @@ import (
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/publish"
 )
 
@@ -85,7 +86,7 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 	switch g.Decision.Verdict {
 	case decision.VerdictApproved:
 		var order Order
-		if err := beat.Stage(ctx, beat.TracerOrNoop(tr.Tracer), tr.Stages, "render", func(context.Context) error {
+		if err := beat.Stage(ctx, otelx.TracerOrNoop(tr.Tracer), tr.Stages, "render", func(context.Context) error {
 			var err error
 			order, err = (Actuator{}).Render(g, tr.Catalog, tr.now())
 			return err

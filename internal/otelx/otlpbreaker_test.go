@@ -1,4 +1,4 @@
-package beat_test
+package otelx_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/ianeff/thump/internal/beat"
+	"github.com/ianeff/thump/internal/otelx"
 )
 
 // countingExporter is a metric.Exporter test double that records how many
@@ -95,7 +95,7 @@ func TestPermanentGRPCFailure(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := beat.PermanentGRPCFailureForTest(tc.err)
+			got := otelx.PermanentGRPCFailureForTest(tc.err)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Error("wrong permanence classification (-want +got)\n", diff)
 			}
@@ -108,7 +108,7 @@ func TestBreakerExporterExport_OpensOnFirstPermanentFailureAndPropagatesTheError
 	wantErr := status.Error(codes.Unimplemented, "no MetricsService")
 	next := &countingExporter{err: wantErr}
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	exp := beat.NewBreakerExporterForTest(next, clock.Now)
+	exp := otelx.NewBreakerExporterForTest(next, clock.Now)
 
 	err := exp.Export(context.Background(), &metricdata.ResourceMetrics{})
 	if !errors.Is(err, wantErr) {
@@ -123,7 +123,7 @@ func TestBreakerExporterExport_SkipsTheWrappedExporterWhileOpenAndBeforeProbeTim
 	t.Parallel()
 	next := &countingExporter{err: status.Error(codes.Unimplemented, "no MetricsService")}
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	exp := beat.NewBreakerExporterForTest(next, clock.Now)
+	exp := otelx.NewBreakerExporterForTest(next, clock.Now)
 
 	if err := exp.Export(context.Background(), &metricdata.ResourceMetrics{}); err == nil {
 		t.Fatal("first call must fail to open the breaker")
@@ -142,13 +142,13 @@ func TestBreakerExporterExport_CallsTheWrappedExporterAgainAfterProbeIntervalEla
 	t.Parallel()
 	next := &countingExporter{err: status.Error(codes.Unimplemented, "no MetricsService")}
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	exp := beat.NewBreakerExporterForTest(next, clock.Now)
+	exp := otelx.NewBreakerExporterForTest(next, clock.Now)
 
 	if err := exp.Export(context.Background(), &metricdata.ResourceMetrics{}); err == nil {
 		t.Fatal("first call must fail to open the breaker")
 	}
 
-	clock.advance(beat.ProbeIntervalForTest)
+	clock.advance(otelx.ProbeIntervalForTest)
 	next.err = nil // the probe succeeds — endpoint fixed itself
 	if err := exp.Export(context.Background(), &metricdata.ResourceMetrics{}); err != nil {
 		t.Errorf("probe attempt returned %v, want nil", err)
@@ -162,7 +162,7 @@ func TestBreakerExporterExport_NeverOpensForTransientFailures(t *testing.T) {
 	t.Parallel()
 	next := &countingExporter{err: status.Error(codes.Unavailable, "collector restarting")}
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	exp := beat.NewBreakerExporterForTest(next, clock.Now)
+	exp := otelx.NewBreakerExporterForTest(next, clock.Now)
 
 	for i := 1; i <= 3; i++ {
 		err := exp.Export(context.Background(), &metricdata.ResourceMetrics{})

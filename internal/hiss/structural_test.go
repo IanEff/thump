@@ -47,6 +47,7 @@ func TestHissClientGoConfinedToController(t *testing.T) {
 		`"github.com/ianeff/thump/internal/health"`:      true,
 		`"github.com/ianeff/thump/internal/ledger"`:      true,
 		`"github.com/ianeff/thump/internal/objectstore"`: true,
+		`"github.com/ianeff/thump/internal/otelx"`:       true,
 		`"github.com/ianeff/thump/internal/poll"`:        true,
 		`"github.com/ianeff/thump/internal/publish"`:     true,
 		`"github.com/ianeff/thump/internal/sealbox"`:     true,

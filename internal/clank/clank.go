@@ -14,6 +14,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/objectstore"
+	"github.com/ianeff/thump/internal/otelx"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
@@ -129,7 +130,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		store = NewDirStore(cfg.Transcripts)
 	}
 
-	tracer, shutdownTracer, err := beat.Tracer(ctx, "clank", cfg.OTLPEndpoint, tlsx.Config{
+	tracer, shutdownTracer, err := otelx.Tracer(ctx, "clank", cfg.OTLPEndpoint, tlsx.Config{
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,

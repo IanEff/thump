@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,6 +12,30 @@ import (
 	otelcodes "go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
+
+// recordingExporter is a minimal fake — unlike tracetest.InMemoryExporter its
+// Shutdown does not clear what was recorded, so a test can assert on spans
+// after driving the full Stage contract (run a stage, then shut down the
+// provider) instead of having to peek at exporter internals mid-test.
+type recordingExporter struct {
+	mu    sync.Mutex
+	spans []sdktrace.ReadOnlySpan
+}
+
+func (r *recordingExporter) ExportSpans(_ context.Context, spans []sdktrace.ReadOnlySpan) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.spans = append(r.spans, spans...)
+	return nil
+}
+
+func (r *recordingExporter) Shutdown(context.Context) error { return nil }
+
+func (r *recordingExporter) recorded() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.spans)
+}
 
 // TestStage_SuccessRecordsDurationButNoError pins the RED contract on the
 // happy path: a stage that returns nil gets exactly one span (ended, not
