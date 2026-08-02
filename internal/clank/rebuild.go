@@ -11,7 +11,6 @@ import (
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/broker"
-	"github.com/ianeff/thump/internal/wire"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
@@ -32,28 +31,21 @@ func buildLedger(ctx context.Context, js jetstream.JetStream, retention time.Dur
 // order matters because both methods act on "the most recently recorded
 // open set" for a fingerprint, not a fixed one.
 func rebuildLedger(ctx context.Context, js jetstream.JetStream, retention time.Duration) (*MemProposalLog, error) {
-	proposals, err := fetchSubject[proposal.Set](ctx, js, "thump.proposals")
-	if err != nil {
+	var events []replayEvent
+	if err := broker.DrainSubject(ctx, js, "thump.proposals", "fetch thump.proposals", func(at time.Time, v proposal.Set) {
+		events = append(events, replayEvent{at: at, proposal: &v})
+	}); err != nil {
 		return nil, fmt.Errorf("clank: rebuild ledger: %w", err)
 	}
-	outcomes, err := fetchSubject[outcome.Outcome](ctx, js, "thump.outcomes")
-	if err != nil {
+	if err := broker.DrainSubject(ctx, js, "thump.outcomes", "fetch thump.outcomes", func(at time.Time, v outcome.Outcome) {
+		events = append(events, replayEvent{at: at, outcome: &v})
+	}); err != nil {
 		return nil, fmt.Errorf("clank: rebuild ledger: %w", err)
 	}
-	declines, err := fetchSubject[decision.Decision](ctx, js, "thump.declines")
-	if err != nil {
+	if err := broker.DrainSubject(ctx, js, "thump.declines", "fetch thump.declines", func(at time.Time, v decision.Decision) {
+		events = append(events, replayEvent{at: at, decline: &v})
+	}); err != nil {
 		return nil, fmt.Errorf("clank: rebuild ledger: %w", err)
-	}
-
-	events := make([]replayEvent, 0, len(proposals)+len(outcomes)+len(declines))
-	for _, p := range proposals {
-		events = append(events, replayEvent{at: p.at, proposal: &p.v})
-	}
-	for _, o := range outcomes {
-		events = append(events, replayEvent{at: o.at, outcome: &o.v})
-	}
-	for _, d := range declines {
-		events = append(events, replayEvent{at: d.at, decline: &d.v})
 	}
 	sort.Slice(events, func(i, j int) bool { return events[i].at.Before(events[j].at) })
 
@@ -102,65 +94,4 @@ func (ev replayEvent) replayInto(ctx context.Context, ledger *MemProposalLog) er
 		}
 		return nil
 	}
-}
-
-// timestamped pairs a decoded boundary object with the JetStream-assigned
-// time it was stored — replay's only source of ordering, since none of
-// proposal.Set/outcome.Outcome/decision.Decision carry a timestamp clank
-// itself stamped at Record time.
-type timestamped[T any] struct {
-	at time.Time
-	v  T
-}
-
-// fetchSubject drains subject's full history from the shared stream through
-// a non-durable consumer — its read position exists only for this one pass,
-// never persisted, so it never competes with the beat's own durable
-// consumer on the same subject. A message that fails to decode is Acked and
-// dropped rather than failing the rebuild: poison on the wire is a defect
-// in whatever published it, not a reason to refuse every other beat's
-// history.
-func fetchSubject[T any](ctx context.Context, js jetstream.JetStream, subject string) ([]timestamped[T], error) {
-	// No Durable name: this consumer's cursor only needs to survive one
-	// startup pass, not a restart — same reasoning as hiss's rebuildHolds.
-	cons, err := js.CreateConsumer(ctx, broker.StreamName, jetstream.ConsumerConfig{
-		FilterSubject:     subject,
-		AckPolicy:         jetstream.AckExplicitPolicy,
-		InactiveThreshold: time.Minute,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("fetch %s: create consumer: %w", subject, err)
-	}
-
-	var out []timestamped[T]
-	for {
-		batch, err := cons.FetchNoWait(256)
-		if err != nil {
-			return nil, fmt.Errorf("fetch %s: fetch: %w", subject, err)
-		}
-
-		var n int
-		for msg := range batch.Messages() {
-			var v T
-			if err := wire.Unmarshal(msg.Data(), &v); err != nil {
-				_ = msg.Ack() // poison would already be on the .dlq from the first pass
-				continue
-			}
-			meta, err := msg.Metadata()
-			if err != nil {
-				_ = msg.Ack()
-				continue
-			}
-			out = append(out, timestamped[T]{at: meta.Timestamp, v: v})
-			_ = msg.Ack()
-			n++
-		}
-		if err := batch.Error(); err != nil {
-			return nil, fmt.Errorf("fetch %s: batch: %w", subject, err)
-		}
-		if n == 0 {
-			break // caught up
-		}
-	}
-	return out, nil
 }
