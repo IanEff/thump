@@ -27,6 +27,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/converge"
+	"github.com/ianeff/thump/internal/health"
 	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
@@ -148,7 +149,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, tracer trace.Tracer, stages *beat.StageRecorder, health *beat.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, tracer trace.Tracer, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 

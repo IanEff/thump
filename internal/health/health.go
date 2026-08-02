@@ -1,4 +1,8 @@
-package beat
+// Package health is a beat's /healthz + /readyz surface for liveness
+// indicators — pure net/http and sync/atomic, no transport or beat
+// dependency of its own, so every beat and internal/beat's own
+// BrokerHooks/AwaitConsumers can depend on it without a cycle.
+package health
 
 import (
 	"io"

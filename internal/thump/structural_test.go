@@ -64,6 +64,11 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// back trace.Tracer and publish.SegmentSink, both interfaces thump
 		// already trusts, never the concrete otlptracegrpc/aws-sdk-go-v2 types.
 		`"github.com/ianeff/thump/internal/beat"`: true,
+		// C1a: the /healthz + /readyz surface beat.Metrics used to build
+		// inline. net/http + sync/atomic only per its own leaf tripwire — a
+		// liveness flag and an HTTP handler, not a new capability split out
+		// of beat.
+		`"github.com/ianeff/thump/internal/health"`: true,
 		// pure goroutine-lifecycle plumbing (WithContext + Go + Wait) — no net,
 		// no os/exec, no client. runBroker uses it to run the WAL shipper(s)
 		// alongside the consumer loop, the same composition clank/broker.go

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/health"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -25,7 +26,7 @@ func RunConsumer[In any](ctx context.Context, js jetstream.JetStream, subject st
 // replica leaves its Service at once — but a beat is a pull consumer nothing
 // routes traffic to, so leaving endpoints costs nothing and stops a rolling
 // deploy from marching through a broker outage.
-func BrokerHooks(h *Health, beatName string, onClosed func()) broker.Hooks {
+func BrokerHooks(h *health.Health, beatName string, onClosed func()) broker.Hooks {
 	return broker.Hooks{
 		OnDisconnect: func(err error) {
 			slog.Warn("broker disconnected, retrying", "beat", beatName, "err", err)
@@ -46,7 +47,7 @@ func BrokerHooks(h *Health, beatName string, onClosed func()) broker.Hooks {
 }
 
 // AwaitConsumers confirms a durable consumer bind exists for each subject, then flips ready to true.
-func AwaitConsumers(ctx context.Context, js jetstream.JetStream, ready *Health, subjects ...string) error {
+func AwaitConsumers(ctx context.Context, js jetstream.JetStream, ready *health.Health, subjects ...string) error {
 	for _, subject := range subjects {
 		if _, err := js.Consumer(ctx, broker.StreamName, broker.DurableFor(subject)); err != nil {
 			return fmt.Errorf("beat: bind consumer %s: %w", subject, err)

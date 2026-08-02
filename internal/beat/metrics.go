@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ianeff/thump/internal/health"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -28,10 +29,10 @@ const metricsReadHeaderTimeout = 5 * time.Second
 // listener out is what lets a probe and an mTLS-only scrape endpoint coexist
 // on one pod. Either address empty is a valid unconfigured state — same
 // "noop is a valid production state" discipline as Tracer.
-func Metrics(beatName string, tlsCfg *tls.Config) (prometheus.Registerer, *Health, Shutdown) {
+func Metrics(beatName string, tlsCfg *tls.Config) (prometheus.Registerer, *health.Health, Shutdown) {
 	reg := prometheus.NewRegistry()
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{"beat": beatName}, reg)
-	health := &Health{}
+	h := &health.Health{}
 
 	var shutdowns []Shutdown
 
@@ -60,8 +61,8 @@ func Metrics(beatName string, tlsCfg *tls.Config) (prometheus.Registerer, *Healt
 
 	if addr := os.Getenv("HEALTH_ADDR"); addr != "" {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/healthz", health.Livez)
-		mux.HandleFunc("/readyz", health.Readyz)
+		mux.HandleFunc("/healthz", h.Livez)
+		mux.HandleFunc("/readyz", h.Readyz)
 		srv := &http.Server{
 			Addr:              addr,
 			Handler:           mux,
@@ -76,7 +77,7 @@ func Metrics(beatName string, tlsCfg *tls.Config) (prometheus.Registerer, *Healt
 		shutdowns = append(shutdowns, srv.Shutdown)
 	}
 
-	return wrapped, health, joinShutdowns(shutdowns)
+	return wrapped, h, joinShutdowns(shutdowns)
 }
 
 // joinShutdowns runs every listener's Shutdown and reports every failure
