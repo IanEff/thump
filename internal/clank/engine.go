@@ -18,6 +18,7 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/reason"
 )
@@ -204,23 +205,23 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 
 	actions := e.Catalog.ApplicableToTier(sig.ServiceTier, sao)
 
-	mask := newIdentifierMasker()
+	masker := mask.NewIdentifierMasker()
 	subject := sig.OriginService
 	if subject == "" {
 		subject = sig.Name
 	}
-	mask.register(subject)
+	masker.Register(subject)
 	for _, ev := range sao.Change.Events {
-		mask.register(ev.Target)
+		masker.Register(ev.Target)
 	}
 	for _, n := range sao.Topology.Upstream {
-		mask.register(n.Name)
+		masker.Register(n.Name)
 	}
 	for _, n := range sao.Topology.Downstream {
-		mask.register(n.Name)
+		masker.Register(n.Name)
 	}
-	ctx = contextWithMasker(ctx, mask)
-	model := &maskingModel{Model: e.Model, mask: mask}
+	ctx = mask.ContextWithMasker(ctx, masker)
+	model := mask.NewMaskingModel(e.Model, masker)
 
 	msgs := []reason.Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions)}}
 	var evidence []proposal.EvidenceRef

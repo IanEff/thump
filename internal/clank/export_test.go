@@ -191,20 +191,6 @@ func IntakeChangeForTest(i *Intake) reason.ChangeSource {
 	return i.change
 }
 
-func NewIdentifierMaskerForTest() *identifierMasker { return newIdentifierMasker() }
-
-func (m *identifierMasker) RegisterForTest(name string)   { m.register(name) }
-func (m *identifierMasker) MaskForTest(s string) string   { return m.mask(s) }
-func (m *identifierMasker) UnmaskForTest(s string) string { return m.unmask(s) }
-
-func NewMaskingModelForTest(model reason.Model, mask *identifierMasker) reason.Model {
-	return &maskingModel{Model: model, mask: mask}
-}
-
-func ContextWithMaskerForTest(ctx context.Context, mask *identifierMasker) context.Context {
-	return contextWithMasker(ctx, mask)
-}
-
 // ModelRequestTimeoutForTest exposes the bound on one model call — the only
 // handler timeout in the tree that deliberately exceeds AckWait.
 func ModelRequestTimeoutForTest() time.Duration { return modelRequestTimeout }

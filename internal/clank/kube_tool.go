@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/schema"
 	"github.com/ianeff/thump/internal/subjects"
@@ -85,7 +86,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 		}
 		var statuses []string
 		for _, p := range list.Items {
-			registerIdentifier(ctx, p.Name)
+			mask.RegisterIdentifier(ctx, p.Name)
 			statuses = append(statuses, fmt.Sprintf("%s (%s)", p.Name, p.Status.Phase))
 		}
 		summary = strings.Join(statuses, ", ")
