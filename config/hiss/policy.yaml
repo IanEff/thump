@@ -8,19 +8,19 @@ floors:
     dependency_saturation: 0.75
     resource_exhaustion: 0.75 # parity value with dependency_saturation, fixture-derived —
     # not yet calibrated against agent_proposal_confidence/agent_proposal_success_total.
-    # That's not a TODO, it's a structural wait: agent_proposal_success_total only
-    # populates on ResultSuccess/ResultFailure (metrics.go recordCalibration), and thump
-    # v1 is dry-run-only — DryRun.Execute (internal/thump/executor.go) always reports
-    # ResultRendered. Confirmed empty on a real approved+executed run, 2026-07-13 (see
-    # thump-running-notes.md). Revisit once thump grows a live executor.
-    service_failure: 0.75 # parity value with dependency_saturation/resource_exhaustion — the
-    # OTel demo domain's two BlastLow, fully-reversible flagd-flip actions
-    # (disable-product-catalog-failure, disable-cart-failure) have no live
-    # confidence datum yet (Wave 6, thump-test rig CLAUDE.md §8). Unlike
-    # redundancy_degraded below, there's no observed under-floor run to
-    # justify seeding it low pre-emptively — leave at fixture parity and
-    # revisit once Wave 7's live proof run yields a real
-    # agent_proposal_confidence/_success_total datum for this class.
+    # This comment used to say that was a structural wait rather than a TODO, because
+    # agent_proposal_success_total only populates on ResultSuccess/ResultFailure
+    # (metrics.go recordCalibration) and thump was dry-run-only. THAT WAIT ENDED
+    # 2026-07-16: thump grew a live executor (design-decisions.md D-8), and
+    # recordCalibration has been firing on real settlements since — three on 2026-08-01
+    # alone. The value is uncalibrated because nobody has looked, not because the data
+    # cannot exist. What it needs is the observed distribution either side of a
+    # candidate floor, which is a corpus mined off the sealed WAL, not a live counter.
+    service_failure: 0.75 # parity value with dependency_saturation/resource_exhaustion.
+    # Had no live confidence datum when this was written; it has one now —
+    # disable-cart-failure proposed at 0.81, cleared this floor, auto-approved on
+    # act_reversible and applied clean (2026-08-01). One datum is not a calibration,
+    # but the class is no longer unobserved. Same corpus question as the row above.
     redundancy_degraded: 0.3 # SEED VALUE, lowered from the 0.75 fixture parity 2026-07-18
     # to unblock the first live approved+executed run on this class (see thump-running-notes
     # part 8: clank reasons to hold-rebalance correctly now, but its honest confidence came in
@@ -31,8 +31,13 @@ floors:
     # autoBand tier-1 -> act_reversible, so ONLY reversible actions auto-approve here regardless
     # of the floor — a high confidence floor stacked on "must be reversible" mainly starves the
     # calibration loop (agent_proposal_success_total can't populate until one run gets through).
-    # Raise to a data-derived value once real agent_proposal_confidence/_success_total exists.
-    # NOT a committed value — test-scoped, like the tilt-values arm block.
+    # NOT a committed value — test-scoped, like the tilt-values arm block. It is the
+    # loosest governance minimum in this file and it was set to get one run through.
+    # The run it was lowered for has long since happened, and several since: 2026-08-01
+    # saw accelerate-recovery propose at 0.87 on this class, hold for risk_ceiling, and
+    # settle success after a human approval. So the basis for raising it back toward
+    # 0.75 now has to come from evidence rather than from fixture parity — what did 0.3
+    # admit that 0.75 would have refused, and how did those runs turn out.
 maxBand:
   tier-1: act_reversible
 autoBand:

@@ -1,0 +1,50 @@
+# Mined from a live thump-test run, 2026-08-02: chaos/osd-pod-failure-accelerate.yaml
+# (a real chaos-mesh pod-failure against an OSD, mon_osd_down_out_interval left
+# at its 600s default so noout — not a fast out — is what holds the cluster)
+# produced a real slo_burn:ceph-cluster burn. clank proposed hold-rebalance at
+# self-reported confidence 0.850 (computedConfidence 0.8663, ceiling bound: the
+# model's own self-report was the tighter constraint), citing pgs_degraded and
+# ceph_health. Governance approved on act_reversible, executed live
+# (mode=live result=applied, 11:35:20Z), settled partial_non_converging
+# (observedSeverity 0.6) ten minutes later with a clean reversal. Sealed
+# Set: clank/thump.proposals/00000000000000000000-1785671212466434324.jsonl
+# (S3, thump-wal bucket).
+#
+# Evidence below is real — queried against this rig's own live Prometheus at
+# the decision's own timestamp (11:34:00Z, the moment osds_down actually read
+# 1; by 11:35:17Z it had already flickered back to 0 while pgs_degraded's
+# damage persisted at 70) — not pulled from the per-step tool-call transcript
+# itself (that pull wasn't done this session; the sealed Set gives the
+# citations and confidence, Prometheus's own retention gives the values).
+ContractRef: ceph-health:v1
+DetectedAt: "2026-08-02T11:35:07.526447489Z"
+DetectorType: sustained_burn
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 60 # approximate — the detector's own accel factor wasn't captured before rotation; order of magnitude only
+  Trajectory: accelerating
+Fingerprint: slo_burn:ceph-cluster
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.6
+    Trajectory: accelerating
+Name: ceph-cluster-burn-accel
+OriginService: ceph-cluster
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Service: cephcluster
+    State: degraded
+  - Service: rook-operator
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""
