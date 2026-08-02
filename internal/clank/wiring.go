@@ -23,6 +23,16 @@ type loop struct {
 	OutcomeInbox string
 }
 
+// proposalFilename names an emitted ProposalSet on disk by its fingerprint, so
+// a re-proposal of the same incident overwrites rather than piling up. It falls
+// back to the set's Name if a set somehow has no fingerprint.
+func proposalFilename(ps proposal.Set) string {
+	if ps.SignalRef != "" {
+		return ps.SignalRef
+	}
+	return ps.Name
+}
+
 func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	ledger.Retention = limits.LedgerRetention

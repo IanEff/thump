@@ -2,15 +2,6 @@ package clank
 
 import "github.com/ianeff/thump/api/v1/proposal"
 
-// GateResult is a conjunction of minimums, never an average — one failing
-// dimension (BudgetOK, DedupeOK, EvidenceOK) fails the whole gate, so a
-// confident set with zero live evidence still can't emit. It lives in
-// api/v1/proposal so hiss can read it straight off a delivered proposal.Set;
-// the ReadinessGate that produces it stays in clank, because its evidence
-// leg is a belief-formation defence native to the reasoner, not a policy
-// check.
-type GateResult = proposal.GateResult
-
 // ReadinessGate decides whether a formed proposal.Set is worth emitting — it
 // never decides whether an action is authorized. It carries zero policy: no
 // criticality tier, no error-budget check, no confidence threshold. Any of
@@ -28,7 +19,7 @@ type ReadinessGate struct{}
 // signal's own SAO has no declared relationship to cannot drive a
 // classification on its own, the same "not alone" shape defence 1 already
 // applies to an uncorroborated case-base match.
-func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateResult {
+func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) proposal.GateResult {
 	budgetOK := true
 	dedupeOK := len(openDupes) == 0
 	evidenceOK := anyCoherentLive(recommendedEvidence(ps), ps.SAOSnapshot)
@@ -46,7 +37,7 @@ func (g ReadinessGate) Evaluate(ps proposal.Set, openDupes []proposal.Set) GateR
 			reason = "budget"
 		}
 	}
-	return GateResult{
+	return proposal.GateResult{
 		BudgetOK:   budgetOK,
 		DedupeOK:   dedupeOK,
 		EvidenceOK: evidenceOK,

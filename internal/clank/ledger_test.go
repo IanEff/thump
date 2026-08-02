@@ -278,7 +278,7 @@ func clickSet() proposal.Set {
 		SignalRef:    "slo_burn:ceph-rgw", // rattle's fingerprint — the case base's key
 		FailureClass: proposal.ClassDependencySaturation,
 		ServiceTier:  "tier-1",
-		Gate: &clank.GateResult{ // recorded sets that produced outcomes were gated — the fixture models reality
+		Gate: &proposal.GateResult{ // recorded sets that produced outcomes were gated — the fixture models reality
 			BudgetOK: true, DedupeOK: true, EvidenceOK: true, Passed: true,
 		},
 		Proposals: []proposal.Candidate{{

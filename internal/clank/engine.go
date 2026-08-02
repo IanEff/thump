@@ -322,7 +322,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	set.Evidence = evidence
 
 	if !proposed && !declined {
-		set.Gate = &GateResult{BudgetOK: false, Reason: "budget"}
+		set.Gate = &proposal.GateResult{BudgetOK: false, Reason: "budget"}
 		set.Status.Phase = proposal.PhaseBudgetExhausted
 		if err := e.Ledger.Record(ctx, set); err != nil {
 			return proposal.Set{}, fmt.Errorf("record: %w", err)
@@ -398,7 +398,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	if err != nil {
 		return proposal.Set{}, fmt.Errorf("open dupes: %w", err)
 	}
-	var gate GateResult
+	var gate proposal.GateResult
 	_ = beat.Stage(ctx, e.tracer(), e.Stages, "gate_eval", func(context.Context) error {
 		gate = e.Gate.Evaluate(set, openDupes)
 		return nil
