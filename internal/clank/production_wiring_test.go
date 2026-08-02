@@ -11,6 +11,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/hiss"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestProductionWiring_ConfidenceIsTheProductOfBothBeatConstructors strengthens
@@ -75,10 +76,10 @@ func TestProductionWiring_ThreeBeatsReachApprovedThroughRealConstructors(t *test
 // seamCatalog()'s throttle entry (reversal + success criteria).
 func newApprovableTestLoop(t *testing.T) testLoop {
 	t.Helper()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
@@ -90,7 +91,7 @@ func newApprovableTestLoop(t *testing.T) testLoop {
 		})}}},
 	}}
 
-	tools := map[string]clank.Tool{"metrics": metricsTool{}, "loki": logsTool{}}
+	tools := map[string]reason.Tool{"metrics": metricsTool{}, "loki": logsTool{}}
 	store := clank.NewMemStore()
 
 	l := clank.NewLoopForTest(model, tools, noChangeIntake(), seamCatalog(), t.TempDir(), t.TempDir(), store)

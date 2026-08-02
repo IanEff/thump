@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 func TestPropose_ReleasesDedupeOnceTheWindowElapses(t *testing.T) {
@@ -18,9 +18,9 @@ func TestPropose_ReleasesDedupeOnceTheWindowElapses(t *testing.T) {
 		ctx := context.Background()
 		sig := sigBurnAccel()
 		round := func() *fakeModel {
-			return &fakeModel{script: []clank.Completion{
-				{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-				{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			return &fakeModel{script: []reason.Completion{
+				{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+				{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 					FailureClass: proposal.ClassDependencySaturation,
 					Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89, Citations: []string{`{"q":"x"}`}}},
 				})}}},
@@ -70,9 +70,9 @@ func TestPropose_ReleasesDedupeOnceTheWindowElapses(t *testing.T) {
 func TestPropose_SkipsTheModelWhenALiveSetAlreadyAnswersTheFingerprint(t *testing.T) {
 	ctx := context.Background()
 	sig := sigBurnAccel()
-	script := []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	script := []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.89, Citations: []string{`{"q":"x"}`}}},
 		})}}},

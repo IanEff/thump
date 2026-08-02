@@ -4,11 +4,12 @@ import (
 	"testing"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 func TestNewBrokerEngine_WiresMetricsTool(t *testing.T) {
 	// 1. Arrange: provide the tools map we expect Main to build
-	tools := map[string]clank.Tool{
+	tools := map[string]reason.Tool{
 		"metrics": &clank.MetricsTool{},
 	}
 

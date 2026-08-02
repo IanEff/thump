@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestPropose_PairsEveryToolResultWithTheCallThatAskedForIt pins a failure that
@@ -15,12 +15,12 @@ import (
 // shows up as bad reasoning, never as a red build.
 func TestPropose_PairsEveryToolResultWithTheCallThatAskedForIt(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{
 			{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
 			{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)},
 		}},
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
 	}}
 
 	e, _ := newTestEngine(model)
@@ -30,8 +30,8 @@ func TestPropose_PairsEveryToolResultWithTheCallThatAskedForIt(t *testing.T) {
 
 	// received[1] is the history as replayed on the SECOND call — the first
 	// turn's calls and their answers are in it, or they were never sent.
-	var calls []clank.ToolCall
-	var results []clank.ToolResult
+	var calls []reason.ToolCall
+	var results []reason.ToolResult
 	for _, msg := range model.received[1] {
 		calls = append(calls, msg.ToolCalls...)
 		results = append(results, msg.ToolResults...)
@@ -65,12 +65,12 @@ func TestPropose_PairsEveryToolResultWithTheCallThatAskedForIt(t *testing.T) {
 // five at once.
 func TestPropose_ReturnsAParallelTurnsResultsInASingleMessage(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{
 			{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
 			{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)},
 		}},
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
 	}}
 
 	e, _ := newTestEngine(model)
@@ -94,9 +94,9 @@ func TestPropose_ReturnsAParallelTurnsResultsInASingleMessage(t *testing.T) {
 // that returned nothing, and on the wire it is an unpaired block.
 func TestPropose_TellsTheModelAboutAToolItDoesNotHave(t *testing.T) {
 	t.Parallel()
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "tea", Args: json.RawMessage(`{}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "tea", Args: json.RawMessage(`{}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "insufficient", Args: json.RawMessage(`{"reason":"stub"}`)}}},
 	}}
 
 	e, _ := newTestEngine(model)
@@ -104,7 +104,7 @@ func TestPropose_TellsTheModelAboutAToolItDoesNotHave(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var got []clank.ToolResult
+	var got []reason.ToolResult
 	for _, msg := range model.received[1] {
 		got = append(got, msg.ToolResults...)
 	}

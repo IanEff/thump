@@ -13,6 +13,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/schema"
 	"github.com/ianeff/thump/internal/subjects"
 )
@@ -38,10 +39,10 @@ type LokiTool struct {
 	Subjects subjects.SubjectIndex
 }
 
-var _ Tool = (*LokiTool)(nil)
+var _ reason.Tool = (*LokiTool)(nil)
 
-func (l *LokiTool) Spec() ToolSpec {
-	return ToolSpec{
+func (l *LokiTool) Spec() reason.ToolSpec {
+	return reason.ToolSpec{
 		Name: "loki",
 		Description: "read-only log query. namespace is required. Known label keys: " +
 			"app, ceph_daemon_id, ceph_daemon_type, component, container, instance, job, " +

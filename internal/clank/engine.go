@@ -19,6 +19,7 @@ import (
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // errClassMismatch marks a proposed ContractRef that IS a real catalogued
@@ -43,8 +44,8 @@ var errUngroundedCitation = errors.New("candidate cites evidence the run did not
 // Pub.
 type Engine struct {
 	Intake         *Intake                           // assembles the versioned SAO the loop reasons over
-	Model          Model                             // the LLM seam, faked in tests
-	Tools          map[string]Tool                   // read-only evidence tools, keyed by the name the model calls
+	Model          reason.Model                      // the LLM seam, faked in tests
+	Tools          map[string]reason.Tool            // read-only evidence tools, keyed by the name the model calls
 	Catalog        *contract.StaticCatalog           // the autonomy boundary: enforceCatalog rejects any proposed ContractRef this doesn't list
 	FailureClasses []contract.FailureClassDefinition // authored, rig-invariant meaning of each class, rendered into seedPrompt; nil renders no block, so a bare-bones test Engine still works
 	Ranker         *Ranker                           // orders the formed candidates once, after the loop exits
@@ -139,7 +140,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 
 	// usage accumulates every turn's token counts, not just the last one —
 	// the reasoned line reports what the whole Propose call was billed for.
-	var usage Usage
+	var usage reason.Usage
 
 	// One "reasoned" line per Propose call, on every exit path — success,
 	// decline, budget exhaustion, or any of the loop's error returns. err
@@ -221,12 +222,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	ctx = contextWithMasker(ctx, mask)
 	model := &maskingModel{Model: e.Model, mask: mask}
 
-	msgs := []Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions)}}
+	msgs := []reason.Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions)}}
 	var evidence []proposal.EvidenceRef
 	proposed, declined := false, false
 
 	for ; step < e.MaxSteps; step++ {
-		var comp Completion
+		var comp reason.Completion
 		if err := beat.Stage(ctx, e.tracer(), e.Stages, "llm_complete", func(sctx context.Context) error {
 			var err error
 			comp, err = model.Complete(sctx, msgs, e.toolSpecs())
@@ -251,7 +252,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		}
 
 		done := false
-		var results []ToolResult
+		var results []reason.ToolResult
 		for _, call := range comp.ToolCalls {
 			// One "tool_call" line per dispatched call — including the
 			// terminal propose/insufficient calls, not just evidence tools
@@ -282,7 +283,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			default:
 				tool, ok := e.Tools[call.Name]
 				if !ok {
-					results = append(results, ToolResult{
+					results = append(results, reason.ToolResult{
 						CallID:  call.ID,
 						Name:    call.Name,
 						Digest:  fmt.Sprintf("unknown tool %q", call.Name),
@@ -303,7 +304,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 				if ref.Query != "" {
 					content = fmt.Sprintf("%s [cite: %s]", ref.Summary, ref.Query)
 				}
-				results = append(results, ToolResult{CallID: call.ID, Name: call.Name, Digest: content})
+				results = append(results, reason.ToolResult{CallID: call.ID, Name: call.Name, Digest: content})
 			}
 			if done {
 				break
@@ -313,7 +314,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		// results across messages teaches the model to stop making parallel
 		// calls, and every live turn so far has issued two to five.
 		if len(results) > 0 {
-			msgs = append(msgs, Message{Role: "tool", ToolResults: results})
+			msgs = append(msgs, reason.Message{Role: "tool", ToolResults: results})
 		}
 		if done {
 			break
@@ -449,8 +450,8 @@ func summarizeCausal(scores []CausalScore) causalSummary {
 	return s
 }
 
-func (e *Engine) toolSpecs() []ToolSpec {
-	specs := make([]ToolSpec, 0, len(e.Tools)+2)
+func (e *Engine) toolSpecs() []reason.ToolSpec {
+	specs := make([]reason.ToolSpec, 0, len(e.Tools)+2)
 	for _, t := range e.Tools {
 		specs = append(specs, t.Spec())
 	}
@@ -462,7 +463,7 @@ func (e *Engine) toolSpecs() []ToolSpec {
 	// e.Tools is a map, so its iteration order is randomized per call — sorted
 	// here so the rendered request body is byte-identical turn to turn, which
 	// is what lets a cache_control breakpoint on the tool catalog ever hit.
-	slices.SortFunc(specs, func(a, b ToolSpec) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(specs, func(a, b reason.ToolSpec) int { return strings.Compare(a.Name, b.Name) })
 	return specs
 }
 
@@ -605,7 +606,7 @@ func enrichFromCatalog(cat *contract.StaticCatalog, proposals []proposal.Candida
 
 // withCallIDs guarantees every call in a turn has an identifier its
 // result can name.
-func withCallIDs(calls []ToolCall, step int) []ToolCall {
+func withCallIDs(calls []reason.ToolCall, step int) []reason.ToolCall {
 	for i := range calls {
 		if calls[i].ID == "" {
 			calls[i].ID = fmt.Sprintf("call_%d_%d", step, i)

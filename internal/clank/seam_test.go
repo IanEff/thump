@@ -15,6 +15,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/rattle"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/thump"
 )
 
@@ -75,9 +76,9 @@ func TestSeam_RattleDetectionDrivesClankToADeliveredProposal(t *testing.T) {
 
 	// scripted clank model: step 1 investigate (live evidence → clears the gate),
 	// step 2 propose a CATALOGUED action for the detection's class + tier.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation, // must be in newTestEngine's catalog
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"burn"}`}}},
@@ -113,10 +114,10 @@ func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 	// metrics queries would be corroborated once); step 2 propose a
 	// catalogued, REVERSIBLE candidate that REQUESTS A BAND (both trap dodges
 	// — see the banner above).
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation, // in newTestEngine's catalog
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
@@ -194,10 +195,10 @@ func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
 	// beats one and two: real detection, real engine, scripted model —
 	// both trap dodges (ReversalPath + GovernanceLevel) inherited from the
 	// four-beat seam, which explains them.
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "loki", Args: json.RawMessage(`{"namespace":"payments"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{

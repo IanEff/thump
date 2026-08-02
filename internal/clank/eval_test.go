@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/reason"
 	"sigs.k8s.io/yaml"
 )
 
@@ -23,7 +24,7 @@ import (
 // disposition a healthy reasoner should reach against the PRODUCTION
 // catalog (config/actions/catalog.yaml, the same one Main loads). Unlike the
 // golden-path suite (Stage 4, a scripted model), this drives the REAL
-// Model — it's a score, not a proof, and it never runs in `task ci`.
+// reason.Model — it's a score, not a proof, and it never runs in `task ci`.
 type evalCase struct {
 	fixture         string // file under testdata/detections/
 	wantDisposition string // "propose" | "insufficient"
@@ -344,7 +345,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 			det := loadDetectionFixture(t, tc.fixture)
 
 			prom := newFakePrometheus(t, promQLByName(queries), evalEvidence(tc.fixture))
-			tools := map[string]Tool{"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries}}
+			tools := map[string]reason.Tool{"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries}}
 
 			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),
 				NewAnthropicModel(apiKey), tools,

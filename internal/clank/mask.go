@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // identifierMasker gives every real identifier registered against
@@ -64,20 +66,20 @@ func (m *identifierMasker) unmask(s string) string {
 }
 
 // maskMessages returns a masked copy of msgs.
-func (m *identifierMasker) maskMessages(msgs []Message) []Message {
-	out := make([]Message, len(msgs))
+func (m *identifierMasker) maskMessages(msgs []reason.Message) []reason.Message {
+	out := make([]reason.Message, len(msgs))
 	for i, msg := range msgs {
 		out[i] = msg
 		out[i].Content = m.mask(msg.Content)
 		if len(msg.ToolCalls) > 0 {
-			out[i].ToolCalls = make([]ToolCall, len(msg.ToolCalls))
+			out[i].ToolCalls = make([]reason.ToolCall, len(msg.ToolCalls))
 			for j, tc := range msg.ToolCalls {
 				tc.Args = json.RawMessage(m.mask(string(tc.Args)))
 				out[i].ToolCalls[j] = tc
 			}
 		}
 		if len(msg.ToolResults) > 0 {
-			out[i].ToolResults = make([]ToolResult, len(msg.ToolResults))
+			out[i].ToolResults = make([]reason.ToolResult, len(msg.ToolResults))
 			for j, tr := range msg.ToolResults {
 				tr.Digest = m.mask(tr.Digest)
 				out[i].ToolResults[j] = tr
@@ -87,21 +89,21 @@ func (m *identifierMasker) maskMessages(msgs []Message) []Message {
 	return out
 }
 
-// unmaskCompletion restores real names into every text field a Model
+// unmaskCompletion restores real names into every text field a reason.Model
 // response can carry, including ToolCalls[].Args, which must be real
 // before engine.go dispatches a tool with it.
-func (m *identifierMasker) unmaskCompletion(c Completion) Completion {
+func (m *identifierMasker) unmaskCompletion(c reason.Completion) reason.Completion {
 	c.Message.Content = m.unmask(c.Message.Content)
 	c.Message.ToolCalls = m.unmaskToolCalls(c.Message.ToolCalls)
 	c.ToolCalls = m.unmaskToolCalls(c.ToolCalls)
 	return c
 }
 
-func (m *identifierMasker) unmaskToolCalls(calls []ToolCall) []ToolCall {
+func (m *identifierMasker) unmaskToolCalls(calls []reason.ToolCall) []reason.ToolCall {
 	if len(calls) == 0 {
 		return calls
 	}
-	out := make([]ToolCall, len(calls))
+	out := make([]reason.ToolCall, len(calls))
 	for i, tc := range calls {
 		tc.Args = json.RawMessage(m.unmask(string(tc.Args)))
 		out[i] = tc
@@ -116,7 +118,7 @@ func contextWithMasker(ctx context.Context, m *identifierMasker) context.Context
 }
 
 // registerIdentifier records name with ctx's run masker if one is
-// set, silently doing nothing when it isn't so a Tool exercised outside
+// set, silently doing nothing when it isn't so a reason.Tool exercised outside
 // Engine.Propose never has to construct a masker just to run.
 func registerIdentifier(ctx context.Context, name string) {
 	if m, ok := ctx.Value(maskerContextKey{}).(*identifierMasker); ok {
@@ -124,18 +126,18 @@ func registerIdentifier(ctx context.Context, name string) {
 	}
 }
 
-// maskingModel wraps a Model, masking every identifier the run
-// has registered before a Message crosses to the wire and restoring
-// them in the Completion before anything else can observe it.
+// maskingModel wraps a reason.Model, masking every identifier the run
+// has registered before a reason.Message crosses to the wire and restoring
+// them in the reason.Completion before anything else can observe it.
 type maskingModel struct {
-	Model
+	reason.Model
 	mask *identifierMasker
 }
 
-func (m *maskingModel) Complete(ctx context.Context, msgs []Message, tools []ToolSpec) (Completion, error) {
+func (m *maskingModel) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
 	comp, err := m.Model.Complete(ctx, m.mask.maskMessages(msgs), tools)
 	if err != nil {
-		return Completion{}, err
+		return reason.Completion{}, err
 	}
 	return m.mask.unmaskCompletion(comp), nil
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestAnthropicModel_ReturnsErrorOnCancelledContext belongs in the default
@@ -17,7 +18,7 @@ func TestAnthropicModel_ReturnsErrorOnCancelledContext(t *testing.T) {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := model.Complete(cancelled, []clank.Message{
+	_, err := model.Complete(cancelled, []reason.Message{
 		{Role: "user", Content: "hello"},
 	}, nil)
 	if err == nil {

@@ -28,6 +28,7 @@ import (
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/publish/publishtest"
 	"github.com/ianeff/thump/internal/rattle"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/thump"
 	"github.com/ianeff/thump/internal/whir"
 )
@@ -76,13 +77,13 @@ func fakeLoki(t *testing.T) *httptest.Server {
 // deterministically and with no API key. It stands in for the provider, not
 // for any part of the engine under test.
 type scriptedModel struct {
-	script []clank.Completion
+	script []reason.Completion
 	i      int
 }
 
-func (m *scriptedModel) Complete(_ context.Context, _ []clank.Message, _ []clank.ToolSpec) (clank.Completion, error) {
+func (m *scriptedModel) Complete(_ context.Context, _ []reason.Message, _ []reason.ToolSpec) (reason.Completion, error) {
 	if m.i >= len(m.script) {
-		return clank.Completion{}, nil // out of script: no tool calls, loop ends
+		return reason.Completion{}, nil // out of script: no tool calls, loop ends
 	}
 	c := m.script[m.i]
 	m.i++
@@ -200,12 +201,12 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 	// Two backends, because the authored floor sits above what one can
 	// ground: the operator's subject rule is what lets the log citation
 	// count at all (an untagged ref can corroborate, never ground).
-	model := &scriptedModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{
+	model := &scriptedModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{
 			{Name: "metrics", Args: json.RawMessage(`{"q":"acme_api_error_ratio"}`)},
 			{Name: "loki", Args: json.RawMessage(`{"namespace":"acme"}`)},
 		}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassServiceFailure,
 			Hypotheses:   []proposal.Hypothesis{{Name: "acme_api_fault", Weight: 0.85}},
 			Proposals: []proposal.Candidate{{
@@ -225,7 +226,7 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 			noChange{},
 		),
 		Model: model,
-		Tools: map[string]clank.Tool{
+		Tools: map[string]reason.Tool{
 			"metrics": &clank.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries},
 			"loki":    &clank.LokiTool{BaseURL: loki.URL, Subjects: ev.Index},
 		},

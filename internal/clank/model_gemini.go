@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/ianeff/thump/internal/reason"
 	"google.golang.org/genai"
 )
 
-// GeminiModel is a second Model adaptor: Gemini 2.5 Flash Lite behind the
+// GeminiModel is a second reason.Model adaptor: Gemini 2.5 Flash Lite behind the
 // genai SDK, the cheapest Gemini model on record. It satisfies the same
-// Model interface as AnthropicModel, so the reason loop cannot tell which
+// reason.Model interface as AnthropicModel, so the reason loop cannot tell which
 // provider it's talking to. It has never completed a call against a live
 // backend: Main does not select it and no test exercises it, so treat it as
 // a second implementation of the interface, not a proven second provider.
@@ -33,10 +34,10 @@ func NewGeminiModel(ctx context.Context, apiKey string) (*GeminiModel, error) {
 }
 
 // Complete sends msgs and tools to Gemini and folds the response into a
-// Completion: resp.Text becomes the assistant Message, and each FunctionCall
-// becomes a ToolCall with its args re-marshaled to JSON, so both Model
-// implementations hand the engine the same ToolCall shape.
-func (m *GeminiModel) Complete(ctx context.Context, msgs []Message, tools []ToolSpec) (Completion, error) {
+// reason.Completion: resp.Text becomes the assistant reason.Message, and each FunctionCall
+// becomes a reason.ToolCall with its args re-marshaled to JSON, so both reason.Model
+// implementations hand the engine the same reason.ToolCall shape.
+func (m *GeminiModel) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
 	resp, err := m.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", // cheapest Gemini model on record
 		toGeminiContents(msgs),
 		&genai.GenerateContentConfig{
@@ -44,23 +45,23 @@ func (m *GeminiModel) Complete(ctx context.Context, msgs []Message, tools []Tool
 			Tools:           toGeminiToolParams(tools),
 		})
 	if err != nil {
-		return Completion{}, fmt.Errorf("gemini complete: %w", err)
+		return reason.Completion{}, fmt.Errorf("gemini complete: %w", err)
 	}
 
-	var comp Completion
+	var comp reason.Completion
 	comp.Message.Role = "assistant"
 	comp.Message.Content = resp.Text()
 	for _, fc := range resp.FunctionCalls() {
 		args, err := json.Marshal(fc.Args)
 		if err != nil {
-			return Completion{}, fmt.Errorf("gemini marshal tool args: %w", err)
+			return reason.Completion{}, fmt.Errorf("gemini marshal tool args: %w", err)
 		}
-		comp.ToolCalls = append(comp.ToolCalls, ToolCall{ID: fc.ID, Name: fc.Name, Args: args})
+		comp.ToolCalls = append(comp.ToolCalls, reason.ToolCall{ID: fc.ID, Name: fc.Name, Args: args})
 	}
 	return comp, nil
 }
 
-func toGeminiContents(msgs []Message) []*genai.Content {
+func toGeminiContents(msgs []reason.Message) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(msgs))
 	for _, msg := range msgs {
 		var parts []*genai.Part
@@ -93,7 +94,7 @@ func toGeminiContents(msgs []Message) []*genai.Content {
 	return contents
 }
 
-func toGeminiToolParams(tools []ToolSpec) []*genai.Tool {
+func toGeminiToolParams(tools []reason.ToolSpec) []*genai.Tool {
 	if len(tools) == 0 {
 		return nil
 	}

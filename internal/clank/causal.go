@@ -12,7 +12,7 @@ import (
 // caused the signal — the belief-formation math the reason loop's confidence
 // rides on. It never sees the model or the conversation; given the same
 // fingerprint, change, topology, and weights it returns the same scores, so
-// it's table-tested without a fake Model.
+// it's table-tested without a fake reason.Model.
 type CausalScorer interface {
 	Score(fingerprint string, change proposal.ChangeSnapshot, topo proposal.TopologySnapshot, weights ScoringWeights) []CausalScore
 }

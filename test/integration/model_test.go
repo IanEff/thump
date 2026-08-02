@@ -15,9 +15,10 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
-func newModel(t *testing.T) clank.Model {
+func newModel(t *testing.T) reason.Model {
 	t.Helper()
 	key := apiKey(t)
 	if key == "" {
@@ -78,7 +79,7 @@ func callCtx(t *testing.T) context.Context {
 func TestAnthropicModel_EmitsProposeArgsThatDecodeIntoProposalSet(t *testing.T) {
 	model := newModel(t)
 
-	msgs := []clank.Message{{Role: "user", Content: strings.Join([]string{
+	msgs := []reason.Message{{Role: "user", Content: strings.Join([]string{
 		"You are clank, a reliability reasoning plane.",
 		"Signal: latency_p99 on the checkout service is degraded ~80%, blast radius ~50%.",
 		"You have already gathered evidence; the downstream payments-db is CPU-saturated.",
@@ -88,7 +89,7 @@ func TestAnthropicModel_EmitsProposeArgsThatDecodeIntoProposalSet(t *testing.T) 
 
 	// The production propose spec — its schema is generated from proposeInput,
 	// so this test exercises the real autonomy-boundary contract, not a lookalike.
-	tools := []clank.ToolSpec{clank.ProposeToolSpec()}
+	tools := []reason.ToolSpec{clank.ProposeToolSpec()}
 
 	comp, err := model.Complete(callCtx(t), msgs, tools)
 	if err != nil {
@@ -120,20 +121,20 @@ func TestAnthropicModel_EmitsProposeArgsThatDecodeIntoProposalSet(t *testing.T) 
 func TestAnthropicModel_AnswersEachOfATurnsParallelCallsDistinctly(t *testing.T) {
 	model := newModel(t)
 
-	msgs := []clank.Message{
+	msgs := []reason.Message{
 		{Role: "user", Content: "Check burn and errors with the metrics tool, then report both."},
-		{Role: "assistant", Content: "Checking both.", ToolCalls: []clank.ToolCall{
+		{Role: "assistant", Content: "Checking both.", ToolCalls: []reason.ToolCall{
 			{ID: "toolu_burn", Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
 			{ID: "toolu_errors", Name: "metrics", Args: json.RawMessage(`{"q":"errors"}`)},
 		}},
-		{Role: "tool", ToolResults: []clank.ToolResult{
+		{Role: "tool", ToolResults: []reason.ToolResult{
 			{CallID: "toolu_burn", Name: "metrics", Digest: "codeword FLAMINGO"},
 			{CallID: "toolu_errors", Name: "metrics", Digest: "codeword WALRUS"},
 		}},
 		{Role: "user", Content: `Reply with exactly: burn=<codeword> errors=<codeword>`},
 	}
 
-	comp, err := model.Complete(callCtx(t), msgs, []clank.ToolSpec{{
+	comp, err := model.Complete(callCtx(t), msgs, []reason.ToolSpec{{
 		Name: "metrics", Description: "read-only telemetry query",
 	}})
 	if err != nil {

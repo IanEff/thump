@@ -8,6 +8,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // recordingStore captures every RunID Checkpoint sees, across calls — just
@@ -27,8 +28,8 @@ func (s *recordingStore) Checkpoint(ctx context.Context, t clank.Turn) error {
 func TestPropose_TwoRunsOfTheSameFingerprintCheckpointUnderDifferentRunIDs(t *testing.T) {
 	t.Parallel()
 	store := &recordingStore{Store: clank.NewMemStore()}
-	model := &fakeModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
@@ -66,21 +67,21 @@ func TestPropose_TwoRunsOfTheSameFingerprintCheckpointUnderDifferentRunIDs(t *te
 // actually drives it, on every path out.
 func TestPropose_FinishesTheRunSoStorePendingComesBackEmpty(t *testing.T) {
 	t.Parallel()
-	metricsCall := clank.Completion{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}}
+	metricsCall := reason.Completion{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}}
 
 	for _, tc := range []struct {
 		name   string
-		script []clank.Completion
+		script []reason.Completion
 	}{
-		{"proposed", []clank.Completion{
-			{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{"proposed", []reason.Completion{
+			{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 				FailureClass: proposal.ClassDependencySaturation,
 				Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 				Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87}},
 			})}}},
 		}},
 		{"declined", nil}, // empty script -> Complete returns no tool calls on the first turn
-		{"budget_exhausted", []clank.Completion{
+		{"budget_exhausted", []reason.Completion{
 			metricsCall, metricsCall, metricsCall, metricsCall,
 			metricsCall, metricsCall, metricsCall, metricsCall, // MaxSteps=8, never proposes
 		}},

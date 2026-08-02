@@ -9,6 +9,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 func TestIntake_AssemblesAVersionedSAO(t *testing.T) {
@@ -72,11 +73,11 @@ func (f fakeChange) Changes(_ context.Context, _ signal.Detection) (proposal.Cha
 	return f.snap, f.err
 }
 
-func fakeTopologySource() clank.TopologySource {
+func fakeTopologySource() reason.TopologySource {
 	return fakeTopo{}
 }
 
-func fakeChangeSource() clank.ChangeSource {
+func fakeChangeSource() reason.ChangeSource {
 	return fakeChange{snap: proposal.ChangeSnapshot{Events: []proposal.ChangeEvent{
 		{ID: "deploy-7f3a", Type: "deploy", Target: "checkout", Age: 12 * time.Minute},
 	}}}

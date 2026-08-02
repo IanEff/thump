@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestTurn_RoundTripsCallsPairedWithTheirResults pins the audit artifact, not
@@ -18,13 +19,13 @@ func TestTurn_RoundTripsCallsPairedWithTheirResults(t *testing.T) {
 	want := clank.Turn{
 		RunID: "slo_burn:ceph-rgw/1785097470705542441",
 		Step:  2,
-		Msgs: []clank.Message{
+		Msgs: []reason.Message{
 			{Role: "user", Content: "signal on ceph-rgw"},
-			{Role: "assistant", Content: "checking burn", ToolCalls: []clank.ToolCall{
+			{Role: "assistant", Content: "checking burn", ToolCalls: []reason.ToolCall{
 				{ID: "toolu_a", Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
 				{ID: "toolu_b", Name: "metrics", Args: json.RawMessage(`{"q":"errors"}`)},
 			}},
-			{Role: "tool", ToolResults: []clank.ToolResult{
+			{Role: "tool", ToolResults: []reason.ToolResult{
 				{CallID: "toolu_a", Digest: "burn = 4 [cite: burn]"},
 				{CallID: "toolu_b", Digest: "errors = 0 [cite: errors]"},
 			}},
@@ -57,7 +58,7 @@ func TestTurn_DecodesATranscriptWrittenBeforeCallsWereCarried(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := clank.Turn{RunID: "fp/1", Step: 0, Msgs: []clank.Message{{Role: "assistant", Content: "checking"}}}
+	want := clank.Turn{RunID: "fp/1", Step: 0, Msgs: []reason.Message{{Role: "assistant", Content: "checking"}}}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("an archived transcript must still decode (-want +got)\n", diff)
 	}

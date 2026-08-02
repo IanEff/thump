@@ -11,17 +11,18 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish/publishtest"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // recordingTool is a read-only telemetry tool that counts its invocations, so a
 // test can prove the loop actually investigated before proposing.
 type recordingTool struct {
-	spec  clank.ToolSpec
+	spec  reason.ToolSpec
 	ref   proposal.EvidenceRef
 	calls int
 }
 
-func (r *recordingTool) Spec() clank.ToolSpec { return r.spec }
+func (r *recordingTool) Spec() reason.ToolSpec { return r.spec }
 func (r *recordingTool) Run(_ context.Context, _ json.RawMessage) (proposal.EvidenceRef, error) {
 	r.calls++
 	return r.ref, nil
@@ -43,13 +44,13 @@ func (s staticChange) Changes(_ context.Context, _ signal.Detection) (proposal.C
 // deterministically and with no API key. It stands in for the provider only —
 // Tools and Intake are still faked separately, by recordingTool/staticTopo/staticChange.
 type scriptedModel struct {
-	script []clank.Completion
+	script []reason.Completion
 	i      int
 }
 
-func (m *scriptedModel) Complete(_ context.Context, _ []clank.Message, _ []clank.ToolSpec) (clank.Completion, error) {
+func (m *scriptedModel) Complete(_ context.Context, _ []reason.Message, _ []reason.ToolSpec) (reason.Completion, error) {
 	if m.i >= len(m.script) {
-		return clank.Completion{}, nil
+		return reason.Completion{}, nil
 	}
 	c := m.script[m.i]
 	m.i++
@@ -68,7 +69,7 @@ func proposeArgs(t *testing.T, ps proposal.Set) json.RawMessage {
 // newEngine wires the full engine around model, faking Tools/Intake either way —
 // model may be a scripted double or the real provider, shared by the hermetic
 // and eval-gated live tests alike.
-func newEngine(t *testing.T, model clank.Model, tool clank.Tool, catalog *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
+func newEngine(t *testing.T, model reason.Model, tool reason.Tool, catalog *contract.StaticCatalog) (*clank.Engine, *publishtest.CapturePublisher[proposal.Set]) {
 	t.Helper()
 	pub := &publishtest.CapturePublisher[proposal.Set]{}
 	return &clank.Engine{
@@ -81,7 +82,7 @@ func newEngine(t *testing.T, model clank.Model, tool clank.Tool, catalog *contra
 			}}},
 		),
 		Model:        model,
-		Tools:        map[string]clank.Tool{tool.Spec().Name: tool},
+		Tools:        map[string]reason.Tool{tool.Spec().Name: tool},
 		Catalog:      catalog,
 		Ranker:       clank.NewRanker(),
 		Gate:         clank.ReadinessGate{},
@@ -110,7 +111,7 @@ func goldenSignal() signal.Detection {
 
 func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 	metrics := &recordingTool{
-		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
+		spec: reason.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
 		ref: proposal.EvidenceRef{
 			Tool: "metrics", Query: "payments-db-cpu",
 			Summary: "payments-db CPU pinned at 99%, connection pool exhausted",
@@ -122,9 +123,9 @@ func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 		ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassResourceExhaustion},
 		ApplicableTiers:          []string{"tier-1"},
 	}})
-	model := &scriptedModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{}`)}}},
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+	model := &scriptedModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassResourceExhaustion,
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
@@ -174,7 +175,7 @@ func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 
 func TestEngine_ThinEvidence_YieldsNoActionAndDeliversNothing(t *testing.T) {
 	metrics := &recordingTool{
-		spec: clank.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
+		spec: reason.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
 		ref:  proposal.EvidenceRef{Tool: "metrics", Query: "payments-db-cpu", Summary: "all services nominal; no anomaly on payments-db", Ref: "metrics://payments-db/cpu", Live: true},
 	}
 	catalog := contract.NewStaticCatalog([]contract.ActionContract{{
@@ -187,8 +188,8 @@ func TestEngine_ThinEvidence_YieldsNoActionAndDeliversNothing(t *testing.T) {
 	// pins the engine's plumbing on a decline, not whether a real model would
 	// judge "all nominal" evidence as actionable; that judgment stays with the
 	// eval harness, where only a real model's output can prove it.
-	model := &scriptedModel{script: []clank.Completion{
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{}`)}}},
+	model := &scriptedModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{}`)}}},
 	}}
 
 	e, sink := newEngine(t, model, metrics, catalog)

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/thump/internal/reason"
 	"google.golang.org/genai"
 )
 
@@ -32,24 +33,24 @@ func partKinds(contents []*genai.Content) []string {
 func TestToGeminiContents_BuildsThePartsTheAPIExpects(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
-		msgs []Message
+		msgs []reason.Message
 		want []string
 	}{
 		"a tool-only model turn sends a function_call part and no empty text": {
-			msgs: []Message{{Role: "assistant", ToolCalls: []ToolCall{
+			msgs: []reason.Message{{Role: "assistant", ToolCalls: []reason.ToolCall{
 				{ID: "t1", Name: "metrics", Args: json.RawMessage(`{"q":"burn"}`)},
 			}}},
 			want: []string{"model:function_call"},
 		},
 		"one turn's parallel results ride in one content": {
-			msgs: []Message{{Role: "tool", ToolResults: []ToolResult{
+			msgs: []reason.Message{{Role: "tool", ToolResults: []reason.ToolResult{
 				{CallID: "t1", Name: "metrics", Digest: "burn = 4"},
 				{CallID: "t2", Name: "metrics", Digest: "errors = 0"},
 			}}},
 			want: []string{"user:function_response", "user:function_response"},
 		},
 		"a message carrying nothing at all is dropped rather than sent empty": {
-			msgs: []Message{{Role: "assistant"}},
+			msgs: []reason.Message{{Role: "assistant"}},
 			want: nil,
 		},
 	}
@@ -69,7 +70,7 @@ func TestToGeminiContents_BuildsThePartsTheAPIExpects(t *testing.T) {
 // parallel turn's answers back into anonymous digests.
 func TestToGeminiContents_KeepsTheProvidersOwnCallIdentifier(t *testing.T) {
 	t.Parallel()
-	got := toGeminiContents([]Message{{Role: "tool", ToolResults: []ToolResult{
+	got := toGeminiContents([]reason.Message{{Role: "tool", ToolResults: []reason.ToolResult{
 		{CallID: "t1", Name: "metrics", Digest: "burn = 4"},
 	}}})
 	if len(got) != 1 || len(got[0].Parts) != 1 || got[0].Parts[0].FunctionResponse == nil {

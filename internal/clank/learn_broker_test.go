@@ -14,6 +14,7 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 // TestClankLearnEdge_ClosesOverBroker is clank's slice of the five-beat seam
@@ -35,11 +36,11 @@ func TestClankLearnEdge_ClosesOverBroker(t *testing.T) {
 	// runBroker-shaped wiring, but with a scripted fakeModel so it's keyless.
 	ledger := clank.NewMemProposalLog()
 	cases := clank.NewCaseBase()
-	model := &fakeModel{script: []clank.Completion{
+	model := &fakeModel{script: []reason.Completion{
 		// turn 1: gather live evidence
-		{ToolCalls: []clank.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+		{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
 		// turn 2: propose - hypothesis + a candidate drawn from the catalog
-		{ToolCalls: []clank.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
 			FailureClass: proposal.ClassDependencySaturation,
 			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
 			Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
@@ -55,7 +56,7 @@ func TestClankLearnEdge_ClosesOverBroker(t *testing.T) {
 			}}},
 		),
 		Model: model,
-		Tools: map[string]clank.Tool{"metrics": metricsTool{}},
+		Tools: map[string]reason.Tool{"metrics": metricsTool{}},
 		Catalog: contract.NewStaticCatalog([]contract.ActionContract{{
 			Name:                     "throttle-non-critical-paths",
 			ApplicableFailureClasses: []proposal.FailureClass{proposal.ClassDependencySaturation},

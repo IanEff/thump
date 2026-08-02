@@ -12,6 +12,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/httpx"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/schema"
 	"github.com/ianeff/thump/internal/subjects"
 	"sigs.k8s.io/yaml"
@@ -37,8 +38,8 @@ type MetricsTool struct {
 	Queries map[string]EvidenceQuery
 }
 
-// Ensure MetricsTool implements the Tool interface.
-var _ Tool = (*MetricsTool)(nil)
+// Ensure MetricsTool implements the reason.Tool interface.
+var _ reason.Tool = (*MetricsTool)(nil)
 
 type metricsInput struct {
 	Q string `json:"q"`
@@ -53,13 +54,13 @@ type metricsInput struct {
 // "no metrics are accessible" (confirmed live 2026-07-08: the model declined
 // a real detection citing no accessible Ceph/OSD/recovery data while every
 // one of those queries was returning live, non-empty results).
-func (m *MetricsTool) Spec() ToolSpec {
+func (m *MetricsTool) Spec() reason.ToolSpec {
 	names := make([]string, 0, len(m.Queries))
 	for name := range m.Queries {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return ToolSpec{
+	return reason.ToolSpec{
 		Name:        "metrics",
 		Description: "read-only telemetry query. Valid q values: " + strings.Join(names, ", "),
 		InputSchema: schema.Of[metricsInput](),

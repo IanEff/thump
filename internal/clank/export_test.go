@@ -17,6 +17,7 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/publish"
+	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/subjects"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -42,7 +43,7 @@ func BuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention t
 // it never ships in the production binary. Tracing isn't what these tests are
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
-func NewLoopForTest(model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
+func NewLoopForTest(model reason.Model, tools map[string]reason.Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
 	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits())
 }
 
@@ -63,7 +64,7 @@ func ShippedFailureClassesForTest() []contract.FailureClassDefinition {
 }
 
 // NewBrokerEngineForTest exposes the broker-mode Engine construction to tests.
-func NewBrokerEngineForTest(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase) *Engine {
+func NewBrokerEngineForTest(model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase) *Engine {
 	return newBrokerEngine(model, intake, store, tools, cat, shippedClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits())
 }
 
@@ -140,22 +141,22 @@ var shippedClasses = sync.OnceValue(func() []contract.FailureClassDefinition {
 	return defs
 })
 
-func FromAnthropicForTest(resp *anthropic.Message) Completion {
+func FromAnthropicForTest(resp *anthropic.Message) reason.Completion {
 	return fromAnthropicMessage(resp)
 }
 
-func ToAnthropicMessageParamsForTest(msgs []Message) []anthropic.MessageParam {
+func ToAnthropicMessageParamsForTest(msgs []reason.Message) []anthropic.MessageParam {
 	return toAnthropicMessageParams(msgs)
 }
 
-func ToAnthropicToolParamsForTest(tools []ToolSpec) []anthropic.ToolUnionParam {
+func ToAnthropicToolParamsForTest(tools []reason.ToolSpec) []anthropic.ToolUnionParam {
 	return toAnthropicToolParams(tools)
 }
 
 // ToolSpecsForTest exposes Engine.toolSpecs, the one place tool order gets
 // fixed before it's sent to the model — clank_test needs it to pin that
 // order deterministic.
-func ToolSpecsForTest(e *Engine) []ToolSpec {
+func ToolSpecsForTest(e *Engine) []reason.ToolSpec {
 	return e.toolSpecs()
 }
 
@@ -169,7 +170,7 @@ func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.I
 // BuildToolsForTest exposes buildTools to clank_test — the seam that decides
 // which evidence tools exist and whether each one can name the topology node
 // its citations concern.
-func BuildToolsForTest(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]Tool {
+func BuildToolsForTest(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]reason.Tool {
 	return buildTools(cfg, backendTLS, ev, kube)
 }
 
@@ -180,13 +181,13 @@ func ClientsForTest(restConfig *rest.Config) (kubernetes.Interface, dynamic.Inte
 	return clientsFor(restConfig)
 }
 
-// IntakeTopologyForTest exposes the Intake's wired TopologySource.
-func IntakeTopologyForTest(i *Intake) TopologySource {
+// IntakeTopologyForTest exposes the Intake's wired reason.TopologySource.
+func IntakeTopologyForTest(i *Intake) reason.TopologySource {
 	return i.topo
 }
 
-// IntakeChangeForTest exposes the Intake's wired ChangeSource.
-func IntakeChangeForTest(i *Intake) ChangeSource {
+// IntakeChangeForTest exposes the Intake's wired reason.ChangeSource.
+func IntakeChangeForTest(i *Intake) reason.ChangeSource {
 	return i.change
 }
 
@@ -196,7 +197,7 @@ func (m *identifierMasker) RegisterForTest(name string)   { m.register(name) }
 func (m *identifierMasker) MaskForTest(s string) string   { return m.mask(s) }
 func (m *identifierMasker) UnmaskForTest(s string) string { return m.unmask(s) }
 
-func NewMaskingModelForTest(model Model, mask *identifierMasker) Model {
+func NewMaskingModelForTest(model reason.Model, mask *identifierMasker) reason.Model {
 	return &maskingModel{Model: model, mask: mask}
 }
 
