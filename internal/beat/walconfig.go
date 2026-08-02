@@ -13,8 +13,3 @@ type WALConfig = publish.WALConfig
 func LoadWALConfig(path string) (WALConfig, error) {
 	return publish.LoadWALConfig(path)
 }
-
-// DefaultWALConfig is publish.DefaultWALConfig.
-func DefaultWALConfig() WALConfig {
-	return publish.DefaultWALConfig()
-}

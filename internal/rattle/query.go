@@ -72,9 +72,3 @@ func LoadQueryConfig(path string) (QueryConfig, error) {
 
 	return QueryConfig{Step: step, Window: window}, nil
 }
-
-// DefaultQueryConfig is the query shape both production constructors wired
-// before extraction — a 1-minute step, a 15-minute window.
-func DefaultQueryConfig() QueryConfig {
-	return QueryConfig{Step: time.Minute, Window: 15 * time.Minute}
-}
