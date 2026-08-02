@@ -2,12 +2,9 @@ package clank
 
 import (
 	"errors"
-	"fmt"
-	"os"
-	"strings"
 	"time"
 
-	"sigs.k8s.io/yaml"
+	"github.com/ianeff/thump/internal/configfile"
 )
 
 // ErrIncompleteLimits means a limits file omitted a term rather than
@@ -49,45 +46,21 @@ type limitsFile struct {
 // Limits — mirrors LoadWeightsFile's posture: fail at load, never at first
 // use.
 func LoadLimitsFile(path string) (Limits, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config path, not user input
+	lf, err := configfile.Stage[limitsFile](path, "limits file")
 	if err != nil {
-		return Limits{}, fmt.Errorf("read limits file: %w", err)
-	}
-	var lf limitsFile
-	if err := yaml.Unmarshal(raw, &lf); err != nil {
-		return Limits{}, fmt.Errorf("parse limits file: %w", err)
+		return Limits{}, err
 	}
 
-	missing := []string{}
-	need := func(name string, present bool) {
-		if !present {
-			missing = append(missing, name)
-		}
+	r := configfile.Require("limits file", ErrIncompleteLimits)
+	out := Limits{
+		MaxCases:           r.Int("maxCases", lf.MaxCases),
+		LedgerRetention:    r.Duration("ledgerRetention", lf.LedgerRetention),
+		ChangeLookback:     r.Duration("changeLookback", lf.ChangeLookback),
+		MaxProposeAttempts: r.Int("maxProposeAttempts", lf.MaxProposeAttempts),
+		MaxSteps:           r.Int("maxSteps", lf.MaxSteps),
 	}
-	need("maxCases", lf.MaxCases != nil)
-	need("ledgerRetention", lf.LedgerRetention != nil)
-	need("changeLookback", lf.ChangeLookback != nil)
-	need("maxProposeAttempts", lf.MaxProposeAttempts != nil)
-	need("maxSteps", lf.MaxSteps != nil)
-
-	if len(missing) > 0 {
-		return Limits{}, fmt.Errorf("%w: %s", ErrIncompleteLimits, strings.Join(missing, ", "))
+	if err := r.Err(); err != nil {
+		return Limits{}, err
 	}
-
-	ledgerRetention, err := time.ParseDuration(*lf.LedgerRetention)
-	if err != nil {
-		return Limits{}, fmt.Errorf("limits file ledgerRetention: %w", err)
-	}
-	changeLookback, err := time.ParseDuration(*lf.ChangeLookback)
-	if err != nil {
-		return Limits{}, fmt.Errorf("limits file changeLookback: %w", err)
-	}
-
-	return Limits{
-		MaxCases:           *lf.MaxCases,
-		LedgerRetention:    ledgerRetention,
-		ChangeLookback:     changeLookback,
-		MaxProposeAttempts: *lf.MaxProposeAttempts,
-		MaxSteps:           *lf.MaxSteps,
-	}, nil
+	return out, nil
 }

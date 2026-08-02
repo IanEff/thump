@@ -2,12 +2,9 @@ package rattle
 
 import (
 	"errors"
-	"fmt"
-	"os"
-	"strings"
 	"time"
 
-	"sigs.k8s.io/yaml"
+	"github.com/ianeff/thump/internal/configfile"
 )
 
 // ErrIncompleteQueryConfig means a query config file omitted a term rather
@@ -39,36 +36,18 @@ type queryConfigFile struct {
 // QueryConfig — mirrors clank.LoadWeightsFile's posture: fail at load,
 // never at first use.
 func LoadQueryConfig(path string) (QueryConfig, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config path, not user input
+	qf, err := configfile.Stage[queryConfigFile](path, "query config file")
 	if err != nil {
-		return QueryConfig{}, fmt.Errorf("read query config file: %w", err)
-	}
-	var qf queryConfigFile
-	if err := yaml.Unmarshal(raw, &qf); err != nil {
-		return QueryConfig{}, fmt.Errorf("parse query config file: %w", err)
+		return QueryConfig{}, err
 	}
 
-	missing := []string{}
-	need := func(name string, present bool) {
-		if !present {
-			missing = append(missing, name)
-		}
+	r := configfile.Require("query config file", ErrIncompleteQueryConfig)
+	out := QueryConfig{
+		Step:   r.Duration("step", qf.Step),
+		Window: r.Duration("window", qf.Window),
 	}
-	need("step", qf.Step != nil)
-	need("window", qf.Window != nil)
-
-	if len(missing) > 0 {
-		return QueryConfig{}, fmt.Errorf("%w: %s", ErrIncompleteQueryConfig, strings.Join(missing, ", "))
+	if err := r.Err(); err != nil {
+		return QueryConfig{}, err
 	}
-
-	step, err := time.ParseDuration(*qf.Step)
-	if err != nil {
-		return QueryConfig{}, fmt.Errorf("query config file step: %w", err)
-	}
-	window, err := time.ParseDuration(*qf.Window)
-	if err != nil {
-		return QueryConfig{}, fmt.Errorf("query config file window: %w", err)
-	}
-
-	return QueryConfig{Step: step, Window: window}, nil
+	return out, nil
 }

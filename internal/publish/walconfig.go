@@ -2,12 +2,9 @@ package publish
 
 import (
 	"errors"
-	"fmt"
-	"os"
-	"strings"
 	"time"
 
-	"sigs.k8s.io/yaml"
+	"github.com/ianeff/thump/internal/configfile"
 )
 
 // ErrIncompleteWALConfig means a WAL config file omitted a term rather than
@@ -46,49 +43,22 @@ type walConfigFile struct {
 // WALConfig — fail at load, never at first use, same posture as every
 // other config surface in this tree.
 func LoadWALConfig(path string) (WALConfig, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config path, not user input
+	wf, err := configfile.Stage[walConfigFile](path, "wal config file")
 	if err != nil {
-		return WALConfig{}, fmt.Errorf("read wal config file: %w", err)
-	}
-	var wf walConfigFile
-	if err := yaml.Unmarshal(raw, &wf); err != nil {
-		return WALConfig{}, fmt.Errorf("parse wal config file: %w", err)
+		return WALConfig{}, err
 	}
 
-	missing := []string{}
-	need := func(name string, present bool) {
-		if !present {
-			missing = append(missing, name)
-		}
+	r := configfile.Require("wal config file", ErrIncompleteWALConfig)
+	out := WALConfig{
+		MaxBytes:     r.Int64("maxBytes", wf.MaxBytes),
+		MaxAge:       r.Duration("maxAge", wf.MaxAge),
+		SyncInterval: r.Duration("syncInterval", wf.SyncInterval),
+		ShipInterval: r.Duration("shipInterval", wf.ShipInterval),
 	}
-	need("maxBytes", wf.MaxBytes != nil)
-	need("maxAge", wf.MaxAge != nil)
-	need("syncInterval", wf.SyncInterval != nil)
-	need("shipInterval", wf.ShipInterval != nil)
-
-	if len(missing) > 0 {
-		return WALConfig{}, fmt.Errorf("%w: %s", ErrIncompleteWALConfig, strings.Join(missing, ", "))
+	if err := r.Err(); err != nil {
+		return WALConfig{}, err
 	}
-
-	maxAge, err := time.ParseDuration(*wf.MaxAge)
-	if err != nil {
-		return WALConfig{}, fmt.Errorf("wal config file maxAge: %w", err)
-	}
-	syncInterval, err := time.ParseDuration(*wf.SyncInterval)
-	if err != nil {
-		return WALConfig{}, fmt.Errorf("wal config file syncInterval: %w", err)
-	}
-	shipInterval, err := time.ParseDuration(*wf.ShipInterval)
-	if err != nil {
-		return WALConfig{}, fmt.Errorf("wal config file shipInterval: %w", err)
-	}
-
-	return WALConfig{
-		MaxBytes:     *wf.MaxBytes,
-		MaxAge:       maxAge,
-		SyncInterval: syncInterval,
-		ShipInterval: shipInterval,
-	}, nil
+	return out, nil
 }
 
 // DefaultWALConfig is the WAL sealing and shipping cadence every beat
