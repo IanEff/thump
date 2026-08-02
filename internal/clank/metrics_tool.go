@@ -27,12 +27,12 @@ type EvidenceQuery struct {
 type MetricsTool struct {
 	BaseURL string
 	Client  *http.Client
-	Queries map[string]string
-	// Subjects maps a query name to the topology node it concerns, for the
-	// gate's cross-domain coherence check (EvidenceRef.Subject). A name
-	// absent from this map stamps no Subject — the query makes no
-	// topology claim, so its Live citation is never attenuated.
-	Subjects map[string]string
+	// Queries maps a query name to the PromQL and topology node (Subject) it
+	// concerns, for the gate's cross-domain coherence check
+	// (EvidenceRef.Subject). A zero-value Subject stamps no Subject — the
+	// query makes no topology claim, so its Live citation is never
+	// attenuated.
+	Queries map[string]EvidenceQuery
 }
 
 // Ensure MetricsTool implements the Tool interface.
@@ -71,7 +71,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 		return proposal.EvidenceRef{}, fmt.Errorf("decode args: %w", err)
 	}
 
-	promQL, ok := m.Queries[input.Q]
+	eq, ok := m.Queries[input.Q]
 	if !ok {
 		return proposal.EvidenceRef{
 			Tool:    "metrics",
@@ -80,7 +80,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 			Live:    false,
 		}, nil
 	}
-	subject := m.Subjects[input.Q]
+	promQL, subject := eq.Query, eq.Subject
 
 	u, err := url.Parse(m.BaseURL + "/api/v1/query")
 	if err != nil {
@@ -165,15 +165,13 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 // three answer one question — which node is this evidence about? — so they
 // are authored in one file per rig.
 type EvidenceConfig struct {
-	Queries  map[string]string // query name → PromQL
-	Subjects map[string]string // query name → topology node; a name absent from it declared no subject: tag
-	Index    SubjectIndex      // the log and cluster tools' coordinate rules
+	Queries map[string]EvidenceQuery // query name → EvidenceQuery
+	Index   SubjectIndex             // the log and cluster tools' coordinate rules
 }
 
 // LoadEvidenceConfig parses evidence-queries.yaml. A query with no subject:
-// tag is absent from Subjects rather than present with an empty string, so
-// MetricsTool stamps no Subject for it via the zero value (see
-// EvidenceRef.Subject).
+// tag stores an EvidenceQuery with an empty Subject, so MetricsTool stamps
+// none for it via the zero value (see EvidenceRef.Subject).
 func LoadEvidenceConfig(path string) (EvidenceConfig, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied config file path, not user input
 	if err != nil {
@@ -189,15 +187,11 @@ func LoadEvidenceConfig(path string) (EvidenceConfig, error) {
 	}
 
 	cfg := EvidenceConfig{
-		Queries:  make(map[string]string, len(file.Queries)),
-		Subjects: make(map[string]string, len(file.Queries)),
-		Index:    file.Subjects,
+		Queries: make(map[string]EvidenceQuery, len(file.Queries)),
+		Index:   file.Subjects,
 	}
 	for _, q := range file.Queries {
-		cfg.Queries[q.Name] = q.Query
-		if q.Subject != "" {
-			cfg.Subjects[q.Name] = q.Subject
-		}
+		cfg.Queries[q.Name] = q
 	}
 	return cfg, nil
 }

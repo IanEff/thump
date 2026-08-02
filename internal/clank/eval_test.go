@@ -264,6 +264,16 @@ func evalEvidence(fixture string) map[string]string {
 	}
 }
 
+// promQLByName extracts each query's raw PromQL, keyed by name — the shape
+// newFakePrometheus expects, independent of EvidenceQuery's other fields.
+func promQLByName(queries map[string]EvidenceQuery) map[string]string {
+	out := make(map[string]string, len(queries))
+	for name, q := range queries {
+		out[name] = q.Query
+	}
+	return out
+}
+
 // newFakePrometheus stands in for the rig's real Prometheus: same
 // MetricsTool, same query dispatch, only the HTTP backend is canned — the
 // production code path (metrics_tool.go) is exercised unchanged.
@@ -333,7 +343,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 		t.Run(tc.fixture, func(t *testing.T) {
 			det := loadDetectionFixture(t, tc.fixture)
 
-			prom := newFakePrometheus(t, queries, evalEvidence(tc.fixture))
+			prom := newFakePrometheus(t, promQLByName(queries), evalEvidence(tc.fixture))
 			tools := map[string]Tool{"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries}}
 
 			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),

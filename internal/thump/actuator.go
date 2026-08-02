@@ -87,9 +87,7 @@ func (Actuator) Render(g decision.Governed, cat *contract.StaticCatalog, now tim
 	o.Reversal.Fallback = ct.Reversal.Fallback
 	o.Reversal.RestoreOnSuccess = ct.Reversal.RestoreOnSuccess
 	if cand.ReversalPath != nil {
-		o.Reversal.Method = cand.ReversalPath.Method
-		o.Reversal.Watching = cand.ReversalPath.Watching
-		o.Reversal.Trigger = cand.ReversalPath.Trigger
+		o.Reversal.ReversalPath = *cand.ReversalPath
 	}
 	return o, nil
 }

@@ -79,17 +79,13 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]string{
-				"ceph_health":  "ceph_health_status",
-				"osd_capacity": "ceph_osd_capacity_ratio",
-			},
 			// node-death.yaml's OriginService is ceph-cluster; goldenEngine's
 			// fakeTopo carries no topology at all, so the self-match clause
 			// of gate.go's coherentSubject is the only path to clearing the
 			// gate under W3's fail-closed ruling.
-			Subjects: map[string]string{
-				"ceph_health":  "ceph-cluster",
-				"osd_capacity": "ceph-cluster",
+			Queries: map[string]clank.EvidenceQuery{
+				"ceph_health":  {Query: "ceph_health_status", Subject: "ceph-cluster"},
+				"osd_capacity": {Query: "ceph_osd_capacity_ratio", Subject: "ceph-cluster"},
 			},
 		},
 		"loki": &clank.LokiTool{BaseURL: logs.URL, Subjects: goldenCephSubjects()},
@@ -170,9 +166,10 @@ func TestGoldenPath_DedupOnReplaySuppressesTheSecondSet(t *testing.T) {
 	defer ts.Close()
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
-			BaseURL:  ts.URL,
-			Queries:  map[string]string{"ceph_health": "ceph_health_status"},
-			Subjects: map[string]string{"ceph_health": "ceph-cluster"}, // self-match, see the sibling test above
+			BaseURL: ts.URL,
+			Queries: map[string]clank.EvidenceQuery{
+				"ceph_health": {Query: "ceph_health_status", Subject: "ceph-cluster"}, // self-match, see the sibling test above
+			},
 		},
 	}
 
@@ -244,13 +241,9 @@ func TestGoldenPath_TwoSourceEvidenceClearsTheBeliefFloor(t *testing.T) {
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]string{
-				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
-				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
-			},
-			Subjects: map[string]string{
-				"osds_down":       "ceph-cluster",
-				"pgs_backfilling": "ceph-cluster",
+			Queries: map[string]clank.EvidenceQuery{
+				"osds_down":       {Query: "count(ceph_osd_up == 0) or vector(0)", Subject: "ceph-cluster"},
+				"pgs_backfilling": {Query: "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)", Subject: "ceph-cluster"},
 			},
 		},
 	}
@@ -306,7 +299,7 @@ func TestGoldenPath_ArgocdSyncDeclinesWithALegibleReason(t *testing.T) {
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]string{"ceph_health": "ceph_health_status"},
+			Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "ceph_health_status"}},
 		},
 	}
 
@@ -364,9 +357,10 @@ func TestGoldenPath_CrossDomainLiveCitationCantDriveAMisclassification(t *testin
 
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
-			BaseURL:  ts.URL,
-			Queries:  map[string]string{"product_catalog_error_ratio": "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))"},
-			Subjects: map[string]string{"product_catalog_error_ratio": "product-catalog"},
+			BaseURL: ts.URL,
+			Queries: map[string]clank.EvidenceQuery{
+				"product_catalog_error_ratio": {Query: "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))", Subject: "product-catalog"},
+			},
 		},
 	}
 
@@ -425,13 +419,9 @@ func TestGoldenPath_NoisyNeighborStillClosesWhenCorroborated(t *testing.T) {
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]string{
-				"product_catalog_error_ratio": "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))",
-				"rook_operator_health":        "rook_operator_health_status",
-			},
-			Subjects: map[string]string{
-				"product_catalog_error_ratio": "product-catalog",
-				"rook_operator_health":        "rook-operator",
+			Queries: map[string]clank.EvidenceQuery{
+				"product_catalog_error_ratio": {Query: "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))", Subject: "product-catalog"},
+				"rook_operator_health":        {Query: "rook_operator_health_status", Subject: "rook-operator"},
 			},
 		},
 	}
@@ -478,13 +468,9 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]string{
-				"osds_down":       "count(ceph_osd_up == 0) or vector(0)",
-				"pgs_backfilling": "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)",
-			},
-			Subjects: map[string]string{
-				"osds_down":       "ceph-cluster",
-				"pgs_backfilling": "ceph-cluster",
+			Queries: map[string]clank.EvidenceQuery{
+				"osds_down":       {Query: "count(ceph_osd_up == 0) or vector(0)", Subject: "ceph-cluster"},
+				"pgs_backfilling": {Query: "sum(ceph_pg_backfilling + ceph_pg_backfill_wait) or vector(0)", Subject: "ceph-cluster"},
 			},
 		},
 		"kube": &clank.KubeTool{
@@ -567,13 +553,9 @@ func TestGoldenPath_InTopologyFillerCantCarryAnOutOfDomainAction(t *testing.T) {
 	tools := map[string]clank.Tool{
 		"metrics": &clank.MetricsTool{
 			BaseURL: ts.URL,
-			Queries: map[string]string{
-				"rook_operator_health":        "rook_operator_health_status",
-				"product_catalog_error_ratio": "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))",
-			},
-			Subjects: map[string]string{
-				"rook_operator_health":        "rook-operator",
-				"product_catalog_error_ratio": "product-catalog",
+			Queries: map[string]clank.EvidenceQuery{
+				"rook_operator_health":        {Query: "rook_operator_health_status", Subject: "rook-operator"},
+				"product_catalog_error_ratio": {Query: "sum(rate(app_frontend_requests_total{status=\"500\"}[2m]))", Subject: "product-catalog"},
 			},
 		},
 	}
@@ -742,7 +724,7 @@ func goldenLokiServer(t *testing.T) *httptest.Server {
 // to clearing the gate.
 func goldenCephSubjects() clank.SubjectIndex {
 	return clank.SubjectIndex{
-		{Subject: "ceph-cluster", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-mon"}},
+		{Subject: "ceph-cluster", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-mon"}}},
 	}
 }
 

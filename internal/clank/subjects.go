@@ -6,10 +6,10 @@ package clank
 // namespace, kind and name — so an empty field is "not stated", never "must be
 // empty".
 type Coordinates struct {
-	Namespace string
-	Kind      string
-	Name      string
-	Labels    map[string]string
+	Namespace string            `json:"namespace,omitempty"`
+	Kind      string            `json:"kind,omitempty"` // a Kubernetes kind as ArgoCD reports it in an Application's resource inventory
+	Name      string            `json:"name,omitempty"` // the object name in that inventory, which is rarely the topology node's own name
+	Labels    map[string]string `json:"labels,omitempty"`
 }
 
 // SubjectRule maps the coordinates of a query, or of a changed resource, to the
@@ -18,11 +18,8 @@ type Coordinates struct {
 // someone's deployment, never of this engine. A rule constrains only the
 // coordinates it declares.
 type SubjectRule struct {
-	Subject   string            `json:"subject"`
-	Namespace string            `json:"namespace,omitempty"`
-	Kind      string            `json:"kind,omitempty"` // a Kubernetes kind as ArgoCD reports it in an Application's resource inventory
-	Name      string            `json:"name,omitempty"` // the object name in that inventory, which is rarely the topology node's own name
-	Labels    map[string]string `json:"labels,omitempty"`
+	Subject string `json:"subject"`
+	Coordinates
 }
 
 // SubjectIndex resolves cluster coordinates to the topology node an

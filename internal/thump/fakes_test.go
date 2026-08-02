@@ -179,8 +179,8 @@ func goldenOrder() thump.Order {
 		Description: "Throttle non-critical request paths at the RGW ingress",
 		Parameters:  map[string]float64{"throttle_pct": 25}, // Range.Default — I-4
 		Reversal: thump.ReversalPlan{
-			Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
-			Fallback: "page-oncall",
+			ReversalPath: proposal.ReversalPath{Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery"},
+			Fallback:     "page-oncall",
 		},
 		Success: contract.SuccessCriteria{
 			Metric: "latency_p99", Target: "p99 < 250ms",

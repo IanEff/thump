@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/contract"
 )
 
@@ -37,15 +38,14 @@ const (
 	OrderReversal OrderKind = "reversal" // an undo of an already-executed action — exempt from the kill-switch
 )
 
-// ReversalPlan is how to undo an Order, carried over from the granted
-// Candidate's ReversalPath plus the ActionContract's authored Reversal. A
-// Candidate with no ReversalPath still carries Fallback and RestoreOnSuccess
-// — those two are the catalog's facts, never the model's, so Render does not
-// gate them behind whether clank proposed a path.
+// ReversalPlan is how to undo an Order. Method, Watching, and Trigger carry
+// over from the granted Candidate's ReversalPath unchanged — embedded rather
+// than restated, since contract.Reversal.Method is a separate, unused field
+// on the catalog side and would collide with an embed of the whole type.
+// Fallback and RestoreOnSuccess are the ActionContract's authored facts,
+// never the model's, so a Candidate with no ReversalPath still carries them.
 type ReversalPlan struct {
-	Method           string `json:"method,omitempty" yaml:"method,omitempty"`                     // candidate.ReversalPath.Method — how to reverse the action
-	Watching         string `json:"watching,omitempty" yaml:"watching,omitempty"`                 // candidate.ReversalPath.Watching — the signal that says a reversal is needed
-	Trigger          string `json:"trigger,omitempty" yaml:"trigger,omitempty"`                   // candidate.ReversalPath.Trigger — the condition on that signal that fires the reversal
+	proposal.ReversalPath
 	Fallback         string `json:"fallback,omitempty" yaml:"fallback,omitempty"`                 // contract.Reversal.Fallback — the authored fallback if the reversal method itself fails
 	RestoreOnSuccess bool   `json:"restoreOnSuccess,omitempty" yaml:"restoreOnSuccess,omitempty"` // contract.Reversal.RestoreOnSuccess — the catalog's declaration, never derived from the Candidate
 }

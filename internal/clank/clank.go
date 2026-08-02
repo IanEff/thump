@@ -257,10 +257,9 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 			"beat", "clank", "fix", "set EVIDENCE_QUERIES")
 	default:
 		tools["metrics"] = &MetricsTool{
-			BaseURL:  cfg.PromURL,
-			Queries:  ev.Queries,
-			Subjects: ev.Subjects,
-			Client:   httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
+			BaseURL: cfg.PromURL,
+			Queries: ev.Queries,
+			Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
 		}
 	}
 

@@ -100,8 +100,8 @@ func TestMetricsTool_Run(t *testing.T) {
 			// 2. Setup the tool pointing to the fake server
 			tool := &clank.MetricsTool{
 				BaseURL: ts.URL,
-				Queries: map[string]string{
-					"ceph_health": "ceph_health_status",
+				Queries: map[string]clank.EvidenceQuery{
+					"ceph_health": {Query: "ceph_health_status"},
 				},
 			}
 
@@ -145,22 +145,17 @@ func TestMetricsTool_RunStampsSubject(t *testing.T) {
 
 	cases := map[string]struct {
 		query       string
-		subjects    map[string]string
+		subject     string
 		wantSubject string
 	}{
 		"Run stamps the configured Subject for a tagged query": {
 			query:       "product_catalog_error_ratio",
-			subjects:    map[string]string{"product_catalog_error_ratio": "product-catalog"},
+			subject:     "product-catalog",
 			wantSubject: "product-catalog",
 		},
-		"Run stamps no Subject for a query absent from Subjects": {
+		"Run stamps no Subject for an untagged query": {
 			query:       "ceph_health",
-			subjects:    map[string]string{"product_catalog_error_ratio": "product-catalog"},
-			wantSubject: "",
-		},
-		"Run stamps no Subject when Subjects is nil": {
-			query:       "ceph_health",
-			subjects:    nil,
+			subject:     "",
 			wantSubject: "",
 		},
 	}
@@ -168,9 +163,8 @@ func TestMetricsTool_RunStampsSubject(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			tool := &clank.MetricsTool{
-				BaseURL:  ts.URL,
-				Queries:  map[string]string{tc.query: "irrelevant_promql"},
-				Subjects: tc.subjects,
+				BaseURL: ts.URL,
+				Queries: map[string]clank.EvidenceQuery{tc.query: {Query: "irrelevant_promql", Subject: tc.subject}},
 			}
 			ref, err := tool.Run(context.Background(), json.RawMessage(`{"q":"`+tc.query+`"}`))
 			if err != nil {
@@ -184,10 +178,9 @@ func TestMetricsTool_RunStampsSubject(t *testing.T) {
 }
 
 // TestLoadEvidenceConfig_ParsesSubjectTags pins the on-disk contract:
-// evidence-queries.yaml's optional subject: field must land in Subjects,
-// keyed by query name, and a query with no subject: line must be absent from
-// it entirely — not present with an empty string — so
-// MetricsTool.Subjects[name] misses cleanly via the zero value.
+// evidence-queries.yaml's optional subject: field must land in the query's
+// EvidenceQuery.Subject — a query with no subject: line gets the zero value,
+// not a fabricated one, so MetricsTool stamps no Subject for it.
 func TestLoadEvidenceConfig_ParsesSubjectTags(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "evidence-queries.yaml")
@@ -209,17 +202,19 @@ queries:
 		t.Fatalf("LoadEvidenceConfig errored: %v", err)
 	}
 
-	wantQueries := map[string]string{
-		"argocd_apps_out_of_sync": `count(argocd_app_info{sync_status!="Synced"}) or vector(0)`,
-		"ceph_health":             `ceph_health_status{job="rook-ceph-mgr"}`,
+	wantQueries := map[string]clank.EvidenceQuery{
+		"argocd_apps_out_of_sync": {
+			Name:    "argocd_apps_out_of_sync",
+			Query:   `count(argocd_app_info{sync_status!="Synced"}) or vector(0)`,
+			Subject: "argocd",
+		},
+		"ceph_health": {
+			Name:  "ceph_health",
+			Query: `ceph_health_status{job="rook-ceph-mgr"}`,
+		},
 	}
 	if diff := cmp.Diff(wantQueries, ev.Queries); diff != "" {
 		t.Error("wrong queries map", diff)
-	}
-
-	wantSubjects := map[string]string{"argocd_apps_out_of_sync": "argocd"}
-	if diff := cmp.Diff(wantSubjects, ev.Subjects); diff != "" {
-		t.Error("wrong subjects map (untagged queries must be absent, not empty-string)", diff)
 	}
 }
 
@@ -249,8 +244,8 @@ subjects:
     namespace: acme
 `,
 			want: clank.SubjectIndex{
-				{Subject: "ceph-osd", Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}},
-				{Subject: "acme-api", Namespace: "acme"},
+				{Subject: "ceph-osd", Coordinates: clank.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+				{Subject: "acme-api", Coordinates: clank.Coordinates{Namespace: "acme"}},
 			},
 		},
 		"LoadEvidenceConfig yields an empty index for a file with no subjects block": {
