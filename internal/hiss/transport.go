@@ -69,7 +69,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 		var ps proposal.Set
 		if err := yaml.Unmarshal(raw, &ps); err != nil {
 			if qErr := tr.quarantine(path); qErr != nil {
-				return fmt.Errorf("hiss: quarantine %s: %w", path, err)
+				return fmt.Errorf("hiss: quarantine %s: %w", path, qErr)
 			}
 			continue // poison doesn't block the queue
 		}

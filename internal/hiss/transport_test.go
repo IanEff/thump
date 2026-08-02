@@ -2,8 +2,10 @@ package hiss_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -85,6 +87,29 @@ func TestTick_NamesDecisionFileBySignalRef(t *testing.T) {
 	ref := governedSet().SignalRef
 	if _, err := os.Stat(filepath.Join(outbox, ref+".yaml")); err != nil {
 		t.Errorf("decision file must be named <SignalRef>.yaml: %v", err)
+	}
+}
+
+func TestTick_QuarantineFailure_WrapsTheQuarantineErrorNotTheUnmarshalError(t *testing.T) {
+	t.Parallel()
+	inbox, outbox := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(inbox, "poison.yaml"),
+		[]byte("proposals: [not, {valid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// a plain file sits where quarantine/ needs to be a directory, so
+	// os.MkdirAll inside tr.quarantine fails with ENOTDIR.
+	if err := os.WriteFile(filepath.Join(inbox, "quarantine"), []byte("blocking"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tr := newTestTransport(inbox, outbox)
+
+	err := tr.Tick(context.Background())
+	if err == nil {
+		t.Fatal("a quarantine failure must surface as an error, got nil")
+	}
+	if !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf("Tick must wrap the quarantine failure (ENOTDIR), not the unmarshal error: %v", err)
 	}
 }
 
