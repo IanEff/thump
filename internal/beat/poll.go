@@ -19,6 +19,10 @@ type PollConfig struct {
 	Timeout time.Duration
 }
 
+// DefaultPollConfig is the fixed-interval cadence hiss and thump's offline
+// dir-poll transports share: tick every 5s, bounded to 20s.
+var DefaultPollConfig = PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}
+
 // BackoffConfig is the growth schedule for a failing poll loop: start at Base,
 // double on each failed tick up to Cap, reset to Base on success. When a tick
 // fails, up to Base/JitterDivisor of jitter is added so many beats don't

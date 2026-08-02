@@ -35,7 +35,7 @@ func proposalFilename(ps proposal.Set) string {
 
 func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string]Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
-	ledger.Retention = limits.LedgerRetention
+	ledger.LedgerRetention = limits.LedgerRetention
 	cases := NewCaseBase() // ONE case base
 	cases.MaxCases = limits.MaxCases
 	eng := &Engine{
@@ -53,7 +53,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 		Recorder:       recorder,
 		Pub:            &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
 		Gate:           ReadinessGate{},
-		MaxSteps:       8,
+		MaxSteps:       limits.MaxSteps,
 		Tracer:         tracer,
 		Stages:         stages,
 		Weights:        weights,
@@ -72,7 +72,7 @@ func newLoop(_, outbox, outcomes, declines string, model Model, tools map[string
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights) *Engine {
+func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *Engine {
 	return &Engine{
 		Intake:         intake,
 		Model:          model,
@@ -88,7 +88,7 @@ func newBrokerEngine(model Model, intake *Intake, store Store, tools map[string]
 		Recorder:       recorder,
 		Pub:            pub,
 		Gate:           ReadinessGate{},
-		MaxSteps:       8,
+		MaxSteps:       limits.MaxSteps,
 		Tracer:         tracer,
 		Stages:         stages,
 		Weights:        weights,
@@ -121,14 +121,17 @@ func DefaultScoringWeights() ScoringWeights {
 	}
 }
 
-// DefaultLimits is the sizing/horizon/retry-budget tuning both production
-// constructors wire — a 10000-case base, a 24h ledger retention, a 2h change
-// lookback, and a 5-attempt propose budget.
+// DefaultLimits is the sizing/horizon/retry-budget tuning a test wires when
+// it builds a Loop directly instead of through LoadLimitsFile — a
+// 10000-case base, a 24h ledger retention, a 2h change lookback, a
+// 5-attempt propose budget, and an 8-turn reason loop; production always
+// loads these from limits.yaml instead.
 func DefaultLimits() Limits {
 	return Limits{
-		MaxCases:           10000,
-		LedgerRetention:    24 * time.Hour,
-		ChangeLookback:     2 * time.Hour,
-		MaxProposeAttempts: 5,
+		MaxCases:           maxCases,
+		LedgerRetention:    ledgerRetention,
+		ChangeLookback:     DefaultChangeLookback,
+		MaxProposeAttempts: maxProposeAttempts,
+		MaxSteps:           8,
 	}
 }

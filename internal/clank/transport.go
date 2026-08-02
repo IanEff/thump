@@ -18,9 +18,10 @@ type Transport struct {
 	Inbox  string
 	Engine *Engine
 
-	// MaxAttempts is how many failed Propose calls a detection gets before
-	// it's filed stalled instead of retried; zero means maxProposeAttempts.
-	MaxAttempts int
+	// MaxProposeAttempts is how many failed Propose calls a detection gets
+	// before it's filed stalled instead of retried; zero means
+	// maxProposeAttempts.
+	MaxProposeAttempts int
 
 	attempts map[string]int
 }
@@ -30,7 +31,7 @@ const maxProposeAttempts = 5 // a detection whose Propose call fails this many t
 // Tick processes every detection file currently in Inbox once. A file that
 // fails to unmarshal is quarantined immediately — poison doesn't block the
 // queue. A file whose Propose call errors is left for the next Tick to
-// retry, up to MaxAttempts, then filed stalled. A file that reasons
+// retry, up to MaxProposeAttempts, then filed stalled. A file that reasons
 // successfully — gated or not — is filed processed.
 func (tr *Transport) Tick(ctx context.Context) error {
 	if ctx.Err() != nil {
@@ -39,7 +40,7 @@ func (tr *Transport) Tick(ctx context.Context) error {
 	return beat.DrainDir(tr.Inbox, "clank", func(path string, det signal.Detection) error {
 		_, err := tr.Engine.Propose(ctx, det)
 		if err != nil {
-			maxAttempts := tr.MaxAttempts
+			maxAttempts := tr.MaxProposeAttempts
 			if maxAttempts <= 0 {
 				maxAttempts = maxProposeAttempts
 			}

@@ -50,7 +50,7 @@ func rebuildLedger(ctx context.Context, js jetstream.JetStream, retention time.D
 	sort.Slice(events, func(i, j int) bool { return events[i].at.Before(events[j].at) })
 
 	ledger := NewMemProposalLog()
-	ledger.Retention = retention
+	ledger.LedgerRetention = retention
 	for _, ev := range events {
 		if err := ev.replayInto(ctx, ledger); err != nil {
 			return nil, fmt.Errorf("clank: rebuild ledger: replay: %w", err)

@@ -80,7 +80,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model Mode
 	// JetStream AckWait deadline on real checkpoint progress (via
 	// WithHeartbeat) rather than needing engine.go's loop to know a NATS
 	// message exists at all.
-	eng := newBrokerEngine(model, intake, HeartbeatingStore{store}, tools, cat, classes, proposalPub, ledger, cases, cfg.DedupeWindow, tracer, stages, recorder, weights)
+	eng := newBrokerEngine(model, intake, HeartbeatingStore{store}, tools, cat, classes, proposalPub, ledger, cases, cfg.DedupeWindow, tracer, stages, recorder, weights, limits)
 
 	g, gctx := errgroup.WithContext(ctx)
 

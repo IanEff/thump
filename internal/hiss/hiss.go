@@ -15,7 +15,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
 	"go.opentelemetry.io/otel/trace"
@@ -106,7 +105,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Tracer: tracer,
 		Stages: stages,
 	}
-	beat.PollLoop(ctx, beat.PollConfig{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
+	beat.PollLoop(ctx, beat.DefaultPollConfig, tr.Tick)
 	return 0
 }
 

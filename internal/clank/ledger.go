@@ -20,9 +20,9 @@ const ledgerRetention = 24 * time.Hour // closed sets older than this are pruned
 // the audit unit, not just the recommendation — and Observe closes the loop
 // when an outcome arrives on the click return edge.
 type MemProposalLog struct {
-	// Retention bounds how long a closed set stays in the ledger before
+	// LedgerRetention bounds how long a closed set stays in the ledger before
 	// Record prunes it; zero means ledgerRetention.
-	Retention time.Duration
+	LedgerRetention time.Duration
 
 	mu   sync.RWMutex
 	sets []recorded
@@ -33,10 +33,10 @@ func NewMemProposalLog() *MemProposalLog {
 }
 
 // Record appends ps to the ledger regardless of whether its gate passed.
-// Before appending, it prunes any closed set older than Retention so the
-// ledger doesn't grow without bound across a long-running process — open
-// sets are exempt, however old, because an open set still answers dedup
-// queries.
+// Before appending, it prunes any closed set older than LedgerRetention so
+// the ledger doesn't grow without bound across a long-running process —
+// open sets are exempt, however old, because an open set still answers
+// dedup queries.
 func (l *MemProposalLog) Record(ctx context.Context, ps proposal.Set) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -44,7 +44,7 @@ func (l *MemProposalLog) Record(ctx context.Context, ps proposal.Set) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	retention := l.Retention
+	retention := l.LedgerRetention
 	if retention <= 0 {
 		retention = ledgerRetention
 	}
