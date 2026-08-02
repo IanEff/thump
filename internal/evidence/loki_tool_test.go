@@ -1,4 +1,4 @@
-package clank_test
+package evidence_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/subjects"
 )
 
@@ -92,7 +92,7 @@ func TestLokiTool_Run(t *testing.T) {
 			}))
 			defer ts.Close()
 
-			tool := &clank.LokiTool{BaseURL: ts.URL}
+			tool := &evidence.LokiTool{BaseURL: ts.URL}
 
 			gotRef, err := tool.Run(context.Background(), json.RawMessage(tc.input))
 			if err != nil {
@@ -171,7 +171,7 @@ func TestLokiTool_Run_StampsTheSubjectItsCoordinatesResolveTo(t *testing.T) {
 			}))
 			defer ts.Close()
 
-			tool := &clank.LokiTool{BaseURL: ts.URL, Subjects: index}
+			tool := &evidence.LokiTool{BaseURL: ts.URL, Subjects: index}
 			got, err := tool.Run(t.Context(), json.RawMessage(tc.input))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -184,7 +184,7 @@ func TestLokiTool_Run_StampsTheSubjectItsCoordinatesResolveTo(t *testing.T) {
 }
 
 func TestLokiTool_RunGivenUndecodableArgsReturnsError(t *testing.T) {
-	tool := &clank.LokiTool{BaseURL: "http://example.invalid"}
+	tool := &evidence.LokiTool{BaseURL: "http://example.invalid"}
 
 	_, err := tool.Run(context.Background(), json.RawMessage(`not json`))
 	if err == nil {

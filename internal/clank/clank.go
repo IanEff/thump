@@ -13,6 +13,7 @@ import (
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/httpx"
 	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/otelx"
@@ -98,9 +99,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 	}
 
-	var ev EvidenceConfig
+	var ev evidence.Config
 	if cfg.EvidenceQueries != "" {
-		ev, err = LoadEvidenceConfig(cfg.EvidenceQueries)
+		ev, err = evidence.LoadEvidenceConfig(cfg.EvidenceQueries)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "load evidence queries: %v\n", err)
 			return 1
@@ -258,7 +259,7 @@ func clientsFor(restConfig *rest.Config) (kubernetes.Interface, dynamic.Interfac
 // tool that can carry one: a tool holding an empty index returns Live refs
 // that can corroborate but never ground, which is a degradation worth saying
 // out loud rather than discovering from a gate that never passes.
-func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]reason.Tool {
+func buildTools(cfg config.Clank, backendTLS *tls.Config, ev evidence.Config, kube kubernetes.Interface) map[string]reason.Tool {
 	tools := map[string]reason.Tool{}
 
 	switch {
@@ -268,7 +269,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 		slog.Warn("no EVIDENCE_QUERIES — clank has a Prometheus but no named queries to ask it",
 			"beat", "clank", "fix", "set EVIDENCE_QUERIES")
 	default:
-		tools["metrics"] = &MetricsTool{
+		tools["metrics"] = &evidence.MetricsTool{
 			BaseURL: cfg.PromURL,
 			Queries: ev.Queries,
 			Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
@@ -278,7 +279,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 	if cfg.LokiURL == "" {
 		slog.Warn("no LOKI_URL - clank will run without evidence tools; every proposal gate will take no_action")
 	} else {
-		tools["loki"] = &LokiTool{
+		tools["loki"] = &evidence.LokiTool{
 			BaseURL:  cfg.LokiURL,
 			Client:   httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
 			Subjects: ev.Index,
@@ -286,7 +287,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kub
 	}
 
 	if kube != nil {
-		tools["kube"] = &KubeTool{Client: kube, Subjects: ev.Index}
+		tools["kube"] = &evidence.KubeTool{Client: kube, Subjects: ev.Index}
 	}
 
 	if len(ev.Index) == 0 && (tools["loki"] != nil || tools["kube"] != nil) {
@@ -339,7 +340,7 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interfac
 		slog.Warn("no subject rules authored — every change event will resolve outside the topology and causal scoring is inert",
 			"beat", "clank", "fix", "author subjects: in the file EVIDENCE_QUERIES names")
 	default:
-		change = ArgoChangeSource{Client: argo, Subjects: subjects, ChangeLookback: changeLookback}
+		change = evidence.ArgoChangeSource{Client: argo, Subjects: subjects, ChangeLookback: changeLookback}
 	}
 
 	return NewIntake(topo, change), nil

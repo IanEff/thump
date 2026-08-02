@@ -11,6 +11,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/natstest"
 )
 
@@ -29,10 +30,10 @@ func (timedOutTransport) RoundTrip(*http.Request) (*http.Response, error) {
 // returns at all.
 func TestMetricsTool_ATimedOutQueryReturnsNonLiveEvidence(t *testing.T) {
 	t.Parallel()
-	tool := &clank.MetricsTool{
+	tool := &evidence.MetricsTool{
 		BaseURL: "http://prometheus.invalid",
 		Client:  &http.Client{Transport: timedOutTransport{}},
-		Queries: map[string]clank.EvidenceQuery{"ceph_health": {Query: "dummy_promql"}},
+		Queries: map[string]evidence.Query{"ceph_health": {Query: "dummy_promql"}},
 	}
 
 	got, err := tool.Run(t.Context(), json.RawMessage(`{"q":"ceph_health"}`))

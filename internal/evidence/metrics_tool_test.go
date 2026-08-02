@@ -1,4 +1,4 @@
-package clank_test
+package evidence_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/subjects"
 )
 
@@ -99,9 +99,9 @@ func TestMetricsTool_Run(t *testing.T) {
 			defer ts.Close()
 
 			// 2. Setup the tool pointing to the fake server
-			tool := &clank.MetricsTool{
+			tool := &evidence.MetricsTool{
 				BaseURL: ts.URL,
-				Queries: map[string]clank.EvidenceQuery{
+				Queries: map[string]evidence.Query{
 					"ceph_health": {Query: "ceph_health_status"},
 				},
 			}
@@ -163,9 +163,9 @@ func TestMetricsTool_RunStampsSubject(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			tool := &clank.MetricsTool{
+			tool := &evidence.MetricsTool{
 				BaseURL: ts.URL,
-				Queries: map[string]clank.EvidenceQuery{tc.query: {Query: "irrelevant_promql", Subject: tc.subject}},
+				Queries: map[string]evidence.Query{tc.query: {Query: "irrelevant_promql", Subject: tc.subject}},
 			}
 			ref, err := tool.Run(context.Background(), json.RawMessage(`{"q":"`+tc.query+`"}`))
 			if err != nil {
@@ -180,7 +180,7 @@ func TestMetricsTool_RunStampsSubject(t *testing.T) {
 
 // TestLoadEvidenceConfig_ParsesSubjectTags pins the on-disk contract:
 // evidence-queries.yaml's optional subject: field must land in the query's
-// EvidenceQuery.Subject — a query with no subject: line gets the zero value,
+// Query.Subject — a query with no subject: line gets the zero value,
 // not a fabricated one, so MetricsTool stamps no Subject for it.
 func TestLoadEvidenceConfig_ParsesSubjectTags(t *testing.T) {
 	dir := t.TempDir()
@@ -198,12 +198,12 @@ queries:
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	ev, err := clank.LoadEvidenceConfig(path)
+	ev, err := evidence.LoadEvidenceConfig(path)
 	if err != nil {
 		t.Fatalf("LoadEvidenceConfig errored: %v", err)
 	}
 
-	wantQueries := map[string]clank.EvidenceQuery{
+	wantQueries := map[string]evidence.Query{
 		"argocd_apps_out_of_sync": {
 			Name:    "argocd_apps_out_of_sync",
 			Query:   `count(argocd_app_info{sync_status!="Synced"}) or vector(0)`,
@@ -268,7 +268,7 @@ queries:
 				t.Fatalf("write fixture: %v", err)
 			}
 
-			ev, err := clank.LoadEvidenceConfig(path)
+			ev, err := evidence.LoadEvidenceConfig(path)
 			if err != nil {
 				t.Fatalf("LoadEvidenceConfig errored: %v", err)
 			}

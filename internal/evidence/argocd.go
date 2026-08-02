@@ -1,4 +1,4 @@
-package clank
+package evidence
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/subjects"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -47,6 +46,17 @@ type ArgoChangeSource struct {
 	Now func() time.Time
 }
 
+// clock defaults fn to time.Now, mirroring internal/beat's Clock without
+// importing the beat runtime kit — broker, jetstream, otelx, tlsx,
+// Prometheus — for one nil-coalescing helper this leaf has no other reason
+// to depend on any of.
+func clock(fn func() time.Time) func() time.Time {
+	if fn != nil {
+		return fn
+	}
+	return time.Now
+}
+
 // Changes lists Applications across all namespaces — an
 // Application-of-Applications parent or an ApplicationSet generator can
 // land a child Application anywhere, so a fixed namespace would silently
@@ -57,7 +67,7 @@ func (a ArgoChangeSource) Changes(ctx context.Context, _ signal.Detection) (prop
 		return proposal.ChangeSnapshot{}, fmt.Errorf("list argocd applications: %w", err)
 	}
 
-	now := beat.Clock(a.Now)
+	now := clock(a.Now)
 	lookback := a.ChangeLookback
 	if lookback <= 0 {
 		lookback = DefaultChangeLookback

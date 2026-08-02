@@ -8,6 +8,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/reason"
 )
@@ -131,7 +132,7 @@ func DefaultLimits() Limits {
 	return Limits{
 		MaxCases:           maxCases,
 		LedgerRetention:    ledgerRetention,
-		ChangeLookback:     DefaultChangeLookback,
+		ChangeLookback:     evidence.DefaultChangeLookback,
 		MaxProposeAttempts: maxProposeAttempts,
 		MaxSteps:           8,
 	}

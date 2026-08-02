@@ -17,6 +17,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/anthropic"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/reason"
 	"sigs.k8s.io/yaml"
 )
@@ -268,7 +269,7 @@ func evalEvidence(fixture string) map[string]string {
 
 // promQLByName extracts each query's raw PromQL, keyed by name — the shape
 // newFakePrometheus expects, independent of EvidenceQuery's other fields.
-func promQLByName(queries map[string]EvidenceQuery) map[string]string {
+func promQLByName(queries map[string]evidence.Query) map[string]string {
 	out := make(map[string]string, len(queries))
 	for name, q := range queries {
 		out[name] = q.Query
@@ -333,7 +334,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 	}
 	t.Logf("transcripts (read these when a row misses): %s", transcripts)
 
-	ev, err := LoadEvidenceConfig(filepath.Join("..", "..", "config", "rook-gce-k3s", "whir", "evidence-queries.yaml"))
+	ev, err := evidence.LoadEvidenceConfig(filepath.Join("..", "..", "config", "rook-gce-k3s", "whir", "evidence-queries.yaml"))
 	if err != nil {
 		t.Fatalf("load evidence queries: %v", err)
 	}
@@ -346,7 +347,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 			det := loadDetectionFixture(t, tc.fixture)
 
 			prom := newFakePrometheus(t, promQLByName(queries), evalEvidence(tc.fixture))
-			tools := map[string]reason.Tool{"metrics": &MetricsTool{BaseURL: prom.URL, Queries: queries}}
+			tools := map[string]reason.Tool{"metrics": &evidence.MetricsTool{BaseURL: prom.URL, Queries: queries}}
 
 			l := newLoop("", t.TempDir(), t.TempDir(), t.TempDir(),
 				anthropic.NewModel(apiKey, modelRequestTimeout), tools,

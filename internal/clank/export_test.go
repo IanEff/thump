@@ -15,6 +15,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/subjects"
@@ -157,7 +158,7 @@ func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.I
 // BuildToolsForTest exposes buildTools to clank_test — the seam that decides
 // which evidence tools exist and whether each one can name the topology node
 // its citations concern.
-func BuildToolsForTest(cfg config.Clank, backendTLS *tls.Config, ev EvidenceConfig, kube kubernetes.Interface) map[string]reason.Tool {
+func BuildToolsForTest(cfg config.Clank, backendTLS *tls.Config, ev evidence.Config, kube kubernetes.Interface) map[string]reason.Tool {
 	return buildTools(cfg, backendTLS, ev, kube)
 }
 
