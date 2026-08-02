@@ -16,13 +16,24 @@ import (
 	"testing"
 )
 
+// Stdlib, passed to AssertLeaf, permits any standard-library import — for a
+// package that must stay a leaf with respect to the rest of this repo but is
+// not itself stdlib-free.
+const Stdlib = "<stdlib>"
+
 // AssertLeaf fails t if any non-test .go file in the current directory (the
 // package under test) imports a path not in allowed. Pass import paths
-// unquoted, e.g. AssertLeaf(t, "time", "github.com/ianeff/thump/api/v1/signal").
+// unquoted, e.g. AssertLeaf(t, "time", "github.com/ianeff/thump/api/v1/signal"),
+// or pass Stdlib to permit the whole standard library at once.
 func AssertLeaf(t *testing.T, allowed ...string) {
 	t.Helper()
 	permitted := make(map[string]bool, len(allowed))
+	anyStdlib := false
 	for _, p := range allowed {
+		if p == Stdlib {
+			anyStdlib = true
+			continue
+		}
 		permitted[p] = true
 	}
 	entries, err := os.ReadDir(".")
@@ -44,9 +55,18 @@ func AssertLeaf(t *testing.T, allowed ...string) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !permitted[path] {
-				t.Errorf("%s imports %q — this package must stay a leaf; allowed imports are %v", name, path, allowed)
+			if permitted[path] || (anyStdlib && isStdlib(path)) {
+				continue
 			}
+			t.Errorf("%s imports %q — this package must stay a leaf; allowed imports are %v", name, path, allowed)
 		}
 	}
+}
+
+// isStdlib reports whether an unquoted import path is a standard-library
+// package: stdlib paths have no dot in their first segment (no domain),
+// where third-party paths look like "github.com/...".
+func isStdlib(path string) bool {
+	first, _, _ := strings.Cut(path, "/")
+	return !strings.Contains(first, ".")
 }
