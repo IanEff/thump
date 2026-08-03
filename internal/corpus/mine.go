@@ -3,9 +3,12 @@ package corpus
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -52,7 +55,7 @@ func Main(_ []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := writeCorpus(c); err != nil {
+	if err := writeCorpus(outPath, c); err != nil {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
 	}
@@ -86,22 +89,75 @@ func mine(ctx context.Context, client *s3.Client, key sealbox.Key, bucket string
 	}, nil
 }
 
-func writeCorpus(c clank.Corpus) error {
-	if err := os.MkdirAll("internal/clank/testdata/corpus", 0o750); err != nil {
+func writeCorpus(path string, mined clank.Corpus) error {
+	existing, err := readCorpus(path)
+	if err != nil {
+		return err
+	}
+	merged := mergeCorpus(existing, mined)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
-	f, err := os.OpenFile(outPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
 	if err != nil {
-		return fmt.Errorf("open %s: %w", outPath, err)
+		return fmt.Errorf("open %s: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", " ")
-	if err := enc.Encode(c); err != nil {
+	if err := enc.Encode(merged); err != nil {
 		return fmt.Errorf("encode: %w", err)
 	}
 	return nil
+}
+
+func readCorpus(path string) (clank.Corpus, error) {
+	f, err := os.Open(path) // nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
+	if errors.Is(err, os.ErrNotExist) {
+		return clank.Corpus{}, nil
+	}
+	if err != nil {
+		return clank.Corpus{}, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	var c clank.Corpus
+	if err := json.NewDecoder(f).Decode(&c); err != nil {
+		return clank.Corpus{}, fmt.Errorf("decode %s: %w", path, err)
+	}
+	return c, nil
+}
+
+// mergeCorpus unions existing and mined on OutcomeRef, sorts by
+// ObservedAt, and takes mined's MinedAt as the new "latest mined" timestamp.
+func mergeCorpus(existing, mined clank.Corpus) clank.Corpus {
+	seenCase := make(map[string]bool, len(existing.Cases)+len(mined.Cases))
+	cases := make([]clank.Case, 0, len(existing.Cases)+len(mined.Cases))
+
+	for _, c := range slices.Concat(existing.Cases, mined.Cases) {
+		if seenCase[c.OutcomeRef] {
+			continue
+		}
+		seenCase[c.OutcomeRef] = true
+		cases = append(cases, c)
+	}
+
+	slices.SortFunc(cases, func(a, b clank.Case) int { return a.ObservedAt.Compare(b.ObservedAt) })
+
+	seenSeg := make(map[string]bool, len(existing.Segments)+len(mined.Segments))
+	segments := make([]string, 0, len(existing.Segments)+len(mined.Segments))
+	for _, s := range slices.Concat(existing.Segments, mined.Segments) {
+		if seenSeg[s] {
+			continue
+		}
+		seenSeg[s] = true
+		segments = append(segments, s)
+	}
+	slices.Sort(segments)
+
+	return clank.Corpus{Cases: cases, MinedAt: mined.MinedAt, Segments: segments}
 }
 
 func report(w io.Writer, c clank.Corpus) {

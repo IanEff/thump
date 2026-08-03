@@ -151,3 +151,103 @@ func TestMineCorpus_DropsAnOutcomeWithNoSetOpenBeforeIt(t *testing.T) {
 		t.Errorf("want no cases for an outcome with no eligible set, got %d", len(got))
 	}
 }
+
+func TestMineCorpus_EmitsOneCasePerIncidentNotOnePerOutcomeRecord(t *testing.T) {
+	t.Parallel()
+	// An incident that executes and later converges publishes two outcome
+	// records under the same DecisionRef — an execute-time "applied" ack, and
+	// the convergence watcher's real, settled word. MineCorpus used to join a
+	// Case to each of those independently, so a single incident overstated
+	// itself as two rows in the corpus. Grouping by (SignalRef, DecisionRef)
+	// and keeping only the terminal outcome collapses that back to one.
+	base := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	set := proposal.Set{
+		SignalRef:   "fp:cephblockpool",
+		Status:      &proposal.Status{ObservedAt: base},
+		Proposals:   []proposal.Candidate{{ID: "c1", Confidence: 0.87}},
+		Recommended: "c1",
+	}
+	applied := outcome.Outcome{
+		SignalRef:   "fp:cephblockpool",
+		DecisionRef: "dec:cephblockpool:1",
+		Result:      outcome.ResultApplied,
+		ExecutedAt:  base.Add(time.Hour),
+	}
+	settled := outcome.Outcome{
+		SignalRef:   "fp:cephblockpool",
+		DecisionRef: "dec:cephblockpool:1",
+		Result:      outcome.ResultPartialNonConverging,
+		ExecutedAt:  base.Add(2 * time.Hour),
+	}
+
+	got := clank.MineCorpus([]proposal.Set{set}, []outcome.Outcome{applied, settled})
+
+	want := []clank.Case{{
+		SignalRef:   "fp:cephblockpool",
+		DecisionRef: "dec:cephblockpool:1",
+		Confidence:  0.87,
+		Result:      outcome.ResultPartialNonConverging,
+		ObservedAt:  settled.ExecutedAt,
+	}}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("mined more than one case for one incident", diff)
+	}
+}
+
+func TestMineCorpus_EmitsNoCaseForAnIncidentThatHasOnlyReachedApplied(t *testing.T) {
+	t.Parallel()
+	// "applied" is a live action's immediate word, not a settled one — the
+	// convergence watcher hasn't spoken yet, so the incident is still open.
+	// Case's own doc comment calls it "one closed loop"; an open incident
+	// contributes none.
+	set := proposal.Set{
+		SignalRef:   "fp:cephblockpool",
+		Status:      &proposal.Status{ObservedAt: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)},
+		Proposals:   []proposal.Candidate{{ID: "c1", Confidence: 0.87}},
+		Recommended: "c1",
+	}
+	applied := outcome.Outcome{
+		SignalRef:   "fp:cephblockpool",
+		DecisionRef: "dec:cephblockpool:1",
+		Result:      outcome.ResultApplied,
+		ExecutedAt:  time.Date(2026, 8, 1, 13, 0, 0, 0, time.UTC),
+	}
+
+	got := clank.MineCorpus([]proposal.Set{set}, []outcome.Outcome{applied})
+
+	if len(got) != 0 {
+		t.Errorf("want no cases for an incident still awaiting convergence, got %d", len(got))
+	}
+}
+
+func TestMineCorpus_KeepsTwoCasesForTwoDifferentDecisionsOnTheSameSignal(t *testing.T) {
+	t.Parallel()
+	// Grouping by SignalRef alone would wrongly collapse a re-detection (a
+	// second, independent decision against the same fingerprint) into the
+	// first's incident. The join key has to be (SignalRef, DecisionRef).
+	base := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	set := proposal.Set{
+		SignalRef:   "fp:cephblockpool",
+		Status:      &proposal.Status{ObservedAt: base},
+		Proposals:   []proposal.Candidate{{ID: "c1", Confidence: 0.87}},
+		Recommended: "c1",
+	}
+	first := outcome.Outcome{
+		SignalRef:   "fp:cephblockpool",
+		DecisionRef: "dec:cephblockpool:1",
+		Result:      outcome.ResultSuccess,
+		ExecutedAt:  base.Add(time.Hour),
+	}
+	second := outcome.Outcome{
+		SignalRef:   "fp:cephblockpool",
+		DecisionRef: "dec:cephblockpool:2",
+		Result:      outcome.ResultFailure,
+		ExecutedAt:  base.Add(2 * time.Hour),
+	}
+
+	got := clank.MineCorpus([]proposal.Set{set}, []outcome.Outcome{first, second})
+
+	if len(got) != 2 {
+		t.Fatalf("want two cases for two distinct decisions, got %d", len(got))
+	}
+}
