@@ -191,7 +191,11 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			_, _ = fmt.Fprintf(stderr, "%v\n", err)
 			return 1
 		}
-		defer func() { _ = walPub.WAL.Drain(ctx, sink) }()
+		defer func() {
+			if err := walPub.WAL.Drain(ctx, sink); err != nil {
+				slog.Error("failed to drain WAL", "error", err)
+			}
+		}()
 		g, gctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
 			publish.RunShipper(gctx, walPub.WAL, sink, walConfig.ShipInterval)

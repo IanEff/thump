@@ -21,6 +21,8 @@ import (
 // process left behind.
 const activeSegmentName = "active.jsonl"
 
+var drainTimeout = 5 * time.Second
+
 // Defaults for a WAL that doesn't set its own bounds.
 const (
 	defaultMaxBytes     = 64 * 1024 * 1024
@@ -77,6 +79,9 @@ type WAL struct {
 	startSyncLoop sync.Once
 	stopSyncLoop  chan struct{}
 	syncLoopDone  chan struct{}
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // Append journals obj as one JSON line to the active segment, recovering an
@@ -124,27 +129,33 @@ func (w *WAL) Append(ctx context.Context, obj any) error {
 	return nil
 }
 
-// Close stops the WAL's background sync timer, if one is running.
+// Close stops the WAL's background sync timer, if one is running. Safe to
+// call more than once — Drain calls it after shipping, and a caller's own
+// shutdown path (e.g. a test's t.Cleanup) commonly calls it again.
 func (w *WAL) Close(_ context.Context) error {
-	w.mu.Lock()
-	stopCh := w.stopSyncLoop
-	doneCh := w.syncLoopDone
-	active := w.active
-	w.active = nil
-	w.mu.Unlock()
+	w.closeOnce.Do(func() {
+		w.mu.Lock()
+		stopCh := w.stopSyncLoop
+		doneCh := w.syncLoopDone
+		active := w.active
+		w.active = nil
+		w.mu.Unlock()
 
-	if stopCh != nil {
-		close(stopCh)
-		<-doneCh
-	}
+		if stopCh != nil {
+			close(stopCh)
+			<-doneCh
+		}
 
-	if active == nil {
-		return nil
-	}
-	if err := active.Sync(); err != nil {
-		return fmt.Errorf("wal: close: sync: %w", err)
-	}
-	return active.Close()
+		if active == nil {
+			return
+		}
+		if err := active.Sync(); err != nil {
+			w.closeErr = fmt.Errorf("wal: close: sync: %w", err)
+			return
+		}
+		w.closeErr = active.Close()
+	})
+	return w.closeErr
 }
 
 // Drain seals the active segment if it's non-empty, ships every sealed
@@ -152,6 +163,8 @@ func (w *WAL) Close(_ context.Context) error {
 // shutdown-path counterpart to RunShipper's periodic ticks, for the one
 // gap those ticks can't cover: whatever's active when the process exits.
 func (w *WAL) Drain(ctx context.Context, sink SegmentSink) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), drainTimeout)
+	defer cancel()
 	w.mu.Lock()
 	if w.active != nil && w.size > 0 {
 		if err := w.seal(); err != nil {

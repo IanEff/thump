@@ -204,10 +204,26 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
-	defer func() { _ = orderPub.WAL.Drain(ctx, sink) }()
-	defer func() { _ = outcomePub.WAL.Drain(ctx, sink) }()
-	defer func() { _ = declinePub.WAL.Drain(ctx, sink) }()
-	defer func() { _ = heldPub.WAL.Drain(ctx, sink) }()
+	defer func() {
+		if err := orderPub.WAL.Drain(ctx, sink); err != nil {
+			slog.Error("failed to drain order WAL", "error", err)
+		}
+	}()
+	defer func() {
+		if err := outcomePub.WAL.Drain(ctx, sink); err != nil {
+			slog.Error("failed to drain outcome WAL", "error", err)
+		}
+	}()
+	defer func() {
+		if err := declinePub.WAL.Drain(ctx, sink); err != nil {
+			slog.Error("failed to drain decline WAL", "error", err)
+		}
+	}()
+	defer func() {
+		if err := heldPub.WAL.Drain(ctx, sink); err != nil {
+			slog.Error("failed to drain held WAL", "error", err)
+		}
+	}()
 
 	exec, sw, err := buildExecutor(cfg, cat)
 	if err != nil {

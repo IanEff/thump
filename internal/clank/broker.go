@@ -69,7 +69,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
-	defer func() { _ = proposalPub.WAL.Drain(ctx, sink) }()
+	defer func() {
+		if err := proposalPub.WAL.Drain(ctx, sink); err != nil {
+			slog.Error("failed to drain proposal WAL", "error", err)
+		}
+	}()
 
 	cases := NewCaseBase()
 	cases.MaxCases = limits.MaxCases
