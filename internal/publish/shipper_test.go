@@ -7,8 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/s3test"
@@ -39,6 +42,15 @@ func (f *fakeSink) Put(_ context.Context, key string, r io.Reader) error {
 	}
 	f.puts[key] = b
 	return nil
+}
+
+func (f *fakeSink) Keys() []string {
+	keys := make([]string, 0, len(f.puts))
+	for k := range f.puts {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func TestWAL_ShipIsANoOpWhenTheWALHasNeverBeenWrittenTo(t *testing.T) {
@@ -250,5 +262,65 @@ func TestS3SegmentSink_PutStoresBytesRetrievableFromS3(t *testing.T) {
 	}
 	if string(got) != string(want) {
 		t.Errorf("uploaded segment content = %q, want %q", got, want)
+	}
+}
+
+func TestWAL_DrainShipsTheActiveSegmentWhenItsParentContextIsAlreadyCancelled(t *testing.T) {
+	t.Parallel()
+
+	// Every beat drains from a defer whose context is beat.Start's
+	// signal.NotifyContext, so the shutdown that triggered the drain has
+	// already cancelled it. A drain that passes that context to the object
+	// store ships nothing and reports nothing, and the segment dies with the
+	// pod's emptyDir.
+	cases := map[string]struct {
+		cancelParent bool
+		wantShipped  int
+	}{
+		"Drain ships active segment when parent context is live": {
+			cancelParent: false,
+			wantShipped:  1,
+		},
+		"Drain ships active segment when parent context is already cancelled": {
+			cancelParent: true,
+			wantShipped:  1,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			w := &publish.WAL{Dir: dir, Beat: "clank", Subject: "thump.proposals"}
+			t.Cleanup(func() { _ = w.Close(context.Background()) })
+
+			if err := w.Append(t.Context(), signal.Detection{Fingerprint: "fp-1"}); err != nil {
+				t.Fatal(err)
+			}
+
+			ctx, cancel := context.WithCancel(t.Context())
+			if tc.cancelParent {
+				cancel() // Pre-cancel context to simulate SIGTERM shutdown state
+			}
+			defer cancel()
+
+			sink := newFakeSink()
+			if err := w.Drain(ctx, sink); err != nil {
+				t.Fatalf("Drain() error = %v, want nil", err)
+			}
+
+			keys := sink.Keys()
+			if diff := cmp.Diff(tc.wantShipped, len(keys)); diff != "" {
+				t.Error("shutdown drain shipped wrong number of segments", diff)
+			}
+
+			wantPrefix := "clank/thump.proposals/"
+			for _, key := range keys {
+				if !strings.HasPrefix(key, wantPrefix) {
+					t.Errorf("shipped key %q does not match expected prefix %q", key, wantPrefix)
+				}
+			}
+		})
 	}
 }

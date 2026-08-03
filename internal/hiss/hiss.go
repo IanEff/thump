@@ -153,7 +153,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
-	defer func() { _ = pub.WAL.Drain(ctx, sink) }()
+	defer func() {
+		if err := pub.WAL.Drain(ctx, sink); err != nil {
+			slog.Error("failed to drain proposal WAL", "error", err)
+		}
+	}()
 
 	approvePub := publish.NewJetPublisher[approval.Approval](js)
 	controller, err := buildApprovalRequests(cfg, approvePub)
