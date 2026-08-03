@@ -160,15 +160,21 @@ def kubectl_local(name, body, labels=["infra"]):
     local_resource(name, cmd=guarded(name, body), labels=labels)
 
 
-# ensure_ns: every secret resource needs the namespace to exist first, and
+# ensure_ns_cmd: every secret resource needs the namespace to exist first, and
 # create-namespace-if-absent is the same three lines each time.
-ENSURE_NS = (
-    "kubectl --context "
-    + cluster["context"]
-    + " create namespace thump --dry-run=client -o yaml | kubectl --context "
-    + cluster["context"]
-    + " apply -f - >/dev/null"
-)
+def ensure_ns_cmd(name):
+    return (
+        "kubectl --context "
+        + cluster["context"]
+        + " create namespace "
+        + name
+        + " --dry-run=client -o yaml | kubectl --context "
+        + cluster["context"]
+        + " apply -f - >/dev/null"
+    )
+
+
+ENSURE_NS = ensure_ns_cmd("thump")
 
 # thump-anthropic-secret: clank's Secret is meant to pre-exist out-of-band
 # (the lab's SOPS flow owns it in prod — see deploy/chart/thump/templates/
@@ -272,6 +278,32 @@ ensure_key_secret("thump-nats-js-key-secret", "nats-js-key")
 # bucket isn't addressable by k8s_resource(), so it can't be told to wait.
 # Idempotent, so a reload re-runs it as a no-op rather than a teardown.
 local(guarded("thump-namespace", ENSURE_NS), quiet=True, echo_off=True)
+
+# domains.{acme,otelDemo}.enabled (values.yaml's own comment: "off by default
+# so ceph-lab/rook-gke/rook-gce-k3s still deploy clean") gates RBAC in
+# rbac-acme-actuate.yaml / rbac-otel-demo-actuate.yaml that targets a fixed
+# namespace outside this chart's own manifests — acme's and otel-demo's
+# workloads are provisioned by the thump-test rig repo, not by this Tiltfile.
+# On a freshly-created thump-test cluster that provisioning is a separate,
+# unordered process: the namespace can still be missing when `tilt up` first
+# renders. Since the whole non-workload manifest set (RBAC, ConfigMaps,
+# Certificates, ...) applies as one sequential batch in Tilt's uncategorized
+# resource, an early object failing on a missing namespace aborts every
+# object queued after it in that same apply — observed live 2026-08-03:
+# thump-acme-actuate:role failed on "namespaces \"acme\" not found" and took
+# thump-nats:configmap and nats-tls:certificate down with it, despite neither
+# having anything to do with acme. Pre-creating the namespace here (same
+# idempotent, eval-time pattern as ENSURE_NS above, and just as harmless a
+# no-op on profiles where the domain is disabled and the namespace already
+# absent-and-unreferenced) closes the race instead of requiring a manual
+# `tilt trigger uncategorized` retry once the rig repo's own provisioning
+# catches up.
+domain_values = read_yaml(cluster["values"], default={})
+domains = domain_values.get("domains", {})
+if domains.get("acme", {}).get("enabled", False):
+    local(guarded("acme-namespace", ensure_ns_cmd("acme")), quiet=True, echo_off=True)
+if domains.get("otelDemo", {}).get("enabled", False):
+    local(guarded("otel-demo-namespace", ensure_ns_cmd("otel-demo")), quiet=True, echo_off=True)
 
 DEV_REGISTRY = cluster["registry"]
 
