@@ -66,6 +66,18 @@ func TestFloorSupport_CountsARefusedSuccessAsEvidenceTheFloorIsTooHigh(t *testin
 			floor:  0.75,
 			want:   clank.FloorSupport{Class: proposal.ClassRedundancyDegraded, Floor: 0.75},
 		},
+		"FloorSupport ignores an applied-but-not-yet-settled case, same as a dry-run": {
+			// MineCorpus joins a Set to every outcome record published for its
+			// SignalRef, not just the final terminal one — an incident that
+			// executes and later converges shows up twice, once as "applied"
+			// (execute-time, not one of Success/PartialNonConverging/Failure)
+			// and once with its real settled Result. Scoring "applied" as a
+			// miss double-counted every executed incident against the floor
+			// it cleared to run at all.
+			corpus: makeCorpus(t, caseAt(0.87, outcome.ResultApplied)),
+			floor:  0.75,
+			want:   clank.FloorSupport{Class: proposal.ClassRedundancyDegraded, Floor: 0.75},
+		},
 	}
 
 	for name, tc := range cases {

@@ -10,13 +10,16 @@ import (
 // in a beat is a claim about shutdown being wrong in a process meant to run
 // for weeks.
 //
-// The one ignored goroutine is not ours and cannot be stopped: opencensus
-// starts a stats worker from a package init() and offers no shutdown, and it
-// reaches here through model_gemini.go's genai import → cloud.google.com/go/auth.
-// It exists before any test runs and outlives all of them; ignoring it by top
-// function keeps the check strict about every goroutine this package starts.
+// Two goroutines are ignored because they're not ours to stop. opencensus
+// starts a stats worker from a package init() with no shutdown path, reached
+// through model_gemini.go's genai import — it outlives every test. net/http
+// keeps an HTTP/2 read loop alive per pooled connection for reuse; the
+// eval-tagged suite's real Anthropic calls leave one running, blocked on a
+// network read, so it surfaces as generic poll/runtime frames rather than
+// its own name — matched anywhere in the stack instead of by top frame.
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m,
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
+		goleak.IgnoreAnyFunction("net/http.(*http2ClientConn).readLoop"),
 	)
 }

@@ -19,7 +19,7 @@ type Corpus struct {
 func (c Corpus) FloorSupport(class proposal.FailureClass, floor float64) FloorSupport {
 	fs := FloorSupport{Class: class, Floor: floor}
 	for _, cs := range c.Cases {
-		if cs.FailureClass != class || cs.Result == outcome.ResultRendered {
+		if cs.FailureClass != class || cs.Result == outcome.ResultRendered || cs.Result == outcome.ResultApplied {
 			continue
 		}
 		win := cs.Result == outcome.ResultSuccess

@@ -21,23 +21,16 @@ floors:
     # disable-cart-failure proposed at 0.81, cleared this floor, auto-approved on
     # act_reversible and applied clean (2026-08-01). One datum is not a calibration,
     # but the class is no longer unobserved. Same corpus question as the row above.
-    redundancy_degraded: 0.3 # SEED VALUE, lowered from the 0.75 fixture parity 2026-07-18
-    # to unblock the first live approved+executed run on this class (see thump-running-notes
-    # part 8: clank reasons to hold-rebalance correctly now, but its honest confidence came in
-    # under 0.75 and hiss escalated). Set deliberately low to near-guarantee the pass so the
-    # run yields the win AND the first real confidence datum — the decision slog line now
-    # carries confidence+floorApplied, so the actual number is observable regardless of verdict.
-    # Rationale for it being safe to lower: this path is already guarded by requireReversal +
-    # autoBand tier-1 -> act_reversible, so ONLY reversible actions auto-approve here regardless
-    # of the floor — a high confidence floor stacked on "must be reversible" mainly starves the
-    # calibration loop (agent_proposal_success_total can't populate until one run gets through).
-    # NOT a committed value — test-scoped, like the tilt-values arm block. It is the
-    # loosest governance minimum in this file and it was set to get one run through.
-    # The run it was lowered for has long since happened, and several since: 2026-08-01
-    # saw accelerate-recovery propose at 0.87 on this class, hold for risk_ceiling, and
-    # settle success after a human approval. So the basis for raising it back toward
-    # 0.75 now has to come from evidence rather than from fixture parity — what did 0.3
-    # admit that 0.75 would have refused, and how did those runs turn out.
+    redundancy_degraded: 0.3 # SEED VALUE, lowered from 0.75 fixture parity 2026-07-18 to
+    # unblock the first live approved+executed run on this class. Checked against the
+    # mined WAL corpus (internal/clank/testdata/corpus/corpus.json): two distinct settled
+    # incidents on this class, hold-rebalance at 0.8500 (partial_non_converging) and
+    # accelerate-recovery at 0.8660 (success) — both above every candidate floor between
+    # 0 and 0.85, so the corpus can't yet distinguish 0.3 from 0.75. disable-cart-failure
+    # (0.8406, success) is service_failure, not this class, and isn't in this corpus at
+    # all — its WAL segment never sealed. Two points a hair apart is a curve fit, not a
+    # calibration; a floor moved on that basis would be worse than one left seeded.
+    # Revisit once more incidents settle.
 maxBand:
   tier-1: act_reversible
 autoBand:

@@ -2,11 +2,21 @@ temporal: 0.3333333333333333
 topological: 0.3333333333333333
 historical: 0.3333333333333333
 historicalHalfLife: 720h   # 30 days
+# groundingNone/One/Many, causal: measured against the graded RCA suite
+# (internal/clank/rca_test.go, baseline 5/8) and left unchanged. Every propose row's
+# computed confidence lands exactly at groundingOne (0.70) and isn't ceiling-bound, so
+# the weight is genuinely measurable — but no row's verdict depends on where it sits,
+# and every row clears its confidence floor with headroom. groundingMany and causal
+# never fire in this harness at all (no row corroborates on two backends; the change
+# source is a noop) — unmeasurable here, not confirmed correct.
 groundingNone: 0.3
 groundingOne: 0.7
 groundingMany: 1.0
 causal: 0.5
 recencyHalfLife: 30m
+# Historical weights below are out of scope for tuning: CaseBase has no cross-restart
+# persistence, so these score a store that's empty on every deploy. Revisit once
+# case-base durability lands.
 historicalAloneCap: 0.5
 caseBaseBaseline: 0.9
 negativeSignalPenalty: 0.2
