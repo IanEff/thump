@@ -551,10 +551,13 @@ Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`) — run
 | `task test` / `task race` | Tests, with `-race` |
 | `task coverage` | Coverage profile + total |
 | `task vulncheck` | govulncheck over deps |
+| `task chaos:preflight` | Check preconditions & disable ArgoCD self-healing before live chaos runs |
 | `task eval` | The reasoner eval against the production catalog — key-gated, not part of `task ci` |
 | `go test ./test/onboarding -v` | The whole engine over a domain authored in config alone — no key, no cluster |
 | `go test ./internal/clank -run TestGate -v` | Run a single test |
 | `gotestdox ./...` | Read test names back as a spec — **silently prints nothing on Go 1.26**; use `go test -v` |
+
+For the live scenario matrix, fault mechanisms, and preflights across Ceph and otel-demo, see [`chaos/README.md`](chaos/README.md).
 
 `task ci` green is the definition of done. GitHub runs fmt-check, vet, lint,
 vulncheck, chart-lint, and test on every push, but not `-race`, since that

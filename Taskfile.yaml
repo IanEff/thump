@@ -331,3 +331,18 @@ tasks:
         echo "🧪 Test Suite     : ${test_lines} lines across ${test_files} files"
         echo "⚡ Test/Code Ratio: ${ratio}x test lines per prod line"
         echo "=========================================="
+
+  chaos:preflight:
+    desc: Run preflight checks before launching live chaos scenarios
+    cmds:
+      - ./chaos/preflight.sh
+
+  chaos:cart-failure:
+    desc: Inject cartFailure fault into otel-demo flagd
+    cmds:
+      - ./chaos/flagd-cart-failure.sh inject
+
+  chaos:cart-restore:
+    desc: Restore cartFailure fault in otel-demo flagd
+    cmds:
+      - ./chaos/flagd-cart-failure.sh restore
