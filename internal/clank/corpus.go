@@ -1,6 +1,7 @@
 package clank
 
 import (
+	"slices"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/outcome"
@@ -59,15 +60,51 @@ func MineCorpus(sets []proposal.Set, outcomes []outcome.Outcome) []Case {
 		byFingerprint[s.SignalRef] = append(byFingerprint[s.SignalRef], s)
 	}
 
-	var cases []Case
+	byIncident := make(map[incidentKey][]outcome.Outcome)
 	for _, o := range outcomes {
-		set, ok := latestSetBefore(byFingerprint[o.SignalRef], o.ExecutedAt)
+		key := incidentKey{o.SignalRef, o.DecisionRef}
+		byIncident[key] = append(byIncident[key], o)
+	}
+
+	var cases []Case
+	for _, os := range byIncident {
+		terminal, ok := terminalOutcome(os)
 		if !ok {
 			continue
 		}
-		cases = append(cases, newCase(set, o))
+
+		set, ok := latestSetBefore(byFingerprint[terminal.SignalRef], terminal.ExecutedAt)
+		if !ok {
+			continue
+		}
+		cases = append(cases, newCase(set, terminal))
 	}
+
+	slices.SortFunc(cases, func(a, b Case) int { return a.ObservedAt.Compare(b.ObservedAt) })
 	return cases
+}
+
+type incidentKey struct {
+	signalRef   string
+	decisionRef string
+}
+
+// terminalOutcome picks the settled outcome out of every record publised for
+// one incident, skipping ResultApplied, and preferring the latest ExecutedAt if
+// more than one settled record exists.
+func terminalOutcome(outcomes []outcome.Outcome) (outcome.Outcome, bool) {
+	var best outcome.Outcome
+	var found bool
+	for _, o := range outcomes {
+		if o.Result == outcome.ResultApplied {
+			continue
+		}
+		if !found || o.ExecutedAt.After(best.ExecutedAt) {
+			best = o
+			found = true
+		}
+	}
+	return best, found
 }
 
 func latestSetBefore(sets []proposal.Set, at time.Time) (proposal.Set, bool) {

@@ -33,3 +33,13 @@ coverage.*
 .DS_Store
 .idea/
 .zed/
+Tiltfile.tmp.*
+
+# Neither a build input nor stable during a live session — testdata fixtures
+# get appended to by running tests/harnesses, and *.md notes get edited
+# live, and docker_build(..., ".") has no other filter watching this whole
+# tree. Each write was retriggering a full five-image rebuild + redeploy,
+# visible as thump-bootstrap (a Job, so it gets deleted/recreated each time)
+# looping continuously. Found live, 2026-08-03.
+**/testdata/**
+*.md

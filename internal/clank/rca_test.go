@@ -355,11 +355,16 @@ func rcaTable() []rcaCase {
 		// PASS (correctly declined) — the same flip-flop rgw-degradation.yaml's
 		// own knownMiss already documents, on the same fixture eval_test.go
 		// independently calls a decision boundary. See rcaFloor.
+		// UPDATE: ceph-rgw-saturation.yaml: real traffic-loaded RGW CPU stress,
+		// rgw_get_put_latency_ms held 173-179ms against a 150ms SLO, 0 failed
+		// requests, healthy upstream OSD/capacity. Declining is correct
+		// catalog-bounded behaviour — dependency_saturation holds no active
+		// catalog remedy, so the reasoner must decline rather than invent an
+		// uncatalogued action
 		{
 			name:            "an RGW CPU-saturation burn declines rather than mislabeling traffic_shift as dependency_saturation",
 			fixture:         "ceph-rgw-saturation.yaml",
 			wantDisposition: "insufficient",
-			knownMiss:       true,
 			evidence: map[string]string{
 				"ceph_health":             "0",
 				"osds_down":               "0",
@@ -393,24 +398,13 @@ func rcaTable() []rcaCase {
 
 // rcaFloor tolerates every documented known-miss row landing wrong in the
 // same run — a suite that required every row green would either get a
-// known-miss quietly dropped, or turn into a CI gate on model output, which
-// is the thing this instrument deliberately declines to be (see the test's
-// own doc comment). It is (total rows) − (known-miss rows), not a fraction —
-// the table has grown from 4 to 8 rows (Y2a: two coverage-only insufficient
-// fixtures, three propose rows mined from a real live run) but the tolerance
-// is still "every known-miss row can miss at once, every other row must
-// hold," which is 8 − 3 = 5, not 8 minus some rescaled fraction of 2.
-//
-// Measured, not guessed: two live runs the same session this table widened
-// (2026-08-02) scored 5/8 and 7/8. All three known-miss rows
-// (argocd-sync-burn.yaml, rgw-degradation.yaml, ceph-rgw-saturation.yaml) are
-// the entire delta between those two scores — rgw-degradation.yaml and
-// ceph-rgw-saturation.yaml each flipped MISS→PASS between the two runs,
-// argocd-sync-burn.yaml missed both times, and all five other rows
-// (including the three newly mined propose rows) passed both times. The
-// worst of the two runs landed exactly on 5 — the floor set here is not
-// padding above what was observed, it is what was observed.
-const rcaFloor = 5
+// known-miss quietly dropped, or turn into a CI gate on model output. It is
+// (total rows) − (known-miss rows), not a fraction — the table holds 8 rows
+// with 2 remaining known misses (argocd-sync-burn.yaml and
+// rgw-degradation.yaml). ceph-rgw-saturation.yaml is no longer a known miss
+// because declining a remedy-less class is correct catalog-bounded
+// behaviour. The floor is 8 − 2 = 6.
+const rcaFloor = 6
 
 // TestRCA_ReachesTheCorrectFailureClassNotTheDecoy is the instrument phase
 // X3 calls for: not "did the action work" (click's question), but "did the

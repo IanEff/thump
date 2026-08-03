@@ -5,7 +5,9 @@
 version: v1
 floors:
   tier-1:
-    dependency_saturation: 0.75
+    dependency_saturation: 0.75 # DOCUMENTED DEAD KNOB — governance minimum for a
+    # class with zero active catalogued remedies; retained for schema completeness,
+    # but no proposal can ever reach or clear this floor.
     resource_exhaustion: 0.75 # parity value with dependency_saturation, fixture-derived —
     # not yet calibrated against agent_proposal_confidence/agent_proposal_success_total.
     # This comment used to say that was a structural wait rather than a TODO, because
