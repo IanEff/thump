@@ -24,16 +24,16 @@ import (
 
 // RebuildLedgerForTest exposes rebuildLedger to clank_test — the replay
 // logic itself, independent of the composition root that wires it in.
-func RebuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention time.Duration) (*MemProposalLog, error) {
-	return rebuildLedger(ctx, js, retention)
+func RebuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention time.Duration, cases *CaseBase) (*MemProposalLog, error) {
+	return rebuildLedger(ctx, js, retention, cases)
 }
 
 // BuildLedgerForTest exposes buildLedger to clank_test — the composition-root
 // seam runBroker actually calls, so a wiring-guard test can prove that call
 // site reaches replay rather than a bare NewMemProposalLog() a future edit
 // could silently swap back in.
-func BuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention time.Duration) (*MemProposalLog, error) {
-	return buildLedger(ctx, js, retention)
+func BuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention time.Duration, cases *CaseBase) (*MemProposalLog, error) {
+	return buildLedger(ctx, js, retention, cases)
 }
 
 // NewLoopForTest is the one deliberate crack in the package boundary: it lets

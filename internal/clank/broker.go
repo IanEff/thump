@@ -71,15 +71,15 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 	}
 	defer func() { _ = proposalPub.WAL.Drain(ctx, sink) }()
 
-	ledger, err := buildLedger(ctx, js, limits.LedgerRetention)
+	cases := NewCaseBase()
+	cases.MaxCases = limits.MaxCases
+
+	ledger, err := buildLedger(ctx, js, limits.LedgerRetention, cases)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "rebuild ledger: %v\n", err)
 		return 1
 	}
-	cases := NewCaseBase()
-	cases.MaxCases = limits.MaxCases
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}
-
 	// HeartbeatingStore lets the detection handler below reset this run's
 	// JetStream AckWait deadline on real checkpoint progress (via
 	// WithHeartbeat) rather than needing engine.go's loop to know a NATS

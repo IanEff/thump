@@ -18,8 +18,8 @@ import (
 // ledger — reach for this, never NewMemProposalLog() directly, in broker
 // mode: the bare constructor starts empty on every restart, silently
 // discarding every open set's dedup state.
-func buildLedger(ctx context.Context, js jetstream.JetStream, retention time.Duration) (*MemProposalLog, error) {
-	return rebuildLedger(ctx, js, retention)
+func buildLedger(ctx context.Context, js jetstream.JetStream, retention time.Duration, cases *CaseBase) (*MemProposalLog, error) {
+	return rebuildLedger(ctx, js, retention, cases)
 }
 
 // rebuildLedger replays clank's own thump.proposals, thump.outcomes, and
@@ -30,7 +30,7 @@ func buildLedger(ctx context.Context, js jetstream.JetStream, retention time.Dur
 // so a set's final phase matches what live processing would have produced —
 // order matters because both methods act on "the most recently recorded
 // open set" for a fingerprint, not a fixed one.
-func rebuildLedger(ctx context.Context, js jetstream.JetStream, retention time.Duration) (*MemProposalLog, error) {
+func rebuildLedger(ctx context.Context, js jetstream.JetStream, retention time.Duration, cases *CaseBase) (*MemProposalLog, error) {
 	var events []replayEvent
 	if err := broker.DrainSubject(ctx, js, "thump.proposals", "fetch thump.proposals", func(at time.Time, v proposal.Set) {
 		events = append(events, replayEvent{at: at, proposal: &v})
@@ -52,7 +52,7 @@ func rebuildLedger(ctx context.Context, js jetstream.JetStream, retention time.D
 	ledger := NewMemProposalLog()
 	ledger.LedgerRetention = retention
 	for _, ev := range events {
-		if err := ev.replayInto(ctx, ledger); err != nil {
+		if err := ev.replayInto(ctx, ledger, cases); err != nil {
 			return nil, fmt.Errorf("clank: rebuild ledger: replay: %w", err)
 		}
 	}
@@ -76,15 +76,20 @@ type replayEvent struct {
 // declineHandler): an outcome or decline whose proposal fell outside the
 // stream's retention window answers to nothing, and that's not a rebuild
 // failure.
-func (ev replayEvent) replayInto(ctx context.Context, ledger *MemProposalLog) error {
+func (ev replayEvent) replayInto(ctx context.Context, ledger *MemProposalLog, cases *CaseBase) error {
 	switch {
 	case ev.proposal != nil:
 		ledger.seedAt(*ev.proposal, ev.at)
 		return nil
 	case ev.outcome != nil:
-		_, err := ledger.Observe(ctx, *ev.outcome)
+		set, err := ledger.Observe(ctx, *ev.outcome)
 		if err != nil && !errors.Is(err, ErrNoOpenSet) {
 			return err
+		}
+		if err == nil && cases != nil {
+			if err := cases.Append(newCase(set, *ev.outcome)); err != nil {
+				return fmt.Errorf("rebuild casebase: %w", err)
+			}
 		}
 		return nil
 	default:

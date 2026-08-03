@@ -9,7 +9,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/natstest"
+	"github.com/ianeff/thump/internal/publish"
 )
 
 func TestCaseBase_RefusesAnUnprovenancedCase(t *testing.T) {
@@ -134,6 +137,54 @@ func TestCaseBase_AlignmentIsTheObservedSuccessRate(t *testing.T) {
 	rate, _ = cb.Alignment("slo_burn:ceph-rgw")
 	if diff := cmp.Diff(0.5, rate); diff != "" {
 		t.Error("an unknown outcome must not move the rate either way (-want +got)", diff)
+	}
+}
+
+func TestCaseBase_RebuildsTheHistoricalPriorAcrossARestart(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	js := natstest.New(t)
+	if err := broker.EnsureTopology(ctx, js); err != nil {
+		t.Fatal(err)
+	}
+
+	proposals := publish.NewJetPublisher[proposal.Set](js)
+	outcomes := publish.NewJetPublisher[outcome.Outcome](js)
+
+	// Phase 1: Simulate 2 historical live runs before a process restart
+	ps1 := clickSet()
+	ps1.Name = "ps-ceph-rgw-001"
+	if err := proposals.Publish(ctx, "thump.proposals", ps1); err != nil {
+		t.Fatal(err)
+	}
+	if err := outcomes.Publish(ctx, "thump.outcomes", liveSuccess()); err != nil {
+		t.Fatal(err)
+	}
+
+	ps2 := clickSet()
+	ps2.Name = "ps-ceph-rgw-002"
+	if err := proposals.Publish(ctx, "thump.proposals", ps2); err != nil {
+		t.Fatal(err)
+	}
+	if err := outcomes.Publish(ctx, "thump.outcomes", liveSuccess()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Phase 2: Simulate a cold process restart — empty memory, rebuild from JetStream
+	cases := clank.NewCaseBase()
+	_, err := clank.RebuildLedgerForTest(ctx, js, time.Hour, cases)
+	if err != nil {
+		t.Fatalf("RebuildLedgerForTest failed: %v", err)
+	}
+
+	// Phase 3: Assert Alignment has recovered >=2 votes and AlignmentOK is true
+	fingerprint := "slo_burn:ceph-rgw"
+	rate, ok := cases.Alignment(fingerprint)
+	if !ok {
+		t.Fatalf("want AlignmentOK=true after restart replayed 2 live outcomes, got false")
+	}
+	if diff := cmp.Diff(1.0, rate); diff != "" {
+		t.Errorf("wrong recovered alignment rate (-want +got):\n%s", diff)
 	}
 }
 

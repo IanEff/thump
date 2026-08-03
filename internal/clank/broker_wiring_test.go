@@ -32,7 +32,7 @@ func TestBuildLedger_ReachesRebuiltHistoryNotAnEmptyLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger, err := clank.BuildLedgerForTest(ctx, js, time.Hour)
+	ledger, err := clank.BuildLedgerForTest(ctx, js, time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

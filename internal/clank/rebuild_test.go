@@ -27,7 +27,7 @@ func TestRebuildLedger_RecoversAnOpenSetAfterARestart(t *testing.T) {
 	}
 
 	// simulate a restart: nothing in this process's memory yet, rebuild cold
-	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour)
+	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestRebuildLedger_ReplaysAnOutcomeOntoItsProposal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour)
+	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestRebuildLedger_ReplaysADeclineOntoItsProposal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour)
+	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestRebuildLedger_ASupersededProposalStaysClosedNotBothOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour)
+	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestRebuildLedger_SkipsAnUndecodableMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour)
+	ledger, err := clank.RebuildLedgerForTest(ctx, js, time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
