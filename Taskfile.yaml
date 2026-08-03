@@ -314,3 +314,20 @@ tasks:
     desc: Remove bin/ and coverage.out
     cmds:
       - rm -rf bin/ coverage.out
+
+  stats:
+    desc: Display repo statistics.
+    cmds:
+      - |
+        prod_lines=$(git ls-files '*.go' | grep -v '_test.go$' | xargs cloc --quiet --csv 2>/dev/null | awk -F, 'END {print $5}')
+        prod_files=$(git ls-files '*.go' | grep -v '_test.go$' | wc -l | xargs)
+        test_lines=$(git ls-files '*_test.go' | xargs cloc --quiet --csv 2>/dev/null | awk -F, 'END {print $5}')
+        test_files=$(git ls-files '*_test.go' | wc -l | xargs)
+        ratio=$(awk -v t="$test_lines" -v p="$prod_lines" 'BEGIN {printf "%.2f", t/p}')
+
+        echo "📊 thump Code Pulse"
+        echo "=========================================="
+        echo "📦 Production Go : ${prod_lines} lines across ${prod_files} files"
+        echo "🧪 Test Suite     : ${test_lines} lines across ${test_files} files"
+        echo "⚡ Test/Code Ratio: ${ratio}x test lines per prod line"
+        echo "=========================================="
