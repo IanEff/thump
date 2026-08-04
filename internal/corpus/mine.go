@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -26,6 +27,10 @@ const (
 	outcomesPrefix  = "thump/thump.outcomes/"
 	outPath         = "internal/clank/testdata/corpus/corpus.json"
 )
+
+// ErrUnknownCorpusVersion means the artifact on disk was written by a
+// newer build than this one.
+var ErrUnknownCorpusVersion = errors.New("corpus: artifact version is newer than this build understands")
 
 // Main mines every shipped proposal.Set and outcome.Outcome of S3_BUCKET,
 // joins them into a clank.Corpus, and writes it to outPath.
@@ -113,24 +118,9 @@ func writeCorpus(path string, mined clank.Corpus) error {
 	return nil
 }
 
-func readCorpus(path string) (clank.Corpus, error) {
-	f, err := os.Open(path) // nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
-	if errors.Is(err, os.ErrNotExist) {
-		return clank.Corpus{}, nil
-	}
-	if err != nil {
-		return clank.Corpus{}, fmt.Errorf("open %s: %w", path, err)
-	}
-	defer func() { _ = f.Close() }()
-
-	var c clank.Corpus
-	if err := json.NewDecoder(f).Decode(&c); err != nil {
-		return clank.Corpus{}, fmt.Errorf("decode %s: %w", path, err)
-	}
-	return c, nil
-}
-
-// mergeCorpus unions existing and mined on OutcomeRef, sorts by
+// mergeCorpus unions existing and mined on OutcomeRef, collapses the union
+// to one Case per incident (existing may predate that invariant, or mined
+// may re-observe an incident existing already settled), sorts by
 // ObservedAt, and takes mined's MinedAt as the new "latest mined" timestamp.
 func mergeCorpus(existing, mined clank.Corpus) clank.Corpus {
 	seenCase := make(map[string]bool, len(existing.Cases)+len(mined.Cases))
@@ -143,6 +133,7 @@ func mergeCorpus(existing, mined clank.Corpus) clank.Corpus {
 		seenCase[c.OutcomeRef] = true
 		cases = append(cases, c)
 	}
+	cases = clank.CollapseCases(cases)
 
 	slices.SortFunc(cases, func(a, b clank.Case) int { return a.ObservedAt.Compare(b.ObservedAt) })
 
@@ -157,7 +148,7 @@ func mergeCorpus(existing, mined clank.Corpus) clank.Corpus {
 	}
 	slices.Sort(segments)
 
-	return clank.Corpus{Cases: cases, MinedAt: mined.MinedAt, Segments: segments}
+	return clank.Corpus{Version: clank.CorpusVersion, Cases: cases, MinedAt: mined.MinedAt, Segments: segments}
 }
 
 func report(w io.Writer, c clank.Corpus) {
@@ -169,4 +160,108 @@ func report(w io.Writer, c clank.Corpus) {
 	for class, n := range byClass {
 		_, _ = fmt.Fprintf(w, " %-24s %d\n", class, n)
 	}
+}
+
+// legacyCorpus is the pre-tag layout: exported Go field names as JSON keys,
+// and Fingerprint where Case now says signalRef.
+type legacyCorpus struct {
+	Cases []struct {
+		Fingerprint  string                `json:"Fingerprint"`
+		SignalRef    string                `json:"SignalRef"`
+		DecisionRef  string                `json:"DecisionRef"`
+		OutcomeRef   string                `json:"OutcomeRef"`
+		ContractRef  string                `json:"ContractRef"`
+		FailureClass proposal.FailureClass `json:"FailureClass"`
+		Confidence   float64               `json:"Confidence"`
+		Mode         outcome.Mode          `json:"Mode"`
+		Result       outcome.Result        `json:"Result"`
+		ObservedAt   time.Time             `json:"ObservedAt"`
+	} `json:"Cases"`
+	MinedAt  time.Time `json:"MinedAt"`
+	Segments []string  `json:"Segments"`
+}
+
+// signalRefFromDecisionRef recovers the fingerprint a pre-tag artifact
+// lost: a DecisionRef is "dec:" + fingerprint + ":" + unix seconds, and the
+// fingerprint itself can contain colons ("slo_burn:ceph-cluster"), so the
+// split is on the first and last separators, never on every one.
+func signalRefFromDecisionRef(ref string) string {
+	rest, ok := strings.CutPrefix(ref, "dec:")
+	if !ok {
+		return ""
+	}
+	i := strings.LastIndex(rest, ":")
+	if i < 0 {
+		return ""
+	}
+	return rest[:i]
+}
+
+// migrateLegacy decodes a pre-tag artifact and recovers each case's
+// SignalRef from whichever source still has it — the field itself when the
+// artifact predates the rename, DecisionRef when the rename already
+// emptied it.
+func migrateLegacy(raw []byte) (clank.Corpus, error) {
+	var legacy legacyCorpus
+	if err := json.Unmarshal(raw, &legacy); err != nil {
+		return clank.Corpus{}, fmt.Errorf("decode legacy corpus: %w", err)
+	}
+
+	cases := make([]clank.Case, 0, len(legacy.Cases))
+	for _, lc := range legacy.Cases {
+		signalRef := lc.SignalRef
+		if signalRef == "" {
+			signalRef = lc.Fingerprint
+		}
+		if signalRef == "" {
+			signalRef = signalRefFromDecisionRef(lc.DecisionRef)
+		}
+		cases = append(cases, clank.Case{
+			SignalRef:    signalRef,
+			DecisionRef:  lc.DecisionRef,
+			OutcomeRef:   lc.OutcomeRef,
+			ContractRef:  lc.ContractRef,
+			FailureClass: lc.FailureClass,
+			Confidence:   lc.Confidence,
+			Mode:         lc.Mode,
+			Result:       lc.Result,
+			ObservedAt:   lc.ObservedAt,
+		})
+	}
+
+	return clank.Corpus{
+		Version:  clank.CorpusVersion,
+		Cases:    cases,
+		MinedAt:  legacy.MinedAt,
+		Segments: legacy.Segments,
+	}, nil
+}
+
+func readCorpus(path string) (clank.Corpus, error) {
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
+	if errors.Is(err, os.ErrNotExist) {
+		return clank.Corpus{Version: clank.CorpusVersion}, nil
+	}
+	if err != nil {
+		return clank.Corpus{}, fmt.Errorf("open %s: %w", path, err)
+	}
+
+	var probe struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return clank.Corpus{}, fmt.Errorf("decode %s: %w", path, err)
+	}
+	switch {
+	case probe.Version == 0:
+		return migrateLegacy(raw)
+	case probe.Version > clank.CorpusVersion:
+		return clank.Corpus{}, fmt.Errorf("%w: %s is version %d, this build writes %d", ErrUnknownCorpusVersion, path, probe.Version, clank.CorpusVersion)
+	}
+
+	var c clank.Corpus
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return clank.Corpus{}, fmt.Errorf("decode %s: %w", path, err)
+	}
+	return c, nil
 }

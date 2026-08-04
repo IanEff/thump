@@ -3,17 +3,38 @@ package corpus_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/corpus"
 	"github.com/ianeff/thump/internal/sealbox"
 )
+
+// incidentCase builds a minimal clank.Case for exercising CollapseCases's
+// group key: decisionRef is "dec:" + signalRef + ":" + an arbitrary id, so
+// SignalRef is recovered from it the same way a pre-tag artifact's is; sec
+// becomes ObservedAt as a Unix timestamp so cases can be ordered by it.
+func incidentCase(decisionRef, outcomeRef string, result outcome.Result, sec int64) clank.Case {
+	rest := strings.TrimPrefix(decisionRef, "dec:")
+	signalRef := rest[:strings.LastIndex(rest, ":")]
+	return clank.Case{
+		SignalRef:   signalRef,
+		DecisionRef: decisionRef,
+		OutcomeRef:  outcomeRef,
+		Result:      result,
+		ObservedAt:  time.Unix(sec, 0),
+	}
+}
 
 // fakeBucket is the in-memory ObjectStore double: a fixed key→sealed-bytes
 // map, listed in one page — Walk's pagination loop is exercised by the SDK's
@@ -60,5 +81,103 @@ func TestWalk_UnsealsEveryObjectUnderThePrefix(t *testing.T) {
 	wantLines := [][]byte{[]byte(`{"a":1}`), []byte(`{"a":2}`)}
 	if diff := cmp.Diff(wantLines, lines); diff != "" {
 		t.Error("wrong lines decoded from the segment", diff)
+	}
+}
+
+func TestReadCorpus_RecoversTheFingerprintAPreTagArtifactLost(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		file string
+		want string
+	}{
+		"readCorpus reads Fingerprint when the untagged artifact still carries it": {
+			file: "testdata/corpus-legacy-fingerprint.json",
+			want: "slo_burn:ceph-cluster",
+		},
+		"readCorpus rebuilds the fingerprint from DecisionRef when the rename emptied it": {
+			file: "testdata/corpus-legacy-emptied.json",
+			want: "slo_burn:ceph-cluster",
+		},
+		"readCorpus reads signalRef directly when the artifact carries a version": {
+			file: "testdata/corpus-v2.json",
+			want: "slo_burn:ceph-cluster",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := corpus.ReadCorpusForTest(tc.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.want, got.Cases[0].SignalRef); diff != "" {
+				t.Error("migration lost the join key", diff)
+			}
+		})
+	}
+}
+
+func TestReadCorpus_RefusesAnArtifactNewerThanThisBuildWrites(t *testing.T) {
+	t.Parallel()
+	// A best-effort decode of an unknown layout is what produced six cases
+	// with an empty fingerprint — a zero value that reads as real data. Fail
+	// at load, where a human is looking.
+	_, err := corpus.ReadCorpusForTest("testdata/corpus-v99.json")
+	if !errors.Is(err, corpus.ErrUnknownCorpusVersion) {
+		t.Error("want ErrUnknownCorpusVersion", err)
+	}
+}
+
+func TestCollapseCases_KeepsOneCasePerIncidentAcrossAMerge(t *testing.T) {
+	t.Parallel()
+	// terminalOutcome runs over freshly-mined records only, so an artifact
+	// written before that landed keeps its per-record rows forever, and the
+	// first number a tuner reads is 3x the number of incidents behind it.
+	// applied is an execute-time status superseded by whatever the
+	// convergence watcher settles; the settled record is the case.
+	cases := map[string]struct {
+		in   []clank.Case
+		want []clank.Case
+	}{
+		"CollapseCases keeps the settled case when an incident also recorded applied": {
+			in: []clank.Case{
+				incidentCase("dec:slo_burn:ceph-cluster:1", "out:a", outcome.ResultApplied, 100),
+				incidentCase("dec:slo_burn:ceph-cluster:1", "out:b", outcome.ResultPartialNonConverging, 200),
+				incidentCase("dec:slo_burn:ceph-cluster:1", "out:c", outcome.ResultApplied, 300),
+			},
+			want: []clank.Case{
+				incidentCase("dec:slo_burn:ceph-cluster:1", "out:b", outcome.ResultPartialNonConverging, 200),
+			},
+		},
+		"CollapseCases keeps both when two incidents share a fingerprint": {
+			// A re-detection is a second incident, not a duplicate of the
+			// first — the DecisionRef is what separates them.
+			in: []clank.Case{
+				incidentCase("dec:slo_burn:ceph-cluster:1", "out:a", outcome.ResultSuccess, 100),
+				incidentCase("dec:slo_burn:ceph-cluster:2", "out:b", outcome.ResultSuccess, 200),
+			},
+			want: []clank.Case{
+				incidentCase("dec:slo_burn:ceph-cluster:1", "out:a", outcome.ResultSuccess, 100),
+				incidentCase("dec:slo_burn:ceph-cluster:2", "out:b", outcome.ResultSuccess, 200),
+			},
+		},
+		"CollapseCases drops an incident that only ever recorded applied": {
+			// Nothing settled it, so there is no calibration datum here yet —
+			// counting it would be counting a run still in flight.
+			in: []clank.Case{
+				incidentCase("dec:slo_burn:ceph-cluster:1", "out:a", outcome.ResultApplied, 100),
+			},
+			want: nil,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if diff := cmp.Diff(tc.want, clank.CollapseCases(tc.in)); diff != "" {
+				t.Error("wrong cases survived the collapse", diff)
+			}
+		})
 	}
 }

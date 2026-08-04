@@ -8,13 +8,18 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 )
 
-// Corpus is the calibration record: every closed loop the
-// engine has emitted, joined from a shaped WAL rather than
-// computed.
+// CorpusVersion is the artifact layout this build writes — readCorpus
+// migrates anything older and refuses anything newer, since a best-effort
+// decode of an unknown layout is how a field goes silently empty.
+const CorpusVersion = 2
+
+// Corpus is the calibration record: every closed loop the engine has
+// emitted, joined from a shaped WAL rather than computed.
 type Corpus struct {
-	Cases    []Case
-	MinedAt  time.Time
-	Segments []string
+	Version  int       `json:"version"`
+	Cases    []Case    `json:"cases"`
+	MinedAt  time.Time `json:"minedAt"`
+	Segments []string  `json:"segments"`
 }
 
 func (c Corpus) FloorSupport(class proposal.FailureClass, floor float64) FloorSupport {
@@ -53,33 +58,25 @@ type FloorSupport struct {
 // MineCorpus joins sets and outcomes by SignalRef, mirroring
 // MemProposalLog.Observe's live match: an outcome pairs with
 // the most recent set sharing its SignalRef that had already
-// reached a terminal Status by the outcome's ExecutedAt.
+// reached a terminal Status by the outcome's ExecutedAt. Every outcome
+// record for an incident becomes a candidate Case; CollapseCases then
+// reduces each (SignalRef, DecisionRef) group to the one that survives.
 func MineCorpus(sets []proposal.Set, outcomes []outcome.Outcome) []Case {
 	byFingerprint := make(map[string][]proposal.Set)
 	for _, s := range sets {
 		byFingerprint[s.SignalRef] = append(byFingerprint[s.SignalRef], s)
 	}
 
-	byIncident := make(map[incidentKey][]outcome.Outcome)
-	for _, o := range outcomes {
-		key := incidentKey{o.SignalRef, o.DecisionRef}
-		byIncident[key] = append(byIncident[key], o)
-	}
-
 	var cases []Case
-	for _, os := range byIncident {
-		terminal, ok := terminalOutcome(os)
+	for _, o := range outcomes {
+		set, ok := latestSetBefore(byFingerprint[o.SignalRef], o.ExecutedAt)
 		if !ok {
 			continue
 		}
-
-		set, ok := latestSetBefore(byFingerprint[terminal.SignalRef], terminal.ExecutedAt)
-		if !ok {
-			continue
-		}
-		cases = append(cases, newCase(set, terminal))
+		cases = append(cases, newCase(set, o))
 	}
 
+	cases = CollapseCases(cases)
 	slices.SortFunc(cases, func(a, b Case) int { return a.ObservedAt.Compare(b.ObservedAt) })
 	return cases
 }
@@ -89,22 +86,39 @@ type incidentKey struct {
 	decisionRef string
 }
 
-// terminalOutcome picks the settled outcome out of every record publised for
-// one incident, skipping ResultApplied, and preferring the latest ExecutedAt if
-// more than one settled record exists.
-func terminalOutcome(outcomes []outcome.Outcome) (outcome.Outcome, bool) {
-	var best outcome.Outcome
-	var found bool
-	for _, o := range outcomes {
-		if o.Result == outcome.ResultApplied {
+// CollapseCases reduces cases to one per (SignalRef, DecisionRef) group —
+// the settled record, never ResultApplied, preferring the latest ObservedAt
+// when more than one settled record exists. ResultApplied is a live
+// action's execute-time ack, superseded by whatever the convergence watcher
+// later settles; a group that only ever reached ResultApplied is dropped,
+// since nothing has settled it yet. MineCorpus and mergeCorpus both call
+// this, so a freshly mined batch and an artifact merged across many mining
+// runs collapse the same way.
+func CollapseCases(cases []Case) []Case {
+	var order []incidentKey
+	seen := make(map[incidentKey]bool, len(cases))
+	best := make(map[incidentKey]Case, len(cases))
+	for _, c := range cases {
+		key := incidentKey{c.SignalRef, c.DecisionRef}
+		if !seen[key] {
+			seen[key] = true
+			order = append(order, key)
+		}
+		if c.Result == outcome.ResultApplied {
 			continue
 		}
-		if !found || o.ExecutedAt.After(best.ExecutedAt) {
-			best = o
-			found = true
+		if cur, ok := best[key]; !ok || c.ObservedAt.After(cur.ObservedAt) {
+			best[key] = c
 		}
 	}
-	return best, found
+
+	var out []Case
+	for _, key := range order {
+		if c, ok := best[key]; ok {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func latestSetBefore(sets []proposal.Set, at time.Time) (proposal.Set, bool) {
