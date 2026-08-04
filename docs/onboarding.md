@@ -32,8 +32,8 @@ you're doing wrong.
 ## 1 · Get the binaries
 
 Tagged releases ship prebuilt archives for linux and darwin, amd64 and arm64,
-each bundling all five binaries — `rattle`, `clank`, `hiss`, `thump`, and the
-`trim` operator CLI:
+bundling seven binaries — `rattle`, `clank`, `hiss`, `thump`, `trim`, `bootstrap`,
+and `unseal`:
 
 ```sh
 gh release download v0.1.0 --repo IanEff/thump --pattern '*_linux_x86_64.tar.gz'
@@ -45,7 +45,7 @@ need Go and [go-task](https://taskfile.dev):
 
 ```sh
 git clone https://github.com/IanEff/thump && cd thump
-task build          # all five binaries into bin/
+task build          # all seven binaries into bin/
 ```
 
 The four long-running beats also publish multi-arch container images with SBOM
