@@ -30,6 +30,7 @@ dist/
 .otelc-build/matched.json
 .otelc-build/added_imports.*.json
 .otelc-build/state*
+.otelc-build.lock
 
 
 # macOS

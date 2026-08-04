@@ -168,7 +168,7 @@ tasks:
   otelc:generate:
     desc: Regenerate otelc compile-time instrumentation wrappers and rulesets
     cmds:
-      - go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim
+      - go tool otelc setup ./cmd/bootstrap ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim
       - sed -i '' 's#/Users/ian/projects/go/thump/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true
       - find .otelc-build -name "go.mod" -exec sed -i '' 's/v1\.81\.1/v1\.82\.0/g' {} + 2>/dev/null || true
       - find .otelc-build -name "go.mod" -exec sed -i '' 's/go 1\.25\.0/go 1\.26\.0/g' {} + 2>/dev/null || true
