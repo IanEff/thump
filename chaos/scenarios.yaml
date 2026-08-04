@@ -1,0 +1,46 @@
+# Every row is one calibration datum's worth of work: what to break, what has
+# to be true first, what the engine is expected to conclude, how long to let
+# it settle, and what puts the rig back. A row with no restore is rejected at
+# load — a harvest that cannot restore is a rig teardown with extra steps.
+version: 1
+scenarios:
+  - name: osd-down-accelerate
+    domain: ceph
+    fault:
+      path: chaos/osd-pod-failure-accelerate.yaml
+      apply: kubectl
+    preconditions:
+      - name: mon-osd-down-out-interval
+        # Ceph waits 600s by default before marking a down OSD out, which is
+        # longer than the whole harvest window; at 60 the degradation is real
+        # within the run rather than after it.
+        set: ceph config set global mon_osd_down_out_interval 60
+        restore: ceph config set global mon_osd_down_out_interval 600
+      - name: balancer-off
+        # The balancer competes with the action under test for the same PGs.
+        set: ceph balancer off
+        restore: ceph balancer on
+    expects:
+      failureClass: redundancy_degraded
+      contractRef: accelerate-recovery
+      verdict: held           # blastTier high; a human blesses this one (D-10)
+    settleWindow: 20m
+    restore:
+      path: chaos/osd-pod-failure-accelerate.yaml
+      apply: kubectl-delete
+
+  - name: cart-failure
+    domain: otel-demo
+    fault:
+      path: chaos/flagd-cart-failure.sh
+      apply: exec
+      args: [inject]
+    expects:
+      failureClass: service_failure
+      contractRef: disable-cart-failure
+      verdict: approved       # act_reversible; auto-approves
+    settleWindow: 15m
+    restore:
+      path: chaos/flagd-cart-failure.sh
+      apply: exec
+      args: [restore]

@@ -1,3 +1,8 @@
+// Package configfile enforces two-stage YAML loading across thump — missing
+// keys fail at load time rather than silently defaulting to zero values at
+// runtime. It stages YAML into pointer structs to distinguish omitted keys
+// from explicit zeros, then collects all missing required fields into a single
+// error.
 package configfile
 
 import (
