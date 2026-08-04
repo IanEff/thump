@@ -29,11 +29,16 @@ coverage.*
 .env
 .env.*
 
-# Editor/OS cruft
+# Editor/OS/Agent cruft
 .DS_Store
 .idea/
 .zed/
+.claude/
+.gemini/
+.agents/
 Tiltfile.tmp.*
+.otelc-build/state*
+
 
 # Neither a build input nor stable during a live session — testdata fixtures
 # get appended to by running tests/harnesses, and *.md notes get edited

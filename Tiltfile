@@ -314,22 +314,31 @@ DEV_REGISTRY = cluster["registry"]
 # default under Tilt — a per-build wall-clock stamp isn't worth the noise.
 COMMIT = str(local("git rev-parse --verify HEAD || echo none")).strip()
 
+# Fast host-native compilation for local dev loop (Option 2).
+# `go tool otelc setup` instruments the source tree on load (idempotent, ~1s).
+local("go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim", quiet=True, echo_off=True)
+
+if cluster["platform"] == "linux/amd64":
+    target_arch = "amd64"
+    platform_flag = "--platform linux/amd64 "
+else:
+    target_arch = "arm64"
+    platform_flag = ""
+
 for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
-    # docker_build's platform= must be a string or omitted entirely — unlike
-    # a plain Starlark/Python kwarg, it does NOT treat None as "unset".
-    if cluster["platform"]:
-        docker_build(
-            DEV_REGISTRY + "/thump-" + beat,
-            ".",
-            build_args={"BEAT": beat, "VERSION": "dev", "COMMIT": COMMIT},
-            platform=cluster["platform"],
-        )
-    else:
-        docker_build(
-            DEV_REGISTRY + "/thump-" + beat,
-            ".",
-            build_args={"BEAT": beat, "VERSION": "dev", "COMMIT": COMMIT},
-        )
+    cmd = (
+        "mkdir -p bin/dev && "
+        + "CGO_ENABLED=0 GOOS=linux GOARCH=" + target_arch + " "
+        + "go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
+        + "-o bin/dev/" + beat + " ./cmd/" + beat + " && "
+        + "docker build " + platform_flag + "-f Dockerfile.dev --build-arg BEAT=" + beat + " -t $EXPECTED_REF bin/dev"
+    )
+    custom_build(
+        DEV_REGISTRY + "/thump-" + beat,
+        command=cmd,
+        deps=["cmd/" + beat, "internal", "go.mod", "go.sum", ".otelc-build"],
+    )
+
 
 
 # Unlike a bare `helm template` (what chart-lint runs, and why that path
