@@ -1,74 +1,31 @@
 {
- "Cases": [
+ "version": 2,
+ "cases": [
   {
-   "SignalRef": "",
-   "DecisionRef": "dec:slo_burn:ceph-cluster:1785670517",
-   "OutcomeRef": "out:slo_burn:ceph-cluster:1785670517",
-   "ContractRef": "hold-rebalance",
-   "FailureClass": "redundancy_degraded",
-   "Confidence": 0.85,
-   "Mode": "live",
-   "Result": "applied",
-   "ObservedAt": "2026-08-02T11:35:17.954390082Z"
+   "signalRef": "slo_burn:ceph-cluster",
+   "decisionRef": "dec:slo_burn:ceph-cluster:1785670517",
+   "outcomeRef": "out:slo_burn:ceph-cluster:conv:1785671120",
+   "contractRef": "hold-rebalance",
+   "failureClass": "redundancy_degraded",
+   "confidence": 0.85,
+   "mode": "live",
+   "result": "partial_non_converging",
+   "observedAt": "2026-08-02T11:45:20.246301892Z"
   },
   {
-   "SignalRef": "",
-   "DecisionRef": "dec:slo_burn:ceph-cluster:1785670517",
-   "OutcomeRef": "out:slo_burn:ceph-cluster:conv:1785671120",
-   "ContractRef": "hold-rebalance",
-   "FailureClass": "redundancy_degraded",
-   "Confidence": 0.85,
-   "Mode": "live",
-   "Result": "partial_non_converging",
-   "ObservedAt": "2026-08-02T11:45:20.246301892Z"
-  },
-  {
-   "SignalRef": "",
-   "DecisionRef": "dec:slo_burn:ceph-cluster:1785670517",
-   "OutcomeRef": "out:slo_burn:ceph-cluster:1785671120",
-   "ContractRef": "hold-rebalance",
-   "FailureClass": "redundancy_degraded",
-   "Confidence": 0.85,
-   "Mode": "live",
-   "Result": "applied",
-   "ObservedAt": "2026-08-02T11:45:20.256919056Z"
-  },
-  {
-   "SignalRef": "",
-   "DecisionRef": "dec:slo_burn:cephblockpool:1785671461",
-   "OutcomeRef": "out:slo_burn:cephblockpool:1785671461",
-   "ContractRef": "accelerate-recovery",
-   "FailureClass": "redundancy_degraded",
-   "Confidence": 0.8660040104595152,
-   "Mode": "live",
-   "Result": "applied",
-   "ObservedAt": "2026-08-02T11:51:01.961743979Z"
-  },
-  {
-   "SignalRef": "",
-   "DecisionRef": "dec:slo_burn:cephblockpool:1785671461",
-   "OutcomeRef": "out:slo_burn:cephblockpool:conv:1785672068",
-   "ContractRef": "accelerate-recovery",
-   "FailureClass": "redundancy_degraded",
-   "Confidence": 0.8660040104595152,
-   "Mode": "live",
-   "Result": "success",
-   "ObservedAt": "2026-08-02T12:01:08.309993952Z"
-  },
-  {
-   "SignalRef": "",
-   "DecisionRef": "dec:slo_burn:cephblockpool:1785671461",
-   "OutcomeRef": "out:slo_burn:cephblockpool:1785672068",
-   "ContractRef": "accelerate-recovery",
-   "FailureClass": "redundancy_degraded",
-   "Confidence": 0.8660040104595152,
-   "Mode": "live",
-   "Result": "applied",
-   "ObservedAt": "2026-08-02T12:01:08.315962556Z"
+   "signalRef": "slo_burn:cephblockpool",
+   "decisionRef": "dec:slo_burn:cephblockpool:1785671461",
+   "outcomeRef": "out:slo_burn:cephblockpool:conv:1785672068",
+   "contractRef": "accelerate-recovery",
+   "failureClass": "redundancy_degraded",
+   "confidence": 0.8660040104595152,
+   "mode": "live",
+   "result": "success",
+   "observedAt": "2026-08-02T12:01:08.309993952Z"
   }
  ],
- "MinedAt": "2026-08-03T14:53:27.974644-04:00",
- "Segments": [
+ "minedAt": "2026-08-04T07:28:14.044764-04:00",
+ "segments": [
   "clank/thump.proposals/00000000000000000000-1785671212466434324.jsonl",
   "clank/thump.proposals/00000000000000000000-1785783003907983346.jsonl",
   "thump/thump.outcomes/00000000000000000000-1785671120246815987.jsonl",

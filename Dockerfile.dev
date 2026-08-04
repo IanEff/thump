@@ -1,0 +1,5 @@
+FROM gcr.io/distroless/static-debian12:nonroot
+LABEL org.opencontainers.image.source="https://github.com/ianeff/thump"
+ARG BEAT
+COPY ${BEAT} /usr/local/bin/beat
+ENTRYPOINT ["/usr/local/bin/beat"]

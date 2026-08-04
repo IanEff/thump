@@ -183,7 +183,7 @@ starts, and never re-derived mid-loop. Everything the reasoner concludes is
 traceable to a snapshot you can read back.
 
 **The loop is bounded.** At most `MaxSteps` turns. Each turn the model may call
-read-only tools — `metrics` (Prometheus), `loki`, `kube`, `casebase` — or end the
+read-only tools (`internal/evidence`) — `metrics` (Prometheus), `loki`, `kube`, `argocd`, `casebase` — or end the
 run by calling `propose` or `insufficient`. A run that burns through `MaxSteps`
 without calling either is recorded as `budget_exhausted`; it is not an error and
 it is not a silent nothing. Every turn is checkpointed before the next one runs,
@@ -386,21 +386,36 @@ api/v1/          the boundary objects — leaf packages, additive-only
 
 internal/
   rattle/        detectors, envelopes, the watch list, enrichment, correlation
-  clank/         the reason loop, intake/SAO, tools, causal scoring, confidence,
+  clank/         the reason loop, intake/SAO, causal scoring, confidence,
                  the ranker, the readiness gate, the case base, click's return edge
   hiss/          Authority.Evaluate, the risk shaper, policy, the decision ledger,
                  the held-decision store and the approval handler
   thump/         Actuator.Render, executors, the kill switch, the reversal watcher,
                  the settle path
+  evidence/      read-only investigation tools: Prometheus (metrics), Loki, Kubernetes, ArgoCD
+  reason/        reasoner loop primitives and LLM provider interfaces
+  anthropic/     Anthropic Claude provider client implementation
+  gemini/        Google Gemini provider client implementation
+  mask/          prompt and payload credential masking
+  schema/        OpenAPI and JSON schema definitions
+  subjects/      cluster coordinate to topology node resolution index
   actuate/       the ONLY client-go site — compiled mechanisms and their binding
   contract/      the action catalog: loading, validation, reachability checks
   trim/          the operator CLI: read projection, approve, break-glass force
+  bootstrap/     in-cluster bootstrap job logic
+  unseal/        unseal CLI and vault key handling
+  sealbox/       encrypted secrets envelope
+  corpus/        corpus versioning, incident collapsing, and casebase mining
+  ledger/        decision and casebase ledger persistence
   whir/          topology and evidence-query config
   broker/        NATS JetStream subjects and durable consumers
   publish/       publishers, the WAL, S3 offload
+  objectstore/   S3 and object store transport abstraction
+  otelx/         OpenTelemetry setup and OTLP circuit breaker
+  notify/        Slack notification dispatching
   beat/          shared beat scaffolding: startup, stage metrics, tracing
 
-cmd/             one main per binary: clank, rattle, hiss, thump, trim
+cmd/             one main per entrypoint: clank, rattle, hiss, thump, trim, bootstrap, corpus, unseal
 config/          authored YAML — the catalog, failure classes, hiss policy,
                  and one directory per site
 test/onboarding/ the whole engine over a domain authored in config alone

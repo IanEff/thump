@@ -13,8 +13,12 @@ import (
 	"github.com/ianeff/thump/internal/corpus"
 )
 
+// caseWithRef gives each case its own DecisionRef (equal to outcomeRef,
+// since only uniqueness matters here) — mergeCorpus now collapses cases
+// sharing (SignalRef, DecisionRef) to one per incident, and these tests
+// exercise the union and sort behavior, not that collapse.
 func caseWithRef(outcomeRef string, at time.Time) clank.Case {
-	return clank.Case{OutcomeRef: outcomeRef, ObservedAt: at}
+	return clank.Case{OutcomeRef: outcomeRef, DecisionRef: outcomeRef, ObservedAt: at}
 }
 
 func TestMergeCorpus_KeepsPriorIncidentsWhenTheBucketNoLongerHoldsThem(t *testing.T) {

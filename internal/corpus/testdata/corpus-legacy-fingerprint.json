@@ -1,0 +1,19 @@
+{
+ "Cases": [
+  {
+   "Fingerprint": "slo_burn:ceph-cluster",
+   "DecisionRef": "dec:slo_burn:ceph-cluster:1785670517",
+   "OutcomeRef": "out:slo_burn:ceph-cluster:1785670517",
+   "ContractRef": "hold-rebalance",
+   "FailureClass": "redundancy_degraded",
+   "Confidence": 0.85,
+   "Mode": "live",
+   "Result": "success",
+   "ObservedAt": "2026-08-02T11:35:17.954390082Z"
+  }
+ ],
+ "MinedAt": "2026-08-02T12:00:00Z",
+ "Segments": [
+  "clank/thump.proposals/00000000000000000000-1785671212466434324.jsonl"
+ ]
+}

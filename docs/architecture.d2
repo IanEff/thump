@@ -61,7 +61,7 @@ cluster: Target Kubernetes / Ceph Cluster {
 
 prometheus -> thump_system.rattle: "Ingests Alerts & Metrics"
 thump_system.rattle -> thump_system.clank.sao: "emits SignalDetection"
-prometheus -> thump_system.clank: "Live metrics queries (MetricsTool)"
+prometheus -> thump_system.clank: "Live metrics queries (evidence/MetricsTool)"
 thump_system.clank.gate -> thump_system.hiss.policy: "delivers ProposalSet (if Gate passes)"
 thump_system.hiss.policy -> thump_system.thump_exec.actuator: "emits Governed Decision (Approved)"
 thump_system.thump_exec.actuator -> cluster: "Executes catalog action (e.g. hold-rebalance)"

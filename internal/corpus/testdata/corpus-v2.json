@@ -1,0 +1,20 @@
+{
+ "version": 2,
+ "cases": [
+  {
+   "signalRef": "slo_burn:ceph-cluster",
+   "decisionRef": "dec:slo_burn:ceph-cluster:1785670517",
+   "outcomeRef": "out:slo_burn:ceph-cluster:conv:1785671120",
+   "contractRef": "hold-rebalance",
+   "failureClass": "redundancy_degraded",
+   "confidence": 0.85,
+   "mode": "live",
+   "result": "partial_non_converging",
+   "observedAt": "2026-08-02T11:45:20.246301892Z"
+  }
+ ],
+ "minedAt": "2026-08-03T14:53:27.974644-04:00",
+ "segments": [
+  "clank/thump.proposals/00000000000000000000-1785671212466434324.jsonl"
+ ]
+}

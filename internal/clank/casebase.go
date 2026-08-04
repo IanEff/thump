@@ -16,16 +16,19 @@ const maxCases = 10000 // CaseBase caps here; Append evicts the oldest case firs
 // that governed it, and the outcome it produced, joined by their shared
 // fingerprint. It exists to compute Alignment — bookkeeping for the scorer's
 // Prior, not a belief in its own right; the proposal.Set stays the audit unit.
+// The JSON tags are a wire contract, not decoration: the calibration record
+// outlives any single build, so renaming a Go field must not rename it on
+// disk.
 type Case struct {
-	SignalRef    string
-	DecisionRef  string
-	OutcomeRef   string
-	ContractRef  string
-	FailureClass proposal.FailureClass
-	Confidence   float64
-	Mode         outcome.Mode
-	Result       outcome.Result
-	ObservedAt   time.Time
+	SignalRef    string                `json:"signalRef"`
+	DecisionRef  string                `json:"decisionRef"`
+	OutcomeRef   string                `json:"outcomeRef"`
+	ContractRef  string                `json:"contractRef"`
+	FailureClass proposal.FailureClass `json:"failureClass"`
+	Confidence   float64               `json:"confidence"`
+	Mode         outcome.Mode          `json:"mode"`
+	Result       outcome.Result        `json:"result"`
+	ObservedAt   time.Time             `json:"observedAt"`
 }
 
 const minCorroboration = 2 // belief-formation defence 1: fewer than 2 live votes and Alignment reports no prior, not a weak one

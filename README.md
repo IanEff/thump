@@ -219,9 +219,7 @@ The beat table above is the concept. This is where it physically lives.
 | thump | `cmd/thump` | `internal/thump` | `thump.go` |
 | click | none (see table above) | `internal/clank/click.go`, `metrics.go` | `Click.Absorb` and `ReturnEdge` in `click.go` |
 
-`internal/trim` is the sixth entrypoint (`cmd/trim`) and deliberately not a
-beat — see [Standing it up locally](#standing-it-up-locally) for what it's
-allowed to touch.
+`cmd/` also houses entrypoints for `trim` (the operator CLI), `bootstrap` (in-cluster setup job), `unseal` (vault unseal CLI), and `corpus` (corpus management tool). Investigation tools (`metrics`, `loki`, `kube`, `argocd`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
 
 **If you're opening one file, open `internal/clank/doc.go`.** clank is the
 reasoning plane — the seam with no prior art to copy from, and the one
@@ -363,7 +361,8 @@ catch an authoring mistake: [`docs/onboarding.md`](docs/onboarding.md).
 ## Install
 
 Tagged releases ship prebuilt archives for linux and darwin, amd64 and arm64,
-each bundling all five binaries — the four beats plus the `trim` operator CLI:
+bundling seven binaries — the four long-running beats (`rattle`, `clank`, `hiss`,
+`thump`) plus `trim`, `bootstrap`, and `unseal`:
 
 ```sh
 gh release download v0.1.0 --repo IanEff/thump --pattern '*_linux_x86_64.tar.gz'
@@ -373,7 +372,7 @@ tar xzf thump_0.1.0_linux_x86_64.tar.gz
 Checksums are published alongside. The four long-running beats also publish
 multi-arch container images with SBOM and provenance attestation, signed
 keylessly via Sigstore/cosign. Building from source needs Go and
-[go-task](https://taskfile.dev): `task build` puts all five in `bin/`.
+[go-task](https://taskfile.dev): `task build` puts all seven binaries in `bin/`.
 
 ---
 
@@ -545,8 +544,8 @@ Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`) — run
 
 | Command | What it does |
 |---|---|
-| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` / `run:trim` | Run one beat |
-| `task build` | Build all five binaries to `bin/` |
+| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` / `run:trim` | Run one beat or CLI |
+| `task build` | Build all seven binaries to `bin/` |
 | `task ci` | Full local CI: fmt-check → vet → lint → vulncheck → chart-lint → race → build |
 | `task test` / `task race` | Tests, with `-race` |
 | `task coverage` | Coverage profile + total |
