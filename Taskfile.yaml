@@ -149,7 +149,7 @@ tasks:
   rca:
     desc: Run the graded RCA suite — did the reasoner cite the right evidence, not just reach the right verdict? (key-gated, not part of ci)
     cmds:
-      - go test -tags eval ./internal/clank -run TestRCA_ReachesTheCorrectFailureClassNotTheDecoy -v
+      - go run ./cmd/rca
 
   corpus:
     desc: Mine the sealed WAL into testdata/corpus/ — every (Confidence, FailureClass, Result) triple this engine has produced (needs S3_*/THUMP_SEAL_KEY; rig-free, object-store creds only)
