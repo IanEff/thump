@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/harvest"
 )
 
@@ -87,7 +90,7 @@ func TestHarvest_RestoresEveryPreconditionWhenTheRunIsCancelledMidFlight(t *test
 	}
 
 	runner := &recordingRunner{}
-	h := harvest.NewHarvest(blockingWatcher{}, runner)
+	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -126,4 +129,47 @@ func containsCall(calls []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet pins the win
+// path NewHarvest's missing third argument used to crash: h.sets was never
+// wired, so firstSetFor's call on a nil SetWatcher panicked the instant a
+// scenario actually settled rather than timing out. This is the only test
+// in the package that lets Settle succeed, which is exactly why the bug
+// went uncaught.
+func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
+	t.Parallel()
+	const fp = "slo_burn:ceph-cluster"
+
+	sc := harvest.Scenario{
+		Name:         "confidence-enrichment",
+		SignalRef:    fp,
+		Fault:        harvest.Action{Path: "noop", Apply: "exec"},
+		Restore:      harvest.Action{Path: "noop", Apply: "exec"},
+		SettleWindow: 5 * time.Second,
+	}
+
+	set := proposal.Set{
+		SignalRef: fp,
+		Proposals: []proposal.Candidate{
+			{ContractRef: "restart-pod", Confidence: 0.7, ComputedConfidence: 0.65, ConfidenceCeilingBound: true},
+		},
+	}
+	h := harvest.NewHarvest(feedWatcher{outcome.ResultSuccess}, &recordingRunner{}, feedSetWatcher{set})
+
+	res, err := h.Run(t.Context(), sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := harvest.Result{
+		ScenarioName:       sc.Name,
+		ActualResult:       outcome.ResultSuccess,
+		EmittedConfidence:  0.7,
+		ComputedConfidence: 0.65,
+		CeilingBound:       true,
+	}
+	if diff := cmp.Diff(want, res); diff != "" {
+		t.Error("wrong Result after a successful settle (-want +got)", diff)
+	}
 }
