@@ -104,9 +104,9 @@ func TestHarvestRBAC_GrantsExactlyWhatEachScenarioRowNeeds(t *testing.T) {
 			apiGroup: "", resource: "configmaps", resourceNames: []string{"flagd-config"},
 			verbs: []string{"get", "patch"},
 		},
-		"argocd rook-ceph-operator Application (osd-down-accelerate precondition)": {
+		"argocd rook-operator Application (osd-down-accelerate precondition)": {
 			namespace: "argocd", name: "thump-harvest-argocd",
-			apiGroup: "argoproj.io", resource: "applications", resourceNames: []string{"rook-ceph-operator"},
+			apiGroup: "argoproj.io", resource: "applications", resourceNames: []string{"rook-operator"},
 			verbs: []string{"get", "patch"},
 		},
 	}
