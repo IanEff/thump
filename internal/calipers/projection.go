@@ -1,4 +1,4 @@
-package trim
+package calipers
 
 import (
 	"errors"
@@ -15,7 +15,7 @@ import (
 // fingerprintOf found none of the four boundary-object types, or the field
 // it checked was empty. Apply refuses the object rather than folding it in
 // under a zero-value key.
-var ErrNoFingerprint = errors.New("trim: object carries no fingerprint")
+var ErrNoFingerprint = errors.New("calipers: object carries no fingerprint")
 
 // Projection is the map of fingerprints to Incidents, safe for concurrent
 // Apply and Get/Snapshot — Tick's poll loop writes while an "incidents"
@@ -36,7 +36,7 @@ func NewProjection() *Projection {
 func (p *Projection) Apply(obj any) error {
 	fp, ok := fingerprintOf(obj)
 	if !ok {
-		return fmt.Errorf("trim: apply %T: %w", obj, ErrNoFingerprint)
+		return fmt.Errorf("calipers: apply %T: %w", obj, ErrNoFingerprint)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()

@@ -1,4 +1,4 @@
-package trim_test
+package calipers_test
 
 import (
 	"errors"
@@ -12,14 +12,14 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/trim"
+	"github.com/ianeff/thump/internal/calipers"
 )
 
 func TestProjection_ApplyThenGetReturnsTheFoldedIncident(t *testing.T) {
 	t.Parallel()
 	t0 := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 
-	p := trim.NewProjection()
+	p := calipers.NewProjection()
 	if err := p.Apply(signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: t0}); err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestProjection_ApplyThenGetReturnsTheFoldedIncident(t *testing.T) {
 	if !ok {
 		t.Fatal("want an incident for fp-1, got none")
 	}
-	want := trim.Incident{Fingerprint: "fp-1", Stage: trim.StageDetected, Service: "checkout-api", UpdatedAt: t0}
+	want := calipers.Incident{Fingerprint: "fp-1", Stage: calipers.StageDetected, Service: "checkout-api", UpdatedAt: t0}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("wrong incident after Apply", diff)
 	}
@@ -36,7 +36,7 @@ func TestProjection_ApplyThenGetReturnsTheFoldedIncident(t *testing.T) {
 
 func TestProjection_GetReturnsFalseForAnUnseenFingerprint(t *testing.T) {
 	t.Parallel()
-	p := trim.NewProjection()
+	p := calipers.NewProjection()
 
 	_, ok := p.Get("never-applied")
 	if ok {
@@ -49,7 +49,7 @@ func TestProjection_ApplyFoldsOntoTheExistingIncidentForThatFingerprint(t *testi
 	t0 := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 	t1 := t0.Add(2 * time.Minute)
 
-	p := trim.NewProjection()
+	p := calipers.NewProjection()
 	if err := p.Apply(signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: t0}); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestProjection_ApplyFoldsOntoTheExistingIncidentForThatFingerprint(t *testi
 	// Service survives from the first Apply even though the second object
 	// (proposal.Set) never carries it — proof Apply looks up the existing
 	// incident and folds onto it, rather than overwriting with a fresh one.
-	want := trim.Incident{Fingerprint: "fp-1", Stage: trim.StageProposed, Service: "checkout-api", UpdatedAt: t1}
+	want := calipers.Incident{Fingerprint: "fp-1", Stage: calipers.StageProposed, Service: "checkout-api", UpdatedAt: t1}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("wrong incident after a second Apply", diff)
 	}
@@ -72,23 +72,23 @@ func TestProjection_ApplyFoldsOntoTheExistingIncidentForThatFingerprint(t *testi
 
 func TestProjection_ApplyReturnsAnErrorWhenTheObjectCarriesNoFingerprint(t *testing.T) {
 	t.Parallel()
-	p := trim.NewProjection()
+	p := calipers.NewProjection()
 
 	// A signal.Detection is a type Apply recognizes — but this one's
 	// Fingerprint is left as the zero value, so there's no key to store it
 	// under.
 	err := p.Apply(signal.Detection{OriginService: "checkout-api", DetectedAt: time.Now()})
-	if !errors.Is(err, trim.ErrNoFingerprint) {
+	if !errors.Is(err, calipers.ErrNoFingerprint) {
 		t.Errorf("want ErrNoFingerprint for a Detection with no Fingerprint, got %v", err)
 	}
 }
 
 func TestProjection_ApplyReturnsAnErrorForAnObjectTypeItDoesNotRecognize(t *testing.T) {
 	t.Parallel()
-	p := trim.NewProjection()
+	p := calipers.NewProjection()
 
 	err := p.Apply("not a boundary object")
-	if !errors.Is(err, trim.ErrNoFingerprint) {
+	if !errors.Is(err, calipers.ErrNoFingerprint) {
 		t.Errorf("want ErrNoFingerprint for an unrecognized type, got %v", err)
 	}
 }
@@ -97,7 +97,7 @@ func TestProjection_SnapshotReturnsOneIncidentPerFingerprint(t *testing.T) {
 	t.Parallel()
 	t0 := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 
-	p := trim.NewProjection()
+	p := calipers.NewProjection()
 	if err := p.Apply(signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: t0}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,14 +105,14 @@ func TestProjection_SnapshotReturnsOneIncidentPerFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []trim.Incident{
-		{Fingerprint: "fp-1", Stage: trim.StageDetected, Service: "checkout-api", UpdatedAt: t0},
-		{Fingerprint: "fp-2", Stage: trim.StageDetected, Service: "billing-api", UpdatedAt: t0},
+	want := []calipers.Incident{
+		{Fingerprint: "fp-1", Stage: calipers.StageDetected, Service: "checkout-api", UpdatedAt: t0},
+		{Fingerprint: "fp-2", Stage: calipers.StageDetected, Service: "billing-api", UpdatedAt: t0},
 	}
 	got := p.Snapshot()
 	// Snapshot's order isn't part of the contract — it's reading a map — so
 	// sort both sides by Fingerprint before comparing.
-	sortByFingerprint := cmpopts.SortSlices(func(a, b trim.Incident) bool { return a.Fingerprint < b.Fingerprint })
+	sortByFingerprint := cmpopts.SortSlices(func(a, b calipers.Incident) bool { return a.Fingerprint < b.Fingerprint })
 	if diff := cmp.Diff(want, got, sortByFingerprint); diff != "" {
 		t.Error("wrong snapshot contents", diff)
 	}
@@ -120,7 +120,7 @@ func TestProjection_SnapshotReturnsOneIncidentPerFingerprint(t *testing.T) {
 
 func TestProjection_ConcurrentApplyIsRaceClean(t *testing.T) {
 	t.Parallel()
-	p := trim.NewProjection()
+	p := calipers.NewProjection()
 
 	const n = 50
 	var wg sync.WaitGroup

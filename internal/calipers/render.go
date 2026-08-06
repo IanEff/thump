@@ -1,4 +1,4 @@
-package trim
+package calipers
 
 import (
 	"fmt"
