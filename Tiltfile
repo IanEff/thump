@@ -316,7 +316,7 @@ COMMIT = str(local("git rev-parse --verify HEAD || echo none")).strip()
 
 # Fast host-native compilation for local dev loop (Option 2).
 # `go tool otelc setup` instruments the source tree on load (idempotent, ~1s).
-local("go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim", quiet=True, echo_off=True)
+local("go tool otelc setup ./cmd/bootstrap ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump", quiet=True, echo_off=True)
 
 if cluster["platform"] == "linux/amd64":
     target_arch = "amd64"
