@@ -37,6 +37,7 @@ func (CommandRunner) Run(ctx context.Context, name string, args ...string) error
 type Harvest struct {
 	watcher Watcher
 	runner  Runner
+	sets    SetWatcher
 }
 
 func NewHarvest(w Watcher, r Runner) *Harvest {
@@ -89,6 +90,13 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) 
 		return res, res.Err
 	}
 
+	if s, ok := firstSetFor(ctx, h.sets, sc.SignalRef); ok && len(s.Proposals) > 0 {
+		top := s.Proposals[0]
+		res.EmittedConfidence = top.Confidence
+		res.ComputedConfidence = top.ComputedConfidence
+		res.CeilingBound = top.ConfidenceCeilingBound
+	}
+
 	res.ActualResult = o.Result
 	if o.ObservedSeverity != nil {
 		res.EmittedConfidence = *o.ObservedSeverity
@@ -139,12 +147,13 @@ func (h *Harvest) runAction(ctx context.Context, command string) error {
 }
 
 type Result struct {
-	ScenarioName      string                `json:"scenarioName" yaml:"scenarioName"`
-	ExpectedClass     proposal.FailureClass `json:"expectedClass" yaml:"expectedClass"`
-	ExpectedContract  string                `json:"expectedContract" yaml:"expectedContract"`
-	ExpectedVerdict   string                `json:"expectedVerdict" yaml:"expectedVerdict"` // approved, held, or declined
-	ActualResult      outcome.Result        `json:"actualResult" yaml:"actualResult"`
-	EmittedConfidence float64               `json:"emittedConfidence" yaml:"emittedConfidence"`
-	CeilingBound      bool                  `json:"ceilingBound" yaml:"ceilingBound"`
-	Err               error                 `json:"err" yaml:"err"`
+	ScenarioName       string                `json:"scenarioName" yaml:"scenarioName"`
+	ExpectedClass      proposal.FailureClass `json:"expectedClass" yaml:"expectedClass"`
+	ExpectedContract   string                `json:"expectedContract" yaml:"expectedContract"`
+	ExpectedVerdict    string                `json:"expectedVerdict" yaml:"expectedVerdict"` // approved, held, or declined
+	ActualResult       outcome.Result        `json:"actualResult" yaml:"actualResult"`
+	EmittedConfidence  float64               `json:"emittedConfidence" yaml:"emittedConfidence"`
+	ComputedConfidence float64               `json:"computedConfidence"`
+	CeilingBound       bool                  `json:"ceilingBound" yaml:"ceilingBound"`
+	Err                error                 `json:"err" yaml:"err"`
 }

@@ -30,6 +30,13 @@ scenarios:
         # The balancer competes with the action under test for the same PGs.
         set: ceph balancer off
         restore: ceph balancer on
+      - name: argocd-selfheal-off
+        # ArgoCD reverts a scaled-to-0 operator in about a second, so any action
+        # that pauses a reconciler needs self-heal off first or the pause does
+        # not hold. preflight.sh already does this; the harvest has to own the
+        # undo, or a cancelled run leaves six Applications un-self-healing.
+        set: kubectl -n argocd patch application rook-ceph-operator --type merge -p {"spec":{"syncPolicy":{"automated":{"selfHeal":false}}}}
+        restore: kubectl -n argocd patch application rook-ceph-operator --type merge -p {"spec":{"syncPolicy":{"automated":{"selfHeal":true}}}}
     expects:
       failureClass: redundancy_degraded
       contractRef: accelerate-recovery
