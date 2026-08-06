@@ -55,10 +55,10 @@ func Main(args []string, stdout, stderr io.Writer) int {
 }
 
 // findTranscripts pairs every foo.jsonl in dir with a foo.set.json beside
-// it. A .jsonl with no matching .set.json is skipped rather than erroring —
-// truncated.jsonl in the replay fixtures is deliberately partial, and a
-// sweep should not refuse to run because one fixture is testing something
-// else.
+// it. A .jsonl with no matching .set.json is skipped rather than erroring.
+// A paired transcript that fails to replay (truncated.jsonl in the replay
+// fixtures is deliberately partial) is not filtered here — Run drops it
+// after a failed probe, so one broken fixture doesn't abort the whole sweep.
 func findTranscripts(dir string) ([]TranscriptPaths, error) {
 	entries, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 	if err != nil {

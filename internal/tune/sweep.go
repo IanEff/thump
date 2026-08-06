@@ -3,6 +3,7 @@ package tune
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/replay"
@@ -33,7 +34,9 @@ type Point struct {
 
 // Run sweeps GroundingNone and GroundingOne over cfg.Transcripts and returns
 // every grid point. It spends no tokens: every model answer comes from the
-// recording. GroundingMany and Causal are deliberately not swept — no
+// recording. A transcript that fails to replay under the default weights is
+// dropped before the sweep starts, so one broken fixture doesn't abort every
+// grid point. GroundingMany and Causal are deliberately not swept — no
 // recorded row corroborates on two backends in this harness, so both
 // surfaces are flat and a recommendation over them would be meaningless.
 func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
@@ -55,6 +58,19 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 	}
 
 	base := clank.DefaultScoringWeights()
+
+	usable := loaded[:0]
+	for _, tr := range loaded {
+		if _, err := replay.Propose(ctx, tr, base); err != nil {
+			slog.Warn("tune: dropping transcript that failed to replay", "fingerprint", tr.Set.SignalRef, "err", err)
+			continue
+		}
+		usable = append(usable, tr)
+	}
+	if len(usable) == 0 {
+		return nil, fmt.Errorf("tune: every transcript failed to replay under default weights")
+	}
+
 	var points []Point
 	for i := range steps {
 		for j := range steps {
@@ -64,7 +80,7 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 
 			var sum float64
 			var n, moved int
-			for _, tr := range loaded {
+			for _, tr := range usable {
 				set, err := replay.Propose(ctx, tr, w)
 				if err != nil {
 					return nil, err
