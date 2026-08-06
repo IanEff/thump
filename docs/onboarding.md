@@ -32,8 +32,9 @@ you're doing wrong.
 ## 1 · Get the binaries
 
 Tagged releases ship prebuilt archives for linux and darwin, amd64 and arm64,
-bundling six binaries — `rattle`, `clank`, `hiss`, `thump`, `bootstrap`,
-and `calipers`:
+bundling five binaries — `rattle`, `clank`, `hiss`, `thump`, and `calipers`.
+`bootstrap` isn't in the archive — it's a one-shot Kubernetes Job, not
+something you run from a shell:
 
 ```sh
 gh release download v0.1.0 --repo IanEff/thump --pattern '*_linux_x86_64.tar.gz'
@@ -45,12 +46,13 @@ need Go and [go-task](https://taskfile.dev):
 
 ```sh
 git clone https://github.com/IanEff/thump && cd thump
-task build          # all six binaries into bin/
+task build          # the five archived binaries plus bootstrap, six total, into bin/
 ```
 
-The four long-running beats also publish multi-arch container images with SBOM
-and provenance attestation, signed keylessly via Sigstore/cosign. `calipers` doesn't
-— it's an operator-run CLI, not a cluster service.
+The four long-running beats plus `bootstrap` also publish multi-arch container
+images with SBOM and provenance attestation, signed keylessly via
+Sigstore/cosign. `calipers` doesn't — it's an operator-run CLI, not a cluster
+service.
 
 Nothing in the rest of this document needs a cluster until §7.
 
@@ -434,15 +436,15 @@ pipeline is exercised end to end with no infrastructure at all.
 |---|---|
 | `NATS_URL` | set → broker mode; unset → offline directory mode |
 | `PROM_URL` | Prometheus. Required by rattle; optional elsewhere, where empty disables the tool that needs it |
-| `WAL_DIR`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | required in broker mode only |
+| `WAL_DIR`, `WAL_CONFIG`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_CA_FILE`, `THUMP_SEAL_KEY` | required in broker mode only |
 
 **Per beat:**
 
 | Beat | Required | Notable optional |
 |---|---|---|
-| `rattle` | `PROM_URL`, `RATTLE_WATCH` | `WHIR_CATALOG` + `WHIR_STATE_QUERIES`, `RATTLE_TRAFFIC`, `RATTLE_OUTBOX` |
-| `clank` | `ANTHROPIC_API_KEY`, `ACTION_CATALOG`, `FAILURE_CLASSES` | `EVIDENCE_QUERIES`, `LOKI_URL`, `WHIR_*`, `DEDUPE_WINDOW` (default `1h`), `CLANK_TRANSCRIPTS` |
-| `hiss` | `HISS_POLICY` | — |
+| `rattle` | `PROM_URL`, `RATTLE_WATCH`, `RATTLE_QUERY_CONFIG` | `WHIR_CATALOG` + `WHIR_STATE_QUERIES`, `RATTLE_TRAFFIC`, `RATTLE_OUTBOX` |
+| `clank` | `ANTHROPIC_API_KEY`, `ACTION_CATALOG`, `FAILURE_CLASSES`, `CLANK_WEIGHTS`, `CLANK_LIMITS` | `EVIDENCE_QUERIES`, `LOKI_URL`, `WHIR_*`, `DEDUPE_WINDOW` (default `1h`), `CLANK_TRANSCRIPTS` |
+| `hiss` | `HISS_POLICY` | `APPROVALREQUESTS_ENABLED`, `APPROVALREQUEST_RETENTION` (default `24h`) |
 | `thump` | `ACTION_CATALOG` | `THUMP_EXECUTOR` (default `dry`), `THUMP_KILLSWITCH`, `EVIDENCE_QUERIES`, `SLACK_WEBHOOK_URL` |
 
 In offline mode each beat additionally requires its own inbox/outbox pair

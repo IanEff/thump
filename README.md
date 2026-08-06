@@ -361,18 +361,22 @@ catch an authoring mistake: [`docs/onboarding.md`](docs/onboarding.md).
 ## Install
 
 Tagged releases ship prebuilt archives for linux and darwin, amd64 and arm64,
-bundling six binaries — the four long-running beats (`rattle`, `clank`, `hiss`,
-`thump`) plus `bootstrap` and `calipers`, the operator CLI:
+bundling five binaries — the four long-running beats (`rattle`, `clank`, `hiss`,
+`thump`) plus `calipers`, the operator CLI. `bootstrap` isn't in the archive: it's
+a one-shot Kubernetes Job, not something you run from a shell, so it ships only
+as a container image:
 
 ```sh
 gh release download v0.1.0 --repo IanEff/thump --pattern '*_linux_x86_64.tar.gz'
 tar xzf thump_0.1.0_linux_x86_64.tar.gz
 ```
 
-Checksums are published alongside. The four long-running beats also publish
-multi-arch container images with SBOM and provenance attestation, signed
-keylessly via Sigstore/cosign. Building from source needs Go and
-[go-task](https://taskfile.dev): `task build` puts all six binaries in `bin/`.
+Checksums are published alongside. The four long-running beats plus `bootstrap`
+also publish multi-arch container images with SBOM and provenance attestation,
+signed keylessly via Sigstore/cosign; `calipers` never gets a container image,
+built only as the binary above (Taskfile.yaml's `IMAGE_BEATS`/`CALIPERS` split).
+Building from source needs Go and [go-task](https://taskfile.dev): `task build`
+puts all six — the five archived binaries plus `bootstrap` — in `bin/`.
 
 ---
 
@@ -495,6 +499,19 @@ sourcing, and the test that would go red for each:
     one declared exception is a break-glass `calipers force`: a human, never the
     automated surface, disposing in Governance's place — attributed, audited,
     rendered visibly `forced`, and still kill-switch-gated.
+16. **Every leg is TLS-negotiated by this process, or declared plaintext.**
+    `internal/tlsx` is the only place a `*tls.Config` gets built, and
+    `InsecureSkipVerify` is never a declared exception — it's an
+    unauthenticated session wearing TLS's shape. Two gaps are named rather
+    than silent: the Prometheus/Loki query legs ride node-to-node WireGuard
+    instead of TLS, and the OTLP exporter's `http://` branch is a single
+    declared row.
+17. **Every client this engine dials has an authored retry policy, timeout,
+    and a failure that surfaces.** A silent client is a violation. The one row
+    that turned out to be silently wrong rather than merely unaudited was
+    `client-go`'s actuate timeout, unbounded before the fix. One declared
+    exception stands: the OTLP exporter retries a stale CA silently, forever,
+    per batch, with no log line at the failure point.
 
 ---
 
@@ -586,7 +603,7 @@ PR.
 | Doc | What's in it |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | The five beats and four planes, the boundary objects, and a mechanism-level walk of one signal end to end |
-| [`docs/invariants.md`](docs/invariants.md) | All fifteen invariants with their sourcing, the violation smell for each, the test that would go red, and the four-question smell test |
+| [`docs/invariants.md`](docs/invariants.md) | All seventeen invariants with their sourcing, the violation smell for each, the test that would go red, and the four-question smell test |
 | [`docs/onboarding.md`](docs/onboarding.md) | Authoring a domain in config: the seven files, the verbs, the environment, and the guards that catch a mistake |
 | [`docs/design-decisions.md`](docs/design-decisions.md) | Where this project knowingly departs from Jambor, and why — including what was declined and what's parked |
 | [`docs/c4-architecture.md`](docs/c4-architecture.md) | C4 context/container/component diagrams and a golden-path sequence |
