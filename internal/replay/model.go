@@ -20,7 +20,7 @@ var ErrTranscriptExhausted = errors.New("replay: the loop asked for a turn this 
 // Model replays a recorded run's assistant completions in order.
 type Model struct {
 	completions []reason.Completion
-	pos int
+	pos         int
 }
 
 func NewModel(completions []reason.Completion) *Model {
@@ -29,7 +29,7 @@ func NewModel(completions []reason.Completion) *Model {
 
 // Complete returns the next recorded completion, ignoring msgs and
 // tools entirely.
-func (m *Model) Complete(_ context.Context, _ []reason.Message, _ reason.ToolSpec) (reason.Completion, error) {
+func (m *Model) Complete(_ context.Context, _ []reason.Message, _ []reason.ToolSpec) (reason.Completion, error) {
 	if m.pos >= len(m.completions) {
 		return reason.Completion{}, ErrTranscriptExhausted
 	}
@@ -37,4 +37,3 @@ func (m *Model) Complete(_ context.Context, _ []reason.Message, _ reason.ToolSpe
 	m.pos++
 	return c, nil
 }
-
