@@ -1,11 +1,14 @@
 package broker_test
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -13,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"gopkg.in/yaml.v3"
 
 	"github.com/ianeff/thump/internal/broker"
 )
@@ -150,7 +154,7 @@ func TestNATSConfig_GrantsTheDeadLetterSubjectToWhicheverBeatConsumesTheOriginal
 // that is not a beat, each with the row that authorises it. Everything else
 // in a user's allow list must be a subject that user's own package publishes.
 var grantExceptions = map[string][]string{
-	"trim@thump.svc": {"thump.approvals", "thump.decisions"}, // D-9: the break-glass human path, attributed and audited
+	"calipers@thump.svc": {"thump.approvals", "thump.decisions"}, // D-9: the break-glass human path, attributed and audited
 }
 
 func TestNATSConfig_GrantsNoBeatASubjectItsOwnCodeNeverPublishes(t *testing.T) {
@@ -217,6 +221,89 @@ func TestNATSConfig_GrantsTheJetStreamAPIsAndAckToEachDurablesOwner(t *testing.T
 			if !slices.Contains(users[owner].Publish, want) {
 				t.Errorf("%s owns durable %q (reading %s) but nats.conf does not grant it %q", owner, durable, subj, want)
 			}
+		}
+	}
+}
+
+func TestNATSConfig_GrantsCalipersTheHarvestEphemeralConsumers(t *testing.T) {
+	t.Parallel()
+	// internal/harvest/nats.go's watchSubject opens a jetstream.OrderedConsumer
+	// per watcher, on thump.outcomes and thump.proposals — same
+	// randomly-named-ephemeral shape as hiss's rebuildHolds below, so the same
+	// wildcard grants apply. Unlike rebuildHolds, an ordered consumer's
+	// AckPolicy is AckNone (nats.go@v1.52.0 jetstream/ordered.go), so there is
+	// no matching $JS.ACK grant to check here.
+	users := parseNATSUsers(t, renderNATSConf(t))
+	for _, want := range []string{
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
+		"$JS.API.CONSUMER.MSG.NEXT.THUMP.*",
+	} {
+		if !slices.Contains(users["calipers@thump.svc"].Publish, want) {
+			t.Errorf("calipers@thump.svc does not hold %q — harvest's ephemeral consumers on thump.outcomes/thump.proposals cannot create/fetch without it", want)
+		}
+	}
+}
+
+// renderCertificates runs the real chart through `helm template --show-only`
+// and returns every rendered Certificate's emailAddresses — the SAN
+// verify_and_map resolves to a nats.conf user. A user with no matching
+// Certificate has a permissions grant nobody can ever present a cert for.
+func renderCertificates(t *testing.T) [][]string {
+	t.Helper()
+
+	out, err := exec.Command("helm", "template", "../../deploy/chart/thump", "--show-only", "templates/certificates.yaml").Output()
+	if err != nil {
+		t.Fatalf("helm template: %v", err)
+	}
+
+	var all [][]string
+	dec := yaml.NewDecoder(strings.NewReader(string(out)))
+	for {
+		var doc struct {
+			Kind string `yaml:"kind"`
+			Spec struct {
+				EmailAddresses []string `yaml:"emailAddresses"`
+			} `yaml:"spec"`
+		}
+		if err := dec.Decode(&doc); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			t.Fatalf("decode rendered certificates.yaml: %v", err)
+		}
+		if doc.Kind == "Certificate" {
+			all = append(all, doc.Spec.EmailAddresses)
+		}
+	}
+	return all
+}
+
+func TestCertificates_IssuesALeafForEveryNATSIdentity(t *testing.T) {
+	t.Parallel()
+	// nats.conf's verify_and_map maps a connecting client's cert by SAN
+	// email to a user in authorization.users — a user with a real
+	// permissions grant but no matching Certificate can never actually
+	// connect as itself. This is exactly the calipers gap found live
+	// 2026-08-06: the NATS grant landed in nats.yaml, but
+	// certificates.yaml's identity loop was never extended to mint the
+	// leaf, so nothing on disk could present that cert. Derived off
+	// nats.conf's own user list rather than a fixed set, so the next
+	// identity added to one file and forgotten in the other fails here
+	// instead of live.
+	certs := renderCertificates(t)
+	users := parseNATSUsers(t, renderNATSConf(t))
+
+	for user := range users {
+		found := false
+		for _, emails := range certs {
+			if slices.Contains(emails, user) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("nats.conf grants %s permissions, but no rendered Certificate carries it as an emailAddress — nothing can connect as this identity", user)
 		}
 	}
 }

@@ -7,7 +7,7 @@ import (
 )
 
 // TestApprovalIsALeafPackage pins that api/v1/approval stays a leaf: errors and
-// time only. A hiss or trim import here is an architecture regression — approval
+// time only. A hiss or calipers import here is an architecture regression — approval
 // is meant to be importable by both without either importing the other.
 func TestApprovalIsALeafPackage(t *testing.T) {
 	t.Parallel()

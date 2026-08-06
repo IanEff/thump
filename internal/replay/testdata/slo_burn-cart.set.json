@@ -1,0 +1,126 @@
+{
+  "name": "cart-burn-accel",
+  "signalRef": "slo_burn:cart",
+  "saoSnapshot": {
+    "version": 1,
+    "assembledAt": "2026-08-06T09:50:43.345586-04:00",
+    "signal": {
+      "confidence": 1,
+      "severity": {
+        "DegradationPct": 0.5,
+        "Trajectory": "accelerating"
+      },
+      "blastRadius": {
+        "AffectedPct": 0,
+        "Velocity": "",
+        "DownstreamConsumers": 0
+      },
+      "originService": "cart"
+    },
+    "topology": {
+      "upstream": [
+        {
+          "name": "checkout",
+          "state": "degraded"
+        },
+        {
+          "name": "flagd",
+          "state": "healthy"
+        }
+      ]
+    },
+    "change": {}
+  },
+  "failureClass": "service_failure",
+  "hypotheses": [
+    {
+      "name": "Injected cartFailure fault is active, causing 47% error rate on cart RPC path",
+      "weight": 0.85
+    },
+    {
+      "name": "Cart service degradation cascading from degraded upstream checkout dependency",
+      "weight": 0.15
+    }
+  ],
+  "evidence": [
+    {
+      "tool": "metrics",
+      "query": "cart_error_ratio",
+      "summary": "cart_error_ratio = 0.4737",
+      "ref": "metrics://cart_error_ratio",
+      "live": true,
+      "subject": "cart"
+    },
+    {
+      "tool": "metrics",
+      "query": "severity_cart_availability",
+      "summary": "severity_cart_availability = 0.5",
+      "ref": "metrics://severity_cart_availability",
+      "live": true,
+      "subject": "cart"
+    },
+    {
+      "tool": "metrics",
+      "query": "product_catalog_error_ratio",
+      "summary": "query returned no data",
+      "subject": "product-catalog"
+    },
+    {
+      "tool": "metrics",
+      "query": "severity_product_catalog_availability",
+      "summary": "query returned no data",
+      "subject": "product-catalog"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\",\"selector\":{\"app\":\"cart\"}}",
+      "summary": "no pods found"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\",\"selector\":{\"app\":\"productcatalog\"}}",
+      "summary": "no pods found"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"namespace\":\"otel-demo\",\"resource\":\"pods\"}",
+      "summary": "no pods found"
+    }
+  ],
+  "serviceTier": "tier-1",
+  "gate": {
+    "budgetOK": true,
+    "dedupeOK": true,
+    "evidenceOK": true,
+    "passed": true
+  },
+  "proposals": [
+    {
+      "contractRef": "disable-cart-failure",
+      "confidence": 0.7,
+      "computedConfidence": 0.7,
+      "predictedImpact": {
+        "severityReductionPct": 0.9
+      },
+      "blastTier": "low",
+      "reversalPath": {
+        "method": "enable-cart-failure",
+        "watching": "cart_error_ratio",
+        "trigger": "cart_error_ratio == 0"
+      },
+      "governanceLevel": {
+        "band": "act_reversible"
+      },
+      "rank": 1,
+      "citations": [
+        "cart_error_ratio",
+        "severity_cart_availability"
+      ]
+    }
+  ],
+  "rankingRationale": {},
+  "status": {
+    "phase": "proposed",
+    "observedAt": "0001-01-01T00:00:00Z"
+  }
+}

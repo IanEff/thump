@@ -1,9 +1,9 @@
-// Package trim is the operator's read-model of the THUMP stream: it folds
-// the boundary objects rattle, clank, hiss, and thump emit into one
+// Package calipers is the operator's read-model of the THUMP stream: it
+// folds the boundary objects rattle, clank, hiss, and thump emit into one
 // Incident per fingerprint. It carries no model and no tools, so it can
 // only replay what the beats already emitted — that incapacity is what
 // keeps it from becoming a second inference engine.
-package trim
+package calipers
 
 import (
 	"time"
@@ -44,12 +44,12 @@ type Incident struct {
 	// means unmeasured, never a fabricated 0 sitting next to a real 0.60.
 	Severity *float64 `json:"severity,omitempty"`
 	// Forced is true when the latest Governed's Decision was pushed through
-	// trim's break-glass path rather than granted by hiss — rendered loud,
+	// calipers's break-glass path rather than granted by hiss — rendered loud,
 	// never as an earned approval.
 	Forced bool `json:"forced,omitempty"`
 	// Operator names who forced it. Only meaningful when Forced is true.
 	Operator string `json:"operator,omitempty"`
-	// Approver names who acked a held fingerprint through trim approve —
+	// Approver names who acked a held fingerprint through calipers approve —
 	// meaningful only when the Decision came from hiss's re-issue handler,
 	// never from Evaluate itself, and never alongside Forced: an approval
 	// is either earned via an ack or pushed through the break-glass, never

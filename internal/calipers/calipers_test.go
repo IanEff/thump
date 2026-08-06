@@ -1,10 +1,11 @@
-package trim_test
+package calipers_test
 
 import (
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,17 +18,18 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/calipers"
 	"github.com/ianeff/thump/internal/natstest"
+	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
-	"github.com/ianeff/thump/internal/trim"
 	"github.com/ianeff/thump/internal/wire"
 	"sigs.k8s.io/yaml"
 )
 
 // TestMain_IncidentsJSONPrintsCleanParseableJSON pins the W-R4 claim: piping
-// `trim incidents --json` into a JSON decoder must work, with nothing else
-// — no log lines, no styled text — sharing stdout with the payload.
+// `calipers incidents --json` into a JSON decoder must work, with nothing
+// else — no log lines, no styled text — sharing stdout with the payload.
 func TestMain_IncidentsJSONPrintsCleanParseableJSON(t *testing.T) {
 	t.Parallel()
 	inbox := t.TempDir()
@@ -35,13 +37,13 @@ func TestMain_IncidentsJSONPrintsCleanParseableJSON(t *testing.T) {
 		signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: time.Now()})
 
 	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"incidents", "--json", "--inbox", inbox}, &stdout, &stderr)
+	code := calipers.Main([]string{"incidents", "--json", "--inbox", inbox}, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
 
-	var got []trim.Incident
+	var got []calipers.Incident
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("stdout was not valid JSON: %v\noutput: %s", err, stdout.String())
 	}
@@ -60,7 +62,7 @@ func TestMain_IncidentsPrintsHumanReadableTextByDefault(t *testing.T) {
 		signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: time.Now()})
 
 	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"incidents", "--inbox", inbox}, &stdout, &stderr)
+	code := calipers.Main([]string{"incidents", "--inbox", inbox}, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
@@ -73,44 +75,12 @@ func TestMain_IncidentsPrintsHumanReadableTextByDefault(t *testing.T) {
 	}
 }
 
-// TestMain_ReturnsUsageErrorWithNoArgs pins that an empty invocation fails
-// loud rather than silently doing nothing.
-func TestMain_ReturnsUsageErrorWithNoArgs(t *testing.T) {
-	t.Parallel()
-	var stdout, stderr bytes.Buffer
-
-	code := trim.Main(nil, &stdout, &stderr)
-
-	if code == 0 {
-		t.Error("want a nonzero exit code for no arguments, got 0")
-	}
-	if stderr.String() == "" {
-		t.Error("want a usage message on stderr, got none")
-	}
-}
-
-// TestMain_ReturnsUsageErrorForAnUnknownCommand pins the same failure shape
-// for a typo'd subcommand — never routed silently to a no-op.
-func TestMain_ReturnsUsageErrorForAnUnknownCommand(t *testing.T) {
-	t.Parallel()
-	var stdout, stderr bytes.Buffer
-
-	code := trim.Main([]string{"bogus"}, &stdout, &stderr)
-
-	if code == 0 {
-		t.Error("want a nonzero exit code for an unknown command, got 0")
-	}
-	if stderr.String() == "" {
-		t.Error("want an error message on stderr, got none")
-	}
-}
-
 func TestMain_ApprovePublishesAnAuditableApproval(t *testing.T) {
 	t.Parallel()
 	outbox := t.TempDir()
 	var stdout, stderr bytes.Buffer
 
-	code := trim.Main([]string{"approve", "fp-1", "--approver", "alice", "--outbox", outbox}, &stdout, &stderr)
+	code := calipers.Main([]string{"approve", "fp-1", "--approver", "alice", "--outbox", outbox}, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
@@ -145,7 +115,7 @@ func TestMain_ApproveRequiresExactlyOneFingerprintArgument(t *testing.T) {
 	t.Parallel()
 	var stdout, stderr bytes.Buffer
 
-	code := trim.Main([]string{"approve", "--outbox", t.TempDir()}, &stdout, &stderr)
+	code := calipers.Main([]string{"approve", "--outbox", t.TempDir()}, &stdout, &stderr)
 
 	if code == 0 {
 		t.Error("want a nonzero exit code with no fingerprint argument, got 0")
@@ -167,7 +137,7 @@ func TestMain_ForcePublishesAForcedGovernedStraightToDecisions(t *testing.T) {
 	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", held)
 
 	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"force", "fp-1", "--operator", "alice", "--inbox", inbox, "--outbox", outbox}, &stdout, &stderr)
+	code := calipers.Main([]string{"force", "fp-1", "--operator", "alice", "--inbox", inbox, "--outbox", outbox}, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
@@ -207,7 +177,7 @@ func TestMain_ForceFailsWhenTheFingerprintIsNotCurrentlyHeld(t *testing.T) {
 	inbox, outbox := t.TempDir(), t.TempDir()
 	var stdout, stderr bytes.Buffer
 
-	code := trim.Main([]string{"force", "no-such-fp", "--inbox", inbox, "--outbox", outbox}, &stdout, &stderr)
+	code := calipers.Main([]string{"force", "no-such-fp", "--inbox", inbox, "--outbox", outbox}, &stdout, &stderr)
 
 	if code == 0 {
 		t.Error("want a nonzero exit code for a fingerprint with nothing held, got 0")
@@ -221,48 +191,73 @@ func TestMain_ForceFailsWhenTheFingerprintIsNotCurrentlyHeld(t *testing.T) {
 // internal/config's own tests use, standing in for THUMP_SEAL_KEY.
 const testSealKeyB64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 
-func sealFile(t *testing.T, plaintext []byte) string {
+// sealSegment writes plaintext through the same objectstore.EncryptingSink
+// the shipping side seals with — internal/unseal.Main reads the WAL segment
+// envelope, not a bare sealbox.Key.Seal blob, so a routing test has to feed
+// it the real shape or it proves nothing about the wiring.
+func sealSegment(t *testing.T, key sealbox.Key, plaintext []byte) string {
 	t.Helper()
+	inner := &captureSink{}
+	sink := &objectstore.EncryptingSink{Inner: inner, Key: key}
+	if err := sink.Put(context.Background(), "seg-1", bytes.NewReader(plaintext)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "segment.sealed")
+	if err := os.WriteFile(path, inner.body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+type captureSink struct{ body []byte }
+
+func (c *captureSink) Put(_ context.Context, _ string, r io.Reader) error {
+	b, err := io.ReadAll(r)
+	c.body = b
+	return err
+}
+
+// TestMain_UnsealRoutesToInternalUnsealAndPrintsTheSegmentSummary pins that
+// "calipers unseal" reaches internal/unseal.Main rather than a second,
+// divergent implementation — the full behavior (key validation, tamper
+// detection, per-object summaries) is internal/unseal's own test coverage;
+// this only has to prove the wiring.
+func TestMain_UnsealRoutesToInternalUnsealAndPrintsTheSegmentSummary(t *testing.T) {
+	// Not t.Parallel(): t.Setenv panics alongside t.Parallel.
 	raw, err := base64.StdEncoding.DecodeString(testSealKeyB64)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var key sealbox.Key
 	copy(key[:], raw)
-	sealed, err := key.Seal(plaintext)
+
+	set := proposal.Set{SignalRef: "fp-1", Recommended: "p1",
+		Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "restart-pod", Confidence: 0.5}}}
+	line, err := json.Marshal(set)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "segment.sealed")
-	if err := os.WriteFile(path, sealed, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestMain_UnsealDecryptsAFileSealedWithTheConfiguredKey(t *testing.T) {
-	// Not t.Parallel(): t.Setenv panics alongside t.Parallel.
-	plaintext := []byte(`{"fingerprint":"fp-1"}`)
-	path := sealFile(t, plaintext)
+	path := sealSegment(t, key, append(line, '\n'))
 	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
 
 	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"unseal", path}, &stdout, &stderr)
+	code := calipers.Main([]string{"unseal", path}, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
-	if diff := cmp.Diff(string(plaintext), stdout.String()); diff != "" {
-		t.Error("unsealed stdout didn't match the original plaintext", diff)
+	if !strings.Contains(stdout.String(), "fp-1") {
+		t.Errorf("want the unsealed ProposalSet's fingerprint in stdout, got %q", stdout.String())
 	}
 }
 
 func TestMain_UnsealFailsWithoutTHUMPSealKeySet(t *testing.T) {
-	path := sealFile(t, []byte("payload"))
+	// Not t.Parallel(): t.Setenv panics alongside t.Parallel.
+	path := sealSegment(t, sealbox.Key{}, []byte("payload\n"))
 	t.Setenv("THUMP_SEAL_KEY", "")
 
 	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"unseal", path}, &stdout, &stderr)
+	code := calipers.Main([]string{"unseal", path}, &stdout, &stderr)
 
 	if code == 0 {
 		t.Error("want a nonzero exit code with THUMP_SEAL_KEY unset, got 0")
@@ -272,41 +267,20 @@ func TestMain_UnsealFailsWithoutTHUMPSealKeySet(t *testing.T) {
 	}
 }
 
-func TestMain_UnsealFailsOnATamperedFile(t *testing.T) {
-	path := sealFile(t, []byte("payload"))
-	t.Setenv("THUMP_SEAL_KEY", testSealKeyB64)
-
-	sealed, err := os.ReadFile(path) //nolint:gosec // G304: path came from sealFile, under t.TempDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sealed[len(sealed)-1] ^= 0xFF
-	if err := os.WriteFile(path, sealed, 0o600); err != nil { //nolint:gosec // G703: path came from sealFile, under t.TempDir()
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"unseal", path}, &stdout, &stderr)
-
-	if code == 0 {
-		t.Error("want a nonzero exit code for a tampered file, got 0")
-	}
-}
-
-func TestMain_UnsealRequiresExactlyOneFileArgument(t *testing.T) {
+func TestMain_UnsealRequiresAtLeastOneFileArgument(t *testing.T) {
 	t.Parallel()
 	var stdout, stderr bytes.Buffer
 
-	code := trim.Main([]string{"unseal"}, &stdout, &stderr)
+	code := calipers.Main([]string{"unseal"}, &stdout, &stderr)
 
-	if code != 2 {
-		t.Errorf("want exit code 2 for a missing file argument, got %d", code)
+	if code == 0 {
+		t.Error("want a nonzero exit code for a missing file argument, got 0")
 	}
 }
 
 // TestMain_ApprovePublishesToThumpApprovalsOverNATSWhenNATSURLIsSet pins the
-// V2 gap: without this leg, `trim approve` wrote a file a broker-mode hiss
-// never reads, and the operator surface was unreachable in the cluster.
+// V2 gap: without this leg, `calipers approve` wrote a file a broker-mode
+// hiss never reads, and the operator surface was unreachable in the cluster.
 func TestMain_ApprovePublishesToThumpApprovalsOverNATSWhenNATSURLIsSet(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -318,7 +292,7 @@ func TestMain_ApprovePublishesToThumpApprovalsOverNATSWhenNATSURLIsSet(t *testin
 	defer closeNC()
 
 	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"approve", "fp-1", "--approver", "alice", "--nats-url", url}, &stdout, &stderr)
+	code := calipers.Main([]string{"approve", "fp-1", "--approver", "alice", "--nats-url", url}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
@@ -366,7 +340,7 @@ func TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet(t *testing.
 	defer closeNC()
 
 	var stdout, stderr bytes.Buffer
-	code := trim.Main([]string{"force", "fp-1", "--operator", "alice", "--inbox", inbox, "--nats-url", url}, &stdout, &stderr)
+	code := calipers.Main([]string{"force", "fp-1", "--operator", "alice", "--inbox", inbox, "--nats-url", url}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
@@ -388,5 +362,67 @@ func TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet(t *testing.
 	}
 	if !got.Decision.Forced {
 		t.Error("want Forced=true on a break-glass decision")
+	}
+}
+
+// wantTopUsage is calipers's own topUsage constant, copied rather than
+// exported: if the two ever disagree, TestMain_ReturnsUsageErrorWithNoArgsExactly
+// and TestMain_ReturnsUsageErrorForAnUndocumentedVerbExactly below fail
+// immediately, which is the drift detector — not a second source of truth
+// to keep in sync by hand.
+const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest> [flags]\n"
+
+// TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest pins the usage string
+// and the switch together. They drifted apart in trim already — the usage
+// line named only "incidents" while four subcommands were routed — and a
+// verb that exists but is undocumented is one nobody discovers. Every verb
+// here is invoked with no further arguments and is expected to fail or
+// succeed on its own terms (its own usage line, a clean skip, whatever) —
+// the only thing this test cares about is that none of them fall through
+// to the top-level default and print wantTopUsage, which is what "not
+// wired into the switch" would look like.
+func TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest(t *testing.T) {
+	// Not t.Parallel(): the corpus case needs t.Setenv, which panics
+	// alongside a parallel subtest.
+	t.Setenv("THUMP_SEAL_KEY", "") // corpus checks this before anything network-shaped
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	for _, verb := range []string{"incidents", "approve", "force", "unseal", "corpus", "rca", "tune", "replay", "harvest"} {
+		t.Run(verb, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			calipers.Main([]string{verb}, &out, &errOut)
+
+			if errOut.String() == wantTopUsage {
+				t.Errorf("verb %q fell through to the default case — it is documented in topUsage but not routed in the switch", verb)
+			}
+		})
+	}
+}
+
+func TestMain_ReturnsUsageErrorWithNoArgsExactly(t *testing.T) {
+	t.Parallel()
+	var out, errOut bytes.Buffer
+
+	code := calipers.Main(nil, &out, &errOut)
+
+	if diff := cmp.Diff(2, code); diff != "" {
+		t.Error("wrong exit code for no verb (-want +got)", diff)
+	}
+	if diff := cmp.Diff(wantTopUsage, errOut.String()); diff != "" {
+		t.Error("wrong usage line for no verb (-want +got)", diff)
+	}
+}
+
+func TestMain_ReturnsUsageErrorForAnUndocumentedVerbExactly(t *testing.T) {
+	t.Parallel()
+	var out, errOut bytes.Buffer
+
+	code := calipers.Main([]string{"polish"}, &out, &errOut)
+
+	if diff := cmp.Diff(2, code); diff != "" {
+		t.Error("wrong exit code for an undocumented verb (-want +got)", diff)
+	}
+	if diff := cmp.Diff(wantTopUsage, errOut.String()); diff != "" {
+		t.Error("wrong usage line for an undocumented verb (-want +got)", diff)
 	}
 }

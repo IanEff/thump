@@ -1,0 +1,36 @@
+# Companion to rbac-harvest-chaosmesh.yaml — see that file's header for why
+# this exists as an operator-kubeconfig grant rather than a ServiceAccount
+# binding. Gated on .Values.argocd.enabled too, same as rbac-argocd-read.yaml
+# — a rig with no ArgoCD has nothing here to bind against.
+#
+# osd-down-accelerate's argocd-selfheal-off precondition (chaos/scenarios.yaml)
+# is this Role's only current consumer: `kubectl -n argocd patch application
+# rook-operator` to disable self-heal before the fault, then re-enable it on
+# restore — resourceNames pins the grant to that one Application rather than
+# every Application argocd owns. Named rook-operator, not rook-ceph-operator
+# — that's the Deployment it manages, a different object in a different
+# namespace.
+{{- if and .Values.harvest.enabled .Values.harvest.operators .Values.argocd.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-harvest-argocd
+  namespace: argocd
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    resourceNames: ["rook-operator"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-harvest-argocd
+  namespace: argocd
+subjects:
+{{- toYaml .Values.harvest.operators | nindent 2 }}
+roleRef:
+  kind: Role
+  name: thump-harvest-argocd
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

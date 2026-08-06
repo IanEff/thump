@@ -250,7 +250,7 @@ once, or a dedupe keyed on transport metadata.
 
 *(ours, 2026-07-17)*
 
-A human interface onto the engine — the `trim` CLI, Slack, a dashboard, a future
+A human interface onto the engine — the `calipers` CLI, Slack, a dashboard, a future
 web UI — may do exactly two things: **read** emitted state through a derived
 projection over the stream (never by recomputing it), and **emit an ack event**.
 Nothing else. It may never write a decision, execute an action, or arm/disarm the
@@ -260,7 +260,7 @@ A held action resumes by **hiss re-issuing** an approved decision once a human a
 satisfies the condition hiss already attached. So governance still happens exactly
 once, in hiss (I-3, I-7), and execution still never happens ungoverned (I-10).
 
-The **sole declared exception** is a break-glass force path (`trim force`): a
+The **sole declared exception** is a break-glass force path (`calipers force`): a
 human — never the automated surface — disposing in hiss's place. It is
 attributed, audited, rendered visibly `forced` in every view, and still
 kill-switch-gated. **Force overrides governance, never the physical stop.**

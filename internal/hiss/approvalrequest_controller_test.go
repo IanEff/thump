@@ -214,7 +214,7 @@ func TestApprovalRequestController_Reconcile_RefusesToPublishWithoutAnAuthentica
 func TestApprovalRequestController_Reconcile_ForceIsNotAValueThisSurfaceAccepts(t *testing.T) {
 	t.Parallel()
 	// Bypassing hiss's risk gate is a human substituting their judgment for
-	// governance, and it stays with trim: a break-glass verb reachable by
+	// governance, and it stays with calipers: a break-glass verb reachable by
 	// changing five characters of an ordinary approval, on the same object
 	// and under the same RBAC verb, is not break-glass.
 	obj := approvalRequestObj("ar-3",

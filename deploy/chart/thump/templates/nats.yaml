@@ -101,7 +101,7 @@ data:
                 # via the his-approvals consumer grant below. Found missing
                 # live: the CR patched cleanly and got its approver stamped,
                 # but the republish failed with a permissions violation
-                # because only trim (below) had ever been granted this
+                # because only calipers (below) had ever been granted this
                 # subject — this controller's own publish grant was never
                 # added when it was wired in.
                 "thump.decisions", "thump.approvals",
@@ -152,9 +152,26 @@ data:
             subscribe: { allow: ["_INBOX.>"] }
           }
         }
-        { user: "trim@thump.svc"
+        { user: "calipers@thump.svc"
           permissions: {
-            publish:   { allow: ["thump.approvals", "thump.decisions"] }
+            publish: {
+              allow: [
+                "thump.approvals", "thump.decisions",
+                # calipers harvest watches thump.outcomes/thump.proposals
+                # through its own ordered, ephemeral consumers
+                # (internal/harvest/nats.go's watchSubject) rather than
+                # binding clank's "click" or hiss's "hiss" durable — a
+                # second reader on either would split deliveries with
+                # production learning. jetstream.OrderedConsumer's
+                # AckPolicy is AckNone (confirmed against
+                # nats.go@v1.52.0's ordered.go), so unlike hiss's
+                # rebuildHolds below there is no $JS.ACK grant to add —
+                # an ordered consumer never acks what it reads.
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
+                "$JS.API.CONSUMER.MSG.NEXT.THUMP.*"
+              ]
+            }
             subscribe: { allow: ["_INBOX.>"] }
           }
         }

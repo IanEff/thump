@@ -32,8 +32,9 @@ you're doing wrong.
 ## 1 · Get the binaries
 
 Tagged releases ship prebuilt archives for linux and darwin, amd64 and arm64,
-bundling seven binaries — `rattle`, `clank`, `hiss`, `thump`, `trim`, `bootstrap`,
-and `unseal`:
+bundling five binaries — `rattle`, `clank`, `hiss`, `thump`, and `calipers`.
+`bootstrap` isn't in the archive — it's a one-shot Kubernetes Job, not
+something you run from a shell:
 
 ```sh
 gh release download v0.1.0 --repo IanEff/thump --pattern '*_linux_x86_64.tar.gz'
@@ -45,12 +46,13 @@ need Go and [go-task](https://taskfile.dev):
 
 ```sh
 git clone https://github.com/IanEff/thump && cd thump
-task build          # all seven binaries into bin/
+task build          # the five archived binaries plus bootstrap, six total, into bin/
 ```
 
-The four long-running beats also publish multi-arch container images with SBOM
-and provenance attestation, signed keylessly via Sigstore/cosign. `trim` doesn't
-— it's an operator-run CLI, not a cluster service.
+The four long-running beats plus `bootstrap` also publish multi-arch container
+images with SBOM and provenance attestation, signed keylessly via
+Sigstore/cosign. `calipers` doesn't — it's an operator-run CLI, not a cluster
+service.
 
 Nothing in the rest of this document needs a cluster until §7.
 
@@ -507,9 +509,9 @@ One deliberate exemption: a **reversal** order is not blocked by a disarmed
 switch. Blocking cleanup mid-flight would strand infrastructure half-changed,
 which is worse than letting one bounded, already-approved undo finish.
 
-**Watching it work.** `trim incidents` folds the stream into a read-only view of
+**Watching it work.** `calipers incidents` folds the stream into a read-only view of
 what the engine has done and what it's holding. When something is held for a
-human, `trim approve <fingerprint>` emits an ack — and *hiss* re-issues the
+human, `calipers approve <fingerprint>` emits an ack — and *hiss* re-issues the
 approved decision. The operator surface never writes a decision itself, which is
 why approving through it is still governance happening exactly once, in the
 governor.

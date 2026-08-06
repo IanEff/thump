@@ -105,7 +105,7 @@ func TestAdmissionPolicies_ApprovalRequestIsBornUndecided(t *testing.T) {
 
 // TestAdmissionPolicies_ForceIsNotAValueTheResourceAccepts pins the authority
 // split at the API server, not just in the controller. Bypassing hiss's risk
-// gate is break-glass and lives in trim; a value on this resource would put it
+// gate is break-glass and lives in calipers; a value on this resource would put it
 // behind the same RBAC verb as an ordinary approval, one word apart.
 func TestAdmissionPolicies_ForceIsNotAValueTheResourceAccepts(t *testing.T) {
 	t.Parallel()

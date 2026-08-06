@@ -20,8 +20,22 @@ type Watcher interface {
 	Outcomes(ctx context.Context) (<-chan outcome.Outcome, error)
 }
 
+// isTerminal names the settled results explicitly rather than excluding
+// ResultApplied — a zero-valued Result is not a settled one, and an
+// exclusion test reads it as terminal and ends the wait on a record that
+// says nothing.
 func isTerminal(r outcome.Result) bool {
-	return r != outcome.ResultApplied
+	switch r {
+	case outcome.ResultSuccess,
+		outcome.ResultFailure,
+		outcome.ResultPartialNonConverging,
+		outcome.ResultBlocked,
+		outcome.ResultUnknown,
+		outcome.ResultRendered:
+		return true
+	default:
+		return false
+	}
 }
 
 // Settle blocks until w reports a terminal outcome for signalRef, or

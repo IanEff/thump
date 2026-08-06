@@ -1,0 +1,35 @@
+# Companion to rbac-harvest-chaosmesh.yaml — see that file's header for why
+# this exists as an operator-kubeconfig grant rather than a ServiceAccount
+# binding.
+#
+# cart-failure (chaos/scenarios.yaml) is this Role's only current consumer:
+# chaos/flagd-cart-failure.sh reads flagd-config's blob (get), then rewrites
+# it client-side and re-applies (patch — the script's `kubectl create
+# --dry-run=client | kubectl apply` pipeline never calls create against the
+# API server, since flagd-config already exists from otel-demo's own chart;
+# only the trailing apply is a real request, and it always lands on an
+# existing object).
+{{- if and .Values.harvest.enabled .Values.harvest.operators }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-harvest-oteldemo
+  namespace: otel-demo
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["flagd-config"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-harvest-oteldemo
+  namespace: otel-demo
+subjects:
+{{- toYaml .Values.harvest.operators | nindent 2 }}
+roleRef:
+  kind: Role
+  name: thump-harvest-oteldemo
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

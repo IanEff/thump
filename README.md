@@ -219,7 +219,7 @@ The beat table above is the concept. This is where it physically lives.
 | thump | `cmd/thump` | `internal/thump` | `thump.go` |
 | click | none (see table above) | `internal/clank/click.go`, `metrics.go` | `Click.Absorb` and `ReturnEdge` in `click.go` |
 
-`cmd/` also houses entrypoints for `trim` (the operator CLI), `bootstrap` (in-cluster setup job), `unseal` (vault unseal CLI), and `corpus` (corpus management tool). Investigation tools (`metrics`, `loki`, `kube`, `argocd`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
+`cmd/` also houses `bootstrap` (in-cluster setup job) and `calipers`, the operator CLI: `incidents`/`approve`/`force` (the hold→ack loop), `unseal` (vault unseal), `corpus` (corpus management), `rca` (graded RCA suite), `tune` (scoring weight sweep), `replay` (transcript replayer), and `harvest` (chaos scenario runner) all live behind one binary now, dispatched by verb — see `internal/calipers/calipers.go`. Investigation tools (`metrics`, `loki`, `kube`, `argocd`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
 
 **If you're opening one file, open `internal/clank/doc.go`.** clank is the
 reasoning plane — the seam with no prior art to copy from, and the one
@@ -362,9 +362,9 @@ catch an authoring mistake: [`docs/onboarding.md`](docs/onboarding.md).
 
 Tagged releases ship prebuilt archives for linux and darwin, amd64 and arm64,
 bundling five binaries — the four long-running beats (`rattle`, `clank`, `hiss`,
-`thump`) plus `trim`. `bootstrap` ships only as a container image (it's a
-Kubernetes Job, not something you run from a shell), and `unseal` isn't in the
-tagged archive yet — build it from source if you need it:
+`thump`) plus `calipers`, the operator CLI. `bootstrap` isn't in the archive: it's
+a one-shot Kubernetes Job, not something you run from a shell, so it ships only
+as a container image:
 
 ```sh
 gh release download v0.1.0 --repo IanEff/thump --pattern '*_linux_x86_64.tar.gz'
@@ -373,8 +373,10 @@ tar xzf thump_0.1.0_linux_x86_64.tar.gz
 
 Checksums are published alongside. The four long-running beats plus `bootstrap`
 also publish multi-arch container images with SBOM and provenance attestation,
-signed keylessly via Sigstore/cosign. Building from source needs Go and
-[go-task](https://taskfile.dev): `task build` puts all seven binaries in `bin/`.
+signed keylessly via Sigstore/cosign; `calipers` never gets a container image,
+built only as the binary above (Taskfile.yaml's `IMAGE_BEATS`/`CALIPERS` split).
+Building from source needs Go and [go-task](https://taskfile.dev): `task build`
+puts all six — the five archived binaries plus `bootstrap` — in `bin/`.
 
 ---
 
@@ -402,8 +404,8 @@ in full and touches nothing. Going live additionally requires an armed
 silently no-op'ing, so a blocked run is loud. `SLACK_WEBHOOK_URL` is optional —
 leave it unset and thump just doesn't page anyone on a hold or a settle.
 
-`trim incidents` folds the stream into a read-only view of what the engine has
-done and what it's holding. `trim approve <fingerprint>` acks a held action, and
+`calipers incidents` folds the stream into a read-only view of what the engine has
+done and what it's holding. `calipers approve <fingerprint>` acks a held action, and
 hiss re-issues the approved decision. The operator surface never writes a
 decision itself.
 
@@ -418,7 +420,7 @@ kubectl -n thump patch approvalrequest ar-8f3c1d2e0a5b7649 \
   --type=merge -p '{"spec":{"decision":"approve"}}'
 ```
 
-What that buys over `trim approve` is the approver's identity. `--approver` is a
+What that buys over `calipers approve` is the approver's identity. `--approver` is a
 string an operator types about themselves; under the CR the approver is the
 authenticated Kubernetes subject, a `MutatingAdmissionPolicy` stamps it into
 `thump.dev/approved-by` regardless of what the patch body said, and the API
@@ -427,7 +429,7 @@ engine makes is thump attesting about itself. Grant it with
 `approvalRequests.approvers`, which is empty by default.
 
 `spec.decision` accepts `approve` and nothing else. Bypassing hiss's risk gate
-stays with `trim force` (D-9): a break-glass verb five characters away from an
+stays with `calipers force` (D-9): a break-glass verb five characters away from an
 ordinary approval, on the same object and under the same RBAC verb, would not be
 break-glass. The controller refuses to publish an ack it cannot attribute, so a
 cluster that never installed the admission policies fails closed rather than
@@ -494,7 +496,7 @@ sourcing, and the test that would go red for each:
 15. **The operator surface is read-only or evidence-producing.** A human
     interface may read emitted state or emit an ack event, and nothing else. It
     may never write a decision, execute an action, or touch the kill switch. The
-    one declared exception is a break-glass `trim force`: a human, never the
+    one declared exception is a break-glass `calipers force`: a human, never the
     automated surface, disposing in Governance's place — attributed, audited,
     rendered visibly `forced`, and still kill-switch-gated.
 16. **Every leg is TLS-negotiated by this process, or declared plaintext.**
@@ -515,8 +517,8 @@ sourcing, and the test that would go red for each:
 
 ## Known-open
 
-- **The `hold` → ack loop is built; the surface around it is thin.** `trim
-  incidents`, `trim approve`, and the break-glass `trim force` all work, and
+- **The `hold` → ack loop is built; the surface around it is thin.** `calipers
+  incidents`, `calipers approve`, and the break-glass `calipers force` all work, and
   hiss re-issues a held decision on an ack. What doesn't exist yet is anything
   richer: no drill-down from an incident to the evidence that produced it, no
   live tail, no web view. If you're evaluating the operator experience
@@ -559,8 +561,8 @@ Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`) — run
 
 | Command | What it does |
 |---|---|
-| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` / `run:trim` | Run one beat or CLI |
-| `task build` | Build all seven binaries to `bin/` |
+| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` / `run:calipers` | Run one beat or the operator CLI |
+| `task build` | Build all six binaries to `bin/` |
 | `task ci` | Full local CI: fmt-check → vet → lint → vulncheck → chart-lint → race → build |
 | `task test` / `task race` | Tests, with `-race` |
 | `task coverage` | Coverage profile + total |

@@ -144,7 +144,7 @@ spec:
           resources: {{- toYaml .Values.beats.clank.resources | nindent 12 }}
       volumes:
         - name: wal
-          # Plaintext on purpose: this copy dies with the pod. It's what trim
+          # Plaintext on purpose: this copy dies with the pod. It's what calipers
           # and the debug-transcript skill read during an incident. The copy
           # that outlives the cluster (shipped to S3) is sealed — see
           # internal/beat.EncryptingSink.

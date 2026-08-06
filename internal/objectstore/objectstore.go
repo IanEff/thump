@@ -96,7 +96,7 @@ func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKe
 
 // EncryptingSink seals a segment before handing it to Inner. The emptyDir
 // copy on the pod stays plaintext on purpose — it dies with the pod, and
-// it's what trim and the debug-transcript skill read during an incident. The
+// it's what calipers and the debug-transcript skill read during an incident. The
 // copy that outlives the cluster is the one this decorator seals.
 //
 // Put reads the whole segment into memory to seal it, bounded by the WAL's

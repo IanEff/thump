@@ -5,7 +5,7 @@
 # authority this resource exists to constrain.
 #
 # There is no force verb to grant. Substituting a human's judgment for hiss's
-# risk gate is break-glass and lives in the trim CLI, so it cannot be reached
+# risk gate is break-glass and lives in the calipers CLI, so it cannot be reached
 # by changing one word of an ordinary approval patch.
 {{- if and .Values.approvalRequests.enabled .Values.approvalRequests.approvers }}
 apiVersion: rbac.authorization.k8s.io/v1

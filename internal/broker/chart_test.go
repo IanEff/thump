@@ -117,15 +117,15 @@ func TestNATSConfig_GrantsNobodyButHissPublishOnDecisions(t *testing.T) {
 	// I-7: hiss is the only producer of a verdict. Until R6 that was a
 	// convention; here it is the broker's config. A second user with publish
 	// on thump.decisions is I-3, I-7 and I-10 undone at once, and it would
-	// otherwise be a two-line diff nobody reads twice. trim@thump.svc is D-9's
-	// declared exception — trim force is the sole break-glass path, still
+	// otherwise be a two-line diff nobody reads twice. calipers@thump.svc is D-9's
+	// declared exception — calipers force is the sole break-glass path, still
 	// attributed and audited, so it is named here rather than silently
 	// widening the check.
 	users := parseNATSUsers(t, renderNATSConf(t))
-	allowed := map[string]bool{"hiss@thump.svc": true, "trim@thump.svc": true}
+	allowed := map[string]bool{"hiss@thump.svc": true, "calipers@thump.svc": true}
 	for name, u := range users {
 		if slices.Contains(u.Publish, "thump.decisions") && !allowed[name] {
-			t.Errorf("%s may publish thump.decisions — only hiss (verdicts, I-7) and trim (force, D-9) may write it", name)
+			t.Errorf("%s may publish thump.decisions — only hiss (verdicts, I-7) and calipers (force, D-9) may write it", name)
 		}
 	}
 }

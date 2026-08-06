@@ -15,8 +15,14 @@ var ErrInvalidScenario = errors.New("harvest: scenario table is invalid")
 
 // Scenario is one calibration datum's worth of work.
 type Scenario struct {
-	Name          string
-	Domain        string
+	Name   string
+	Domain string
+	// SignalRef is the fingerprint rattle emits when this fault fires —
+	// authored, never composed here, because rattle owns the rule that builds
+	// it and a second copy would drift. Settle matches outcomes on this and
+	// nothing else, so a wrong value costs the whole settle window and
+	// reports as a timeout the rig never earned.
+	SignalRef     string
 	Fault         Action
 	Preconditions []Precondition
 	Expects       Expects
@@ -64,12 +70,14 @@ var validVerdict = map[string]bool{
 
 type scenariosFile struct {
 	Version   int             `json:"version"`
+	Rig       string          `json:"rig"`
 	Scenarios []scenarioStage `json:"scenarios"`
 }
 
 type scenarioStage struct {
 	Name          string              `json:"name"`
 	Domain        string              `json:"domain"`
+	SignalRef     string              `json:"signalRef"`
 	Fault         actionStage         `json:"fault"`
 	Preconditions []preconditionStage `json:"preconditions"`
 	Expects       expectsStage        `json:"expects"`
@@ -96,10 +104,16 @@ func (s scenarioStage) validate() (Scenario, error) {
 		return Scenario{}, fmt.Errorf("expects.verdict %q not none of approved, held, declined", s.Expects.Verdict)
 	}
 	if s.Expects.ContractRef == "" {
-		return Scenario{}, fmt.Errorf("expects.contractRef is empty")
+		return Scenario{}, errors.New("expects.contractRef is empty")
+	}
+	if s.SignalRef == "" {
+		return Scenario{}, errors.New("no signalRef - a scenario that names no signal waits out its whole window on an outcome that can never match")
 	}
 	window, err := time.ParseDuration(s.SettleWindow)
 	if err != nil {
+		return Scenario{}, fmt.Errorf("settleWindow %q: %w", s.SettleWindow, err)
+	}
+	if window <= 0 {
 		return Scenario{}, fmt.Errorf("settleWindow %q must be positive", s.SettleWindow)
 	}
 
@@ -114,6 +128,7 @@ func (s scenarioStage) validate() (Scenario, error) {
 	return Scenario{
 		Name:          s.Name,
 		Domain:        s.Domain,
+		SignalRef:     s.SignalRef,
 		Fault:         fault,
 		Preconditions: preconditions,
 		Expects: Expects{
@@ -154,21 +169,33 @@ type expectsStage struct {
 	Verdict      string `json:"verdict"`
 }
 
-// LoadScenarios reads path and validates it into a []Scenario.
-func LoadScenarios(path string) ([]Scenario, error) {
+// Table is a scenario file's whole contents: the rows plus the rig they were
+// authored against. The rig travels with them because a signalRef is only
+// checkable against one rig's watch list — a bare []Scenario has thrown away
+// what it would have to be validated against.
+type Table struct {
+	Rig       string
+	Scenarios []Scenario
+}
+
+// LoadScenarios reads path and validates it into a Table.
+func LoadScenarios(path string) (Table, error) {
 	sf, err := configfile.Stage[scenariosFile](path, "scenario table")
 	if err != nil {
-		return nil, err
+		return Table{}, err
+	}
+	if sf.Rig == "" {
+		return Table{}, fmt.Errorf("%w: no rig - a signalRef is only checkable against one rig's watch list", ErrInvalidScenario)
 	}
 
 	out := make([]Scenario, 0, len(sf.Scenarios))
 	for _, s := range sf.Scenarios {
 		sc, err := s.validate()
 		if err != nil {
-			return nil, fmt.Errorf("%w: scenario %q: %w", ErrInvalidScenario, s.Name, err)
+			return Table{}, fmt.Errorf("%w: scenario %q: %w", ErrInvalidScenario, s.Name, err)
 		}
 		out = append(out, sc)
 	}
 
-	return out, nil
+	return Table{Rig: sf.Rig, Scenarios: out}, nil
 }

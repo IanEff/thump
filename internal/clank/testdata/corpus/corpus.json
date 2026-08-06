@@ -22,15 +22,31 @@
    "mode": "live",
    "result": "success",
    "observedAt": "2026-08-02T12:01:08.309993952Z"
+  },
+  {
+   "signalRef": "slo_burn:cephblockpool",
+   "decisionRef": "dec:slo_burn:cephblockpool:1786049239",
+   "outcomeRef": "out:slo_burn:cephblockpool:conv:1786049842",
+   "contractRef": "hold-rebalance",
+   "failureClass": "service_failure",
+   "confidence": 0,
+   "mode": "live",
+   "result": "partial_non_converging",
+   "observedAt": "2026-08-06T20:57:22.991565437Z"
   }
  ],
- "minedAt": "2026-08-04T07:28:14.044764-04:00",
+ "minedAt": "2026-08-06T17:43:49.319754-04:00",
  "segments": [
   "clank/thump.proposals/00000000000000000000-1785671212466434324.jsonl",
   "clank/thump.proposals/00000000000000000000-1785783003907983346.jsonl",
+  "clank/thump.proposals/00000000000000000000-1786051044775378332.jsonl",
+  "clank/thump.proposals/00000000000000000001-1786052178262779931.jsonl",
   "thump/thump.outcomes/00000000000000000000-1785671120246815987.jsonl",
   "thump/thump.outcomes/00000000000000000000-1785783107795896905.jsonl",
+  "thump/thump.outcomes/00000000000000000000-1786049842991795398.jsonl",
   "thump/thump.outcomes/00000000000000000001-1785671737489925274.jsonl",
-  "thump/thump.outcomes/00000000000000000002-1785672337752437418.jsonl"
+  "thump/thump.outcomes/00000000000000000001-1786051047738029569.jsonl",
+  "thump/thump.outcomes/00000000000000000002-1785672337752437418.jsonl",
+  "thump/thump.outcomes/00000000000000000002-1786051647860269371.jsonl"
  ]
 }

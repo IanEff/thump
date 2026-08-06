@@ -1,4 +1,4 @@
-package trim
+package calipers
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 // Transport reads boundary objects off disk — rattle, clank, hiss, and
 // thump each drop YAML files under one of Inbox's four subdirectories — and
 // folds them into a Projection. It has no NATS path: Tick and Snapshot are
-// trim's offline substitute for subscribing to the broker directly.
+// calipers's offline substitute for subscribing to the broker directly.
 type Transport struct {
 	Inbox string      // root directory.
 	Proj  *Projection // where Tick lands every successfully-folded object; unused by Snapshot, which builds and returns its own
@@ -50,30 +50,30 @@ func tickDir[T any](tr *Transport, dir string) error {
 	root := filepath.Join(tr.Inbox, dir)
 	matches, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	if err != nil {
-		return fmt.Errorf("trim: list %s: %w", root, err)
+		return fmt.Errorf("calipers: list %s: %w", root, err)
 	}
 
 	for _, path := range matches {
 		raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under Inbox, not user input
 		if err != nil {
-			return fmt.Errorf("trim: read %s: %w", path, err)
+			return fmt.Errorf("calipers: read %s: %w", path, err)
 		}
 
 		var v T
 		if err := yaml.Unmarshal(raw, &v); err != nil {
 			if qErr := quarantine(path); qErr != nil {
-				return fmt.Errorf("trim: quarantine %s: %w", path, qErr)
+				return fmt.Errorf("calipers: quarantine %s: %w", path, qErr)
 			}
 			continue
 		}
 		if err := tr.Proj.Apply(v); err != nil {
 			if qErr := quarantine(path); qErr != nil {
-				return fmt.Errorf("trim: quarantine %s: %w", path, qErr)
+				return fmt.Errorf("calipers: quarantine %s: %w", path, qErr)
 			}
 			continue
 		}
 		if err := archive(path); err != nil {
-			return fmt.Errorf("trim: archive %s: %w", path, err)
+			return fmt.Errorf("calipers: archive %s: %w", path, err)
 		}
 	}
 	return nil
@@ -116,12 +116,12 @@ func snapshotDir[T any](tr *Transport, dir string, proj *Projection) error {
 	for _, pattern := range patterns {
 		matches, err := filepath.Glob(pattern)
 		if err != nil {
-			return fmt.Errorf("trim: list %s: %w", pattern, err)
+			return fmt.Errorf("calipers: list %s: %w", pattern, err)
 		}
 		for _, path := range matches {
 			raw, err := os.ReadFile(path) //nolint:gosec // G304: path came from filepath.Glob under Inbox, not user input
 			if err != nil {
-				return fmt.Errorf("trim: read %s: %w", path, err)
+				return fmt.Errorf("calipers: read %s: %w", path, err)
 			}
 			var v T
 			if err := yaml.Unmarshal(raw, &v); err != nil {

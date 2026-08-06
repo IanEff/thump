@@ -61,6 +61,31 @@ spec:
     kind: ClusterIssuer
 ---
 {{- end }}
+# calipers never serves — harvest.Main and force/approve only ever dial out —
+# so this leaf skips "server auth" unlike the four beats' shared client+server
+# one above. Ships only as a binary, never as a Deployment (Taskfile.yaml's
+# CALIPERS comment), so this is a plain resource with no pre-install hook
+# weight, same as the four beats' Certificates.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: calipers-tls
+  namespace: thump
+  labels: {{- include "thump.labels" . | nindent 4 }}
+spec:
+  secretName: calipers-tls
+  commonName: calipers
+  emailAddresses: ["calipers@thump.svc"]
+  usages: ["client auth"]
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: {{ .Values.tls.duration | quote }}
+  renewBefore: {{ .Values.tls.renewBefore | quote }}
+  issuerRef:
+    name: {{ .Values.tls.issuerName }}
+    kind: ClusterIssuer
+---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

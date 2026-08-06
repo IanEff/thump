@@ -7,6 +7,7 @@ import (
 
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/harvest"
+	"github.com/ianeff/thump/internal/rattle"
 )
 
 // TestScenarios_NameOnlyVocabularyTheShippedCatalogAndClassesDefine reads the
@@ -21,7 +22,7 @@ func TestScenarios_NameOnlyVocabularyTheShippedCatalogAndClassesDefine(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(table) == 0 {
+	if len(table.Scenarios) == 0 {
 		t.Fatal("the committed scenario table is empty — a harvest has nothing to fire")
 	}
 
@@ -31,7 +32,7 @@ func TestScenarios_NameOnlyVocabularyTheShippedCatalogAndClassesDefine(t *testin
 		t.Fatal(err)
 	}
 
-	for _, sc := range table {
+	for _, sc := range table.Scenarios {
 		t.Run("scenario "+sc.Name+" names a catalogued action and an existing fault", func(t *testing.T) {
 			t.Parallel()
 			if _, ok := cat.ByName(sc.Expects.ContractRef); !ok {
@@ -42,6 +43,40 @@ func TestScenarios_NameOnlyVocabularyTheShippedCatalogAndClassesDefine(t *testin
 			}
 			if sc.Restore.Path == "" {
 				t.Error("scenario has no restore — a harvest that cannot put the rig back is a rig teardown")
+			}
+		})
+	}
+}
+
+// TestScenarios_WaitOnFingerprintsTheRigsWatchListCanActuallyProduce reads the
+// rig the table names and the watch list that rig polls. Settle matches on
+// SignalRef alone, and both sides are strings, so a fingerprint no detector
+// emits fires a real fault, waits out the full settle window, and returns a
+// timeout indistinguishable from a rig that genuinely never settled.
+func TestScenarios_WaitOnFingerprintsTheRigsWatchListCanActuallyProduce(t *testing.T) {
+	t.Parallel()
+
+	table, err := harvest.LoadScenarios(filepath.Join("..", "..", "chaos", "scenarios.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	slos, err := rattle.LoadWatch(
+		filepath.Join("..", "..", "config", table.Rig, "rattle", "watch.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	emittable := make(map[string]bool, len(slos))
+	for _, s := range slos {
+		emittable[s.Kind()+":"+s.AffectedObject()] = true
+	}
+
+	for _, sc := range table.Scenarios {
+		t.Run("scenario "+sc.Name+" waits on a fingerprint the watch list emits", func(t *testing.T) {
+			t.Parallel()
+			if !emittable[sc.SignalRef] {
+				t.Error("scenario waits on a fingerprint no watched object produces", sc.SignalRef)
 			}
 		})
 	}

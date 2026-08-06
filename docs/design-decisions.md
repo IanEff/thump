@@ -155,7 +155,7 @@ its letter changed.
 **Our own rule said:** the operator surface never writes decisions
 ([I-15](invariants.md#i-15--the-operator-surface-never-disposes)).
 
-**We do:** `trim force <fingerprint>` lets a *human* emit an approved decision
+**We do:** `calipers force <fingerprint>` lets a *human* emit an approved decision
 that bypasses hiss's risk gate — but **not** the kill switch (a disarmed switch
 still blocks the forced order) and **not** the audit trail (every forced decision
 is auditable, operator-attributed, and rendered visibly `forced` in every view).
@@ -356,7 +356,7 @@ nothing. That's a real bug, but it doesn't need Kubernetes — it's fixed by
 rebuilding the holds from the stream on startup (`internal/hiss/rebuild.go`),
 which is a read-model, same as everything else in the audit trail. What
 survived the second look is a property no amount of stream replay can buy:
-today, `Approval.Approver` is whatever string a human typed at `trim approve
+today, `Approval.Approver` is whatever string a human typed at `calipers approve
 --approver` — self-asserted, the same posture as a break-glass decision under
 D-9. Under the CR, the approver is the authenticated Kubernetes subject the
 API server stamped onto the patch, and the authority to approve is RBAC on
@@ -368,7 +368,7 @@ else is rejected. A `force` value was shipped once, publishing straight to
 `thump.decisions`, and it was reverted — a `kubectl patch` five characters
 from `approve`, on the same object, under the same RBAC verb, is not
 break-glass, it's the normal path with a typo standing between it and the
-gate. Overriding the risk gate stays `trim force`'s job (D-9): its own
+gate. Overriding the risk gate stays `calipers force`'s job (D-9): its own
 binary, its own subcommand, a required `--approver`. `ApprovalRequest` only
 ever emits an ack; hiss still governs exactly once, and the WAL stays the
 audit trail, not this CR.

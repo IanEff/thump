@@ -2,11 +2,16 @@ package harvest_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/harvest"
 )
 
@@ -17,7 +22,14 @@ type recordingRunner struct {
 	calls []string
 }
 
-func (r *recordingRunner) Run(_ context.Context, name string, args ...string) error {
+// Run honours the context it was handed, which is the whole reason this
+// double exists: a runner that ignores cancellation records the restore
+// commands whether or not restore detached from the cancelled context, so
+// the WithoutCancel claim would pass with WithoutCancel deleted.
+func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, name+" "+joinArgs(args))
@@ -80,7 +92,7 @@ func TestHarvest_RestoresEveryPreconditionWhenTheRunIsCancelledMidFlight(t *test
 	}
 
 	runner := &recordingRunner{}
-	h := harvest.NewHarvest(blockingWatcher{}, runner)
+	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -119,4 +131,118 @@ func containsCall(calls []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// failingRunner records every command like recordingRunner, but errors on
+// any call containing failOn — used to force a precondition to fail partway
+// through Run.
+type failingRunner struct {
+	mu     sync.Mutex
+	calls  []string
+	failOn string
+}
+
+func (r *failingRunner) Run(_ context.Context, name string, args ...string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	call := name + " " + joinArgs(args)
+	r.calls = append(r.calls, call)
+	if strings.Contains(call, r.failOn) {
+		return errors.New("boom")
+	}
+	return nil
+}
+
+func (r *failingRunner) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.calls...)
+}
+
+// TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails
+// pins a bug found live 2026-08-06: the restore defer used to be registered
+// after the preconditions loop, so a precondition failing partway through
+// returned before the defer ever ran, leaving every precondition applied
+// before it permanently unrestored on a real rig.
+func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t *testing.T) {
+	t.Parallel()
+	sc := harvest.Scenario{
+		Name: "osd-down-accelerate",
+		Fault: harvest.Action{
+			Path: "chaos/osd-pod-failure-accelerate.yaml", Apply: "kubectl",
+		},
+		Preconditions: []harvest.Precondition{
+			{
+				Name:    "mon-osd-down-out-interval",
+				Set:     "ceph config set global mon_osd_down_out_interval 60",
+				Restore: "ceph config set global mon_osd_down_out_interval 600",
+			},
+			{
+				Name:    "argocd-selfheal-off",
+				Set:     "kubectl -n argocd patch application rook-operator --type merge -p bad-json",
+				Restore: "kubectl -n argocd patch application rook-operator --type merge -p good-json",
+			},
+		},
+		Expects:      harvest.Expects{Verdict: "held"},
+		SettleWindow: time.Minute,
+		Restore: harvest.Action{
+			Path: "chaos/osd-pod-failure-accelerate.yaml", Apply: "kubectl-delete",
+		},
+	}
+
+	runner := &failingRunner{failOn: "argocd"}
+	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+
+	if _, err := h.Run(t.Context(), sc); err == nil {
+		t.Fatal("Run succeeded despite a failing precondition")
+	}
+
+	calls := runner.snapshot()
+	want := "/bin/sh -c ceph config set global mon_osd_down_out_interval 600"
+	if !containsCall(calls, want) {
+		t.Errorf("Run left mon_osd_down_out_interval at 60 after a later precondition failed; restore calls were %v", calls)
+	}
+}
+
+// TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet pins the win
+// path NewHarvest's missing third argument used to crash: h.sets was never
+// wired, so firstSetFor's call on a nil SetWatcher panicked the instant a
+// scenario actually settled rather than timing out. This is the only test
+// in the package that lets Settle succeed, which is exactly why the bug
+// went uncaught.
+func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
+	t.Parallel()
+	const fp = "slo_burn:ceph-cluster"
+
+	sc := harvest.Scenario{
+		Name:         "confidence-enrichment",
+		SignalRef:    fp,
+		Fault:        harvest.Action{Path: "noop", Apply: "exec"},
+		Restore:      harvest.Action{Path: "noop", Apply: "exec"},
+		SettleWindow: 5 * time.Second,
+	}
+
+	set := proposal.Set{
+		SignalRef: fp,
+		Proposals: []proposal.Candidate{
+			{ContractRef: "restart-pod", Confidence: 0.7, ComputedConfidence: 0.65, ConfidenceCeilingBound: true},
+		},
+	}
+	h := harvest.NewHarvest(feedWatcher{outcome.ResultSuccess}, &recordingRunner{}, feedSetWatcher{set})
+
+	res, err := h.Run(t.Context(), sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := harvest.Result{
+		ScenarioName:       sc.Name,
+		ActualResult:       outcome.ResultSuccess,
+		EmittedConfidence:  0.7,
+		ComputedConfidence: 0.65,
+		CeilingBound:       true,
+	}
+	if diff := cmp.Diff(want, res); diff != "" {
+		t.Error("wrong Result after a successful settle (-want +got)", diff)
+	}
 }
