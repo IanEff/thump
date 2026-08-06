@@ -131,7 +131,7 @@ type Hiss struct {
 	Outbox       string // HISS_OUTBOX — required only in the offline path
 	BrokerStore         // WAL/S3/TLS/seal-key — required only in the broker path
 
-	ApprovalRequestsEnabled bool          // APPROVALREQUESTS_ENABLED — optional, default false; runs the ApprovalRequest controller against hiss's in-cluster identity. Off means trim is the only path that releases a hold.
+	ApprovalRequestsEnabled bool          // APPROVALREQUESTS_ENABLED — optional, default false; runs the ApprovalRequest controller against hiss's in-cluster identity. Off means calipers is the only path that releases a hold.
 	ApprovalRetention       time.Duration // APPROVALREQUEST_RETENTION — optional; how long a Processed ApprovalRequest stays readable before the sweep reclaims it; defaults to 24h
 }
 
@@ -268,7 +268,7 @@ func LoadBootstrap() (Bootstrap, error) {
 	return c, l.err()
 }
 
-// Corpus is the Y1 WAL miner's environment (cmd/corpus) — the same S3 quad
+// Corpus is the Y1 WAL miner's environment (calipers corpus) — the same S3 quad
 // every beat's broker path requires, unconditionally required here since the
 // miner has no offline mode to fall back to. THUMP_SEAL_KEY is deliberately
 // not a field: unseal.KeyFromEnv reads it instead, carrying the

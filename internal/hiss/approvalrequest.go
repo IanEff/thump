@@ -25,7 +25,7 @@ type ApprovalRequestSpec struct {
 	Action    string   `json:"action"`
 	Band      string   `json:"band"`
 	Reasons   []string `json:"reasons,omitempty"`
-	Decision  string   `json:"decision,omitempty"` // "" or "approve"; bypassing the risk gate is trim force's job, never this resource's
+	Decision  string   `json:"decision,omitempty"` // "" or "approve"; bypassing the risk gate is calipers force's job, never this resource's
 }
 
 // ApprovalRequestStatus is the CR's controller-owned half: the controller

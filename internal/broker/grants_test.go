@@ -150,7 +150,7 @@ func TestNATSConfig_GrantsTheDeadLetterSubjectToWhicheverBeatConsumesTheOriginal
 // that is not a beat, each with the row that authorises it. Everything else
 // in a user's allow list must be a subject that user's own package publishes.
 var grantExceptions = map[string][]string{
-	"trim@thump.svc": {"thump.approvals", "thump.decisions"}, // D-9: the break-glass human path, attributed and audited
+	"calipers@thump.svc": {"thump.approvals", "thump.decisions"}, // D-9: the break-glass human path, attributed and audited
 }
 
 func TestNATSConfig_GrantsNoBeatASubjectItsOwnCodeNeverPublishes(t *testing.T) {
@@ -217,6 +217,26 @@ func TestNATSConfig_GrantsTheJetStreamAPIsAndAckToEachDurablesOwner(t *testing.T
 			if !slices.Contains(users[owner].Publish, want) {
 				t.Errorf("%s owns durable %q (reading %s) but nats.conf does not grant it %q", owner, durable, subj, want)
 			}
+		}
+	}
+}
+
+func TestNATSConfig_GrantsCalipersTheHarvestEphemeralConsumers(t *testing.T) {
+	t.Parallel()
+	// internal/harvest/nats.go's watchSubject opens a jetstream.OrderedConsumer
+	// per watcher, on thump.outcomes and thump.proposals — same
+	// randomly-named-ephemeral shape as hiss's rebuildHolds below, so the same
+	// wildcard grants apply. Unlike rebuildHolds, an ordered consumer's
+	// AckPolicy is AckNone (nats.go@v1.52.0 jetstream/ordered.go), so there is
+	// no matching $JS.ACK grant to check here.
+	users := parseNATSUsers(t, renderNATSConf(t))
+	for _, want := range []string{
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
+		"$JS.API.CONSUMER.MSG.NEXT.THUMP.*",
+	} {
+		if !slices.Contains(users["calipers@thump.svc"].Publish, want) {
+			t.Errorf("calipers@thump.svc does not hold %q — harvest's ephemeral consumers on thump.outcomes/thump.proposals cannot create/fetch without it", want)
 		}
 	}
 }

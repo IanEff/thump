@@ -52,7 +52,7 @@ var approvalRequestGVR = schema.GroupVersionResource{
 // it never reaches thump.decisions — a patched CR can only ever satisfy the
 // condition hiss already attached, leaving hiss the one place a verdict is
 // issued. Substituting a human's judgment for that gate is break-glass and
-// lives in trim, not here.
+// lives in calipers, not here.
 type ApprovalRequestController struct {
 	Dyn        dynamic.Interface
 	Namespace  string
@@ -256,7 +256,7 @@ func (c *ApprovalRequestController) reconcile(ctx context.Context, u *unstructur
 	}
 
 	// The stamp is the whole reason this resource exists: an ack whose
-	// approver is a string a client chose is no better than the one trim
+	// approver is a string a client chose is no better than the one calipers
 	// already emits. Missing means the admission policies are absent or were
 	// bypassed, so refuse rather than publish an unattributed approval.
 	approvedBy := u.GetAnnotations()[approvedByAnnotation]

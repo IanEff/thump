@@ -2,7 +2,10 @@ package replay
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
 	"fmt"
+	"io"
 	"time"
 
 	"go.opentelemetry.io/otel/trace/noop"
@@ -11,7 +14,65 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/unseal"
 )
+
+// Main replays one recorded transcript through a real clank.Engine and
+// prints the proposal.Set it emits under the given weights — the same
+// re-scoring tune sweeps in aggregate, provable here against one named
+// fixture instead of only the grid's mean confidence.
+func Main(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	jsonlPath := fs.String("jsonl", "", "path to the recorded transcript (required)")
+	setPath := fs.String("set", "", "path to the transcript's paired .set.json (required)")
+	weightsFile := fs.String("weights-file", "", "YAML ScoringWeights to replay under (default: clank.DefaultScoringWeights)")
+	asJSON := fs.Bool("json", false, "print the replayed proposal.Set as JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *jsonlPath == "" || *setPath == "" {
+		_, _ = fmt.Fprintln(stderr, "usage: replay --jsonl <path> --set <path> [--weights-file path] [--json]")
+		return 2
+	}
+
+	tr, err := LoadTranscript(*jsonlPath, *setPath)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "replay:", err)
+		return 1
+	}
+
+	weights := clank.DefaultScoringWeights()
+	if *weightsFile != "" {
+		weights, err = clank.LoadWeightsFile(*weightsFile)
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "replay:", err)
+			return 1
+		}
+	}
+
+	set, err := Propose(context.Background(), tr, weights)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "replay:", err)
+		return 1
+	}
+
+	if *asJSON {
+		if err := json.NewEncoder(stdout).Encode(set); err != nil {
+			_, _ = fmt.Fprintln(stderr, "replay:", err)
+			return 1
+		}
+		return 0
+	}
+
+	line, err := json.Marshal(set)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "replay:", err)
+		return 1
+	}
+	_, _ = fmt.Fprint(stdout, unseal.Summarize(line))
+	return 0
+}
 
 // Propose re-runs tr through a real clank.Engine under w. Everything the
 // model decided is replayed; everything scoreConfidences computes is

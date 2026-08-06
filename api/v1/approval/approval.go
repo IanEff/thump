@@ -1,5 +1,5 @@
 // Package approval is the operator->hiss ack surface: the Approval an
-// operator emits through `trim approve` to release a held Candidate.
+// operator emits through `calipers approve` to release a held Candidate.
 package approval
 
 import (

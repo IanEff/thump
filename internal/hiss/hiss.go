@@ -217,14 +217,14 @@ func buildTransport(ctx context.Context, js jetstream.JetStream, pub publish.Pub
 }
 
 // buildApprovalRequests returns the ApprovalRequest controller, or nil when
-// the CR surface is switched off — in which case trim over thump.approvals is
+// the CR surface is switched off — in which case calipers over thump.approvals is
 // the only way to release a hold, and a held action waits on an operator
 // running a command rather than patching a resource. Returns nil, not a
 // no-op: Transport.Approvals is already nil-safe, and a beat that cannot
 // reach Kubernetes should say so once rather than fail to start.
 func buildApprovalRequests(cfg config.Hiss, approvePub publish.Publisher[approval.Approval]) (*ApprovalRequestController, error) {
 	if !cfg.ApprovalRequestsEnabled {
-		slog.Warn("no ApprovalRequest surface configured — holds are released through trim only",
+		slog.Warn("no ApprovalRequest surface configured — holds are released through calipers only",
 			"beat", "hiss", "fix", "set APPROVALREQUESTS_ENABLED=true")
 		return nil, nil
 	}
