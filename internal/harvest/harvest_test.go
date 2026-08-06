@@ -17,7 +17,14 @@ type recordingRunner struct {
 	calls []string
 }
 
-func (r *recordingRunner) Run(_ context.Context, name string, args ...string) error {
+// Run honours the context it was handed, which is the whole reason this
+// double exists: a runner that ignores cancellation records the restore
+// commands whether or not restore detached from the cancelled context, so
+// the WithoutCancel claim would pass with WithoutCancel deleted.
+func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, name+" "+joinArgs(args))

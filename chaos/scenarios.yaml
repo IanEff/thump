@@ -3,9 +3,19 @@
 # it settle, and what puts the rig back. A row with no restore is rejected at
 # load — a harvest that cannot restore is a rig teardown with extra steps.
 version: 1
+# The rig this table is authored against. Every signalRef below has to be one
+# that rig's rattle/watch.yaml can actually produce, and the fault paths are
+# that rig's too — naming it here is what lets the offline guard check the
+# join without any rig's name being compiled into the harvest package.
+rig: thump-test
 scenarios:
   - name: osd-down-accelerate
     domain: ceph
+    # What rattle emits when this fires: "slo_burn" plus the watched object,
+    # so it must be one of the object: entries in the rig's rattle/watch.yaml.
+    # ceph-cluster rather than ceph-osd because accelerate-recovery's only
+    # live proof settled on the ceph-health SLO, not the OSD latency one.
+    signalRef: slo_burn:ceph-cluster
     fault:
       path: chaos/osd-pod-failure-accelerate.yaml
       apply: kubectl
@@ -31,6 +41,10 @@ scenarios:
 
   - name: cart-failure
     domain: otel-demo
+    # cart-availability watches object: cart; the SLI reads checkout's
+    # rpc_client series toward CartService, but the fingerprint is the
+    # watched object's, not the emitting service's.
+    signalRef: slo_burn:cart
     fault:
       path: chaos/flagd-cart-failure.sh
       apply: exec

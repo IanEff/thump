@@ -45,8 +45,11 @@ func NewHarvest(w Watcher, r Runner) *Harvest {
 
 // Run fires one scenario end to end: preflight -> preconditions -> fault
 // settle -> restore -> graded result.
-func (h *Harvest) Run(ctx context.Context, sc Scenario) (Result, error) {
-	res := Result{
+// The returns are named because the deferred restore amends them: a restore
+// failure discovered after the body has returned has nowhere else to go, and
+// an unnamed return would drop it into a copy nobody reads.
+func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) {
+	res = Result{
 		ScenarioName:     sc.Name,
 		ExpectedClass:    sc.Expects.FailureClass,
 		ExpectedContract: sc.Expects.ContractRef,
@@ -62,13 +65,16 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (Result, error) {
 		}
 	}
 	defer func() {
-		if err := h.restore(ctx, sc); err != nil {
-			if res.Err != nil {
-				res.Err = fmt.Errorf("%w (restore also failed: %w)", res.Err, err)
-			} else {
-				res.Err = fmt.Errorf("restore failed: %w", err)
-			}
+		rerr := h.restore(ctx, sc)
+		if rerr == nil {
+			return
 		}
+		if res.Err != nil {
+			res.Err = fmt.Errorf("%w (restore also failed: %w)", res.Err, rerr)
+		} else {
+			res.Err = fmt.Errorf("restore failed: %w", rerr)
+		}
+		err = res.Err
 	}()
 
 	if err := h.applyAction(ctx, sc.Fault); err != nil {
@@ -76,9 +82,7 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (Result, error) {
 		return res, res.Err
 	}
 
-	fingerprint := sc.Domain + ":" + sc.Name // TODO: placeholder join key
-
-	o, err := Settle(ctx, h.watcher, fingerprint, sc.SettleWindow)
+	o, err := Settle(ctx, h.watcher, sc.SignalRef, sc.SettleWindow)
 	if err != nil {
 		res.Err = err
 		res.ActualResult = outcome.ResultUnknown
@@ -93,8 +97,15 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (Result, error) {
 	return res, nil
 }
 
+// restore puts the rig back: the fault's own reversal, then every
+// precondition's, in reverse order. It deliberately does not inherit the
+// caller's cancellation — a harvest is most often stopped by a human losing
+// patience, and a restore that inherits that cancellation reverts nothing
+// while reporting nothing. Every step runs even when an earlier one failed;
+// the errors join, because a failed fault reversal is no reason to leave
+// mon_osd_down_out_interval at 60.
 func (h *Harvest) restore(ctx context.Context, sc Scenario) error {
-	ctx, cancel := context.WithTimeout(ctx, restoreTimeout)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), restoreTimeout)
 	defer cancel()
 
 	var errs []error
