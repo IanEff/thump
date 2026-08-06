@@ -434,15 +434,15 @@ pipeline is exercised end to end with no infrastructure at all.
 |---|---|
 | `NATS_URL` | set → broker mode; unset → offline directory mode |
 | `PROM_URL` | Prometheus. Required by rattle; optional elsewhere, where empty disables the tool that needs it |
-| `WAL_DIR`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | required in broker mode only |
+| `WAL_DIR`, `WAL_CONFIG`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_CA_FILE`, `THUMP_SEAL_KEY` | required in broker mode only |
 
 **Per beat:**
 
 | Beat | Required | Notable optional |
 |---|---|---|
-| `rattle` | `PROM_URL`, `RATTLE_WATCH` | `WHIR_CATALOG` + `WHIR_STATE_QUERIES`, `RATTLE_TRAFFIC`, `RATTLE_OUTBOX` |
-| `clank` | `ANTHROPIC_API_KEY`, `ACTION_CATALOG`, `FAILURE_CLASSES` | `EVIDENCE_QUERIES`, `LOKI_URL`, `WHIR_*`, `DEDUPE_WINDOW` (default `1h`), `CLANK_TRANSCRIPTS` |
-| `hiss` | `HISS_POLICY` | — |
+| `rattle` | `PROM_URL`, `RATTLE_WATCH`, `RATTLE_QUERY_CONFIG` | `WHIR_CATALOG` + `WHIR_STATE_QUERIES`, `RATTLE_TRAFFIC`, `RATTLE_OUTBOX` |
+| `clank` | `ANTHROPIC_API_KEY`, `ACTION_CATALOG`, `FAILURE_CLASSES`, `CLANK_WEIGHTS`, `CLANK_LIMITS` | `EVIDENCE_QUERIES`, `LOKI_URL`, `WHIR_*`, `DEDUPE_WINDOW` (default `1h`), `CLANK_TRANSCRIPTS` |
+| `hiss` | `HISS_POLICY` | `APPROVALREQUESTS_ENABLED`, `APPROVALREQUEST_RETENTION` (default `24h`) |
 | `thump` | `ACTION_CATALOG` | `THUMP_EXECUTOR` (default `dry`), `THUMP_KILLSWITCH`, `EVIDENCE_QUERIES`, `SLACK_WEBHOOK_URL` |
 
 In offline mode each beat additionally requires its own inbox/outbox pair

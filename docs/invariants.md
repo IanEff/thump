@@ -1,6 +1,6 @@
 # thump — the invariants
 
-Fifteen rules the engine is built to hold. They're numbered so a code review can
+Seventeen rules the engine is built to hold. They're numbered so a code review can
 cite one: **"this violates I-4"** is a complete review comment here.
 
 Read `architecture.md` first for the shape these rules constrain.
@@ -270,6 +270,80 @@ file, or the decisions subject (force excepted, and even force never reaches the
 kill switch); or a reporting view computing a verdict or severity the beats never
 emitted.
 
+## I-16 · Every leg is TLS-negotiated by this process, or declared plaintext
+
+*(ours, 2026-07-27)*
+
+`internal/tlsx`'s `Client` and `Server` are the only two constructors in the
+repo that build a `*tls.Config`. A boundary object crosses a network hop one
+of two ways: TLS negotiated by this process against a CA it was handed, or a
+plaintext leg declared with its reason. Identity on the data plane is a
+certificate: the broker's `verify_and_map` (`deploy/chart/thump/templates/nats.yaml`)
+maps each beat's client cert straight to its publish grants, so I-3/I-7/I-10
+are refused at the broker, not just observed by convention.
+
+`InsecureSkipVerify` is never a declared exception. It's an unauthenticated
+TLS session wearing TLS's shape, and the tripwire refuses it outright rather
+than allowlisting it.
+
+Anything this engine writes to an object store is sealed before it leaves the
+process: `objectstore.EncryptingSink` wraps every WAL segment in
+`sealbox.Key.Seal` (AES-256-GCM) ahead of `s3.Client.PutObject`, so the
+bucket's own key management is never the confidentiality boundary.
+
+**Two declared exceptions stand today.** The Prometheus and Loki query legs
+load through `internal/config`'s plain `Optional`/`Require`, not
+`OptionalURL`/`RequireURL` — no scheme is enforced on either endpoint, because
+both backends are vendored charts that don't serve TLS. They ride node-to-node
+Cilium WireGuard instead; same-node pod-to-pod traffic is in the clear, and
+that's accepted rather than overlooked. The OTLP exporter's `http://` branch
+is narrower and named: a single row in `declaredPlaintext`
+(`internal/httpx/tripwire_test.go`) carrying its own reason, distinct from the
+Prometheus/Loki gap because it's a single file, not an unenforced pair of env
+vars.
+
+*Violation smell:* a `*tls.Config` built outside `internal/tlsx`; an `http://`
+endpoint reachable through `RequireURL`/`OptionalURL` with `http` missing from
+its allowed list; `InsecureSkipVerify` set anywhere.
+
+*Enforced by:* `TestOnlyTlsxBuildsATLSConfig` and
+`TestOnlyDeclaredFilesAskForAnInsecureTransport`
+(`internal/httpx/tripwire_test.go`) — a `*tls.Config` built outside
+`internal/tlsx`, or a bare `WithInsecure`/`InsecureSkipVerify` outside
+`declaredPlaintext`, fails the build; `TestClient_ServerLeafFromDifferentCA_HandshakeRefused`
+and its siblings in `internal/tlsx/tlsx_test.go` — a handshake against the
+wrong CA, an expired leaf, or a missing client cert is refused, not silently
+accepted.
+
+## I-17 · Every client this engine dials has an authored retry policy, timeout, and a failure that surfaces
+
+*(ours, 2026-07-28)*
+
+A silent client is a violation. `design-decisions.md`'s D-13 is the row-by-row
+audit this generalizes: `nats.go`, `client-go`, the Anthropic SDK, AWS S3, and
+`internal/httpx` were each checked against three questions — retry policy,
+timeout, does a failure reach an operator — and fixed or declared. One row
+turned out to be silently wrong rather than merely unaudited: `client-go`'s
+`actuateTimeout` was unbounded before the fix.
+
+**One declared exception stands, not fixed by this ratification:** the OTLP
+exporter (`internal/otelx/trace.go` — D-13 names it `beat/trace.go`, the path
+before the package moved). A wrong or stale CA surfaces to gRPC as
+`codes.Unavailable`, which `otlptracegrpc`'s default retry treats as
+retryable — it backs off and keeps trying, silently, per batch, forever. Spans
+stop arriving with no log line at the failure point and the beat sits
+`1/1 Running` with a dead trace pipeline. Closing this needs a
+`/readyz`-adjacent liveness check or an exporter health callback; what exists
+today is the diagnostic path, `docs/runbooks/otlp-silent-failure.md`.
+
+*Violation smell:* a `net/http`, gRPC, or SDK client constructed without an
+authored timeout; a retry loop with no bound; an error swallowed rather than
+logged, wrapped, or surfaced as a failed `Outcome`.
+
+*Enforced by:* `TestRunner_TimesOutAHungMutationRatherThanBlockingForever`
+(`internal/actuate/runner_test.go`) — the client-go regression this generalizes
+from, pinned so `actuateTimeout` can't silently go unbounded again.
+
 ---
 
 ## The smell test
@@ -300,6 +374,9 @@ the ones most likely to go red on a change, and what each one is protecting:
 | `TestNotifierSDKNeverReachesCoreBeats` | plane containment — a notification SDK leaking into a beat |
 | `leaf_test.go` (in `api/v1/*`) | the seams — a boundary object growing an import into a beat |
 | `TestOperator_OnboardsANewDomainInConfigAlone` | the config-only claim — the day onboarding needs Go, this is where it surfaces |
+| `TestOnlyTlsxBuildsATLSConfig` | I-16 — a hand-rolled `*tls.Config` built outside `internal/tlsx` |
+| `TestOnlyDeclaredFilesAskForAnInsecureTransport` | I-16 — a plaintext leg or `InsecureSkipVerify` with no row in `declaredPlaintext` |
+| `TestRunner_TimesOutAHungMutationRatherThanBlockingForever` | I-17 — a client-go call to the cluster losing its timeout and hanging forever |
 
 ---
 
