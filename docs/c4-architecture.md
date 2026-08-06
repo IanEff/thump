@@ -97,7 +97,7 @@ flowchart TB
 
     subgraph ThumpExec["thump (Execution)"]
         Actuator["Actuator"]
-        Runner["DryRun / LiveRun"]
+        Runner["DryRun / Live"]
     end
 
     Intake --> Engine
@@ -132,7 +132,7 @@ sequenceDiagram
     C->>C: ToolCall metrics("pgs_backfilling") => Ref 2
     C->>C: Propose candidate "hold-rebalance" (Conf: 0.9, Blast: med)
     C->>G: Evaluate Readiness Gate
-    Note over G: Check: Budget AND Dedupe AND Evidence (at least 2 Live Refs)
+    Note over G: Check: Budget AND Dedupe AND Evidence (at least 1 Live ref, topologically coherent)
     G-->>C: Gate.Passed = true
     C->>H: Deliver ProposalSet
     Note over H: Evaluate Policy (floor 0.75 is below 0.9 conf, MaxBand act_reversible)
@@ -197,7 +197,7 @@ thump_system: thump Agentic SRE {
 
   thump_exec: Beat 4: thump (Execution) {
     class: beat
-    actuator: Actuator & DryRun/LiveRun
+    actuator: Actuator & DryRun/Live
     killswitch: THUMP_KILLSWITCH {
       class: safety
     }
@@ -215,7 +215,7 @@ cluster: Target Kubernetes / Ceph Cluster {
 
 prometheus -> thump_system.rattle: "Ingests Alerts & Metrics"
 thump_system.rattle -> thump_system.clank.sao: "emits SignalDetection"
-prometheus -> thump_system.clank: "Live metrics queries (MetricsTool)"
+prometheus -> thump_system.clank: "Live metrics queries (evidence/MetricsTool)"
 thump_system.clank.gate -> thump_system.hiss.policy: "delivers ProposalSet (if Gate passes)"
 thump_system.hiss.policy -> thump_system.thump_exec.actuator: "emits Governed Decision (Approved)"
 thump_system.thump_exec.actuator -> cluster: "Executes catalog action (e.g. hold-rebalance)"
