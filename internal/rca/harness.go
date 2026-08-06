@@ -2,7 +2,11 @@ package rca
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/trace/noop"
@@ -116,7 +120,10 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts 
 
 // RunCase grades one scenario against model and returns its Row. It never
 // panics on a declined set — an "insufficient" row has no candidate at all,
-// so every candidate read is guarded.
+// so every candidate read is guarded. The emitted set is also written to
+// transcripts as <signalRef>.set.json beside the conversation's .jsonl,
+// because replay needs Evidence[].Live and .Subject to score a grounding
+// tier and neither field survives in the conversation transcript alone.
 func RunCase(ctx context.Context, c Case, model reason.Model, w clank.ScoringWeights, transcripts string) (Row, error) {
 	h, err := newHarness(c, model, w, transcripts)
 	if err != nil {
@@ -128,5 +135,20 @@ func RunCase(ctx context.Context, c Case, model reason.Model, w clank.ScoringWei
 	if err != nil {
 		return Row{}, fmt.Errorf("propose %s: %w", c.Name, err)
 	}
+	if err := writeSet(transcripts, set); err != nil {
+		return Row{}, fmt.Errorf("write set for %s: %w", c.Name, err)
+	}
 	return grade(c, set), nil
+}
+
+// writeSet marshals set to <transcripts>/<signalRef>.set.json. SignalRef
+// substitutes for a filesystem-safe name; it is a rattle Kind():Object pair
+// and can carry slashes.
+func writeSet(transcripts string, set proposal.Set) error {
+	raw, err := json.MarshalIndent(set, "", "  ")
+	if err != nil {
+		return err
+	}
+	name := strings.ReplaceAll(set.SignalRef, "/", "_") + ".set.json"
+	return os.WriteFile(filepath.Join(transcripts, name), raw, 0o600) //nolint:gosec // G703: transcripts comes from a CLI flag, env var, or os.TempDir — operator-supplied, not user input
 }
