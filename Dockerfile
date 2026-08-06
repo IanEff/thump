@@ -12,7 +12,7 @@ ARG DATE=unknown
 ARG TARGETOS
 ARG TARGETARCH
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim && \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump && \
     sed -i 's#/src/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true && \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go tool otelc go build -ldflags "-s -w \
     -X main.version=${VERSION} \

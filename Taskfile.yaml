@@ -3,17 +3,21 @@ version: "3"
 vars:
   PROJECT: thump
   REGISTRY: '{{.REGISTRY | default "ghcr.io/ianeff"}}'
-  BEATS: "clank rattle hiss thump trim bootstrap unseal"
-  # The four long-running services that actually run as cluster pods. trim and
-  # unseal are operator-run CLIs — no internal/beat runtime, no Helm Deployment
-  # — and ship only as binaries (build/goreleaser), never as container images.
+  BEATS: "clank rattle hiss thump bootstrap"
+  # The four long-running services that actually run as cluster pods.
   SERVICE_BEATS: "clank rattle hiss thump"
   # bootstrap (R6c) is neither: it's a one-shot Kubernetes Job, not a
-  # long-running service, but unlike trim it runs in-cluster and needs a
+  # long-running service, but unlike calipers it runs in-cluster and needs a
   # container image. IMAGE_BEATS is the union that actually gets built/
   # pushed/signed; SERVICE_BEATS keeps its own meaning of "has a Deployment."
   JOB_BEATS: "bootstrap"
   IMAGE_BEATS: "{{.SERVICE_BEATS}} {{.JOB_BEATS}}"
+  # calipers is the operator CLI (incidents/approve/force/unseal/corpus/rca/
+  # tune/replay/harvest) — no internal/beat runtime, no otelc compile-time
+  # instrumentation, no Helm Deployment, ships only as a binary
+  # (build-calipers/goreleaser), never as a container image. Kept out of
+  # BEATS because it isn't otelc-instrumented like the other five.
+  CALIPERS: "calipers"
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo dev
   COMMIT:
@@ -149,12 +153,12 @@ tasks:
   rca:
     desc: Run the graded RCA suite — did the reasoner cite the right evidence, not just reach the right verdict? (key-gated, not part of ci)
     cmds:
-      - go run ./cmd/rca
+      - go run ./cmd/calipers rca
 
   corpus:
     desc: Mine the sealed WAL into testdata/corpus/ — every (Confidence, FailureClass, Result) triple this engine has produced (needs S3_*/THUMP_SEAL_KEY; rig-free, object-store creds only)
     cmds:
-      - go run ./cmd/corpus
+      - go run ./cmd/calipers corpus
 
   capture-detection:
     desc: "Farm a live detection into a fixture: task capture-detection SRC=<path to .yaml> NAME=<fixture-name>"
@@ -168,7 +172,7 @@ tasks:
   otelc:generate:
     desc: Regenerate otelc compile-time instrumentation wrappers and rulesets
     cmds:
-      - go tool otelc setup ./cmd/bootstrap ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim
+      - go tool otelc setup ./cmd/bootstrap ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump
       - sed -i '' 's#/Users/ian/projects/go/thump/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true
       - find .otelc-build -name "go.mod" -exec sed -i '' 's/v1\.81\.1/v1\.82\.0/g' {} + 2>/dev/null || true
       - find .otelc-build -name "go.mod" -exec sed -i '' 's/go 1\.25\.0/go 1\.26\.0/g' {} + 2>/dev/null || true
@@ -176,10 +180,11 @@ tasks:
       - go run golang.org/x/tools/cmd/goimports@latest -w cmd/*/otelc.runtime.go 2>/dev/null || true
 
   build:
-    desc: Build all five beats to bin/ with otelc compile-time instrumentation
+    desc: Build the four beats and bootstrap (otelc-instrumented) plus calipers (plain) to bin/
     cmds:
       - mkdir -p bin
       - for beat in {{.BEATS}}; do go tool otelc go build -ldflags "{{.LDFLAGS}}" -o bin/$beat ./cmd/$beat || exit 1; done
+      - go build -ldflags "{{.LDFLAGS}}" -o bin/calipers ./cmd/calipers
 
   # images builds one container per beat, tagged with the git SHA (never
   # `latest` — mutable tags break GitOps drift detection), with an SBOM and
@@ -248,7 +253,7 @@ tasks:
     cmds:
       - mkdir -p bin/sbom
       - |
-        for beat in {{.BEATS}}; do
+        for beat in {{.BEATS}} {{.CALIPERS}}; do
           go run github.com/anchore/syft/cmd/syft@latest bin/$beat -o spdx-json=bin/sbom/$beat.sbom.json
         done
 
@@ -257,7 +262,7 @@ tasks:
     deps: [sbom-binaries]
     cmds:
       - |
-        for beat in {{.BEATS}}; do
+        for beat in {{.BEATS}} {{.CALIPERS}}; do
           go run github.com/sigstore/cosign/v2/cmd/cosign@latest sign-blob --yes \
             --output-signature=bin/sbom/$beat.sig \
             --output-certificate=bin/sbom/$beat.pem \
@@ -284,10 +289,10 @@ tasks:
     cmds:
       - go run ./cmd/thump
 
-  run:trim:
-    desc: go run ./cmd/trim
+  run:calipers:
+    desc: go run ./cmd/calipers
     cmds:
-      - go run ./cmd/trim
+      - go run ./cmd/calipers
 
   # The bucket pull stays the operator's job: which object store, which
   # credentials, and which segments are worth reading are all site facts, and
@@ -298,7 +303,7 @@ tasks:
     requires:
       vars: [SEG]
     cmds:
-      - go run ./cmd/unseal {{.SEG}}
+      - go run ./cmd/calipers unseal {{.SEG}}
 
   seal-key:
     desc: "Print THUMP_SEAL_KEY from the cluster, both base64 layers handled — export it before task unseal"

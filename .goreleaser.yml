@@ -13,7 +13,7 @@ project_name: thump
 
 before:
   hooks:
-    - go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump ./cmd/trim
+    - go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump
     - sed -i '' 's#.*/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true
     - go mod tidy
 
@@ -62,9 +62,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
-  - id: trim
-    main: ./cmd/trim
-    binary: trim
+  - id: calipers
+    main: ./cmd/calipers
+    binary: calipers
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin]
