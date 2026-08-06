@@ -32,7 +32,9 @@ Confirm the collector connection is actually exporting, not just running:
 kubectl logs -n thump -l app.kubernetes.io/component=clank --tail=200 | grep -c 'exporting spans'
 ```
 
-(swap `component=clank` for `rattle`/`hiss`/`thump`/`trim` as needed). A
+(swap `component=clank` for `rattle`/`hiss`/`thump` as needed — the four
+long-running beats are the only ones with a Deployment and this label;
+`calipers` is an operator CLI with neither). A
 healthy exporter logs a debug line per batch shipped; a count of `0` over a
 window where the beat has clearly been doing work is the tell — the absence
 of the line is the finding, not any single log message.

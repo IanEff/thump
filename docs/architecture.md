@@ -115,7 +115,7 @@ contract they share.
 | Governance verdict | `decision.Decision`, wrapped in `decision.Governed` | hiss → thump |
 | Action Contract | `contract.ActionContract` (the catalog) | **humans author** → clank proposes from, thump executes from |
 | Outcome Signal | `outcome.Outcome` | thump → click's return edge |
-| Approval | `approval.Approval` | operator (`trim`) → hiss re-issues |
+| Approval | `approval.Approval` | operator (`calipers`) → hiss re-issues |
 
 `api/v1` is **additive-only**: never rename, retype, or repurpose a field there.
 Other *processes*, not just other packages, depend on the exact shape.
@@ -293,7 +293,7 @@ The gate and the shaper never blend
 ([I-5](invariants.md#i-5--gate--shaper)). A high score on one axis cannot buy
 passage on a failed minimum.
 
-**The hold loop closes.** An operator runs `trim approve <fingerprint>`, which
+**The hold loop closes.** An operator runs `calipers approve <fingerprint>`, which
 emits an `approval.Approval` onto `thump.approvals` and nothing else. hiss's
 `approveHandler` (`internal/hiss/transport.go`) takes the held decision,
 re-stamps it approved with the approver's name, and publishes it. Governance
@@ -401,11 +401,17 @@ internal/
   subjects/      cluster coordinate to topology node resolution index
   actuate/       the ONLY client-go site — compiled mechanisms and their binding
   contract/      the action catalog: loading, validation, reachability checks
-  trim/          the operator CLI: read projection, approve, break-glass force
+  calipers/      the operator CLI's dispatch table: read projection, approve,
+                 break-glass force, plus unseal/corpus/rca/tune/replay/harvest
   bootstrap/     in-cluster bootstrap job logic
-  unseal/        unseal CLI and vault key handling
+  unseal/        vault unseal and key handling, dispatched via calipers
   sealbox/       encrypted secrets envelope
-  corpus/        corpus versioning, incident collapsing, and casebase mining
+  corpus/        corpus versioning, incident collapsing, and casebase mining,
+                 dispatched via calipers
+  rca/           graded RCA suite, dispatched via calipers
+  tune/          scoring weight sweep, dispatched via calipers
+  replay/        transcript replayer, dispatched via calipers
+  harvest/       chaos scenario runner over a live cluster, dispatched via calipers
   ledger/        decision and casebase ledger persistence
   whir/          topology and evidence-query config
   broker/        NATS JetStream subjects and durable consumers
@@ -415,7 +421,7 @@ internal/
   notify/        Slack notification dispatching
   beat/          shared beat scaffolding: startup, stage metrics, tracing
 
-cmd/             one main per entrypoint: clank, rattle, hiss, thump, trim, bootstrap, corpus, unseal
+cmd/             one main per entrypoint: clank, rattle, hiss, thump, bootstrap, calipers
 config/          authored YAML — the catalog, failure classes, hiss policy,
                  and one directory per site
 test/onboarding/ the whole engine over a domain authored in config alone
@@ -428,7 +434,7 @@ test/onboarding/ the whole engine over a domain authored in config alone
 The beats deploy as operators. Their outputs ride a NATS JetStream stream and
 land in an S3-offloaded write-ahead log — **the log is the system of record.**
 etcd holds slow, human-authored config only, and as little of that as possible;
-there is no custom resource per noun. Any reporting view (`trim incidents`) is a
+there is no custom resource per noun. Any reporting view (`calipers incidents`) is a
 read-model, rebuilt by folding the stream, never a second source of record.
 
 Subjects: `thump.detections`, `thump.proposals`, `thump.decisions`,

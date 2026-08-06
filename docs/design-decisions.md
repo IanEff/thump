@@ -155,7 +155,7 @@ its letter changed.
 **Our own rule said:** the operator surface never writes decisions
 ([I-15](invariants.md#i-15--the-operator-surface-never-disposes)).
 
-**We do:** `trim force <fingerprint>` lets a *human* emit an approved decision
+**We do:** `calipers force <fingerprint>` lets a *human* emit an approved decision
 that bypasses hiss's risk gate — but **not** the kill switch (a disarmed switch
 still blocks the forced order) and **not** the audit trail (every forced decision
 is auditable, operator-attributed, and rendered visibly `forced` in every view).

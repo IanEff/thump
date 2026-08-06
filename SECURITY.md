@@ -102,7 +102,7 @@ would have skipped, until you check the base.
 
 | Store | Holds | Protection |
 |---|---|---|
-| WAL active/sealed segments | every published boundary object, as JSON lines | plaintext on `emptyDir`, modes `0o600`/`0o750` — defended rather than fixed: nothing outlives the pod, and this is the copy `trim` reads during an incident |
+| WAL active/sealed segments | every published boundary object, as JSON lines | plaintext on `emptyDir`, modes `0o600`/`0o750` — defended rather than fixed: nothing outlives the pod, and this is the copy `calipers` reads during an incident |
 | NATS JetStream store | up to 48h of every subject | JetStream's native encryption at rest — `cipher: chachapoly` (ChaCha20-Poly1305), key from a `$JS_KEY` env var sourced from a Secret, never the ConfigMap (`deploy/chart/thump/templates/nats.yaml`, `secret.yaml`). Chart-wired; the live restart-and-`strings`-over-`/data` proof against the rig is still owed |
 | GCS bucket | shipped WAL segments and clank transcripts | `AES-256-GCM` sealed in-process before `PutObject` (`internal/sealbox`), so the bucket holds ciphertext regardless of who can read it; bucket-side, `public_access_prevention: enforced` is provisioned in the rig repo |
 | k3s datastore | `ANTHROPIC_API_KEY`, the S3 HMAC pair, the Slack webhook, the seal key, every beat's TLS private key | `secrets-encryption: true`, provisioned in the rig repo — a cluster-create setting, not a runtime flag |
@@ -122,7 +122,7 @@ front of the same room — the bucket's access path (an HMAC key pair, GCS IAM,
 a `public_access_prevention` misconfiguration) is entirely separate from
 cluster RBAC, so a bucket compromise on its own yields ciphertext. A
 compromise of the k3s datastore is a different door again, and it's the one
-`secrets-encryption` closes. `trim unseal` reads a sealed object back for
+`secrets-encryption` closes. `calipers unseal` reads a sealed object back for
 debugging; sealing reaches nothing, decides nothing, writes nothing, so it
 carries none of the catalog's execution-surface concerns above.
 

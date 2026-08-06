@@ -102,7 +102,7 @@ model and is key-gated (`ANTHROPIC_API_KEY`) — it is deliberately *not* part o
 exists to keep out. A missing key is a clean skip, not a failure.
 
 The five beats also run standalone (`task run:clank`, `run:rattle`, `run:hiss`,
-`run:thump`, `run:trim`) and against a live cluster through Tilt — see
+`run:thump`, `run:calipers`) and against a live cluster through Tilt — see
 `README.md` § Standing it up locally. **Dry-run is the default and you have to
 opt into anything else**; going live additionally requires an armed kill switch.
 
