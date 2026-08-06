@@ -17,8 +17,7 @@ done
 
 # 2. Check Execution Mode & Killswitch state in running beat
 echo "Checking thump deployment environment..."
-EXECUTOR=$(kubectl get deploy -n thump -o jsonpath='{.items[*].spec.template.spec.containers[*].
-env[?(@.name=="THUMP_EXECUTOR")].value}' 2>/dev/null || echo "unknown")
+EXECUTOR=$(kubectl get deploy -n thump -o jsonpath='{.items[*].spec.template.spec.containers[*].env[?(@.name=="THUMP_EXECUTOR")].value}' 2>/dev/null || echo "unknown")
 echo "[INFO] THUMP_EXECUTOR=$EXECUTOR"
 
 # 3. Check flagd ConfigMap availability

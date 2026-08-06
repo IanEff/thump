@@ -13,9 +13,13 @@ scenarios:
     domain: ceph
     # What rattle emits when this fires: "slo_burn" plus the watched object,
     # so it must be one of the object: entries in the rig's rattle/watch.yaml.
-    # ceph-cluster rather than ceph-osd because accelerate-recovery's only
-    # live proof settled on the ceph-health SLO, not the OSD latency one.
-    signalRef: slo_burn:ceph-cluster
+    # cephblockpool (ceph-redundancy, the durability SLO), not ceph-cluster
+    # (ceph-health) — found live, 2026-08-06: a full 20-minute harvest run
+    # against this exact fault settled slo_burn:cephblockpool to a real hiss
+    # decision (hold/risk_ceiling) while slo_burn:ceph-cluster never reached
+    # a terminal outcome at all. A single failed OSD degrades redundancy
+    # fast; it does not move the cluster-wide health SLO within this window.
+    signalRef: slo_burn:cephblockpool
     fault:
       path: chaos/osd-pod-failure-accelerate.yaml
       apply: kubectl
@@ -23,25 +27,50 @@ scenarios:
       - name: mon-osd-down-out-interval
         # Ceph waits 600s by default before marking a down OSD out, which is
         # longer than the whole harvest window; at 60 the degradation is real
-        # within the run rather than after it.
-        set: ceph config set global mon_osd_down_out_interval 60
-        restore: ceph config set global mon_osd_down_out_interval 600
+        # within the run rather than after it. Routed through rook-ceph-tools
+        # like every other chaos/*.sh's ceph call — the harvest runner has no
+        # ceph binary of its own on PATH. Found live, 2026-08-06: the bare
+        # `ceph ...` form here was the only ceph precondition in the table
+        # that skipped kubectl exec, and it 127'd on the very first live run.
+        set: kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph config set global mon_osd_down_out_interval 60
+        restore: kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph config set global mon_osd_down_out_interval 600
       - name: balancer-off
         # The balancer competes with the action under test for the same PGs.
-        set: ceph balancer off
-        restore: ceph balancer on
+        set: kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph balancer off
+        restore: kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph balancer on
       - name: argocd-selfheal-off
         # ArgoCD reverts a scaled-to-0 operator in about a second, so any action
         # that pauses a reconciler needs self-heal off first or the pause does
         # not hold. preflight.sh already does this; the harvest has to own the
         # undo, or a cancelled run leaves six Applications un-self-healing.
-        set: kubectl -n argocd patch application rook-ceph-operator --type merge -p {"spec":{"syncPolicy":{"automated":{"selfHeal":false}}}}
-        restore: kubectl -n argocd patch application rook-ceph-operator --type merge -p {"spec":{"syncPolicy":{"automated":{"selfHeal":true}}}}
+        # The Application is named rook-operator, not rook-ceph-operator —
+        # that's the Deployment it manages (config/actions/catalog.yaml's
+        # scale target); confirmed live 2026-08-06 against
+        # ~/projects/ceph/thump-test's argocd namespace, matches
+        # preflight.sh's own ROOK_APPS list.
+        # harvest runs this string through `sh -c`, so the JSON patch body
+        # needs its own shell quoting (single-quoted, like preflight.sh's
+        # equivalent call) or the shell consumes the double quotes before
+        # kubectl ever sees them. Found live, 2026-08-06: the unquoted form
+        # 127'd immediately with "invalid character 's' ... looking for
+        # beginning of object key string" on the very first live run.
+        set: kubectl -n argocd patch application rook-operator --type merge -p '{"spec":{"syncPolicy":{"automated":{"selfHeal":false}}}}'
+        restore: kubectl -n argocd patch application rook-operator --type merge -p '{"spec":{"syncPolicy":{"automated":{"selfHeal":true}}}}'
     expects:
       failureClass: redundancy_degraded
       contractRef: accelerate-recovery
       verdict: held           # blastTier high; a human blesses this one (D-10)
-    settleWindow: 20m
+    # 20m was too tight — found live, 2026-08-06: hold-rebalance's own
+    # successCriteria.window is 10m (config/actions/catalog.yaml), and a
+    # live run whose first decision cycle gets rejected (ungated_input) before
+    # a later cycle approves can burn 10+ of the 20 minutes before the action
+    # even fires, leaving no room for its convergence probe. thump's own
+    # watchAndSettle goroutine finished the run correctly regardless — it
+    # isn't bounded by harvest's settleWindow — but harvest's own CLI gave up
+    # and reported no terminal outcome before that goroutine published its
+    # result. 30m covers detection lag + a slow decision cycle + the 10m
+    # convergence window with room to spare.
+    settleWindow: 30m
     restore:
       path: chaos/osd-pod-failure-accelerate.yaml
       apply: kubectl-delete
