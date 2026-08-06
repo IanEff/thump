@@ -62,14 +62,11 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) 
 		ExpectedVerdict:  sc.Expects.Verdict,
 	}
 
-	// Preconditions run in declared order; restore always runs, even on
-	// failure.
-	for _, p := range sc.Preconditions {
-		if err := h.runAction(ctx, p.Set); err != nil {
-			res.Err = fmt.Errorf("precondition %s: %w", p.Name, err)
-			return res, res.Err
-		}
-	}
+	// The defer is registered before the preconditions loop runs, not
+	// after: a precondition failing partway through still needs every
+	// prior precondition undone, and each restore command is idempotent
+	// (sets a known-good value) so running one for a step that never
+	// applied is harmless.
 	defer func() {
 		rerr := h.restore(ctx, sc)
 		if rerr == nil {
@@ -82,6 +79,15 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) 
 		}
 		err = res.Err
 	}()
+
+	// Preconditions run in declared order; restore always runs, even on
+	// failure.
+	for _, p := range sc.Preconditions {
+		if err := h.runAction(ctx, p.Set); err != nil {
+			res.Err = fmt.Errorf("precondition %s: %w", p.Name, err)
+			return res, res.Err
+		}
+	}
 
 	if err := h.applyAction(ctx, sc.Fault); err != nil {
 		res.Err = fmt.Errorf("fault: %w", err)

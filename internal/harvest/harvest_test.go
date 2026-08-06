@@ -2,6 +2,8 @@ package harvest_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -129,6 +131,77 @@ func containsCall(calls []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// failingRunner records every command like recordingRunner, but errors on
+// any call containing failOn — used to force a precondition to fail partway
+// through Run.
+type failingRunner struct {
+	mu     sync.Mutex
+	calls  []string
+	failOn string
+}
+
+func (r *failingRunner) Run(_ context.Context, name string, args ...string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	call := name + " " + joinArgs(args)
+	r.calls = append(r.calls, call)
+	if strings.Contains(call, r.failOn) {
+		return errors.New("boom")
+	}
+	return nil
+}
+
+func (r *failingRunner) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.calls...)
+}
+
+// TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails
+// pins a bug found live 2026-08-06: the restore defer used to be registered
+// after the preconditions loop, so a precondition failing partway through
+// returned before the defer ever ran, leaving every precondition applied
+// before it permanently unrestored on a real rig.
+func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t *testing.T) {
+	t.Parallel()
+	sc := harvest.Scenario{
+		Name: "osd-down-accelerate",
+		Fault: harvest.Action{
+			Path: "chaos/osd-pod-failure-accelerate.yaml", Apply: "kubectl",
+		},
+		Preconditions: []harvest.Precondition{
+			{
+				Name:    "mon-osd-down-out-interval",
+				Set:     "ceph config set global mon_osd_down_out_interval 60",
+				Restore: "ceph config set global mon_osd_down_out_interval 600",
+			},
+			{
+				Name:    "argocd-selfheal-off",
+				Set:     "kubectl -n argocd patch application rook-operator --type merge -p bad-json",
+				Restore: "kubectl -n argocd patch application rook-operator --type merge -p good-json",
+			},
+		},
+		Expects:      harvest.Expects{Verdict: "held"},
+		SettleWindow: time.Minute,
+		Restore: harvest.Action{
+			Path: "chaos/osd-pod-failure-accelerate.yaml", Apply: "kubectl-delete",
+		},
+	}
+
+	runner := &failingRunner{failOn: "argocd"}
+	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+
+	if _, err := h.Run(t.Context(), sc); err == nil {
+		t.Fatal("Run succeeded despite a failing precondition")
+	}
+
+	calls := runner.snapshot()
+	want := "/bin/sh -c ceph config set global mon_osd_down_out_interval 600"
+	if !containsCall(calls, want) {
+		t.Errorf("Run left mon_osd_down_out_interval at 60 after a later precondition failed; restore calls were %v", calls)
+	}
 }
 
 // TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet pins the win
