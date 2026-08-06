@@ -1,0 +1,35 @@
+# calipers harvest runs from an operator's own kubeconfig, not an in-cluster
+# ServiceAccount — internal/harvest/harvest.go's CommandRunner shells out to
+# the local `kubectl` binary (see runtime notes in thump-running-notes.md,
+# 2026-08-06). This Role is what a cluster admin binds to that operator's
+# identity so a harvest run doesn't need cluster-admin to inject a fault.
+# Unbound by default, same reasoning as rbac-approver.yaml: a chart that
+# shipped a default operator would be granting exactly the authority this
+# resource exists to constrain.
+#
+# osd-down-accelerate (chaos/scenarios.yaml) is PodChaos's only current
+# consumer: `kubectl apply -f` to inject, `kubectl delete -f` to restore —
+# get is what apply's own diff needs before it creates.
+{{- if and .Values.harvest.enabled .Values.harvest.operators }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-harvest-chaosmesh
+  namespace: chaos-mesh
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["podchaos"]
+    verbs: ["get", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-harvest-chaosmesh
+  namespace: chaos-mesh
+subjects:
+{{- toYaml .Values.harvest.operators | nindent 2 }}
+roleRef:
+  kind: Role
+  name: thump-harvest-chaosmesh
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

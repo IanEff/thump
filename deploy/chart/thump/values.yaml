@@ -38,10 +38,10 @@ argocd:
   enabled: true
 
 # The ApprovalRequest surface: hiss opens one custom resource per held action
-# and a human releases it with kubectl patch. What that buys over `trim
+# and a human releases it with kubectl patch. What that buys over `calipers
 # approve` is the approver's identity — an authenticated Kubernetes subject
 # the API server records independently of thump, rather than a string an
-# operator typed about themselves. Off means trim is the only way to release
+# operator typed about themselves. Off means calipers is the only way to release
 # a hold; hiss still runs, and still holds.
 #
 # approvers are the subjects granted patch rights. Empty means nobody can
@@ -51,6 +51,18 @@ argocd:
 approvalRequests:
   enabled: false
   approvers: []
+
+# calipers harvest (internal/harvest) runs from an operator's own kubeconfig,
+# never as an in-cluster Deployment — see rbac-harvest-chaosmesh.yaml's
+# header for why that means RBAC here, not a NetworkPolicy. operators are
+# the subjects bound into the three namespaced Roles (chaos-mesh, otel-demo,
+# argocd) a harvest run needs; empty means nobody can run a live harvest
+# scenario without their own out-of-band grant, same reasoning as
+# approvalRequests.approvers above. Same subject shape:
+# {kind: User|Group|ServiceAccount, name: ..., namespace: ...}.
+harvest:
+  enabled: false
+  operators: []
 
 # Empty by default. The deployment templates fan this one value out to two
 # independent OTel init paths: internal/beat.Tracer (hand-rolled OTLP/gRPC,
