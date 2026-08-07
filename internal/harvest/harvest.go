@@ -195,13 +195,14 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
 	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
 	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
+	serverName := fs.String("server-name", "", "TLS SAN to verify the peer against, if it differs from the dialed host (e.g. a port-forwarded nats-url)")
 	only := fs.String("row", "", "run only the scenario whose name contains this substring")
 	asJSON := fs.Bool("json", false, "print each Result as JSON instead of a human line")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *scenariosPath == "" || *natsURL == "" {
-		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path] [--row substring] [--json]")
+		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path --server-name name] [--row substring] [--json]")
 		return 2
 	}
 
@@ -217,7 +218,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	// of leaving the fault and every precondition applied on the rig.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	tc := tlsx.Config{CertFile: *certFile, KeyFile: *keyFile, CAFile: *caFile}
+	tc := tlsx.Config{CertFile: *certFile, KeyFile: *keyFile, CAFile: *caFile, ServerName: *serverName}
 	js, closer, err := broker.Connect(ctx, *natsURL, tc, broker.Hooks{})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "harvest:", err)
