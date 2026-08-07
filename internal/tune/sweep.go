@@ -57,6 +57,10 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 		loaded = append(loaded, tr)
 	}
 
+	// DefaultScoringWeights, not a loaded config/clank/weights.yaml: the sweep's
+	// non-swept dimensions should start from the same point replay/rca do by
+	// default. TestDefaultScoringWeights_MatchesTheShippedConfig
+	// (internal/clank) keeps this equal to the shipped file.
 	base := clank.DefaultScoringWeights()
 
 	usable := loaded[:0]
