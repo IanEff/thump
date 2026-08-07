@@ -1,3 +1,7 @@
+// Command thump runs the Execution beat: it renders or executes an already
+// approved Decision, watches for convergence, and fires the authored reversal
+// when the success window closes unmet. It decides nothing — it acts only on a
+// verdict hiss granted, and only while the global kill switch is armed.
 package main
 
 import (
