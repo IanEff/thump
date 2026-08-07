@@ -62,10 +62,12 @@ func Floor() int {
 // Met reports whether the run cleared its floor.
 func (r Report) Met() bool { return r.Scored >= r.Floor }
 
-// grade scores one emitted set against the row that asked for it. Citation
-// discipline is graded before the verdict: a run reaching the right class off
-// the decoy is a miss even though its class matches.
-func grade(c Case, set proposal.Set) Row {
+// Grade scores one emitted set against the row that asked for it — the single
+// definition of what the labels mean, so a replayed sweep and a live suite run
+// can never disagree about whether a row passed. Citation discipline is graded
+// before the verdict: a run reaching the right class off the decoy is a miss
+// even though its class matches.
+func Grade(c Case, set proposal.Set) Row {
 	row := Row{
 		Name:      c.Name,
 		KnownMiss: c.KnownMiss,
