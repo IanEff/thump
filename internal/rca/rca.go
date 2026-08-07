@@ -59,10 +59,11 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	// engine never runs.
 	model := anthropic.NewModel(key, modelRequestTimeout)
 
-	// config/clank/weights.yaml, not DefaultScoringWeights: the two agree
-	// today, but nothing enforces that, and a suite that grades a value
-	// with no obligation to track the shipped file can pass while the
-	// deployed weights have drifted out from under it.
+	// config/clank/weights.yaml, not DefaultScoringWeights: the graded suite
+	// should score the value production actually loads, not a copy of it.
+	// TestDefaultScoringWeights_MatchesTheShippedConfig (internal/clank)
+	// enforces that the two stay equal, so a suite using either here can't
+	// silently drift from the deployed weights.
 	weights, err := clank.LoadWeightsFile(configPath("clank", "weights.yaml"))
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "rca:", err)

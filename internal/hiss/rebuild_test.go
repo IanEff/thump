@@ -39,6 +39,34 @@ func TestRebuildHolds_RecoversAnOpenHoldAfterARestart(t *testing.T) {
 	}
 }
 
+func TestRebuildHolds_RecoversAnOpenEscalateAfterARestart(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	js := natstest.New(t)
+	if err := broker.EnsureTopology(ctx, js); err != nil {
+		t.Fatal(err)
+	}
+
+	pub := publish.NewJetPublisher[decision.Governed](js)
+	escalated := decision.Governed{Decision: decision.Decision{SignalRef: "fp-1", Verdict: decision.VerdictEscalate}}
+	if err := pub.Publish(ctx, "thump.decisions", escalated); err != nil {
+		t.Fatal(err)
+	}
+
+	// simulate a restart: nothing in this process's memory yet, rebuild cold
+	holds, err := hiss.RebuildHoldsForTest(ctx, js)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := holds.Take("fp-1")
+	if !ok {
+		t.Fatal("want the pre-restart escalate recovered, got not-found")
+	}
+	if diff := cmp.Diff(escalated, got); diff != "" {
+		t.Error("wrong Governed recovered (-want +got)", diff)
+	}
+}
+
 func TestRebuildHolds_ExcludesAFingerprintAlreadyResolved(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

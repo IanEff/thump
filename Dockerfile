@@ -1,7 +1,6 @@
 FROM --platform=$BUILDPLATFORM golang:1.26 AS deps
 WORKDIR /src
 COPY go.mod go.sum ./
-COPY .otelc-build ./.otelc-build
 RUN go mod download
 
 FROM deps AS build
@@ -12,9 +11,10 @@ ARG DATE=unknown
 ARG TARGETOS
 ARG TARGETARCH
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go tool otelc setup ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump && \
-    sed -i 's#/src/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true && \
-    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go tool otelc go build -ldflags "-s -w \
+# otelc regenerates .otelc-build/, the per-command otelc.runtime.go files and the
+# go.mod replace directives on each invocation, then reverts them when the build
+# finishes. Nothing it produces is committed, so there is nothing to set up first.
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go tool otelc go build -ldflags "-s -w \
     -X main.version=${VERSION} \
     -X main.commit=${COMMIT} \
     -X main.date=${DATE}" -o /out/${BEAT} ./cmd/${BEAT}

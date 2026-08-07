@@ -82,6 +82,27 @@ func TestLoadWeights_TheShippedDefaultsEqualTheConstantsTheyReplaced(t *testing.
 	}
 }
 
+// TestDefaultScoringWeights_MatchesTheShippedConfig is the guard
+// TestLoadWeights_TheShippedDefaultsEqualTheConstantsTheyReplaced cannot be:
+// that test pins weights.yaml against a frozen historical snapshot, so it
+// stays green even if DefaultScoringWeights itself is edited. rca, tune, and
+// replay all fall back to DefaultScoringWeights when no config file is given
+// — if it drifts from config/clank/weights.yaml (the file production clank
+// actually loads, clank.go:73) unnoticed, those tools grade or sweep a value
+// the deployed engine no longer uses. This test is what makes that
+// impossible: a deliberate divergence must edit this test in the same diff,
+// which is where the basis for the new number gets written down (D-19).
+func TestDefaultScoringWeights_MatchesTheShippedConfig(t *testing.T) {
+	t.Parallel()
+	got, err := clank.LoadWeightsFile(filepath.Join("..", "..", "config", "clank", "weights.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(clank.DefaultScoringWeights(), got); diff != "" {
+		t.Error("DefaultScoringWeights no longer matches the shipped config (-want +got)\n", diff)
+	}
+}
+
 func TestLoadWeights_RejectsAPartialFileRatherThanZeroingTheMissingTerms(t *testing.T) {
 	t.Parallel()
 	// A zero ScoringWeights does not degrade gracefully — wiring.go:91 already

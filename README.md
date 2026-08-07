@@ -12,20 +12,67 @@ multidimensional thermostat that watches reliability signals, reasons about them
 with an LLM, and executes an authored, catalog-bound action once policy clears.
 
 What it can act on is entirely a function of what's in the catalog. Today that's
-a handful of rook/Ceph runbooks and two OpenTelemetry-demo remedies, because
-those are the rigs I have on hand to build and chaos-test against. Grow the
-catalog and you grow what thump can act on; the reasoner and the governor don't
-change. [Onboarding a domain in config alone](#onboard-your-own-domain) is the
-test of that.
+seven actions in `config/actions/catalog.yaml` — two rook/Ceph runbooks and five
+against the OpenTelemetry demo — because those are the rigs I have on hand to
+build and chaos-test against. Grow the catalog and you grow what thump can act
+on; the reasoner and the governor don't change.
+[Onboarding a domain in config alone](#onboard-your-own-domain) is the test of
+that.
 
 It is also deliberately dumb, anal, and rigid. It cannot invent an action
 outside the catalog. It cannot invent a magnitude the action's author didn't
 authorize. It cannot skip the gate because a hunch feels strong, and it cannot
-execute anything a separate governor permitted. The rigidity is the safety
+execute anything a separate governor hasn't permitted. The rigidity is the safety
 argument, and most of this README is the shape of it: a fixed catalog of
 actions, a governance pass that cannot re-reason, a kill switch that fails
 closed, an undo that fires on success as well as failure, and a habit of
 declining out loud.
+
+## Try it, without a cluster
+
+```sh
+git clone https://github.com/IanEff/thump && cd thump
+task ci
+```
+
+Three and a half minutes on a cold clone with an empty build cache, and it needs
+neither Kubernetes nor an `ANTHROPIC_API_KEY`. That chain runs fmt, vet, lint, a
+vulnerability scan, three Helm chart renders, the whole suite under `-race`, and
+builds six binaries.
+
+The one worth reading afterwards:
+
+```sh
+go test ./test/onboarding -v
+```
+
+That drives all five beats over a domain authored entirely in config. The
+fixture domain is called `acme` on purpose — the day onboarding needs a
+domain-specific Go discriminator, it shows up there and gets caught.
+
+Full command table under [Building & testing](#building--testing). Standing up a
+real cluster is [further down](#standing-it-up-locally), and nothing above needs
+it.
+
+## Watch it run
+
+<!-- Terminal capture: one five-beat cycle on the thump-test rig. -->
+![One five-beat cycle on the live rig](assets/thump-cycle.gif)
+
+That's a real incident on a four-node kind cluster, not a mock-up: a fault goes in,
+`rattle` fingerprints the SLO burn, `clank` gathers evidence and proposes a catalogued
+action, `hiss` rules on it, `thump` executes and then watches for convergence. The rig is
+public — [github.com/IanEff/thump-test](https://github.com/IanEff/thump-test) — and the
+scenario that drives it is a row in [`chaos/scenarios.yaml`](chaos/scenarios.yaml).
+
+Two details worth catching, because they're the whole argument. The reversal is stamped onto
+the action from the catalog *before* anything executes, so an undo exists whether or not the
+action works. And a missed success window fires that undo with no human deciding to revert —
+on 2026-07-26 that path ran for real against Ceph, changed two OSD knobs mid-incident,
+settled `success`, and put them back.
+
+If you'd rather read than watch, [the same loop is worked line by
+line](#a-golden-path-worked-end-to-end) against a service the engine has never heard of.
 
 ## Provenance, stated up front
 
@@ -54,6 +101,8 @@ go to [`docs/`](#documentation).
 
 ## Table of contents
 
+- [Try it, without a cluster](#try-it-without-a-cluster)
+- [Watch it run](#watch-it-run)
 - [Why this shape](#why-this-shape)
 - [Authority model & guardrails](#authority-model--guardrails)
 - [The five beats](#the-five-beats)
@@ -202,6 +251,8 @@ doesn't execute; its entire output is a document. It doesn't authorize; each
 candidate carries a *requested* governance band — a request, never a verdict —
 and hiss is the only thing that converts a request into allow/hold/deny.
 
+Those five refusals are the contract, stated on their own in
+[`CHARTER.md`](CHARTER.md) along with what this project will never become.
 Mechanism-level detail for each beat is in
 [`docs/architecture.md`](docs/architecture.md).
 
@@ -602,9 +653,11 @@ PR.
 
 | Doc | What's in it |
 |---|---|
+| [`CHARTER.md`](CHARTER.md) | The contract: the five refusals, the four-question smell test, and what this project will never become |
 | [`docs/architecture.md`](docs/architecture.md) | The five beats and four planes, the boundary objects, and a mechanism-level walk of one signal end to end |
 | [`docs/invariants.md`](docs/invariants.md) | All seventeen invariants with their sourcing, the violation smell for each, the test that would go red, and the four-question smell test |
 | [`docs/onboarding.md`](docs/onboarding.md) | Authoring a domain in config: the seven files, the verbs, the environment, and the guards that catch a mistake |
+| [`docs/threat-model.md`](docs/threat-model.md) | Who can make this engine act, what a steered model still can't reach past, and what's deliberately undefended |
 | [`docs/design-decisions.md`](docs/design-decisions.md) | Where this project knowingly departs from Jambor, and why — including what was declined and what's parked |
 | [`docs/c4-architecture.md`](docs/c4-architecture.md) | C4 context/container/component diagrams and a golden-path sequence |
 | `AGENTS.md` | Go conventions, comment voice, testing standards |

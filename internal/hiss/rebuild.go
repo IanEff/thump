@@ -23,7 +23,7 @@ func rebuildHolds(ctx context.Context, js jetstream.JetStream) (*PendingHolds, e
 
 	holds := NewPendingHolds()
 	for _, g := range latest {
-		if g.Decision.Verdict == decision.VerdictHold {
+		if g.Decision.Verdict.AwaitsApproval() {
 			holds.Record(g)
 		}
 	}

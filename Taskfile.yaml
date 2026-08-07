@@ -40,6 +40,7 @@ tasks:
   ci:
     desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, race, build
     cmds:
+      - task: otelc:check-gomod
       - task: fmt-check
       - task: vet
       - task: lint
@@ -183,15 +184,27 @@ tasks:
       - echo "captured internal/clank/testdata/detections/{{.NAME}}.yaml"
       - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
-  otelc:generate:
-    desc: Regenerate otelc compile-time instrumentation wrappers and rulesets
+  otelc:reset:
+    desc: Clear otelc build state left behind by an interrupted build
     cmds:
-      - go tool otelc setup ./cmd/bootstrap ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump
-      - sed -i '' 's#/Users/ian/projects/go/thump/\.otelc-build#./.otelc-build#g' go.mod 2>/dev/null || true
-      - find .otelc-build -name "go.mod" -exec sed -i '' 's/v1\.81\.1/v1\.82\.0/g' {} + 2>/dev/null || true
-      - find .otelc-build -name "go.mod" -exec sed -i '' 's/go 1\.25\.0/go 1\.26\.0/g' {} + 2>/dev/null || true
-      - go fmt ./...
-      - go run golang.org/x/tools/cmd/goimports@latest -w cmd/*/otelc.runtime.go 2>/dev/null || true
+      - rm -rf .otelc-build
+
+  # go.mod must never carry otelc's build-transient replace directives — otelc
+  # adds them per build and reverts them (see .gitignore). If a build gets
+  # killed mid-commit (or a commit races a running build) they can end up
+  # checked in, pointing at this machine's absolute .otelc-build/ path; a fresh
+  # checkout then fails deep inside otelc's own internal `go mod tidy`, since
+  # that path never existed there. Catch it here, fast and legibly, instead of
+  # 15 minutes into a CI run.
+  otelc:check-gomod:
+    desc: Fail fast if go.mod carries committed otelc build-transient replace directives
+    cmds:
+      - |
+        if grep -q '\.otelc-build' go.mod; then
+          echo "go.mod carries otelc replace directives pointing into .otelc-build/ — these must never be committed (see .gitignore)."
+          echo "An interrupted 'otelc go build' left go.mod dirty. Fix: remove every 'replace go.opentelemetry.io/otelc/...' line, then run 'task build' once to confirm it round-trips clean."
+          exit 1
+        fi
 
   build:
     desc: Build the four beats and bootstrap (otelc-instrumented) plus calipers (plain) to bin/

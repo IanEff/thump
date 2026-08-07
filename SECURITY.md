@@ -17,35 +17,18 @@ than a public inbox to babysit.
 This is a single-maintainer project — expect an initial response in a few
 days, not an SLA.
 
-## Why the catalog is the sharpest edge here
+## Authority, blast radius, and the catalog
 
-thump reasons about live incidents and can act on a real Kubernetes cluster,
-so the interesting attack surface isn't the usual web-app list — it's the
-config that decides what the engine is allowed to do.
+This file covers cryptography and reporting. Who can make this engine act, what the model
+can and cannot reach past, and what is deliberately left undefended are in
+[`docs/threat-model.md`](docs/threat-model.md) — start there if you're evaluating blast
+radius rather than transport.
 
-**A change to `config/actions/catalog.yaml` is a change to the execution
-surface, not just to the reasoning it feeds.** Every action in that file
-carries an `execution` block, and one verb (`exec`) takes argv directly —
-`command: [ceph, osd, set, noout]`, authored plainly in YAML. Whoever can
-merge a change to that file can run a command in any pod thump's
-ServiceAccount can reach. There is no Go code standing between the catalog
-and the cluster for that verb; the file *is* the binding.
-
-**What bounds that isn't the verb list — it's RBAC.** thump's ServiceAccount
-is scoped per namespace (see `deploy/chart/thump/templates/rbac-*.yaml`),
-every live action additionally requires an armed global kill switch
-(`internal/thump/killswitch.go`) and a passing verdict from thump's
-governance stage, and a disarmed switch blocks execution regardless of what
-the catalog or the governance verdict say. A compiled allowlist of
-(namespace, selector) pairs for the `exec` verb was considered and
-deliberately not built — RBAC is already the enforced bound, and a compiled
-allowlist is the first thing worth adding the day this project starts taking
-catalog changes from contributors who aren't already trusted reviewers.
-
-In practice: a PR touching `config/actions/`, `config/hiss/`, or
-`internal/actuate` gets reviewed as an execution-surface change, whatever
-else it claims to do. See `CONTRIBUTING.md` § "What gets reviewed hardest"
-for the reviewer's side of this same rule.
+The short version, because it's the part people most often miss: **a change to
+`config/actions/catalog.yaml` is a change to the execution surface.** One verb (`exec`)
+takes argv directly, so whoever can merge that file can run a command in any pod thump's
+ServiceAccount can reach. What bounds it is RBAC, the kill switch, and a governance
+verdict — never the verb list.
 
 ## Transport and at-rest encryption
 

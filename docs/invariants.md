@@ -327,8 +327,7 @@ turned out to be silently wrong rather than merely unaudited: `client-go`'s
 `actuateTimeout` was unbounded before the fix.
 
 **One declared exception stands, not fixed by this ratification:** the OTLP
-exporter (`internal/otelx/trace.go` — D-13 names it `beat/trace.go`, the path
-before the package moved). A wrong or stale CA surfaces to gRPC as
+exporter (`internal/otelx/trace.go`). A wrong or stale CA surfaces to gRPC as
 `codes.Unavailable`, which `otlptracegrpc`'s default retry treats as
 retryable — it backs off and keeps trying, silently, per batch, forever. Spans
 stop arriving with no log line at the failure point and the beat sits

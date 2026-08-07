@@ -19,18 +19,15 @@ coverage.*
 bin/
 dist/
 
-# otelc's generated instrumentation/pkg trees (go.mod replace targets) are
-# committed — CI needs them present on a fresh checkout, and `otelc setup`
-# doesn't touch them again after the initial run. Only the scratch/cache
-# byproducts of every `task build` / `otelc:generate` run are ignored.
-.otelc-build/gocache/
-.otelc-build/debug/
-.otelc-build/debug.log
-.otelc-build/build-plan.log
-.otelc-build/matched.json
-.otelc-build/added_imports.*.json
-.otelc-build/state*
+# Everything otelc generates is a build artifact, not source. `otelc go build`
+# writes these, builds, then reverts — so a clean checkout has none of them and
+# an interrupted build is the only reason they linger. Matches upstream's own
+# .gitignore. go.mod carries no otelc requires or replace directives; otelc adds
+# them per build and takes them back out.
+.otelc-build/
 .otelc-build.lock
+cmd/*/otelc.runtime.go
+otel.instrumentation.go
 
 
 # macOS
@@ -60,6 +57,7 @@ __debug_bin*
 CLAUDE.md
 .claude/
 .gemini/
+.superpowers/
 .zed/
 
 # test specific

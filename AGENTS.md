@@ -1,8 +1,9 @@
 # AGENTS.md
 
 House rules for anyone writing Go in this repository. This file covers **Go conventions,
-comment/doc-comment style, and testing standards only** — for architecture and scope, see
-`README.md`, `docs/`, and the package docs under `internal/` and `api/`.
+comment/doc-comment style, and testing standards only** — for what the project promises and
+refuses, read `CHARTER.md` first; for architecture and scope, see `README.md`, `docs/`, and
+the package docs under `internal/` and `api/`.
 
 ## Go house rules
 

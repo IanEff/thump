@@ -5,6 +5,20 @@
 version: v1
 floors:
   tier-1:
+    # dependency_saturation/resource_exhaustion/service_failure sit at 0.75, one tier
+    # above GroundingOne (0.7, internal/clank/wiring.go DefaultScoringWeights) — a
+    # detection grounded on exactly one live in-topology citation can never clear these
+    # floors alone (confirmed live, cart-failure, 2026-08-06, three runs, identical
+    # 0.7-vs-0.75 result each time; groundedConfidence's AlignmentOK term only ever
+    # discounts, it cannot lift a result past its grounding tier's ceiling). That gap is
+    # deliberate, not a miscalibration: casebase.go's minCorroboration=2 is
+    # belief-formation defence 1, the ≥2-source floor (CLAUDE.md), and this is the same
+    # principle enforced as a governance minimum instead of a hard gate — one
+    # corroborating source is not sufficient grounds to auto-approve a tier-1 action, full
+    # stop. A single-citation detection escalating to a human is the defence working, not
+    # a defect. Raising GroundingOne or lowering these floors to make single-citation
+    # auto-approval possible would be tuning the belief-formation math to fit a demo
+    # outcome rather than the corroboration standard the rest of the system holds to.
     dependency_saturation: 0.75 # DOCUMENTED DEAD KNOB — governance minimum for a
     # class with zero active catalogued remedies; retained for schema completeness,
     # but no proposal can ever reach or clear this floor.

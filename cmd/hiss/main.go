@@ -1,3 +1,7 @@
+// Command hiss runs the Governance beat: it answers one question about a
+// ProposalSet — allowed, right now? — and emits a single auditable Decision.
+// It never re-ranks the set or substitutes a different candidate, and it is
+// the only identity permitted to publish a verdict.
 package main
 
 import (
