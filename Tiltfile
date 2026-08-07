@@ -305,6 +305,49 @@ if domains.get("acme", {}).get("enabled", False):
 if domains.get("otelDemo", {}).get("enabled", False):
     local(guarded("otel-demo-namespace", ensure_ns_cmd("otel-demo")), quiet=True, echo_off=True)
 
+# serviceMonitor.enabled gates templates/servicemonitor.yaml, which targets
+# monitoring.coreos.com/v1's ServiceMonitor kind — a CRD kube-prometheus-stack
+# owns, provisioned by the thump-test rig repo's own scripts, not by this
+# chart. Same race as the acme/otelDemo namespaces above, one CRD over: on a
+# freshly-created cluster that provisioning is a separate, unordered process,
+# the CRD can still be unregistered when `tilt up` first renders, and the
+# bootstrap-tls Certificate hook (the only Helm hook left in Tilt's
+# uncategorized bucket once job-bootstrap.yaml's Job is claimed by its own
+# k8s_resource below) sorts to the *tail* of that same apply batch — so a
+# missing CRD anywhere earlier in the batch doesn't just fail its own object,
+# it aborts everything queued after it, bootstrap-tls included. Observed live
+# 2026-08-07: kube-prometheus-stack's CRDs landed ~2.5 minutes after tilt up's
+# first apply; thump-bootstrap never got its Secret and burned through
+# activeDeadlineSeconds before anyone noticed the actual cause was a
+# ServiceMonitor mapping error, not a missing Certificate template. Waiting
+# here, before k8s_yaml(rendered) ever fires, closes the race the same way
+# the namespace guards above do.
+def ensure_crd_cmd(name, timeout_s=60):
+    kubectl = "kubectl --context " + cluster["context"]
+    return (
+        "waited=0; until "
+        + kubectl
+        + " get crd "
+        + name
+        + " >/dev/null 2>&1; do "
+        + "waited=$((waited+5)); "
+        + "if [ $waited -ge "
+        + str(timeout_s)
+        + " ]; then "
+        + 'echo "thump: CRD '
+        + name
+        + ' not found after ${waited}s — is the monitoring stack (kube-prometheus-stack) still installing? check the rig repo provisioning scripts" >&2; exit 1; '
+        + "fi; sleep 5; done"
+    )
+
+
+if domain_values.get("serviceMonitor", {}).get("enabled", False):
+    local(
+        guarded("servicemonitor-crd", ensure_crd_cmd("servicemonitors.monitoring.coreos.com")),
+        quiet=True,
+        echo_off=True,
+    )
+
 DEV_REGISTRY = cluster["registry"]
 
 # COMMIT is resolved once at Tiltfile load (not per-build), so it reflects
