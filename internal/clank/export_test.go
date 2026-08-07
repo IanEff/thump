@@ -7,11 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/trace/noop"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
@@ -182,3 +184,36 @@ func IntakeChangeForTest(i *Intake) reason.ChangeSource {
 // ModelRequestTimeoutForTest exposes the bound on one model call — the only
 // handler timeout in the tree that deliberately exceeds AckWait.
 func ModelRequestTimeoutForTest() time.Duration { return modelRequestTimeout }
+
+// RecordResolutionForTest exposes Recorder.recordResolution to clank_test.
+func (r *Recorder) RecordResolutionForTest(set proposal.Set, o outcome.Outcome) {
+	r.recordResolution(set, o)
+}
+
+// RecordCalibrationForTest exposes Recorder.recordCalibration to clank_test.
+func (r *Recorder) RecordCalibrationForTest(set proposal.Set, o outcome.Outcome) {
+	r.recordCalibration(set, o)
+}
+
+// RecordEffectivenessForTest exposes Recorder.recordEffectiveness to clank_test.
+func (r *Recorder) RecordEffectivenessForTest(set proposal.Set, o outcome.Outcome) {
+	r.recordEffectiveness(set, o)
+}
+
+// CalibrationCollectorForTest exposes the calibration counter as a
+// prometheus.Collector, so clank_test can read it with testutil without
+// reaching into the unexported field directly.
+func (r *Recorder) CalibrationCollectorForTest() prometheus.Collector {
+	return r.calibration
+}
+
+// ConfidenceCollectorForTest exposes the confidence histogram as a
+// prometheus.Collector, mirroring CalibrationCollectorForTest.
+func (r *Recorder) ConfidenceCollectorForTest() prometheus.Collector {
+	return r.confidence
+}
+
+// ConfidenceBucketForTest exposes confidenceBucket to clank_test.
+func ConfidenceBucketForTest(conf float64) string {
+	return confidenceBucket(conf)
+}

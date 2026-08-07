@@ -123,9 +123,7 @@ source.
   `export_test.go`: `package foo`, compiled only under `go test` (the `_test.go` suffix keeps it
   out of the production binary), holding thin wrappers named `XxxForTest` that just forward to
   the unexported thing. `internal/clank/export_test.go` is the model — read it before adding a
-  new one. Don't reach into a package's internals from a same-package test file instead; a
-  couple of older files in `internal/clank` (`metrics_test.go`, `model_gemini_test.go`) do that
-  and are debt, not precedent.
+  new one. Don't reach into a package's internals from a same-package test file instead.
 - **Interface seams over concrete dependencies.** Accept `io.Reader`/`io.Writer` instead of
   `*os.File`; satisfy them in tests with `strings.NewReader(...)`, `io.Discard`, or
   `bytes.Buffer`.
