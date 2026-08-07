@@ -65,6 +65,13 @@ const (
 	VerdictRejected Verdict = "rejected" // the Set itself was ungated or malformed — not something hiss has standing to weigh in on
 )
 
+// AwaitsApproval reports whether a Decision needs a human ack before its
+// Candidate can proceed == Escalate and Hold both do, Approved and
+// Rejected are final.
+func (v Verdict) AwaitsApprival() bool {
+	return v == VerdictEscalate || v == VerdictHold
+}
+
 // Band ranks how much latitude a Candidate is asking for (or was granted) —
 // observe < act_reversible < act_disruptive. Absence of a GovernanceLevel on
 // a Candidate is read as BandObserve, the lowest rank, never as elevated

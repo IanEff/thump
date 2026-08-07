@@ -46,6 +46,39 @@ func TestApproveHandler_ReIssuesAnApprovedGovernedForAHeldFingerprint(t *testing
 	}
 }
 
+func TestApproveHandler_ReIssuesAnApprovedGovernedForAnEscalatedFingerprint(t *testing.T) {
+	t.Parallel()
+	fake := &fakeDecisionPub{}
+	holds := hiss.NewPendingHolds()
+	tr := &hiss.Transport{Pub: fake, Policy: highFloorPolicy(), Log: hiss.NewDecisionLog(), Holds: holds, Now: frozenNow}
+	if err := tr.HandleForTest(context.Background(), governedSet(), nil); err != nil {
+		t.Fatal(err)
+	}
+	fake.published = nil // handle already published the escalate itself; only the ack's re-issue is under test here
+
+	ack := approval.Approval{SignalRef: governedSet().SignalRef, Approver: "alice", ApprovedAt: frozenNow()}
+	if err := tr.ApproveHandlerForTest(context.Background(), ack, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fake.published) != 1 {
+		t.Fatalf("want exactly one re-issued decision, got %d", len(fake.published))
+	}
+	got := fake.published[0].Decision
+	if diff := cmp.Diff(decision.VerdictApproved, got.Verdict); diff != "" {
+		t.Error("wrong verdict on the re-issued decision (-want +got)", diff)
+	}
+	if diff := cmp.Diff("alice", got.Approver); diff != "" {
+		t.Error("re-issued decision must carry the approver (-want +got)", diff)
+	}
+	if len(got.Reasons) != 0 {
+		t.Errorf("an approved decision must carry zero reasons, got %v", got.Reasons)
+	}
+	if err := got.Auditable(); err != nil {
+		t.Error("re-issued decision must be Auditable:", err)
+	}
+}
+
 func TestApproveHandler_ASecondAckForTheSameFingerprintIsInert(t *testing.T) {
 	t.Parallel()
 	fake := &fakeDecisionPub{}

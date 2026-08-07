@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/hiss"
 )
 
@@ -116,8 +117,38 @@ func TestHandle_DoesNotRecordAnApprovedVerdictAsAHold(t *testing.T) {
 	}
 }
 
+func TestHandle_RecordsAPendingHoldOnVerdictEscalate(t *testing.T) {
+	t.Parallel()
+	fake := &fakeDecisionPub{}
+	holds := hiss.NewPendingHolds()
+	tr := &hiss.Transport{Pub: fake, Policy: highFloorPolicy(), Log: hiss.NewDecisionLog(), Holds: holds, Now: frozenNow}
+
+	if err := tr.HandleForTest(context.Background(), governedSet(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := holds.Take(governedSet().SignalRef)
+	if !ok {
+		t.Fatal("want handle to Record the escalated Governed under its fingerprint, got nothing")
+	}
+	if diff := cmp.Diff(decision.VerdictEscalate, got.Decision.Verdict); diff != "" {
+		t.Error("wrong verdict retained in the pending hold (-want +got)", diff)
+	}
+}
+
 func holdPolicy() hiss.Policy {
 	pol := calmPolicy()
 	pol.AutoBand = map[string]decision.Band{"tier-1": decision.BandObserve}
+	return pol
+}
+
+// highFloorPolicy raises the confidence floor above governedSet()'s p1
+// candidate (0.87), tripping ReasonConfidenceFloor at stage one instead of
+// stage two's risk ceiling — the escalate twin of holdPolicy.
+func highFloorPolicy() hiss.Policy {
+	pol := calmPolicy()
+	pol.Floors = map[string]map[proposal.FailureClass]float64{
+		"tier-1": {proposal.ClassDependencySaturation: 0.90},
+	}
 	return pol
 }
