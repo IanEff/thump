@@ -56,19 +56,21 @@ func (d Decision) Auditable() error {
 }
 
 // Verdict is hiss's judgment on a Set — rejection is an audit record, never
-// silence, so a Decision always carries exactly one of these three.
+// silence, so a Decision always carries exactly one of these four.
 type Verdict string
 
 const (
 	VerdictApproved Verdict = "approved" // zero Reasons; the Candidate may proceed at GrantedBand
 	VerdictEscalate Verdict = "escalate" // one or more vetoes fired; hiss is asking for a human, not overruling clank
 	VerdictRejected Verdict = "rejected" // the Set itself was ungated or malformed — not something hiss has standing to weigh in on
+	VerdictHold     Verdict = "hold"     // every minimum met, but risk exceeds the auto-fire ceiling — approved in principle, pending a human ack
 )
 
-// AwaitsApproval reports whether a Decision needs a human ack before its
-// Candidate can proceed == Escalate and Hold both do, Approved and
-// Rejected are final.
-func (v Verdict) AwaitsApprival() bool {
+// AwaitsApproval reports whether this Verdict still needs a human ack before
+// its Candidate can proceed — Escalate and Hold do; Approved and Rejected are
+// terminal. Every consumer that reseeds or records held work asks here, so the
+// two waiting verdicts can never drift apart again.
+func (v Verdict) AwaitsApproval() bool {
 	return v == VerdictEscalate || v == VerdictHold
 }
 
@@ -94,17 +96,13 @@ const (
 	ReasonIrreversible     = "irreversible"      // Policy.RequireReversal is set and the Candidate carries no ReversalPath
 	ReasonFreezeWindow     = "freeze_window"     // ":" + Window.Name is appended — now falls inside a declared freeze window
 	ReasonUngatedInput     = "ungated_input"     // the Set's Gate didn't pass, or Recommended didn't resolve to a Proposals entry — an evidence gap upstream, not hiss's call to make
+	ReasonRiskCeiling      = "risk_ceiling"      // the computed risk band outranks Policy.AutoBand for this tier
 )
 
-// Governed is the hiss→thump seam envelope (Wave 0, option 2): the Decision
-// travels with the Set it judged so thump never has to re-read a second
-// file to find the candidate it was granted. hiss seals it; thump reads it
-// read-only.
+// Governed is the hiss→thump seam envelope: the Decision travels with the Set
+// it judged, so thump never has to re-read a second source to find the
+// candidate it was granted. hiss seals it; thump reads it read-only.
 type Governed struct {
 	Decision Decision     `json:"decision" yaml:"decision,omitempty"` // the verdict — always about the Set carried alongside it, never a different one
 	Set      proposal.Set `json:"set" yaml:"set,omitempty"`           // the exact Set hiss judged, unmutated and un-re-ranked
 }
-
-const VerdictHold Verdict = "hold" // every minimum met, but risk exceeds the auto-fire ceiling — approved-in-principle, pending a human ack
-
-const ReasonRiskCeiling = "risk_ceiling" // the computed risk band outranks Policy.AutoBand for this tier
