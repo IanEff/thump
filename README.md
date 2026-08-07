@@ -28,6 +28,32 @@ actions, a governance pass that cannot re-reason, a kill switch that fails
 closed, an undo that fires on success as well as failure, and a habit of
 declining out loud.
 
+## Try it, without a cluster
+
+```sh
+git clone https://github.com/IanEff/thump && cd thump
+task ci
+```
+
+Three and a half minutes on a cold clone with an empty build cache, and it needs
+neither Kubernetes nor an `ANTHROPIC_API_KEY`. That chain runs fmt, vet, lint, a
+vulnerability scan, three Helm chart renders, the whole suite under `-race`, and
+builds six binaries.
+
+The one worth reading afterwards:
+
+```sh
+go test ./test/onboarding -v
+```
+
+That drives all five beats over a domain authored entirely in config. The
+fixture domain is called `acme` on purpose — the day onboarding needs a
+domain-specific Go discriminator, it shows up there and gets caught.
+
+Full command table under [Building & testing](#building--testing). Standing up a
+real cluster is [further down](#standing-it-up-locally), and nothing above needs
+it.
+
 ## Watch it run
 
 <!-- Terminal capture: one five-beat cycle on the thump-test rig. -->
@@ -75,6 +101,7 @@ go to [`docs/`](#documentation).
 
 ## Table of contents
 
+- [Try it, without a cluster](#try-it-without-a-cluster)
 - [Watch it run](#watch-it-run)
 - [Why this shape](#why-this-shape)
 - [Authority model & guardrails](#authority-model--guardrails)

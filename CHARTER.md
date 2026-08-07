@@ -5,6 +5,17 @@ those. It changes slowly on purpose. Status lives in `CHANGELOG.md`; mechanism l
 [`docs/architecture.md`](docs/architecture.md); the rules and their tests live in
 [`docs/invariants.md`](docs/invariants.md). This file is the contract those three serve.
 
+## When to read this
+
+Four moments.
+
+| Moment | What to do |
+|---|---|
+| **Starting a beat, or a new surface inside one** | Re-read the five refusals below and [`docs/invariants.md`](docs/invariants.md). The first design decision gets checked against the never-clauses before any code exists. |
+| **At a huddle** | The smell test below is the agenda. Four questions; a "no" gets written down before the meeting ends, with the file it lives in. |
+| **A new field doesn't obviously belong to one boundary object** | Same four questions, then [`docs/architecture.md`](docs/architecture.md#the-seams-producer-owned-boundary-objects). The field lands on exactly one object or it hasn't landed. |
+| **Tempted to diverge** | Write the row in [`docs/design-decisions.md`](docs/design-decisions.md), then diverge. A divergence is fine when it's in the ledger; drift is a divergence that isn't. |
+
 ## Five beats, and what each one is forbidden to do
 
 Each beat owns one job and one refusal. The refusals are the architecture — delete them and
