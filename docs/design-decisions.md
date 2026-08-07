@@ -326,7 +326,7 @@ client, verified against each library's own source rather than assumed.
 | `client-go` | `actuate/kube.go`, `actuate/runner.go` | client-go's own default (`rest.Request`, `maxRetries: 10`, retries 429/5xx honoring `Retry-After`) — already authored by the library, unaudited before this entry | **was unbounded** — `rest.InClusterConfig` sets no `Config.Timeout`, and thump's `Transport.handle` never calls the redelivery-preventing `heartbeat` on the live-execute path. **Fixed**: `actuate.actuateTimeout` (20s) now bounds every `Runner.Run` call, comfortably inside the 30s `AckWait` a hung call would otherwise blow through | error return, wrapped and recorded as a `Result: failure` `Outcome` with text — was already true for a returned error, now also true for a timeout instead of a hang |
 | Anthropic SDK | `clank/model_anthropic.go` | SDK default, `MaxRetries: 2`, retries 429/5xx — already authored by the library | `option.WithRequestTimeout(120s)`, already authored | `Engine.Propose` wraps and returns the error; the reason loop's own heartbeat (unlike thump's) keeps a slow-but-alive call from tripping `AckWait` |
 | AWS SDK v2 (S3) | `beat/objectstore.go` | SDK default standard retryer, `MaxAttempts: 3`, retries 429/5xx/throttling — already authored by the library | `beat.RunShipper`'s `PollLoop` wraps every ship tick in `WithTimeout(4×ShipInterval)` (120s) — already authored, at the right altitude for "however many segments are sealed this tick," not per-call | logged via `slog.Error("tick failed", ...)`; a segment that fails to ship is left on disk for the next tick, not silently dropped |
-| OTLP (`otlptracegrpc`) | `beat/trace.go` | **known-bad, not fixed here.** A wrong/stale CA surfaces to gRPC as `codes.Unavailable`, and `otlptracegrpc`'s vendored default retry policy treats `Unavailable` as retryable — it backs off and keeps retrying up to the export's own 10s timeout ceiling before giving up on that batch, silently, per batch, forever | `WithTimeout` default (10s) per export, already authored | **does not surface** — async `WithBatcher`, no log line at the point of failure; spans just stop arriving. Flagged, not actioned — needs a `/readyz`-adjacent liveness check or an explicit ops-runbook entry, a bigger change than this sweep's scope |
+| OTLP (`otlptracegrpc`) | `internal/otelx/trace.go` | **known-bad, not fixed here.** A wrong/stale CA surfaces to gRPC as `codes.Unavailable`, and `otlptracegrpc`'s vendored default retry policy treats `Unavailable` as retryable — it backs off and keeps retrying up to the export's own 10s timeout ceiling before giving up on that batch, silently, per batch, forever | `WithTimeout` default (10s) per export, already authored | **does not surface** — async `WithBatcher`, no log line at the point of failure; spans just stop arriving. Flagged, not actioned — needs a `/readyz`-adjacent liveness check or an explicit ops-runbook entry, a bigger change than this sweep's scope |
 | `httpx` | `internal/httpx` | none authored — every current caller (Prometheus, Loki) is a single request, not a multi-step operation a partial retry could corrupt | `DefaultBackendTimeout` (10s), authored and centralized | caller's own error path; every backend call already goes through this one seam, which is the precedent the other rows are held to |
 
 **What actually shipped, this entry:** the client-go fix
@@ -337,8 +337,11 @@ cluster. Every other row was already correctly postured; this entry is their
 first audit against source, not a behavior change.
 
 *Now ratified as [I-17](invariants.md#i-17--every-client-this-engine-dials-has-an-authored-retry-policy-timeout-and-a-failure-that-surfaces).*
-The OTLP row above (`internal/otelx/trace.go`, moved from `beat/trace.go`) is
-still an open counterexample, but a diagnostic path now exists for it:
+The OTLP row above is still an open counterexample — and it is the *trace* leg
+specifically; `internal/otelx/otlpbreaker.go` closed the equivalent hole on the
+metrics leg, where a permanently-unimplemented `MetricsService` used to be
+retried and logged every collection interval forever. A diagnostic path now
+exists for the trace leg:
 `docs/runbooks/otlp-silent-failure.md` walks the symptom — spans stop arriving,
 no log line, beat stays `1/1 Running` — to the check that confirms it.
 
@@ -522,7 +525,7 @@ evidence instead of on vibes.
 
 ## D-21 · A cancelled context is not a context — **Ratified** (2026-08-07)
 
-W0's guard class asks *is it wired?*; D-15 asks *is it wired to the right
+A composition-root guard asks *is it wired?*; D-15 asks *is it wired to the right
 thing?*; D-17 asks *can the deployment reach it?* None of the three can ask
 whether the context handed to a call is still alive when the call runs —
 and a shutdown path is where that question always matters, because the

@@ -53,13 +53,8 @@ objects*. Each plane has a single job and a **never**-clause — and the
 never-clauses are the architecture. Delete them and what's left is an ordinary
 automation pipeline with a language model in it.
 
-| Beat | Plane | Single job | Never |
-|------|-------|-----------|-------|
-| **rattle** (Detect) | Signal | Represent reality | **Never interprets** — facts only |
-| **clank** (Reason) | Reasoning | Structured truth → candidate actions | **Never acts** — proposals only |
-| **hiss** (Govern) | Governance | Permission evaluation | **Never re-reasons** — verdicts only |
-| **thump** (Act) | Execution | Approved actions → outcomes | **Never decides** — contracts only |
-| **click** (Learn) | — *(return edge)* | Outcomes feed the next cycle | **Never a module** |
+The five refusals are tabulated in [`../CHARTER.md`](../CHARTER.md); this document is how
+each one is built.
 
 ```
 SignalDetection        ProposalSet             Decision                Outcome

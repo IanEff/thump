@@ -2,7 +2,7 @@
 
 ## Failure mode
 
-`internal/beat/trace.go`'s `newOTLPExporter` dials the collector over gRPC
+`internal/otelx/trace.go`'s `newOTLPExporter` dials the collector over gRPC
 with `otlptracegrpc`. If `TLS_CA_FILE` is wrong, stale, or the collector's
 cert was rotated without updating it, the exporter sees the handshake fail as
 `codes.Unavailable` — and `otlptracegrpc`'s default retry policy treats
