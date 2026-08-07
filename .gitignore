@@ -60,6 +60,7 @@ __debug_bin*
 CLAUDE.md
 .claude/
 .gemini/
+.superpowers/
 .zed/
 
 # test specific

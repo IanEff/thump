@@ -35,15 +35,8 @@ kill switch, and hiss's policy — **not** the verb list. So a PR touching the
 catalog gets read like a PR touching an executor, whatever else it does.
 
 **2 · The seams.** Each beat has a single job and a **never**-clause, and the
-never-clauses *are* the architecture:
-
-| Beat | Job | Never |
-|---|---|---|
-| `rattle` | represent reality | **never interprets** — facts only |
-| `clank` | structured truth → candidate actions | **never acts** — proposals only |
-| `hiss` | permission evaluation | **never re-reasons** — verdicts only |
-| `thump` | approved actions → outcomes | **never decides** — contracts only |
-| `click` | outcomes feed the next cycle | **never a module** — it's a return edge |
+never-clauses *are* the architecture. They're tabulated once, in
+[`CHARTER.md`](CHARTER.md) — read that before your first review here.
 
 The regressions that matter most are the ones that erode a never-clause:
 

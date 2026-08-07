@@ -27,11 +27,16 @@ doesn't replace this one.
   load-bearing from it is here.
 - `README.md` reorganized around the question an outside reader actually
   arrives with — *what stops this from doing something stupid to my cluster* —
-  and corrected where it had drifted: the operator surface (`trim`) is built,
-  not just designed; the kill switch's reversal exemption is stated rather than
-  glossed; the undo's success-restore trigger is described.
-- Removed `docs/phase-k-live-rig-test-plan.md`, the last internal working
-  document in the public tree.
+  and corrected where it had drifted: the operator surface is built, not just
+  designed; the kill switch's reversal exemption is stated rather than glossed;
+  the undo's success-restore trigger is described.
+- **The operator CLI is `calipers`, renamed from `trim`.** It grew from two
+  verbs to nine — `incidents`, `approve`, `force`, `unseal`, `corpus`, `rca`,
+  `tune`, `replay`, `harvest` — of which only `approve` and `force` publish
+  anything. Anywhere the 0.1.0 notes below say `trim`, read `calipers`.
+- Removed `docs/phase-k-live-rig-test-plan.md`,
+  `docs/aa1-harvest-continuation.md`, and `docs/superpowers/` — internal working
+  documents that had leaked into the public tree.
 
 ## [0.1.0] — first tagged build
 
