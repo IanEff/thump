@@ -41,11 +41,11 @@ func shiftPositional(args []string) (positional string, rest []string, ok bool) 
 // directory — so the same fingerprint written to --outbox there would be
 // read by nothing. Empty natsURL preserves the offline path unchanged.
 // The returned closer is always safe to defer, including the dir path.
-func operatorPublisher[T any](natsURL, certFile, keyFile, caFile, outbox string, name func(T) string) (publish.Publisher[T], func(), error) {
+func operatorPublisher[T any](natsURL, certFile, keyFile, caFile, serverName, outbox string, name func(T) string) (publish.Publisher[T], func(), error) {
 	if natsURL == "" {
 		return &publish.DirPublisher[T]{Dir: outbox, Name: name}, func() {}, nil
 	}
-	tc := tlsx.Config{CertFile: certFile, KeyFile: keyFile, CAFile: caFile}
+	tc := tlsx.Config{CertFile: certFile, KeyFile: keyFile, CAFile: caFile, ServerName: serverName}
 	js, closer, err := broker.Connect(context.Background(), natsURL, tc, broker.Hooks{})
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("connect %s: %w", natsURL, err)
@@ -124,7 +124,7 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 }
 
 func runApprove(args []string, stdout, stderr io.Writer) int {
-	usage := "usage: calipers approve <fingerprint> [--approver name] [--outbox dir] [--nats-url url]"
+	usage := "usage: calipers approve <fingerprint> [--approver name] [--outbox dir] [--nats-url url] [--tls-cert path --tls-key path --tls-ca path --server-name name]"
 	fp, rest, ok := shiftPositional(args)
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, usage)
@@ -139,6 +139,7 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
 	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
 	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
+	serverName := fs.String("server-name", "", "TLS SAN to verify the peer against, if it differs from the dialed host (e.g. a port-forwarded nats-url)")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -153,7 +154,7 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	pub, closer, err := operatorPublisher(*natsURL, *certFile, *keyFile, *caFile, *outbox,
+	pub, closer, err := operatorPublisher(*natsURL, *certFile, *keyFile, *caFile, *serverName, *outbox,
 		func(a approval.Approval) string { return a.SignalRef })
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "calipers:", err)
@@ -171,7 +172,7 @@ func runApprove(args []string, stdout, stderr io.Writer) int {
 }
 
 func runForce(args []string, stdout, stderr io.Writer) int {
-	usage := "usage: calipers force <fingerprint> [--operator name] [--inbox dir] [--outbox dir] [--nats-url url]"
+	usage := "usage: calipers force <fingerprint> [--operator name] [--inbox dir] [--outbox dir] [--nats-url url] [--tls-cert path --tls-key path --tls-ca path --server-name name]"
 	fp, rest, ok := shiftPositional(args)
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, usage)
@@ -187,6 +188,7 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
 	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
 	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
+	serverName := fs.String("server-name", "", "TLS SAN to verify the peer against, if it differs from the dialed host (e.g. a port-forwarded nats-url)")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
@@ -221,7 +223,7 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	pub, closer, err := operatorPublisher(*natsURL, *certFile, *keyFile, *caFile, *outbox,
+	pub, closer, err := operatorPublisher(*natsURL, *certFile, *keyFile, *caFile, *serverName, *outbox,
 		func(g decision.Governed) string { return g.Decision.SignalRef })
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "calipers:", err)

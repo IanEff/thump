@@ -3,6 +3,7 @@ package replay
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -22,10 +23,13 @@ type Transcript struct {
 	Set         proposal.Set
 }
 
-// LoadTranscript reads a run's .jsonl beside its .set.json. Turn.Msgs is
-// cumulative — each line holds the whole history up to that step — so the
-// completions are recovered from the last non-terminal line, not
-// accumulated across lines.
+// LoadTranscript reads a run's .jsonl and, if setPath exists, its paired
+// .set.json. A transcript with no sibling set loads with a zero Set rather
+// than erroring — some fixtures (a truncation test's own transcript, for
+// one) exist to exercise a failure that fires before the engine ever needs
+// one. Turn.Msgs is cumulative — each line holds the whole history up to
+// that step — so the completions are recovered from the last non-terminal
+// line, not accumulated across lines.
 func LoadTranscript(jsonlPath, setPath string) (Transcript, error) {
 	f, err := os.Open(jsonlPath) //nolint:gosec // G304: operator-supplied fixture path, not user input
 	if err != nil {
@@ -58,14 +62,17 @@ func LoadTranscript(jsonlPath, setPath string) (Transcript, error) {
 		return Transcript{}, fmt.Errorf("%s holds no checkpointed turn", jsonlPath)
 	}
 
-	raw, err := os.ReadFile(setPath) //nolint:gosec // G304: operator-supplied fixture path, not user input
-	if err != nil {
-		return Transcript{}, fmt.Errorf("open set %s: %w", setPath, err)
-	}
-
 	var set proposal.Set
-	if err := json.Unmarshal(raw, &set); err != nil {
-		return Transcript{}, fmt.Errorf("decode set %s: %w", setPath, err)
+	raw, err := os.ReadFile(setPath) //nolint:gosec // G304: operator-supplied fixture path, not user input
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		// no sibling .set.json — Transcript.Set stays zero.
+	case err != nil:
+		return Transcript{}, fmt.Errorf("open set %s: %w", setPath, err)
+	default:
+		if err := json.Unmarshal(raw, &set); err != nil {
+			return Transcript{}, fmt.Errorf("decode set %s: %w", setPath, err)
+		}
 	}
 
 	return Transcript{

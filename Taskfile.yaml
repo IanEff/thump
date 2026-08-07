@@ -115,6 +115,20 @@ tasks:
           | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
+      # rbac-harvest-{argocd,chaosmesh,oteldemo}.yaml all gate on
+      # .Values.harvest.enabled and .Values.harvest.operators, so — same
+      # reasoning as the approvalRequests.enabled=true render above — every
+      # prior pass validated none of them. argocd.enabled defaults to true,
+      # so this one render exercises all three.
+      - |
+        helm template deploy/chart/thump \
+          --set harvest.enabled=true \
+          --set 'harvest.operators[0].kind=User' \
+          --set 'harvest.operators[0].name=someone@example.com' \
+          --set 'harvest.operators[0].apiGroup=rbac.authorization.k8s.io' \
+          | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
 
   test:
     desc: go test -shuffle=on ./...

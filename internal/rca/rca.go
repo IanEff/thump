@@ -11,6 +11,10 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/clank"
 )
@@ -26,6 +30,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	transcripts := fs.String("transcripts", "", "directory to write reason-loop transcripts to")
 	only := fs.String("row", "", "grade only the row whose name contains this substring")
+	rig := fs.String("rig", "thump-test", "config/<rig>/whir profile to grade evidence queries against")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -66,12 +71,26 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	ctx := context.Background()
 
+	// The graded suite's kube fake needs one topology object to resolve the
+	// evidence-queries.yaml selectors against — a Ceph pod, because that's
+	// the rig the eight detection fixtures were captured on. newHarness
+	// itself carries no Ceph knowledge; the fixture lives here, at the
+	// composition root, not inside the instrument.
+	kubeObjects := []runtime.Object{&corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rook-ceph-mon-a",
+			Namespace: "rook-ceph",
+			Labels:    map[string]string{"app": "rook-ceph-mon"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}}
+
 	var rows []Row
 	for _, c := range Table() {
 		if *only != "" && !strings.Contains(c.Name, *only) {
 			continue
 		}
-		row, err := RunCase(ctx, c, model, weights, dir)
+		row, err := RunCase(ctx, c, model, weights, dir, *rig, kubeObjects...)
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, "rca:", err)
 			return 1

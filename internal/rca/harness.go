@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace/noop"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/ianeff/thump/api/v1/proposal"
@@ -50,8 +49,11 @@ type harness struct {
 
 // newHarness builds the graded engine: the shipped catalog and failure
 // classes, a fake Prometheus scripted from the row's evidence, and a kube
-// fake — never the production wiring.
-func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts string) (harness, error) {
+// fake — never the production wiring. profile selects which config/<rig>
+// evidence-queries.yaml to grade against, and kubeObjects seeds the kube
+// fake — this package holds no rig- or Ceph-specific knowledge itself, both
+// come from the caller.
+func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts, profile string, kubeObjects ...runtime.Object) (harness, error) {
 	det, err := loadDetection(c.Fixture)
 	if err != nil {
 		return harness{}, err
@@ -65,7 +67,7 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts 
 	if err != nil {
 		return harness{}, fmt.Errorf("load failure classes: %w", err)
 	}
-	ev, err := evidence.LoadEvidenceConfig(configPath("thump-test", "whir", "evidence-queries.yaml"))
+	ev, err := evidence.LoadEvidenceConfig(configPath(profile, "whir", "evidence-queries.yaml"))
 	if err != nil {
 		return harness{}, fmt.Errorf("load evidence queries: %w", err)
 	}
@@ -78,14 +80,7 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts 
 		// can never count past one and the top tier is structurally dead.
 		"metrics": &evidence.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries},
 		"kube": &evidence.KubeTool{
-			Client: kubefake.NewSimpleClientset(&corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "rook-ceph-mon-a",
-					Namespace: "rook-ceph",
-					Labels:    map[string]string{"app": "rook-ceph-mon"},
-				},
-				Status: corev1.PodStatus{Phase: corev1.PodRunning},
-			}),
+			Client:   kubefake.NewSimpleClientset(kubeObjects...),
 			Subjects: ev.Index,
 		},
 	}
@@ -124,8 +119,8 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts 
 // transcripts as <signalRef>.set.json beside the conversation's .jsonl,
 // because replay needs Evidence[].Live and .Subject to score a grounding
 // tier and neither field survives in the conversation transcript alone.
-func RunCase(ctx context.Context, c Case, model reason.Model, w clank.ScoringWeights, transcripts string) (Row, error) {
-	h, err := newHarness(c, model, w, transcripts)
+func RunCase(ctx context.Context, c Case, model reason.Model, w clank.ScoringWeights, transcripts, profile string, kubeObjects ...runtime.Object) (Row, error) {
+	h, err := newHarness(c, model, w, transcripts, profile, kubeObjects...)
 	if err != nil {
 		return Row{}, err
 	}

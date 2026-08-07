@@ -3,6 +3,7 @@ package harvest_test
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -109,6 +110,72 @@ func TestHarvest_RestoresEveryPreconditionWhenTheRunIsCancelledMidFlight(t *test
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return after cancellation")
+	}
+
+	calls := runner.snapshot()
+	wantSuffix := []string{
+		"kubectl delete -f chaos/osd-pod-failure-accelerate.yaml",
+		"/bin/sh -c ceph balancer on",
+		"/bin/sh -c ceph config set global mon_osd_down_out_interval 600",
+	}
+	for _, want := range wantSuffix {
+		if !containsCall(calls, want) {
+			t.Errorf("restore did not run %q; calls were %v", want, calls)
+		}
+	}
+}
+
+// TestRun_RestoresThePreconditionsWhenTheHarvestIsCancelledMidFlight pins
+// the property a killed harvest depends on: Main hands run the same ctx it
+// built from signal.NotifyContext, so an operator's Ctrl-C reaches Run's
+// deferred restore (which runs under context.WithoutCancel, never the
+// cancelled ctx directly) instead of leaving the fault and every
+// precondition applied on the rig. Unlike
+// TestHarvest_RestoresEveryPreconditionWhenTheRunIsCancelledMidFlight above,
+// this drives the exported run wiring Main calls, not Harvest.Run directly —
+// closing the gap where nothing exercised Main's own ctx construction.
+func TestRun_RestoresThePreconditionsWhenTheHarvestIsCancelledMidFlight(t *testing.T) {
+	t.Parallel()
+	sc := harvest.Scenario{
+		Name: "osd-down-accelerate",
+		Fault: harvest.Action{
+			Path: "chaos/osd-pod-failure-accelerate.yaml", Apply: "kubectl",
+		},
+		Preconditions: []harvest.Precondition{
+			{
+				Name:    "mon-osd-down-out-interval",
+				Set:     "ceph config set global mon_osd_down_out_interval 60",
+				Restore: "ceph config set global mon_osd_down_out_interval 600",
+			},
+			{
+				Name: "balancer-off",
+				Set:  "ceph balancer off", Restore: "ceph balancer on",
+			},
+		},
+		Expects:      harvest.Expects{Verdict: "held"},
+		SettleWindow: time.Minute,
+		Restore: harvest.Action{
+			Path: "chaos/osd-pod-failure-accelerate.yaml", Apply: "kubectl-delete",
+		},
+	}
+
+	runner := &recordingRunner{}
+	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+	table := harvest.Table{Scenarios: []harvest.Scenario{sc}}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		harvest.RunForTest(ctx, h, table, "", false, io.Discard, io.Discard)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunForTest did not return after cancellation")
 	}
 
 	calls := runner.snapshot()

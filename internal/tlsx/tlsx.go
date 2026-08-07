@@ -21,6 +21,14 @@ type Config struct {
 	CertFile string // TLS_CERT_FILE — this beat's own leaf
 	KeyFile  string // TLS_KEY_FILE
 	CAFile   string // TLS_CA_FILE — the issuer both ends verify against
+
+	// ServerName overrides the SAN Client verifies the peer's leaf against.
+	// Empty defaults to Go's usual behavior: the hostname dialed. A
+	// port-forward reached at 127.0.0.1 needs this set to the in-cluster
+	// name the leaf actually carries (e.g. nats.thump.svc) — this is a SAN
+	// selection, never a substitute for InsecureSkipVerify, which I-16
+	// forbids categorically.
+	ServerName string
 }
 
 // Client returns a config that verifies the peer against CAFile and presents
@@ -28,7 +36,7 @@ type Config struct {
 // every handshake behind an mtime check, so a rotated file is picked up
 // without a process restart.
 func Client(c Config) (*tls.Config, error) {
-	cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+	cfg := &tls.Config{MinVersion: tls.VersionTLS13, ServerName: c.ServerName}
 
 	if c.CAFile != "" {
 		pool, err := loadCAPool(c.CAFile)

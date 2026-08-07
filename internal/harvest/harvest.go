@@ -7,8 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/outcome"
@@ -192,13 +195,14 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
 	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
 	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
+	serverName := fs.String("server-name", "", "TLS SAN to verify the peer against, if it differs from the dialed host (e.g. a port-forwarded nats-url)")
 	only := fs.String("row", "", "run only the scenario whose name contains this substring")
 	asJSON := fs.Bool("json", false, "print each Result as JSON instead of a human line")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *scenariosPath == "" || *natsURL == "" {
-		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path] [--row substring] [--json]")
+		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path --server-name name] [--row substring] [--json]")
 		return 2
 	}
 
@@ -208,8 +212,13 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	ctx := context.Background()
-	tc := tlsx.Config{CertFile: *certFile, KeyFile: *keyFile, CAFile: *caFile}
+	// A harvest most often ends with a human losing patience, not the table
+	// running out — Ctrl-C must reach ctx so Run's deferred restore (which
+	// deliberately detaches via context.WithoutCancel) still fires instead
+	// of leaving the fault and every precondition applied on the rig.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	tc := tlsx.Config{CertFile: *certFile, KeyFile: *keyFile, CAFile: *caFile, ServerName: *serverName}
 	js, closer, err := broker.Connect(ctx, *natsURL, tc, broker.Hooks{})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "harvest:", err)
@@ -218,17 +227,25 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	defer closer()
 
 	h := NewHarvest(NewNATSWatcher(js), CommandRunner{}, NewNATSSetWatcher(js))
+	return run(ctx, h, table, *only, *asJSON, stdout, stderr)
+}
 
+// run fires every scenario in table whose name contains only (all of them if
+// only is empty) against h, printing one Result per run — split out from
+// Main so a cancelled ctx's effect on restore is assertable without a live
+// NATS connection or an actual SIGTERM. Returns 1 if any scenario's own
+// execution failed, 0 otherwise.
+func run(ctx context.Context, h *Harvest, table Table, only string, asJSON bool, stdout, stderr io.Writer) int {
 	failed := false
 	for _, sc := range table.Scenarios {
-		if *only != "" && !strings.Contains(sc.Name, *only) {
+		if only != "" && !strings.Contains(sc.Name, only) {
 			continue
 		}
 		res, runErr := h.Run(ctx, sc)
 		if runErr != nil {
 			failed = true
 		}
-		if *asJSON {
+		if asJSON {
 			if err := json.NewEncoder(stdout).Encode(res); err != nil {
 				_, _ = fmt.Fprintln(stderr, "harvest:", err)
 				return 1

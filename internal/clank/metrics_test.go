@@ -1,15 +1,17 @@
-package clank
+package clank_test
 
 import (
 	"math"
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/ianeff/thump/internal/clank"
 )
 
 // TestRecorder_CountsEveryResultUnderItsOwnLabel pins that partial_non_converging
@@ -17,11 +19,11 @@ import (
 // success — the belief-formation trap a bare bool couldn't represent.
 func TestRecorder_CountsEveryResultUnderItsOwnLabel(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	r := NewRecorder(reg)
+	r := clank.NewRecorder(reg)
 
 	set := proposal.Set{ServiceTier: "tier-1", FailureClass: proposal.ClassResourceExhaustion}
-	r.recordResolution(set, outcome.Outcome{Result: outcome.ResultSuccess})
-	r.recordResolution(set, outcome.Outcome{Result: outcome.ResultPartialNonConverging})
+	r.RecordResolutionForTest(set, outcome.Outcome{Result: outcome.ResultSuccess})
+	r.RecordResolutionForTest(set, outcome.Outcome{Result: outcome.ResultPartialNonConverging})
 
 	want := `
 		# HELP agent_resolutions_total One increment per outcome Click.Absorb accepts.
@@ -42,20 +44,20 @@ func TestRecorder_CountsEveryResultUnderItsOwnLabel(t *testing.T) {
 // applied-then-converged pair.
 func TestRecordCalibration_SkipsAppliedAndRendered(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	r := NewRecorder(reg)
+	r := clank.NewRecorder(reg)
 
 	set := proposal.Set{
 		FailureClass: proposal.ClassDependencySaturation,
 		Recommended:  "cand-1",
 		Proposals:    []proposal.Candidate{{ID: "cand-1", Confidence: 0.82}},
 	}
-	r.recordCalibration(set, outcome.Outcome{Result: outcome.ResultApplied})
-	r.recordCalibration(set, outcome.Outcome{Result: outcome.ResultRendered})
+	r.RecordCalibrationForTest(set, outcome.Outcome{Result: outcome.ResultApplied})
+	r.RecordCalibrationForTest(set, outcome.Outcome{Result: outcome.ResultRendered})
 
-	if got := testutil.CollectAndCount(r.calibration); got != 0 {
+	if got := testutil.CollectAndCount(r.CalibrationCollectorForTest()); got != 0 {
 		t.Errorf("calibration counter got %d samples for applied/rendered outcomes, want 0", got)
 	}
-	if got := testutil.CollectAndCount(r.confidence); got != 0 {
+	if got := testutil.CollectAndCount(r.ConfidenceCollectorForTest()); got != 0 {
 		t.Errorf("confidence histogram got %d samples for applied/rendered outcomes, want 0", got)
 	}
 }
@@ -66,15 +68,15 @@ func TestRecordCalibration_SkipsAppliedAndRendered(t *testing.T) {
 // converge is informative, not silence.
 func TestRecordCalibration_CountsAPartialAsAMiss(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	r := NewRecorder(reg)
+	r := clank.NewRecorder(reg)
 
 	set := proposal.Set{
 		FailureClass: proposal.ClassDependencySaturation,
 		Recommended:  "cand-1",
 		Proposals:    []proposal.Candidate{{ID: "cand-1", Confidence: 0.91}},
 	}
-	r.recordCalibration(set, outcome.Outcome{Result: outcome.ResultPartialNonConverging})
-	r.recordCalibration(set, outcome.Outcome{Result: outcome.ResultSuccess})
+	r.RecordCalibrationForTest(set, outcome.Outcome{Result: outcome.ResultPartialNonConverging})
+	r.RecordCalibrationForTest(set, outcome.Outcome{Result: outcome.ResultSuccess})
 
 	want := `
 		# HELP agent_proposal_success_total Whether a proposal at a given confidence bucket succeeded.
@@ -92,14 +94,14 @@ func TestRecordCalibration_CountsAPartialAsAMiss(t *testing.T) {
 // records it under the same bucket confidenceBucket assigns.
 func TestRecorder_CalibrationScoresSettledResults(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	r := NewRecorder(reg)
+	r := clank.NewRecorder(reg)
 
 	set := proposal.Set{
 		FailureClass: proposal.ClassDependencySaturation,
 		Recommended:  "cand-1",
 		Proposals:    []proposal.Candidate{{ID: "cand-1", Confidence: 0.82}},
 	}
-	r.recordCalibration(set, outcome.Outcome{Result: outcome.ResultSuccess})
+	r.RecordCalibrationForTest(set, outcome.Outcome{Result: outcome.ResultSuccess})
 
 	want := `
 		# HELP agent_proposal_success_total Whether a proposal at a given confidence bucket succeeded.
@@ -139,8 +141,8 @@ func TestRecordEffectiveness_ObservesTheForecastError(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
-			r := NewRecorder(reg)
-			r.recordEffectiveness(set, tc.outcome)
+			r := clank.NewRecorder(reg)
+			r.RecordEffectivenessForTest(set, tc.outcome)
 
 			count, sum := effectivenessSample(t, reg)
 			if count != 1 {
@@ -160,16 +162,16 @@ func TestRecordEffectiveness_ObservesTheForecastError(t *testing.T) {
 // nobody actually measured.
 func TestRecordEffectiveness_SkipsUnmeasuredAndInterim(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	r := NewRecorder(reg)
+	r := clank.NewRecorder(reg)
 
 	set := proposal.Set{
 		SAOSnapshot: &proposal.SAO{Signal: proposal.SignalSnapshot{Severity: signal.Severity{DegradationPct: 1.0}}},
 		Recommended: "cand-1",
 		Proposals:   []proposal.Candidate{{ID: "cand-1", PredictedImpact: &proposal.PredictedImpact{SeverityReductionPct: 0.6}}},
 	}
-	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultSuccess}) // ObservedSeverity nil
-	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultApplied, ObservedSeverity: new(0.1)})
-	r.recordEffectiveness(set, outcome.Outcome{Result: outcome.ResultRendered, ObservedSeverity: new(0.1)})
+	r.RecordEffectivenessForTest(set, outcome.Outcome{Result: outcome.ResultSuccess}) // ObservedSeverity nil
+	r.RecordEffectivenessForTest(set, outcome.Outcome{Result: outcome.ResultApplied, ObservedSeverity: new(0.1)})
+	r.RecordEffectivenessForTest(set, outcome.Outcome{Result: outcome.ResultRendered, ObservedSeverity: new(0.1)})
 
 	if count, _ := effectivenessSample(t, reg); count != 0 {
 		t.Errorf("effectiveness histogram got %d samples, want 0", count)
@@ -211,7 +213,7 @@ func TestConfidenceBucket(t *testing.T) {
 		{1.0, "0.9-1.0"},
 	}
 	for _, tt := range tests {
-		if got := confidenceBucket(tt.conf); got != tt.want {
+		if got := clank.ConfidenceBucketForTest(tt.conf); got != tt.want {
 			t.Errorf("confidenceBucket(%v) = %q, want %q", tt.conf, got, tt.want)
 		}
 	}

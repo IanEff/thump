@@ -84,6 +84,52 @@ func TestWalk_UnsealsEveryObjectUnderThePrefix(t *testing.T) {
 	}
 }
 
+// TestWalk_SkipsAnUnsealableSegmentAndStillWalksTheGoodOnes pins the fix for
+// a rotated seal.key aborting the whole mine: one segment sealed under a key
+// Walk can't open must not stop it from returning every other segment's
+// lines, mirroring tune.Run's identical shape for a broken transcript.
+func TestWalk_SkipsAnUnsealableSegmentAndStillWalksTheGoodOnes(t *testing.T) {
+	t.Parallel()
+	var key sealbox.Key
+	sealed, err := key.Seal([]byte(`{"a":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bucket := &fakeBucket{objects: map[string][]byte{
+		"clank/thump.proposals/seg-0001.wal": []byte("not a sealed segment"),
+		"clank/thump.proposals/seg-0002.wal": sealed,
+	}}
+
+	segmentKeys, lines, err := corpus.Walk(context.Background(), bucket, bucket, key, "test-bucket", "clank/thump.proposals/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantKeys := []string{"clank/thump.proposals/seg-0002.wal"}
+	if diff := cmp.Diff(wantKeys, segmentKeys); diff != "" {
+		t.Error("wrong segment keys walked past the unreadable one", diff)
+	}
+	wantLines := [][]byte{[]byte(`{"a":1}`)}
+	if diff := cmp.Diff(wantLines, lines); diff != "" {
+		t.Error("wrong lines decoded from the readable segment", diff)
+	}
+}
+
+// TestWalk_ErrorsWhenEverySegmentIsUnsealable pins the other side: silently
+// reporting an empty corpus when nothing under the prefix could be read is
+// worse than erroring, so Walk still fails loud in that case.
+func TestWalk_ErrorsWhenEverySegmentIsUnsealable(t *testing.T) {
+	t.Parallel()
+	var key sealbox.Key
+	bucket := &fakeBucket{objects: map[string][]byte{
+		"clank/thump.proposals/seg-0001.wal": []byte("not a sealed segment"),
+	}}
+
+	if _, _, err := corpus.Walk(context.Background(), bucket, bucket, key, "test-bucket", "clank/thump.proposals/"); err == nil {
+		t.Error("want an error when every segment under the prefix fails to unseal, got nil")
+	}
+}
+
 func TestReadCorpus_RecoversTheFingerprintAPreTagArtifactLost(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
