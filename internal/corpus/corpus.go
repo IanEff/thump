@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -20,11 +21,16 @@ type Getter interface {
 }
 
 // Walk lists every object under prefix in a bucket, unseals each with key,
-// and returns the segment keys walked alongside every decoded line
-// across them, in listing order.
+// and returns the segment keys walked alongside every decoded line across
+// them, in listing order. A segment that fails to unseal is warned and
+// skipped rather than aborting the walk — a rotated seal.key or one
+// corrupted object must not block every other segment from being mined.
+// Walk only errors when every listed segment failed; an empty prefix is not
+// an error.
 func Walk(ctx context.Context, lister s3.ListObjectsV2APIClient, getter Getter, key sealbox.Key, bucket, prefix string) ([]string, [][]byte, error) {
 	var segmentKeys []string
 	var lines [][]byte
+	var total, failed int
 
 	p := s3.NewListObjectsV2Paginator(lister, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
@@ -36,13 +42,19 @@ func Walk(ctx context.Context, lister s3.ListObjectsV2APIClient, getter Getter, 
 			return nil, nil, fmt.Errorf("corpus: list %s: %w", prefix, err)
 		}
 		for _, obj := range page.Contents {
+			total++
 			segLines, err := getSegment(ctx, getter, key, bucket, *obj.Key)
 			if err != nil {
-				return nil, nil, err
+				failed++
+				slog.Warn("corpus: skipping unreadable segment", "key", *obj.Key, "err", err)
+				continue
 			}
 			segmentKeys = append(segmentKeys, *obj.Key)
 			lines = append(lines, segLines...)
 		}
+	}
+	if total > 0 && failed == total {
+		return nil, nil, fmt.Errorf("corpus: every segment under %s failed to read (%d segments)", prefix, total)
 	}
 	return segmentKeys, lines, nil
 }
