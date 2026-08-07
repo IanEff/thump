@@ -65,7 +65,7 @@ func (tr *Transport) handle(ctx context.Context, ps proposal.Set, _ func()) erro
 		d = auth.Evaluate(ps, tr.Policy, now())
 		return nil
 	})
-	if d.Verdict.AwaitsApprival() && tr.Holds != nil {
+	if d.Verdict.AwaitsApproval() && tr.Holds != nil {
 		held := decision.Governed{Decision: d, Set: ps}
 		tr.Holds.Record(held)
 		if tr.Approvals != nil {
