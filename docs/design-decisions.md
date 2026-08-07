@@ -509,6 +509,53 @@ calibration's clothes. That reasoning is written into
 `config/hiss/policy.yaml` itself, next to the value, not filed separately.
 A track that measures and declines to turn the knob counts as closed.
 
+## D-20 · Weights are authored, not learned, until the corpus holds N real settled cases — **Ratified** (2026-08-07)
+
+Today, N = 1.
+
+For a reasonable trust curve, that number needs to be something closer to
+20–30. For now, authoring keeps expectations sane. `rca`/`replay`/`tune`
+don't stop existing — they stop being tuners and become the thing that
+measures N and guards against regression. N = 20–30 is the re-entry
+criterion: the number that has to be true before calibration reopens on
+evidence instead of on vibes.
+
+## D-21 · A cancelled context is not a context — **Ratified** (2026-08-07)
+
+W0's guard class asks *is it wired?*; D-15 asks *is it wired to the right
+thing?*; D-17 asks *can the deployment reach it?* None of the three can ask
+whether the context handed to a call is still alive when the call runs —
+and a shutdown path is where that question always matters, because the
+caller's context is by construction the thing that just died.
+
+**We do:** every shutdown-path I/O in this engine builds its own context —
+`context.WithoutCancel` plus an authored timeout — rather than inheriting
+one, and never discards its error. `WAL.Drain` is the worked example:
+correctly wired on all four beats, deferred, real, and shipping nothing
+since the day it landed until this rule was applied to it.
+
+## D-22 · An artifact is a contract with your future self — **Ratified** (2026-08-07)
+
+**We do:** `clank.Case` and `clank.Corpus` carry a `Version` field
+(`CorpusVersion = 2`) and JSON tags, `internal/corpus/mine.go` gained
+`migrateLegacy` and `ErrUnknownCorpusVersion`, and `CollapseCases` replaced
+the per-record rows so one incident is one case. The committed artifact went
+from six unreadable cases to two real ones. A file this engine writes and
+later reads back — a corpus, a transcript, a fixture — declares its own
+version and refuses to silently misread an older shape it no longer means.
+
+## D-23 · A replay that improvises is worse than no replay — **Ratified** (2026-08-07)
+
+A recorded run re-executed for tuning is only evidence if the recording is
+the whole input: the moment a replayed loop answers a turn the transcript
+doesn't hold, or reconstructs an `EvidenceRef` field the record lost, every
+number downstream is attributed to evidence that never existed — and it is
+attributed *confidently*.
+
+**We do:** a replay refuses on exhaustion rather than continuing, and
+reconstructs no field it cannot read. A gap in the record is fixed at the
+recording end, never guessed at the reading end.
+
 ---
 
 ## Departures from other source material
