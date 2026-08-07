@@ -157,6 +157,45 @@ var grantExceptions = map[string][]string{
 	"calipers@thump.svc": {"thump.approvals", "thump.decisions"}, // D-9: the break-glass human path, attributed and audited
 }
 
+// exceptionPkgs maps a grantExceptions identity to the package directory
+// whose publish sites justify it — without this, an exception is an
+// unchecked carve-out: beatUsers's reverse check skips every non-beat
+// identity by construction, so nothing has ever verified a grantExceptions
+// entry against the code that is supposed to earn it.
+var exceptionPkgs = map[string]string{
+	"calipers@thump.svc": "calipers",
+}
+
+func TestNATSConfig_GrantsNoExceptionASubjectItsOwnCodeNeverPublishes(t *testing.T) {
+	t.Parallel()
+	// The same reverse check TestNATSConfig_GrantsNoBeatASubjectItsOwnCodeNeverPublishes
+	// runs for beatUsers, but for grantExceptions: a security carve-out that
+	// names a subject its own package never publishes has been green since
+	// the day it was added, checked in neither direction.
+	for user, subjects := range grantExceptions {
+		pkg, ok := exceptionPkgs[user]
+		if !ok {
+			t.Fatalf("grantExceptions names %q but exceptionPkgs does not say which package justifies it", user)
+		}
+
+		t.Run(user+" holds no exception subject internal/"+pkg+" never publishes", func(t *testing.T) {
+			t.Parallel()
+
+			published := publishedSubjects(t, "../"+pkg)
+			var extra []string
+			for _, subj := range subjects {
+				if !slices.Contains(published, subj) {
+					extra = append(extra, subj)
+				}
+			}
+			slices.Sort(extra)
+			if diff := cmp.Diff([]string(nil), extra); diff != "" {
+				t.Error("grantExceptions holds a subject internal/"+pkg+" never publishes (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
 func TestNATSConfig_GrantsNoBeatASubjectItsOwnCodeNeverPublishes(t *testing.T) {
 	t.Parallel()
 	// The reverse of the grant check, and the half that catches an I-7 hole
