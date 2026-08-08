@@ -18,7 +18,6 @@ import (
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/evidence"
-	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/reason"
 )
 
@@ -96,18 +95,14 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 		FailureClasses: classes,
 		Ranker:         clank.NewRanker(),
 		Gate:           clank.ReadinessGate{},
-		Store:          clank.NewDirStore(transcripts),
+		Store:          newCaseStore(transcripts, c.Fixture),
 		Scorer:         &clank.CausalScorerImpl{Prior: cases},
 		Prior:          cases,
 		DedupeWindow:   time.Hour,
 		Ledger:         clank.NewMemProposalLog(),
-		Pub: &publish.DirPublisher[proposal.Set]{
-			Dir:  transcripts,
-			Name: func(s proposal.Set) string { return "set-" + s.SignalRef + ".yaml" },
-		},
-		MaxSteps: limits.MaxSteps,
-		Weights:  w,
-		Tracer:   noop.Tracer{},
+		MaxSteps:       limits.MaxSteps,
+		Weights:        w,
+		Tracer:         noop.Tracer{},
 	}
 
 	return harness{engine: eng, detection: det, close: prom.Close}, nil
@@ -116,7 +111,7 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 // RunCase grades one scenario against model and returns its Row. It never
 // panics on a declined set — an "insufficient" row has no candidate at all,
 // so every candidate read is guarded. The emitted set is also written to
-// transcripts as <signalRef>.set.json beside the conversation's .jsonl,
+// transcripts as <stem>.set.json beside the conversation's <stem>.jsonl,
 // because replay needs Evidence[].Live and .Subject to score a grounding
 // tier and neither field survives in the conversation transcript alone.
 func RunCase(ctx context.Context, c Case, model reason.Model, w clank.ScoringWeights, transcripts, profile string, kubeObjects ...runtime.Object) (Row, error) {
@@ -130,20 +125,44 @@ func RunCase(ctx context.Context, c Case, model reason.Model, w clank.ScoringWei
 	if err != nil {
 		return Row{}, fmt.Errorf("propose %s: %w", c.Name, err)
 	}
-	if err := writeSet(transcripts, set); err != nil {
+	if err := writeSet(transcripts, c.Fixture, set); err != nil {
 		return Row{}, fmt.Errorf("write set for %s: %w", c.Name, err)
 	}
-	return grade(c, set), nil
+	return Grade(c, set), nil
 }
 
-// writeSet marshals set to <transcripts>/<signalRef>.set.json. SignalRef
-// substitutes for a filesystem-safe name; it is a rattle Kind():Object pair
-// and can carry slashes.
-func writeSet(transcripts string, set proposal.Set) error {
+// TranscriptName is the seam tune calls. tune has a Case (from rca.Table()),
+// not a bare fixture string — it's matching a *graded row* back to the files
+// on disk, so its caller-facing type is Case, not string.
+func TranscriptName(c Case) string {
+	return (stem(c.Fixture))
+}
+
+// writeSet marshals set to <transcripts>/<stem>.set.json beside the run's
+// .jsonl. The name is keyed to the case's fixture rather than set.SignalRef:
+// Table() has cases that legitimately share a SignalRef — the same rattle
+// fingerprint firing across two different fixtures — and a SignalRef-keyed
+// name let the later case's run silently overwrite the earlier one's.
+func writeSet(transcripts, fixture string, set proposal.Set) error {
 	raw, err := json.MarshalIndent(set, "", "  ")
 	if err != nil {
 		return err
 	}
-	name := strings.ReplaceAll(set.SignalRef, "/", "_") + ".set.json"
-	return os.WriteFile(filepath.Join(transcripts, name), raw, 0o600) //nolint:gosec // G703: transcripts comes from a CLI flag, env var, or os.TempDir — operator-supplied, not user input
+	return os.WriteFile(setPath(transcripts, fixture), raw, 0o600) //nolint:gosec // G703: transcripts comes from a CLI flag, env var, or os.TempDir — operator-supplied, not user input
+}
+
+// stem operates on the primitive rca already has lying around wherever it
+// only holds a fixture string — writeSet, setPath, transcriptPath. Those
+// call sites predate Case entirely; they're building filenames mid-run,
+// before any Case is in scope.
+func stem(fixture string) string {
+	return strings.TrimSuffix(fixture, filepath.Ext(fixture))
+}
+
+func setPath(transcripts, fixture string) string {
+	return filepath.Join(transcripts, stem(fixture)+".set.json")
+}
+
+func transcriptPath(transcripts, fixture string) string {
+	return filepath.Join(transcripts, stem(fixture)+".jsonl")
 }

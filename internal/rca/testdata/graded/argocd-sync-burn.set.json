@@ -1,0 +1,227 @@
+{
+  "name": "argocd-burn-accel",
+  "signalRef": "slo_burn:argocd",
+  "saoSnapshot": {
+    "version": 1,
+    "assembledAt": "2026-08-07T15:57:04.079258-04:00",
+    "signal": {
+      "confidence": 1,
+      "severity": {
+        "DegradationPct": 0.02,
+        "Trajectory": "recovering"
+      },
+      "blastRadius": {
+        "AffectedPct": 0,
+        "Velocity": "",
+        "DownstreamConsumers": 0
+      },
+      "originService": "argocd"
+    },
+    "topology": {
+      "upstream": [
+        {
+          "name": "cilium",
+          "state": "healthy"
+        },
+        {
+          "name": "rook-operator",
+          "state": "healthy"
+        }
+      ]
+    },
+    "change": {}
+  },
+  "failureClass": "service_failure",
+  "hypotheses": [
+    {
+      "name": "Injected fault or bad configuration in acme-api service",
+      "weight": 0.95
+    },
+    {
+      "name": "Internal service logic error or exception handling issue",
+      "weight": 0.05
+    }
+  ],
+  "evidence": [
+    {
+      "tool": "metrics",
+      "query": "severity_acme_api_availability",
+      "summary": "severity_acme_api_availability = 1",
+      "ref": "metrics://severity_acme_api_availability",
+      "live": true,
+      "subject": "acme-api"
+    },
+    {
+      "tool": "metrics",
+      "query": "severity_cart_availability",
+      "summary": "query returned no data",
+      "subject": "cart"
+    },
+    {
+      "tool": "metrics",
+      "query": "severity_product_catalog_availability",
+      "summary": "query returned no data",
+      "subject": "product-catalog"
+    },
+    {
+      "tool": "metrics",
+      "query": "severity_rgw_availability",
+      "summary": "query returned no data",
+      "subject": "ceph-rgw"
+    },
+    {
+      "tool": "metrics",
+      "query": "nodes_not_ready",
+      "summary": "nodes_not_ready = 0",
+      "ref": "metrics://nodes_not_ready",
+      "live": true
+    },
+    {
+      "tool": "metrics",
+      "query": "pgs_degraded",
+      "summary": "pgs_degraded = 0",
+      "ref": "metrics://pgs_degraded",
+      "live": true,
+      "subject": "cephblockpool"
+    },
+    {
+      "tool": "metrics",
+      "query": "pgs_undersized",
+      "summary": "query returned no data",
+      "subject": "cephblockpool"
+    },
+    {
+      "tool": "metrics",
+      "query": "ceph_health",
+      "summary": "ceph_health = 0",
+      "ref": "metrics://ceph_health",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "acme_api_error_ratio",
+      "summary": "acme_api_error_ratio = 1",
+      "ref": "metrics://acme_api_error_ratio",
+      "live": true,
+      "subject": "acme-api"
+    },
+    {
+      "tool": "metrics",
+      "query": "cart_error_ratio",
+      "summary": "query returned no data",
+      "subject": "cart"
+    },
+    {
+      "tool": "metrics",
+      "query": "product_catalog_error_ratio",
+      "summary": "query returned no data",
+      "subject": "product-catalog"
+    },
+    {
+      "tool": "metrics",
+      "query": "rgw_failed_rate",
+      "summary": "rgw_failed_rate = 0",
+      "ref": "metrics://rgw_failed_rate",
+      "live": true,
+      "subject": "ceph-rgw"
+    },
+    {
+      "tool": "metrics",
+      "query": "slo_burn_acme_api",
+      "summary": "query returned no data",
+      "subject": "acme-api"
+    },
+    {
+      "tool": "metrics",
+      "query": "slo_burn_cart",
+      "summary": "query returned no data",
+      "subject": "cart"
+    },
+    {
+      "tool": "metrics",
+      "query": "slo_burn_product_catalog",
+      "summary": "query returned no data",
+      "subject": "product-catalog"
+    },
+    {
+      "tool": "metrics",
+      "query": "slo_burn_rgw",
+      "summary": "query returned no data",
+      "subject": "ceph-rgw"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"resource\":\"pods\",\"namespace\":\"default\",\"selector\":{\"app\":\"acme-api\"}}",
+      "summary": "no pods found"
+    },
+    {
+      "tool": "metrics",
+      "query": "demo_pods_not_running",
+      "summary": "query returned no data"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"namespace\":\"otel-demo\",\"resource\":\"pods\",\"selector\":{\"app\":\"acme-api\"}}",
+      "summary": "no pods found"
+    },
+    {
+      "tool": "metrics",
+      "query": "acme_db_connections_saturation",
+      "summary": "query returned no data",
+      "subject": "acme-db"
+    },
+    {
+      "tool": "metrics",
+      "query": "cluster_used_ratio",
+      "summary": "cluster_used_ratio = 0.2",
+      "ref": "metrics://cluster_used_ratio",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "rook_pods_not_running",
+      "summary": "rook_pods_not_running = 0",
+      "ref": "metrics://rook_pods_not_running",
+      "live": true,
+      "subject": "ceph-cluster"
+    }
+  ],
+  "serviceTier": "tier-1",
+  "gate": {
+    "budgetOK": true,
+    "dedupeOK": true,
+    "reason": "evidence"
+  },
+  "proposals": [
+    {
+      "contractRef": "acme-shed-load",
+      "confidence": 0.3,
+      "computedConfidence": 0.3,
+      "predictedImpact": {
+        "severityReductionPct": 0.1
+      },
+      "blastTier": "low",
+      "reversalPath": {
+        "method": "restore-acme-capacity",
+        "watching": "acme_api_error_ratio",
+        "trigger": "acme_api_error_ratio \u003c 0.01"
+      },
+      "governanceLevel": {
+        "band": "act_reversible"
+      },
+      "rank": 1,
+      "citations": [
+        "acme_api_error_ratio",
+        "severity_acme_api_availability"
+      ]
+    }
+  ],
+  "rankingRationale": {},
+  "status": {
+    "phase": "no_action",
+    "reason": "evidence",
+    "observedAt": "0001-01-01T00:00:00Z"
+  }
+}
