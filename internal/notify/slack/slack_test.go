@@ -89,3 +89,37 @@ func heldAction() decision.Governed {
 		},
 	}
 }
+
+// TestWebhookNotify_EscalateDigestNamesTheVerdictNotHold pins Step 4's other
+// half: digest hardcoded "held for review" regardless of verdict, so once
+// escalate started notifying (transport.go's AwaitsApproval fix), every
+// escalation posted a lie about its own verdict.
+func TestWebhookNotify_EscalateDigestNamesTheVerdictNotHold(t *testing.T) {
+	t.Parallel()
+
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		got = body.Text
+	}))
+	defer srv.Close()
+
+	action := heldAction()
+	action.Decision.Verdict = decision.VerdictEscalate
+
+	wh := &slack.Webhook{URL: srv.URL}
+	if err := wh.Notify(context.Background(), action); err != nil {
+		t.Fatal(err)
+	}
+
+	wantText := "escalated for review: accelerate-recovery (redundancy_degraded, tier-1) — " +
+		"risk act_disruptive over the auto-fire ceiling [risk_ceiling]; signal slo_burn:ceph-data"
+	if diff := cmp.Diff(wantText, got); diff != "" {
+		t.Error("digest didn't name the actual verdict (-want +got)", diff)
+	}
+}

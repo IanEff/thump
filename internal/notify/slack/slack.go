@@ -61,10 +61,11 @@ func (w *Webhook) client() *http.Client {
 }
 
 // digest renders the single line a human reads to bless-or-kill: which action
-// held, on what, and why — drawn from the Decision and the Set's recommended
-// Candidate, never the raw evidence.
+// is waiting on them, on what, and why — drawn from the Decision and the
+// Set's recommended Candidate, never the raw evidence.
 func digest(h decision.Governed) string {
-	return fmt.Sprintf("held for review: %s (%s, %s) — risk %s over the auto-fire ceiling [%s]; signal %s",
+	return fmt.Sprintf("%s for review: %s (%s, %s) — risk %s over the auto-fire ceiling [%s]; signal %s",
+		verdictVerb(h.Decision.Verdict),
 		h.Set.ContractRefFor(h.Decision.CandidateRef),
 		h.Set.FailureClass,
 		h.Set.ServiceTier,
@@ -72,4 +73,17 @@ func digest(h decision.Governed) string {
 		strings.Join(h.Decision.Reasons, ", "),
 		h.Decision.SignalRef,
 	)
+}
+
+// verdictVerb names what happened to a verdict that awaits a human ack, so
+// digest never asserts "held" on an escalation or vice versa.
+func verdictVerb(v decision.Verdict) string {
+	switch v {
+	case decision.VerdictHold:
+		return "held"
+	case decision.VerdictEscalate:
+		return "escalated"
+	default:
+		return string(v)
+	}
 }
