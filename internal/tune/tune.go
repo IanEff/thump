@@ -16,10 +16,10 @@ import (
 )
 
 // deadKnobLimitation is printed first, every run, because a sweep over
-// groundingMany and causal would look authoritative and isn't: no recorded
-// row corroborates on two backends, so LikelihoodOK is structurally false in
-// this harness and both surfaces are flat.
-const deadKnobLimitation = "groundingMany and causal are not swept: no recorded row corroborates on two backends and LikelihoodOK is structurally false in this harness, so both surfaces are flat."
+// groundingMany and causal would look authoritative and isn't: two backends
+// are wired but no graded row cites a second one, and LikelihoodOK is
+// structurally false in this harness, so both surfaces are flat.
+const deadKnobLimitation = "groundingMany is not swept: two backends are wired, but no graded row cites a second one, and only a cited backend raises the tier — so the surface is flat. causal is not swept: LikelihoodOK is structurally false in this harness."
 
 // Main sweeps GroundingNone and GroundingOne over recorded transcripts and
 // prints the grid beside a NotYet. It never writes
@@ -36,7 +36,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *transcripts == "" {
-		return emit(stdout, *asJSON, nil, Proposal{}, NotYet{Reason: "no --transcripts directory given"})
+		return emit(stdout, *asJSON, 0, nil, Proposal{}, NotYet{Reason: "no --transcripts directory given"})
 	}
 
 	pairs, err := findTranscripts(*transcripts)
@@ -45,10 +45,11 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if len(pairs) == 0 {
-		return emit(stdout, *asJSON, nil, Proposal{}, NotYet{Reason: fmt.Sprintf("%s holds no paired .jsonl/.set.json transcripts", *transcripts)})
+		return emit(stdout, *asJSON, 0, nil, Proposal{}, NotYet{Reason: fmt.Sprintf("%s holds no paired .jsonl/.set.json transcripts", *transcripts)})
 	}
 
-	points, err := Run(context.Background(), SweepConfig{Transcripts: pairs, Cases: rca.Table(), Objective: DefaultObjective()})
+	cases := rca.Table()
+	points, err := Run(context.Background(), SweepConfig{Transcripts: pairs, Cases: cases, Objective: DefaultObjective()})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -56,7 +57,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	prop, notYet := decide(points)
 
-	return emit(stdout, *asJSON, points, prop, notYet)
+	return emit(stdout, *asJSON, len(cases), points, prop, notYet)
 }
 
 // findTranscripts pairs every foo.jsonl in dir with a foo.set.json beside
@@ -177,7 +178,7 @@ func basisFor(band, best []Point) string {
 	return basis
 }
 
-func emit(stdout io.Writer, asJSON bool, points []Point, prop Proposal, result NotYet) int {
+func emit(stdout io.Writer, asJSON bool, cases int, points []Point, prop Proposal, result NotYet) int {
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		_ = enc.Encode(struct {
@@ -190,10 +191,9 @@ func emit(stdout io.Writer, asJSON bool, points []Point, prop Proposal, result N
 	}
 
 	_, _ = fmt.Fprintln(stdout, deadKnobLimitation)
-	_, _ = fmt.Fprintln(stdout, "objective: Grounded = rca.Report.Scored, Support = Corpus.FloorSupport(class, floor)")
 	for _, p := range points {
-		_, _ = fmt.Fprintf(stdout, "  groundingNone=%.1f groundingOne=%.1f meanConfidence=%.3f moved=%d\n",
-			p.GroundingNone, p.GroundingOne, p.MeanConfidence, p.Moved)
+		_, _ = fmt.Fprintf(stdout, "  groundingNone=%.1f groundingOne=%.1f grounded=%d/%d meanConfidence=%.3f moved=%d\n",
+			p.GroundingNone, p.GroundingOne, p.Grounded, cases, p.MeanConfidence, p.Moved)
 	}
 	if result.Reason != "" {
 		_, _ = fmt.Fprintf(stdout, "not yet: %s\n", result.Reason)
