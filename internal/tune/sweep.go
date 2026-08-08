@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/replay"
 )
 
@@ -15,6 +18,12 @@ type SweepConfig struct {
 	Transcripts []TranscriptPaths
 	Corpus      clank.Corpus
 	Steps       int // grid points per dimension; 5 gives 0.1 resolution over 0.3-0.7
+	// Objective is what this sweep maximizes.  Zero value means
+	// DefaultObjective.
+	Objective Objective
+	// Cases are the labeled answers keyed to transcripts by
+	// rca.TranscriptName.
+	Cases []rca.Case
 }
 
 // TranscriptPaths is one replay fixture: the conversation and the set it
@@ -30,6 +39,9 @@ type Point struct {
 	GroundingOne   float64
 	MeanConfidence float64
 	Moved          int // how many transcripts changed confidence vs the default
+	// Grounded is how many labelled rows this grid point actually
+	// passes-- the objective.
+	Grounded int
 }
 
 // Run sweeps GroundingNone and GroundingOne over cfg.Transcripts and returns
@@ -75,6 +87,28 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 		return nil, fmt.Errorf("tune: every transcript failed to replay under default weights")
 	}
 
+	byStem := make(map[string]rca.Case, len(cfg.Cases))
+	for _, c := range cfg.Cases {
+		byStem[rca.TranscriptName(c)] = c
+	}
+	if len(cfg.Cases) > 0 {
+		matched := false
+		for _, tr := range usable {
+			if _, ok := byStem[strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")]; ok {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return nil, fmt.Errorf("tune: no transcript pairs to a graded case — a sweep with no labels scores an unlabelled mean and calls it a recommendation")
+		}
+	}
+
+	obj := cfg.Objective
+	if obj.Grounded == nil {
+		obj = DefaultObjective()
+	}
+
 	var points []Point
 	for i := range steps {
 		for j := range steps {
@@ -84,22 +118,32 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 
 			var sum float64
 			var n, moved int
+			var rows []rca.Row
 			for _, tr := range usable {
 				set, err := replay.Propose(ctx, tr, w)
 				if err != nil {
 					return nil, err
 				}
-				if len(set.Proposals) == 0 {
-					continue
+				if len(set.Proposals) > 0 {
+					sum += set.Proposals[0].ComputedConfidence
+					n++
+					if len(tr.Set.Proposals) > 0 &&
+						set.Proposals[0].ComputedConfidence != tr.Set.Proposals[0].ComputedConfidence {
+						moved++
+					}
 				}
-				sum += set.Proposals[0].ComputedConfidence
-				n++
-				if len(tr.Set.Proposals) > 0 &&
-					set.Proposals[0].ComputedConfidence != tr.Set.Proposals[0].ComputedConfidence {
-					moved++
+
+				stem := strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")
+				if c, ok := byStem[stem]; ok {
+					rows = append(rows, rca.Grade(c, set))
 				}
 			}
-			p := Point{GroundingNone: w.GroundingNone, GroundingOne: w.GroundingOne, Moved: moved}
+			p := Point{
+				GroundingNone: w.GroundingNone,
+				GroundingOne:  w.GroundingOne,
+				Moved:         moved,
+				Grounded:      obj.Grounded(rca.NewReport(rows)),
+			}
 			if n > 0 {
 				p.MeanConfidence = sum / float64(n)
 			}

@@ -52,3 +52,77 @@ func TestMain_RejectsAnApplyFlagRatherThanIgnoringIt(t *testing.T) {
 		t.Error("want exit 2 for --apply", got)
 	}
 }
+
+// TestDecide_BracketsGroundingOneBetweenTheFloorAndTheCeiling is the payoff.
+// Grounded is non-zero only in a contiguous band because the labels bound it
+// from below (Confidence < WantConfidenceAtLeast) and from above
+// (ConfidenceCeilingBound flips true) — so a band is a recommendation, where
+// a maximum never was.
+func TestDecide_BracketsGroundingOneBetweenTheFloorAndTheCeiling(t *testing.T) {
+	t.Parallel()
+
+	points := []tune.Point{
+		{GroundingOne: 0.4, Grounded: 0}, // below every row's floor
+		{GroundingOne: 0.5, Grounded: 3}, // inside
+		{GroundingOne: 0.6, Grounded: 3}, // inside
+		{GroundingOne: 0.7, Grounded: 0}, // ceiling binds
+	}
+
+	got, notYet := tune.DecideForTest(points)
+	if notYet.Reason != "" {
+		t.Fatalf("want a Proposal from a bracketed grid, got NotYet: %s", notYet.Reason)
+	}
+
+	want := tune.Proposal{File: "config/clank/weights.yaml", Key: "groundingOne", To: 0.55}
+	if diff := cmp.Diff(want.Key, got.Key); diff != "" {
+		t.Error("wrong tuned key", diff)
+	}
+	if diff := cmp.Diff(want.To, got.To); diff != "" {
+		t.Error("wrong bracket midpoint", diff)
+	}
+	if got.Basis == "" {
+		t.Error("want a Basis naming the rows that bound the bracket, got an empty string")
+	}
+}
+
+// TestDecide_StaysNotYetWhenEveryGridPointScoresAlike keeps the honest close
+// available. A flat Grounded surface means the labels cannot distinguish
+// these weights, which is a closed track and not a recommendation.
+func TestDecide_StaysNotYetWhenEveryGridPointScoresAlike(t *testing.T) {
+	t.Parallel()
+
+	points := []tune.Point{
+		{GroundingOne: 0.4, Grounded: 3},
+		{GroundingOne: 0.5, Grounded: 3},
+		{GroundingOne: 0.6, Grounded: 3},
+	}
+
+	_, notYet := tune.DecideForTest(points)
+	if notYet.Reason == "" {
+		t.Error("want NotYet from a flat graded surface, got a Proposal")
+	}
+}
+
+// TestDecide_NeverBlendsGroundedIntoSupport pins objective.go's own refusal:
+// an RCA score and a floor's admitted-wins are different questions, and one
+// blended number is the gate-vs-shaper mistake applied to tuning. decide
+// takes no Corpus, so Support can only ever ride along empty — never
+// fabricated from Grounded.
+func TestDecide_NeverBlendsGroundedIntoSupport(t *testing.T) {
+	t.Parallel()
+
+	points := []tune.Point{
+		{GroundingOne: 0.4, Grounded: 0},
+		{GroundingOne: 0.5, Grounded: 3},
+		{GroundingOne: 0.6, Grounded: 3},
+		{GroundingOne: 0.7, Grounded: 0},
+	}
+
+	got, notYet := tune.DecideForTest(points)
+	if notYet.Reason != "" {
+		t.Fatalf("want a Proposal from a bracketed grid, got NotYet: %s", notYet.Reason)
+	}
+	if len(got.Support) != 0 {
+		t.Error("want Support empty — decide has no Corpus to read and must not fabricate one from Grounded", got.Support)
+	}
+}

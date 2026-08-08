@@ -21,6 +21,11 @@ type Transcript struct {
 	RunID       string
 	Completions []reason.Completion
 	Set         proposal.Set
+
+	// Path is the .jsonl LoadTranscript read this from — kept rather than
+	// discarded, so a caller matching a transcript back to the fixture it
+	// belongs to doesn't have to carry that path alongside the Transcript.
+	Path string
 }
 
 // LoadTranscript reads a run's .jsonl and, if setPath exists, its paired
@@ -79,6 +84,7 @@ func LoadTranscript(jsonlPath, setPath string) (Transcript, error) {
 		RunID:       last.RunID,
 		Completions: completionsFrom(last.Msgs),
 		Set:         set,
+		Path:        jsonlPath,
 	}, nil
 }
 
