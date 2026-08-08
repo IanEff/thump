@@ -1,4 +1,4 @@
-package calipers_test
+package incident_test
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/calipers"
+	"github.com/ianeff/thump/internal/incident"
 )
 
 // TestFold walks one fingerprint's golden path — detected, proposed,
@@ -33,10 +33,10 @@ func TestFold(t *testing.T) {
 	t3 := t0.Add(8 * time.Minute)                       // thump applies
 	t4 := t0.Add(20 * time.Minute)                      // the outcome settles
 
-	proposed := calipers.Incident{Fingerprint: fp, Stage: calipers.StageProposed, Service: svc, UpdatedAt: t1}
-	approved := calipers.Incident{Fingerprint: fp, Stage: calipers.StageApproved, Service: svc, UpdatedAt: t2}
-	applied := calipers.Incident{Fingerprint: fp, Stage: calipers.StageApplied, Service: svc, UpdatedAt: t3}
-	forcedApproved := calipers.Incident{Fingerprint: fp, Stage: calipers.StageApproved, Service: svc, UpdatedAt: t2, Forced: true, Operator: "alice"}
+	proposed := incident.Incident{Fingerprint: fp, Stage: incident.StageProposed, Service: svc, UpdatedAt: t1}
+	approved := incident.Incident{Fingerprint: fp, Stage: incident.StageApproved, Service: svc, UpdatedAt: t2}
+	applied := incident.Incident{Fingerprint: fp, Stage: incident.StageApplied, Service: svc, UpdatedAt: t3}
+	forcedApproved := incident.Incident{Fingerprint: fp, Stage: incident.StageApproved, Service: svc, UpdatedAt: t2, Forced: true, Operator: "alice"}
 
 	set := proposal.Set{
 		SignalRef:   fp,
@@ -56,31 +56,31 @@ func TestFold(t *testing.T) {
 		},
 		Set: set,
 	}
-	held := calipers.Incident{Fingerprint: fp, Stage: calipers.StageHeld, Service: svc, UpdatedAt: t2, Held: &heldGoverned}
+	held := incident.Incident{Fingerprint: fp, Stage: incident.StageHeld, Service: svc, UpdatedAt: t2, Held: &heldGoverned}
 
 	tests := map[string]struct {
-		prior calipers.Incident
+		prior incident.Incident
 		obj   any
-		want  calipers.Incident
+		want  incident.Incident
 	}{
 		"Fold advances to detected when the object is a signal.Detection": {
-			prior: calipers.Incident{},
+			prior: incident.Incident{},
 			obj: signal.Detection{
 				Fingerprint:   fp,
 				OriginService: svc,
 				DetectedAt:    t0,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageDetected, Service: svc, UpdatedAt: t0},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageDetected, Service: svc, UpdatedAt: t0},
 		},
 		"Fold preserves Service from the original Detection when the next object is a proposal.Set that carries none": {
-			prior: calipers.Incident{Fingerprint: fp, Stage: calipers.StageDetected, Service: svc, UpdatedAt: t0},
+			prior: incident.Incident{Fingerprint: fp, Stage: incident.StageDetected, Service: svc, UpdatedAt: t0},
 			obj:   set,
 			want:  proposed,
 		},
 		"Fold falls back to prior.UpdatedAt when a proposal.Set arrives with a nil SAOSnapshot": {
-			prior: calipers.Incident{Fingerprint: fp, Stage: calipers.StageDetected, Service: svc, UpdatedAt: t0},
+			prior: incident.Incident{Fingerprint: fp, Stage: incident.StageDetected, Service: svc, UpdatedAt: t0},
 			obj:   proposal.Set{SignalRef: fp, SAOSnapshot: nil},
-			want:  calipers.Incident{Fingerprint: fp, Stage: calipers.StageProposed, Service: svc, UpdatedAt: t0},
+			want:  incident.Incident{Fingerprint: fp, Stage: incident.StageProposed, Service: svc, UpdatedAt: t0},
 		},
 		"Fold advances to held-for-you and retains the Governed when the verdict is hold": {
 			prior: proposed,
@@ -103,7 +103,7 @@ func TestFold(t *testing.T) {
 				},
 				Set: set,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageApproved, Service: svc, UpdatedAt: t2Reissue, Held: nil},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageApproved, Service: svc, UpdatedAt: t2Reissue, Held: nil},
 		},
 		"Fold marks Forced and records the Operator when the granting Decision was pushed through the break-glass path": {
 			prior: held,
@@ -123,7 +123,7 @@ func TestFold(t *testing.T) {
 				},
 				Set: set,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageApproved, Service: svc, UpdatedAt: t2Reissue, Held: nil, Forced: true, Operator: "alice"},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageApproved, Service: svc, UpdatedAt: t2Reissue, Held: nil, Forced: true, Operator: "alice"},
 		},
 		"Fold advances to declined when the verdict is escalate": {
 			prior: proposed,
@@ -137,7 +137,7 @@ func TestFold(t *testing.T) {
 				},
 				Set: set,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageDeclined, Service: svc, UpdatedAt: t2},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageDeclined, Service: svc, UpdatedAt: t2},
 		},
 		"Fold advances to declined when the verdict is rejected": {
 			prior: proposed,
@@ -151,7 +151,7 @@ func TestFold(t *testing.T) {
 				},
 				Set: set,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageDeclined, Service: svc, UpdatedAt: t2},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageDeclined, Service: svc, UpdatedAt: t2},
 		},
 		"Fold advances to applied when the outcome result is applied": {
 			prior: approved,
@@ -175,7 +175,7 @@ func TestFold(t *testing.T) {
 				Result:      outcome.ResultApplied,
 				ExecutedAt:  t3,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageApplied, Service: svc, UpdatedAt: t3, Forced: true, Operator: "alice"},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageApplied, Service: svc, UpdatedAt: t3, Forced: true, Operator: "alice"},
 		},
 		"Fold advances to settled when the outcome result is success": {
 			prior: applied,
@@ -187,7 +187,7 @@ func TestFold(t *testing.T) {
 				ExecutedAt:       t4,
 				ObservedSeverity: new(0.12),
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageSettled, Service: svc, UpdatedAt: t4, Severity: new(0.12)},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageSettled, Service: svc, UpdatedAt: t4, Severity: new(0.12)},
 		},
 		"Fold advances to settled when the outcome result is partial_non_converging": {
 			prior: applied,
@@ -199,7 +199,7 @@ func TestFold(t *testing.T) {
 				Error:       "still diverging past the success window",
 				ExecutedAt:  t4,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageSettled, Service: svc, UpdatedAt: t4},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageSettled, Service: svc, UpdatedAt: t4},
 		},
 		"Fold preserves a nil ObservedSeverity as unmeasured rather than a fabricated zero": {
 			prior: applied,
@@ -211,7 +211,7 @@ func TestFold(t *testing.T) {
 				ExecutedAt:       t4,
 				ObservedSeverity: nil,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageSettled, Service: svc, UpdatedAt: t4, Severity: nil},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageSettled, Service: svc, UpdatedAt: t4, Severity: nil},
 		},
 		"Fold keeps a real zero ObservedSeverity distinct from an unmeasured nil": {
 			prior: applied,
@@ -223,7 +223,7 @@ func TestFold(t *testing.T) {
 				ExecutedAt:       t4,
 				ObservedSeverity: new(0.0),
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageSettled, Service: svc, UpdatedAt: t4, Severity: new(0.0)},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageSettled, Service: svc, UpdatedAt: t4, Severity: new(0.0)},
 		},
 		"Fold ignores an unknown object and returns prior unchanged": {
 			prior: proposed,
@@ -240,14 +240,14 @@ func TestFold(t *testing.T) {
 				},
 				Set: set,
 			},
-			want: calipers.Incident{Fingerprint: fp, Stage: calipers.StageApproved, Service: svc, UpdatedAt: t2Reissue, Held: nil, Approver: "alice"},
+			want: incident.Incident{Fingerprint: fp, Stage: incident.StageApproved, Service: svc, UpdatedAt: t2Reissue, Held: nil, Approver: "alice"},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := calipers.Fold(tc.prior, tc.obj)
+			got := incident.Fold(tc.prior, tc.obj)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Error("wrong incident state after fold", diff)
 			}

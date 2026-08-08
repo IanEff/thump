@@ -1,4 +1,4 @@
-package calipers
+package incident
 
 import (
 	"errors"

@@ -10,6 +10,7 @@ import (
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
+	"github.com/ianeff/thump/internal/incident"
 	"sigs.k8s.io/yaml"
 )
 
@@ -18,8 +19,8 @@ import (
 // folds them into a Projection. It has no NATS path: Tick and Snapshot are
 // calipers's offline substitute for subscribing to the broker directly.
 type Transport struct {
-	Inbox string      // root directory.
-	Proj  *Projection // where Tick lands every successfully-folded object; unused by Snapshot, which builds and returns its own
+	Inbox string               // root directory.
+	Proj  *incident.Projection // where Tick lands every successfully-folded object; unused by Snapshot, which builds and returns its own
 }
 
 // Tick reads every new file under each of Inbox's four subdirectories,
@@ -86,11 +87,11 @@ func tickDir[T any](tr *Transport, dir string) error {
 // Projection alive across many polls; a one-shot query has no such memory
 // between invocations, so Snapshot has to find the full history itself and
 // stays safe to call repeatedly.
-func (tr *Transport) Snapshot(ctx context.Context) (*Projection, error) {
+func (tr *Transport) Snapshot(ctx context.Context) (*incident.Projection, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	proj := NewProjection()
+	proj := incident.NewProjection()
 	if err := snapshotDir[signal.Detection](tr, "detections", proj); err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func (tr *Transport) Snapshot(ctx context.Context) (*Projection, error) {
 	return proj, nil
 }
 
-func snapshotDir[T any](tr *Transport, dir string, proj *Projection) error {
+func snapshotDir[T any](tr *Transport, dir string, proj *incident.Projection) error {
 	root := filepath.Join(tr.Inbox, dir)
 	patterns := []string{
 		filepath.Join(root, "*.yaml"),

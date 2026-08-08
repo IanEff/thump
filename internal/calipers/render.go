@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/ianeff/thump/internal/incident"
 )
 
 var (
@@ -14,7 +16,7 @@ var (
 )
 
 // renderIncident renders one Incident as a single, operator-facing line.
-func renderIncident(inc Incident, now time.Time) string {
+func renderIncident(inc incident.Incident, now time.Time) string {
 	var sb strings.Builder
 
 	sb.WriteString(inc.Fingerprint)
@@ -28,7 +30,7 @@ func renderIncident(inc Incident, now time.Time) string {
 	} else {
 		_, _ = fmt.Fprintf(&sb, "%.2f", *inc.Severity)
 	}
-	if inc.Stage == StageHeld {
+	if inc.Stage == incident.StageHeld {
 		since := now.Sub(inc.UpdatedAt)
 		sb.WriteString("  held ")
 		sb.WriteString(since.String())
@@ -45,7 +47,7 @@ func renderIncident(inc Incident, now time.Time) string {
 	return sb.String()
 }
 
-func renderIncidents(incidents []Incident, now time.Time) string {
+func renderIncidents(incidents []incident.Incident, now time.Time) string {
 	lines := make([]string, 0, len(incidents))
 	for _, inc := range incidents {
 		lines = append(lines, renderIncident(inc, now))

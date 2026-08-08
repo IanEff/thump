@@ -1,9 +1,9 @@
-// Package calipers is the operator's read-model of the THUMP stream: it
+// Package incident is the operator's read-model of the THUMP stream: it
 // folds the boundary objects rattle, clank, hiss, and thump emit into one
 // Incident per fingerprint. It carries no model and no tools, so it can
 // only replay what the beats already emitted — that incapacity is what
 // keeps it from becoming a second inference engine.
-package calipers
+package incident
 
 import (
 	"time"

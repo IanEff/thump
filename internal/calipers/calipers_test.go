@@ -19,6 +19,7 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/calipers"
+	"github.com/ianeff/thump/internal/incident"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
@@ -43,7 +44,7 @@ func TestMain_IncidentsJSONPrintsCleanParseableJSON(t *testing.T) {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
 
-	var got []calipers.Incident
+	var got []incident.Incident
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("stdout was not valid JSON: %v\noutput: %s", err, stdout.String())
 	}
