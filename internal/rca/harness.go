@@ -131,6 +131,13 @@ func RunCase(ctx context.Context, c Case, model reason.Model, w clank.ScoringWei
 	return Grade(c, set), nil
 }
 
+// TranscriptName is the seam tune calls. tune has a Case (from rca.Table()),
+// not a bare fixture string — it's matching a *graded row* back to the files
+// on disk, so its caller-facing type is Case, not string.
+func TranscriptName(c Case) string {
+	return (stem(c.Fixture))
+}
+
 // writeSet marshals set to <transcripts>/<stem>.set.json beside the run's
 // .jsonl. The name is keyed to the case's fixture rather than set.SignalRef:
 // Table() has cases that legitimately share a SignalRef — the same rattle
@@ -144,9 +151,10 @@ func writeSet(transcripts, fixture string, set proposal.Set) error {
 	return os.WriteFile(setPath(transcripts, fixture), raw, 0o600) //nolint:gosec // G703: transcripts comes from a CLI flag, env var, or os.TempDir — operator-supplied, not user input
 }
 
-// stem is the one definition of the fixture-to-filename rule. Both halves of
-// a run's output share it, because a sweep pairs foo.jsonl to foo.set.json by
-// exactly this string and can resolve them no other way.
+// stem operates on the primitive rca already has lying around wherever it
+// only holds a fixture string — writeSet, setPath, transcriptPath. Those
+// call sites predate Case entirely; they're building filenames mid-run,
+// before any Case is in scope.
 func stem(fixture string) string {
 	return strings.TrimSuffix(fixture, filepath.Ext(fixture))
 }
