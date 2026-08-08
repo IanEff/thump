@@ -15,6 +15,7 @@ import (
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/corpus"
 	"github.com/ianeff/thump/internal/harvest"
+	"github.com/ianeff/thump/internal/incident"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/replay"
@@ -51,6 +52,33 @@ func operatorPublisher[T any](natsURL, certFile, keyFile, caFile, serverName, ou
 		return nil, func() {}, fmt.Errorf("connect %s: %w", natsURL, err)
 	}
 	return publish.NewJetPublisher[T](js), closer, nil
+}
+
+// operatorProjection is incidents's and force's shared choice of read
+// backend, mirroring operatorPublisher's choice of write backend — the two
+// resolve from the same natsURL so a break-glass can never read a directory
+// while publishing to a broker, which is how force came to report every
+// held fingerprint as absent.
+func operatorProjection(ctx context.Context, natsURL, certFile, keyFile, caFile, serverName, inbox string) (*incident.Projection, func(), error) {
+	if natsURL == "" {
+		tr := &Transport{Inbox: inbox}
+		proj, err := tr.Snapshot(ctx)
+		if err != nil {
+			return nil, func() {}, err
+		}
+		return proj, func() {}, nil
+	}
+	tc := tlsx.Config{CertFile: certFile, KeyFile: keyFile, CAFile: caFile, ServerName: serverName}
+	js, closer, err := broker.Connect(ctx, natsURL, tc, broker.Hooks{})
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("connect %s: %w", natsURL, err)
+	}
+	proj, err := incident.SnapshotBroker(ctx, js)
+	if err != nil {
+		closer()
+		return nil, func() {}, fmt.Errorf("snapshot broker: %w", err)
+	}
+	return proj, closer, nil
 }
 
 // topUsage is calipers's top-level help line — pinned against the switch
@@ -99,16 +127,21 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "print incidents as JSON")
 	inbox := fs.String("inbox", ".", "directory calipers polls for boundary objects")
+	natsURL := fs.String("nats-url", "", "read the live queue over NATS instead of --inbox")
+	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
+	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
+	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
+	serverName := fs.String("server-name", "", "TLS SAN to verify the peer against, if it differs from the dialed host (e.g. a port-forwarded nats-url)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	tr := &Transport{Inbox: *inbox}
-	proj, err := tr.Snapshot(context.Background())
+	proj, closer, err := operatorProjection(context.Background(), *natsURL, *certFile, *keyFile, *caFile, *serverName, *inbox)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "calipers:", err)
 		return 1
 	}
+	defer closer()
 
 	incidents := proj.Snapshot()
 	if *jsonOut {
@@ -197,12 +230,12 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	tr := &Transport{Inbox: *inbox}
-	proj, err := tr.Snapshot(context.Background())
+	proj, closer, err := operatorProjection(context.Background(), *natsURL, *certFile, *keyFile, *caFile, *serverName, *inbox)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "calipers:", err)
 		return 1
 	}
+	defer closer()
 	inc, ok := proj.Get(fp)
 	if !ok || inc.Held == nil {
 		_, _ = fmt.Fprintf(stderr, "calipers: %s is not currently held — nothing to force\n", fp)

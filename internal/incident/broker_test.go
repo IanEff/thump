@@ -11,6 +11,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
+	"github.com/ianeff/thump/internal/decisiontest"
 	"github.com/ianeff/thump/internal/incident"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/publish"
@@ -35,7 +36,7 @@ func TestSnapshotBroker_FoldsHeldDecisionsTheDiskPathCannotSee(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := publish.NewJetPublisher[decision.Governed](js).
-		Publish(ctx, "thump.decisions", heldGoverned("slo_burn:cart")); err != nil {
+		Publish(ctx, "thump.decisions", decisiontest.Held("slo_burn:cart")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -81,23 +82,6 @@ func TestSnapshotBroker_OrdersEverySubjectsHistoryByPublishTime(t *testing.T) {
 	inc, _ := proj.Get("slo_burn:cart")
 	if diff := cmp.Diff(incident.StageSettled, inc.Stage); diff != "" {
 		t.Error("wrong stage — subjects folded in drain order, not publish order", diff)
-	}
-}
-
-// heldGoverned is one governed decision parked on a human, the shape
-// SnapshotBroker exists to surface.
-func heldGoverned(fingerprint string) decision.Governed {
-	return decision.Governed{
-		Decision: decision.Decision{
-			ID: "dec:" + fingerprint, SignalRef: fingerprint,
-			Verdict:       decision.VerdictHold,
-			RequestedBand: decision.BandActDisruptive,
-			RiskBand:      decision.BandActDisruptive,
-			PolicyVersion: "policy-v3",
-			EvaluatedAt:   time.Now(),
-			Reasons:       []string{decision.ReasonRiskCeiling},
-		},
-		Set: proposal.Set{SignalRef: fingerprint},
 	}
 }
 
