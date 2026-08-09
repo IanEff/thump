@@ -1,0 +1,9 @@
+# kube-objects.yaml seeds the graded RCA suite's kube fake — the pods this
+# rig's whir/evidence-queries.yaml subject rules need present to resolve a
+# selector, never a claim about what's actually running on the live cluster.
+pods:
+  - name: rook-ceph-mon-a
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-mon
+    phase: Running
