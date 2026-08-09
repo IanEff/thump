@@ -285,43 +285,40 @@ local(guarded("thump-namespace", ENSURE_NS), quiet=True, echo_off=True)
 # namespace outside this chart's own manifests — acme's and otel-demo's
 # workloads are provisioned by the thump-test rig repo, not by this Tiltfile.
 # On a freshly-created thump-test cluster that provisioning is a separate,
-# unordered process: the namespace can still be missing when `tilt up` first
-# renders. Since the whole non-workload manifest set (RBAC, ConfigMaps,
-# Certificates, ...) applies as one sequential batch in Tilt's uncategorized
-# resource, an early object failing on a missing namespace aborts every
-# object queued after it in that same apply — observed live 2026-08-03:
-# thump-acme-actuate:role failed on "namespaces \"acme\" not found" and took
-# thump-nats:configmap and nats-tls:certificate down with it, despite neither
-# having anything to do with acme. Pre-creating the namespace here (same
-# idempotent, eval-time pattern as ENSURE_NS above, and just as harmless a
-# no-op on profiles where the domain is disabled and the namespace already
-# absent-and-unreferenced) closes the race instead of requiring a manual
-# `tilt trigger uncategorized` retry once the rig repo's own provisioning
-# catches up.
+# unordered process: the namespace can still be missing when the RBAC applies.
+#
+# These run as local_resources, not blocking local() — a `local()` here would
+# re-run on every Tiltfile reload (any chart/values edit) and a slow/missing
+# namespace would raise a Starlark traceback that kills the whole `tilt up`.
+# The acme-rbac / otel-demo-rbac k8s_resource() blocks below (after
+# k8s_yaml(rendered)) pull the Role/RoleBinding pair out of Tilt's
+# "uncategorized" bucket and gate them on these via resource_deps, so a
+# missing namespace is a pending resource, not a batch-wide abort — observed
+# live 2026-08-03: thump-acme-actuate:role failed on "namespaces \"acme\" not
+# found" and took thump-nats:configmap and nats-tls:certificate down with it,
+# despite neither having anything to do with acme.
 domain_values = read_yaml(cluster["values"], default={})
 domains = domain_values.get("domains", {})
 if domains.get("acme", {}).get("enabled", False):
-    local(guarded("acme-namespace", ensure_ns_cmd("acme")), quiet=True, echo_off=True)
+    kubectl_local("acme-namespace", ensure_ns_cmd("acme"))
 if domains.get("otelDemo", {}).get("enabled", False):
-    local(guarded("otel-demo-namespace", ensure_ns_cmd("otel-demo")), quiet=True, echo_off=True)
+    kubectl_local("otel-demo-namespace", ensure_ns_cmd("otel-demo"))
 
 # serviceMonitor.enabled gates templates/servicemonitor.yaml, which targets
 # monitoring.coreos.com/v1's ServiceMonitor kind — a CRD kube-prometheus-stack
 # owns, provisioned by the thump-test rig repo's own scripts, not by this
 # chart. Same race as the acme/otelDemo namespaces above, one CRD over: on a
 # freshly-created cluster that provisioning is a separate, unordered process,
-# the CRD can still be unregistered when `tilt up` first renders, and the
-# bootstrap-tls Certificate hook (the only Helm hook left in Tilt's
-# uncategorized bucket once job-bootstrap.yaml's Job is claimed by its own
-# k8s_resource below) sorts to the *tail* of that same apply batch — so a
-# missing CRD anywhere earlier in the batch doesn't just fail its own object,
-# it aborts everything queued after it, bootstrap-tls included. Observed live
-# 2026-08-07: kube-prometheus-stack's CRDs landed ~2.5 minutes after tilt up's
-# first apply; thump-bootstrap never got its Secret and burned through
-# activeDeadlineSeconds before anyone noticed the actual cause was a
-# ServiceMonitor mapping error, not a missing Certificate template. Waiting
-# here, before k8s_yaml(rendered) ever fires, closes the race the same way
-# the namespace guards above do.
+# the CRD can still be unregistered when the ServiceMonitor applies.
+#
+# Runs as a local_resource, gated the same way as the namespace guards above:
+# the thump-servicemonitor k8s_resource() block below (after
+# k8s_yaml(rendered)) pulls the ServiceMonitor object out of the uncategorized
+# bucket and gives it resource_deps=["servicemonitor-crd"], so a slow CRD is a
+# pending resource, not a Starlark traceback that kills the whole session.
+# Observed live 2026-08-07: kube-prometheus-stack's CRDs landed ~2.5 minutes
+# after tilt up's first apply — far longer than a blocking eval-time local()
+# can afford to sit through on every reload.
 def ensure_crd_cmd(name, timeout_s=60):
     kubectl = "kubectl --context " + cluster["context"]
     return (
@@ -342,11 +339,7 @@ def ensure_crd_cmd(name, timeout_s=60):
 
 
 if domain_values.get("serviceMonitor", {}).get("enabled", False):
-    local(
-        guarded("servicemonitor-crd", ensure_crd_cmd("servicemonitors.monitoring.coreos.com")),
-        quiet=True,
-        echo_off=True,
-    )
+    kubectl_local("servicemonitor-crd", ensure_crd_cmd("servicemonitors.monitoring.coreos.com"))
 
 DEV_REGISTRY = cluster["registry"]
 
@@ -449,6 +442,35 @@ _, rendered = filter_yaml(rendered, kind="Secret", name="nats-js-key")
 # no Tilt operation can delete it, none of the above can recur.
 _, rendered = filter_yaml(rendered, kind="Namespace", name="thump")
 k8s_yaml(rendered)
+
+# Pulls the acme/otel-demo RBAC and the ServiceMonitor out of Tilt's
+# "uncategorized" bucket (see the acme-namespace/otel-demo-namespace/
+# servicemonitor-crd comments above) so each can carry resource_deps on the
+# local_resource that ensures its target namespace/CRD exists, instead of
+# relying on Tilt's undocumented-as-guaranteed "local resources run first"
+# default ordering. Guarded the same way as their local_resource — an
+# objects= selector for an object absent from `rendered` fails outright.
+if domains.get("acme", {}).get("enabled", False):
+    k8s_resource(
+        new_name="acme-rbac",
+        objects=["thump-acme-actuate:role", "thump-acme-actuate:rolebinding"],
+        resource_deps=["acme-namespace"],
+        labels=["infra"],
+    )
+if domains.get("otelDemo", {}).get("enabled", False):
+    k8s_resource(
+        new_name="otel-demo-rbac",
+        objects=["thump-otel-demo-actuate:role", "thump-otel-demo-actuate:rolebinding"],
+        resource_deps=["otel-demo-namespace"],
+        labels=["infra"],
+    )
+if domain_values.get("serviceMonitor", {}).get("enabled", False):
+    k8s_resource(
+        new_name="thump-servicemonitor",
+        objects=["thump:servicemonitor:thump"],
+        resource_deps=["servicemonitor-crd"],
+        labels=["infra"],
+    )
 
 # Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
 k8s_resource(

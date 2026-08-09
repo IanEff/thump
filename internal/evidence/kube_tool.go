@@ -40,12 +40,16 @@ var _ reason.Tool = (*KubeTool)(nil)
 
 // Spec advertises the "kube" tool — resource currently supports only "pods".
 func (k *KubeTool) Spec() reason.ToolSpec {
+	desc := "read-only kubernetes resource query (supports resource: 'pods')." +
+		" selector is an optional map of label equality pairs"
+	if key, value, ok := k.Subjects.ExampleLabel(); ok {
+		desc += fmt.Sprintf(", e.g. {%q: %q}", key, value)
+	}
+	desc += " — narrow to one workload with it; an unnarrowed namespace query" +
+		" spans every workload in it and cannot be evidence about any one of them."
 	return reason.ToolSpec{
-		Name: "kube",
-		Description: "read-only kubernetes resource query (supports resource: 'pods'). " +
-			"selector is an optional map of label equality pairs, e.g. {\"app\": \"cart\"} — " +
-			"narrow to one workload with it; an unnarrowed namespace query spans every " +
-			"workload in it and cannot be evidence about any one of them.",
+		Name:        "kube",
+		Description: desc,
 		InputSchema: schema.Of[kubeInput](),
 	}
 }

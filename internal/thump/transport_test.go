@@ -213,3 +213,60 @@ func TestTransport_OfflinePollExecutesTickAndExitsOnContextCancel(t *testing.T) 
 		poll.Loop(ctx, poll.Config{Interval: 5 * time.Second, Timeout: 20 * time.Second}, tr.Tick)
 	})
 }
+
+// TestHandleDecision_NotifiesOnEveryVerdictThatAwaitsAHuman pins the two
+// waiting verdicts together. hiss opens an ApprovalRequest for both, and
+// AwaitsApproval exists so they can never drift apart again — but the
+// notifier fired on hold alone, so an escalation opened a CR that paged
+// nobody.
+func TestHandleDecision_NotifiesOnEveryVerdictThatAwaitsAHuman(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		verdict   decision.Verdict
+		wantCalls int
+	}{
+		"HandleDecision notifies when hiss holds for a human ack":      {decision.VerdictHold, 1},
+		"HandleDecision notifies when hiss escalates for a human ack":  {decision.VerdictEscalate, 1},
+		"HandleDecision stays silent when hiss approves outright":      {decision.VerdictApproved, 0},
+		"HandleDecision stays silent when hiss rejects the set itself": {decision.VerdictRejected, 0},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			inbox, outbox := t.TempDir(), t.TempDir()
+			tr := newTestTransport(inbox, outbox)
+			notifier := &fakeNotifier{}
+			tr.Notifier = notifier
+
+			if err := tr.HandleForTest(t.Context(), governedWith(tc.verdict), nil); err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.wantCalls, len(notifier.notified)); diff != "" {
+				t.Error("wrong notification count for this verdict", diff)
+			}
+		})
+	}
+}
+
+// governedWith returns a well-formed Governed envelope at the given verdict
+// — approvedGoverned's fields with only the verdict-specific bookkeeping
+// changed, mirroring heldGoverned and escalatedGoverned.
+func governedWith(v decision.Verdict) decision.Governed {
+	switch v {
+	case decision.VerdictHold:
+		return heldGoverned()
+	case decision.VerdictEscalate:
+		return escalatedGoverned()
+	case decision.VerdictRejected:
+		g := approvedGoverned()
+		g.Decision.Verdict = decision.VerdictRejected
+		g.Decision.Reasons = []string{decision.ReasonRiskCeiling}
+		g.Decision.GrantedBand = ""
+		return g
+	default:
+		return approvedGoverned()
+	}
+}

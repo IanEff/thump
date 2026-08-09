@@ -284,6 +284,30 @@ func TestNATSConfig_GrantsCalipersTheHarvestEphemeralConsumers(t *testing.T) {
 	}
 }
 
+func TestNATSConfig_GrantsCalipersTheIncidentSnapshotBrokerEphemeralConsumers(t *testing.T) {
+	t.Parallel()
+	// internal/incident.SnapshotBroker rebuilds the operator's read model by
+	// draining all four subjects through internal/broker.DrainSubject, whose
+	// consumer is AckExplicitPolicy — unlike the harvest watchers above, this
+	// one needs the matching $JS.ACK grant too. Found live: calipers incidents
+	// failed with a permissions violation on thump.detections, since these
+	// grants were never added when SnapshotBroker landed after the
+	// harvest-only grants above did.
+	users := parseNATSUsers(t, renderNATSConf(t))
+	for _, want := range []string{
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.detections",
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.decisions",
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
+		"$JS.API.CONSUMER.MSG.NEXT.THUMP.*",
+		"$JS.ACK.THUMP.*.>",
+	} {
+		if !slices.Contains(users["calipers@thump.svc"].Publish, want) {
+			t.Errorf("calipers@thump.svc does not hold %q — SnapshotBroker's drain of all four subjects cannot create/fetch/ack without it", want)
+		}
+	}
+}
+
 // renderCertificates runs the real chart through `helm template --show-only`
 // and returns every rendered Certificate's emailAddresses — the SAN
 // verify_and_map resolves to a nats.conf user. A user with no matching

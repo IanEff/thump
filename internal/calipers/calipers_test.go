@@ -19,8 +19,11 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/calipers"
+	"github.com/ianeff/thump/internal/decisiontest"
+	"github.com/ianeff/thump/internal/incident"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/objectstore"
+	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/tlsx"
 	"github.com/ianeff/thump/internal/wire"
@@ -43,7 +46,7 @@ func TestMain_IncidentsJSONPrintsCleanParseableJSON(t *testing.T) {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
 
-	var got []calipers.Incident
+	var got []incident.Incident
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("stdout was not valid JSON: %v\noutput: %s", err, stdout.String())
 	}
@@ -72,6 +75,50 @@ func TestMain_IncidentsPrintsHumanReadableTextByDefault(t *testing.T) {
 	}
 	if json.Valid(stdout.Bytes()) {
 		t.Error("want plain text without --json, got valid JSON")
+	}
+}
+
+// TestMain_IncidentsWithAFingerprintRendersTheDetailView pins that
+// shiftPositional routes a bare fingerprint to the kubectl-describe-shaped
+// detail view instead of the one-line list — and, since the fingerprint has
+// to survive alongside --inbox, this is also the regression test for
+// runIncidents once having parsed args instead of the shifted rest.
+func TestMain_IncidentsWithAFingerprintRendersTheDetailView(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+	writeYAML(t, filepath.Join(inbox, "detections"), "det-1.yaml",
+		signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: time.Now()})
+	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", decisiontest.Held("fp-1"))
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.Main([]string{"incidents", "fp-1", "--inbox", inbox}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Verdict:") {
+		t.Errorf("want the detail view's Verdict line, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "fp-1") {
+		t.Errorf("want stdout to mention fp-1, got %q", stdout.String())
+	}
+}
+
+// TestMain_IncidentsWithAnUnknownFingerprintFails pins the not-found path: a
+// fingerprint absent from the projection is an error, not a silent empty
+// detail view.
+func TestMain_IncidentsWithAnUnknownFingerprintFails(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.Main([]string{"incidents", "fp-missing", "--inbox", inbox}, &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("want exit code 1, got %d (stdout: %s)", code, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "no incident at fingerprint") {
+		t.Errorf("want stderr to explain the miss, got %q", stderr.String())
 	}
 }
 
@@ -187,6 +234,32 @@ func TestMain_ForceFailsWhenTheFingerprintIsNotCurrentlyHeld(t *testing.T) {
 	}
 }
 
+// TestMain_ForceFindsAHeldDecisionOverNATSWithNoInboxOnDisk pins the two
+// halves to one transport. force published over --nats-url but read its
+// held Governed from --inbox, so against a broker-mode cluster — where no
+// inbox exists — break-glass reported every fingerprint as not held.
+func TestMain_ForceFindsAHeldDecisionOverNATSWithNoInboxOnDisk(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	url := natstest.URL(t)
+	js, closeNC, err := broker.ConnectAndEnsure(ctx, url, tlsx.Config{}, broker.Hooks{})
+	if err != nil {
+		t.Fatal("connect and ensure:", err)
+	}
+	defer closeNC()
+
+	if err := publish.NewJetPublisher[decision.Governed](js).
+		Publish(ctx, "thump.decisions", decisiontest.Held("fp-1")); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.Main([]string{"force", "fp-1", "--operator", "alice", "--nats-url", url}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+}
+
 // testSealKeyB64 is a 32-byte AES-256 key, base64-encoded — the same value
 // internal/config's own tests use, standing in for THUMP_SEAL_KEY.
 const testSealKeyB64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
@@ -231,8 +304,10 @@ func TestMain_UnsealRoutesToInternalUnsealAndPrintsTheSegmentSummary(t *testing.
 	var key sealbox.Key
 	copy(key[:], raw)
 
-	set := proposal.Set{SignalRef: "fp-1", Recommended: "p1",
-		Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "restart-pod", Confidence: 0.5}}}
+	set := proposal.Set{
+		SignalRef: "fp-1", Recommended: "p1",
+		Proposals: []proposal.Candidate{{ID: "p1", ContractRef: "restart-pod", Confidence: 0.5}},
+	}
 	line, err := json.Marshal(set)
 	if err != nil {
 		t.Fatal(err)
@@ -316,21 +391,12 @@ func TestMain_ApprovePublishesToThumpApprovalsOverNATSWhenNATSURLIsSet(t *testin
 
 // TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet mirrors the
 // approve case for force's break-glass path (D-9): a forced Governed a
-// broker-mode thump can't read isn't a working override.
+// broker-mode thump can't read isn't a working override. The held decision
+// it forces past is published over NATS, not written to --inbox — with one
+// transport choice serving both halves (Step 3), a broker-mode force never
+// looks at disk.
 func TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet(t *testing.T) {
 	t.Parallel()
-	inbox := t.TempDir()
-	held := decision.Governed{
-		Decision: decision.Decision{
-			ID: "dec-1", SignalRef: "fp-1", Verdict: decision.VerdictHold,
-			RequestedBand: decision.BandActDisruptive, RiskBand: decision.BandActDisruptive,
-			PolicyVersion: "policy-v3", EvaluatedAt: time.Now(),
-			Reasons: []string{decision.ReasonRiskCeiling},
-		},
-		Set: proposal.Set{SignalRef: "fp-1"},
-	}
-	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", held)
-
 	ctx := context.Background()
 	url := natstest.URL(t)
 	js, closeNC, err := broker.ConnectAndEnsure(ctx, url, tlsx.Config{}, broker.Hooks{})
@@ -339,8 +405,13 @@ func TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet(t *testing.
 	}
 	defer closeNC()
 
+	if err := publish.NewJetPublisher[decision.Governed](js).
+		Publish(ctx, "thump.decisions", decisiontest.Held("fp-1")); err != nil {
+		t.Fatal(err)
+	}
+
 	var stdout, stderr bytes.Buffer
-	code := calipers.Main([]string{"force", "fp-1", "--operator", "alice", "--inbox", inbox, "--nats-url", url}, &stdout, &stderr)
+	code := calipers.Main([]string{"force", "fp-1", "--operator", "alice", "--nats-url", url}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}

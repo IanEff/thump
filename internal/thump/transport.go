@@ -111,27 +111,36 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 		if err := tr.HeldPub.Publish(ctx, "thump.held", g); err != nil {
 			return fmt.Errorf("thump: publish held for %s: %w", g.Decision.SignalRef, err)
 		}
-		notified := false
-		if tr.Notifier != nil {
-			if err := tr.Notifier.Notify(ctx, g); err != nil {
-				slog.Error("notify held action", "signalRef", g.Decision.SignalRef, "err", err)
-			} else {
-				notified = true
-			}
-		}
+		notified := tr.notify(ctx, g)
 		slog.Info("held", "signalRef", g.Decision.SignalRef,
 			"contractRef", g.Set.ContractRefFor(g.Decision.CandidateRef),
 			"riskBand", g.Decision.RiskBand, "reasons", g.Decision.Reasons,
 			"acted", false, "notified", notified)
 		return nil
 	default: // escalate, rejected — free the lock
-		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons,
-			"contractRef", g.Set.ContractRefFor(g.Decision.CandidateRef), "acted", false)
 		if err := tr.DeclinePub.Publish(ctx, "thump.declines", g.Decision); err != nil {
 			return fmt.Errorf("thump: publish decline for %s: %w", g.Decision.SignalRef, err)
 		}
+		notified := tr.notify(ctx, g)
+		slog.Info("outcome", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "reasons", g.Decision.Reasons,
+			"contractRef", g.Set.ContractRefFor(g.Decision.CandidateRef), "acted", false, "notified", notified)
 		return nil // valid non-approval: nothing to act on
 	}
+}
+
+// notify delivers g to Notifier when its verdict still needs a human ack —
+// AwaitsApproval is the single source of that rule, so hold and escalate can
+// never drift apart again. Best-effort: an error is logged, never returned,
+// same contract the hold path always had.
+func (tr *Transport) notify(ctx context.Context, g decision.Governed) bool {
+	if !g.Decision.Verdict.AwaitsApproval() || tr.Notifier == nil {
+		return false
+	}
+	if err := tr.Notifier.Notify(ctx, g); err != nil {
+		slog.Error("notify", "signalRef", g.Decision.SignalRef, "verdict", g.Decision.Verdict, "err", err)
+		return false
+	}
+	return true
 }
 
 // now returns tr.Now() when set, or time.Now — the one clock handle and the

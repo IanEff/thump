@@ -16,6 +16,7 @@ import (
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/calipers"
+	"github.com/ianeff/thump/internal/incident"
 )
 
 func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
@@ -30,7 +31,7 @@ func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
 	writeYAML(t, filepath.Join(inbox, "detections"), "det-1.yaml",
 		signal.Detection{Fingerprint: fp, OriginService: svc, DetectedAt: t0})
 	writeYAML(t, filepath.Join(inbox, "proposals"), "prop-1.yaml", set)
-	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", decision.Governed{
+	governed := decision.Governed{
 		Decision: decision.Decision{
 			SignalRef:     fp,
 			Verdict:       decision.VerdictApproved,
@@ -38,7 +39,8 @@ func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
 			EvaluatedAt:   t0.Add(2 * time.Minute),
 		},
 		Set: set,
-	})
+	}
+	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", governed)
 	writeYAML(t, filepath.Join(inbox, "outcomes"), "out-1.yaml", outcome.Outcome{
 		SignalRef:   fp,
 		DecisionRef: "dec-1",
@@ -47,7 +49,7 @@ func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
 		ExecutedAt:  t0.Add(3 * time.Minute),
 	})
 
-	tr := &calipers.Transport{Inbox: inbox, Proj: calipers.NewProjection()}
+	tr := &calipers.Transport{Inbox: inbox, Proj: incident.NewProjection()}
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("golden run must not error:", err)
 	}
@@ -56,7 +58,7 @@ func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
 	if !ok {
 		t.Fatal("want an incident for fp-1, got none")
 	}
-	want := calipers.Incident{Fingerprint: fp, Stage: calipers.StageApplied, Service: svc, UpdatedAt: t0.Add(3 * time.Minute)}
+	want := incident.Incident{Fingerprint: fp, Stage: incident.StageApplied, Service: svc, UpdatedAt: t0.Add(3 * time.Minute), Governed: &governed}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("wrong incident after Tick folded all four objects", diff)
 	}
@@ -84,7 +86,7 @@ func TestTick_QuarantinesAFileThatFailsToDecodeAndSurvives(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tr := &calipers.Transport{Inbox: inbox, Proj: calipers.NewProjection()}
+	tr := &calipers.Transport{Inbox: inbox, Proj: incident.NewProjection()}
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("one bad file must not fail the pass:", err)
 	}
@@ -111,7 +113,7 @@ func TestTick_QuarantinesAFileWhoseDecodedObjectHasNoFingerprint(t *testing.T) {
 	writeYAML(t, filepath.Join(inbox, "detections"), "no-fp.yaml",
 		signal.Detection{OriginService: "checkout-api", DetectedAt: time.Now()})
 
-	tr := &calipers.Transport{Inbox: inbox, Proj: calipers.NewProjection()}
+	tr := &calipers.Transport{Inbox: inbox, Proj: incident.NewProjection()}
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("a fingerprint-less file must not fail the whole pass:", err)
 	}
@@ -126,7 +128,7 @@ func TestTick_QuarantinesAFileWhoseDecodedObjectHasNoFingerprint(t *testing.T) {
 
 func TestTick_IsANoOpWhenTheInboxHasNoSubdirectoriesYet(t *testing.T) {
 	t.Parallel()
-	tr := &calipers.Transport{Inbox: t.TempDir(), Proj: calipers.NewProjection()}
+	tr := &calipers.Transport{Inbox: t.TempDir(), Proj: incident.NewProjection()}
 
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("a freshly-created, empty inbox must not error:", err)
@@ -141,7 +143,7 @@ func TestTick_ReturnsContextErrorWithoutTouchingTheInbox(t *testing.T) {
 	inbox := t.TempDir()
 	writeYAML(t, filepath.Join(inbox, "detections"), "det-1.yaml",
 		signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: time.Now()})
-	tr := &calipers.Transport{Inbox: inbox, Proj: calipers.NewProjection()}
+	tr := &calipers.Transport{Inbox: inbox, Proj: incident.NewProjection()}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -166,7 +168,7 @@ func TestSnapshot_StillShowsAnIncidentAfterTickHasAlreadyArchivedItsFile(t *test
 	writeYAML(t, filepath.Join(inbox, "detections"), "det-1.yaml",
 		signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: time.Now()})
 
-	tr := &calipers.Transport{Inbox: inbox, Proj: calipers.NewProjection()}
+	tr := &calipers.Transport{Inbox: inbox, Proj: incident.NewProjection()}
 	if err := tr.Tick(context.Background()); err != nil {
 		t.Fatal("first Tick must not error:", err)
 	}
@@ -180,7 +182,7 @@ func TestSnapshot_StillShowsAnIncidentAfterTickHasAlreadyArchivedItsFile(t *test
 	if !ok {
 		t.Fatal("want an incident for fp-1 even though its source file was already archived, got none")
 	}
-	if got.Stage != calipers.StageDetected {
+	if got.Stage != incident.StageDetected {
 		t.Errorf("want Stage detected, got %v", got.Stage)
 	}
 }
