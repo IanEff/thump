@@ -164,12 +164,22 @@ data:
                 # second reader on either would split deliveries with
                 # production learning. jetstream.OrderedConsumer's
                 # AckPolicy is AckNone (confirmed against
-                # nats.go@v1.52.0's ordered.go), so unlike hiss's
-                # rebuildHolds below there is no $JS.ACK grant to add —
-                # an ordered consumer never acks what it reads.
+                # nats.go@v1.52.0's ordered.go), so this pair alone would
+                # need no $JS.ACK grant.
                 "$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
                 "$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
-                "$JS.API.CONSUMER.MSG.NEXT.THUMP.*"
+                # internal/incident.SnapshotBroker rebuilds the operator's
+                # read model from all four subjects via
+                # internal/broker.DrainSubject, whose consumer is
+                # AckExplicitPolicy — unlike harvest's ordered watchers
+                # above, this one does need the matching $JS.ACK grant
+                # below. Found live: calipers incidents failed outright
+                # with a permissions violation on thump.detections before
+                # this pair was added, since SnapshotBroker landed after
+                # the harvest-only grants above did.
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.detections",
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.decisions",
+                "$JS.API.CONSUMER.MSG.NEXT.THUMP.*", "$JS.ACK.THUMP.*.>"
               ]
             }
             subscribe: { allow: ["_INBOX.>"] }
