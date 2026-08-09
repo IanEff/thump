@@ -19,13 +19,11 @@ import (
 type Stage string
 
 const (
-	StageDetected Stage = "detected"     // rattle emitted a Detection; nothing downstream yet
-	StageProposed Stage = "proposed"     // clank emitted a proposal.Set
-	StageHeld     Stage = "held-for-you" // hiss held it — waiting on a human ack
-	StageApproved Stage = "approved"     // hiss (or a forced human) granted it; thump not done yet
-	StageDeclined Stage = "declined"     // hiss escalated or rejected
-	StageApplied  Stage = "applied"      // thump executed; convergence not yet known
-	StageSettled  Stage = "settled"      // terminal: success, failure, or partial_non_converging
+	StageDetected Stage = "detected" // rattle emitted a Detection; nothing downstream yet
+	StageProposed Stage = "proposed" // clank emitted a proposal.Set
+	StageDecided  Stage = "decided"  // hiss ruled; the verdict on Governed says how
+	StageApplied  Stage = "applied"  // thump executed; convergence not yet known
+	StageSettled  Stage = "settled"  // terminal: success, failure, or partial_non_converging
 )
 
 // Incident is one fingerprint's journey collapsed to its current Stage —
@@ -36,25 +34,13 @@ type Incident struct {
 	Stage       Stage     `json:"stage,omitempty"`
 	Service     string    `json:"service,omitempty"`
 	UpdatedAt   time.Time `json:"updatedAt"`
-	// Held retains the exact Governed hiss judged while Stage is
-	// StageHeld, so a later ack can act on the Set hiss actually saw. Nil
-	// whenever Stage isn't StageHeld.
-	Held *decision.Governed `json:"held,omitempty"`
-	// Severity is the latest ObservedSeverity, pointer-preserved: nil
-	// means unmeasured, never a fabricated 0 sitting next to a real 0.60.
+	// Governed is the latest decision hiss or a break-glass force issued for
+	// this fingerprint — whether a human still owes it an ack is
+	// Verdict.AwaitsApproval, never a second field here that could disagree.
+	Governed *decision.Governed `json:"governed,omitempty"`
+	// Severity is the latest ObservedSeverity, pointer-preserved: nil means
+	// unmeasured, never a fabricated 0 sitting next to a real 0.60.
 	Severity *float64 `json:"severity,omitempty"`
-	// Forced is true when the latest Governed's Decision was pushed through
-	// calipers's break-glass path rather than granted by hiss — rendered loud,
-	// never as an earned approval.
-	Forced bool `json:"forced,omitempty"`
-	// Operator names who forced it. Only meaningful when Forced is true.
-	Operator string `json:"operator,omitempty"`
-	// Approver names who acked a held fingerprint through calipers approve —
-	// meaningful only when the Decision came from hiss's re-issue handler,
-	// never from Evaluate itself, and never alongside Forced: an approval
-	// is either earned via an ack or pushed through the break-glass, never
-	// both.
-	Approver string `json:"approver,omitempty"`
 }
 
 // Fold advances prior by one boundary object. Every case has to start from
@@ -82,20 +68,8 @@ func Fold(prior Incident, obj any) Incident {
 	case decision.Governed:
 		next.Fingerprint = v.Decision.SignalRef
 		next.UpdatedAt = v.Decision.EvaluatedAt
-		next.Forced = v.Decision.Forced
-		next.Operator = v.Decision.Operator
-		next.Approver = v.Decision.Approver
-		switch v.Decision.Verdict {
-		case decision.VerdictHold:
-			next.Stage = StageHeld
-			next.Held = &v
-		case decision.VerdictApproved:
-			next.Stage = StageApproved
-			next.Held = nil
-		case decision.VerdictEscalate, decision.VerdictRejected:
-			next.Stage = StageDeclined
-			next.Held = nil
-		}
+		next.Stage = StageDecided
+		next.Governed = &v
 	case outcome.Outcome:
 		next.Fingerprint = v.SignalRef
 		next.UpdatedAt = v.ExecutedAt

@@ -123,6 +123,12 @@ func Main(args []string, stdout, stderr io.Writer) int {
 }
 
 func runIncidents(args []string, stdout, stderr io.Writer) int {
+	var fp string
+	rest := args
+	if f, r, ok := shiftPositional(args); ok {
+		fp, rest = f, r
+	}
+
 	fs := flag.NewFlagSet("incidents", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "print incidents as JSON")
@@ -132,7 +138,7 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 	keyFile := fs.String("tls-key", "", "client key, required with --nats-url")
 	caFile := fs.String("tls-ca", "", "CA bundle, required with --nats-url")
 	serverName := fs.String("server-name", "", "TLS SAN to verify the peer against, if it differs from the dialed host (e.g. a port-forwarded nats-url)")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
 
@@ -142,6 +148,16 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer closer()
+
+	if fp != "" {
+		inc, ok := proj.Get(fp)
+		if !ok {
+			_, _ = fmt.Fprintf(stderr, "calipers: no incident at fingerprint %s\n", fp)
+			return 1
+		}
+		_, _ = fmt.Fprintln(stdout, renderIncidentDetail(inc, time.Now()))
+		return 0
+	}
 
 	incidents := proj.Snapshot()
 	if *jsonOut {
@@ -237,12 +253,12 @@ func runForce(args []string, stdout, stderr io.Writer) int {
 	}
 	defer closer()
 	inc, ok := proj.Get(fp)
-	if !ok || inc.Held == nil {
+	if !ok || inc.Governed == nil || !inc.Governed.Decision.Verdict.AwaitsApproval() {
 		_, _ = fmt.Fprintf(stderr, "calipers: %s is not currently held — nothing to force\n", fp)
 		return 1
 	}
 
-	g := *inc.Held
+	g := *inc.Governed
 	g.Decision.ID = fmt.Sprintf("dec:%s:force:%d", fp, time.Now().Unix())
 	g.Decision.Verdict = decision.VerdictApproved
 	g.Decision.GrantedBand = g.Decision.RequestedBand

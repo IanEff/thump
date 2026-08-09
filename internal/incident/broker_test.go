@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/nats-io/nats.go/jetstream"
+
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
@@ -15,7 +17,6 @@ import (
 	"github.com/ianeff/thump/internal/incident"
 	"github.com/ianeff/thump/internal/natstest"
 	"github.com/ianeff/thump/internal/publish"
-	"github.com/nats-io/nats.go/jetstream"
 )
 
 // TestSnapshotBroker_FoldsHeldDecisionsTheDiskPathCannotSee pins the read
@@ -49,19 +50,20 @@ func TestSnapshotBroker_FoldsHeldDecisionsTheDiskPathCannotSee(t *testing.T) {
 	if !ok {
 		t.Fatal("want the held decision folded into the projection, got no incident at that fingerprint")
 	}
-	if inc.Held == nil {
+	if inc.Governed == nil {
 		t.Fatal("want a held decision on the incident, got none")
 	}
-	if diff := cmp.Diff(decision.VerdictHold, inc.Held.Decision.Verdict); diff != "" {
+	if diff := cmp.Diff(decision.VerdictHold, inc.Governed.Decision.Verdict); diff != "" {
 		t.Error("wrong verdict folded from the broker", diff)
 	}
 }
 
-// TestSnapshotBroker_OrdersEverySubjectsHistoryByPublishTime is the one that
-// catches the subject-at-a-time bug. Fold is a state machine over the
-// interleaving of four subjects, so draining them one subject at a time
-// rewinds a settled incident to whatever its last-drained subject said.
-func TestSnapshotBroker_OrdersEverySubjectsHistoryByPublishTime(t *testing.T) {
+// TestSnapshotBroker_FoldsARecurrenceAfterTheOutcomeThatSettledIt pins the
+// global sort. Fold is a state machine over the interleaving of four
+// subjects, so draining one subject at a time ends every incident on
+// whichever subject drained last — here, reporting a settled incident for a
+// fingerprint that has already re-fired.
+func TestSnapshotBroker_FoldsARecurrenceAfterTheOutcomeThatSettledIt(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	js := natstest.New(t)
@@ -69,18 +71,24 @@ func TestSnapshotBroker_OrdersEverySubjectsHistoryByPublishTime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Published newest-subject-first on purpose: detections drains before
-	// outcomes, so a naive implementation ends on the Detection and reports
-	// StageDetected for an incident that has already settled.
 	publishSettled(ctx, t, js, "slo_burn:cart")
+	if err := publish.NewJetPublisher[signal.Detection](js).
+		Publish(ctx, "thump.detections", signal.Detection{
+			Fingerprint: "slo_burn:cart", DetectedAt: time.Now(),
+		}); err != nil {
+		t.Fatal(err)
+	}
 
 	proj, err := incident.SnapshotBroker(ctx, js)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	inc, _ := proj.Get("slo_burn:cart")
-	if diff := cmp.Diff(incident.StageSettled, inc.Stage); diff != "" {
+	inc, ok := proj.Get("slo_burn:cart")
+	if !ok {
+		t.Fatal("want the recurrence folded into the projection, got no incident at that fingerprint")
+	}
+	if diff := cmp.Diff(incident.StageDetected, inc.Stage); diff != "" {
 		t.Error("wrong stage — subjects folded in drain order, not publish order", diff)
 	}
 }

@@ -15,7 +15,7 @@ import (
 )
 
 // SnapshotBroker builds a Projection from the shared stream's full
-// history -- the roker-mode counterpart to a disk Snapshot for the
+// history -- the broker-mode counterpart to a disk Snapshot for the
 // four subjects that carry a fingerprint.
 func SnapshotBroker(ctx context.Context, js jetstream.JetStream) (*Projection, error) {
 	var events []brokerEvent
@@ -53,7 +53,7 @@ func SnapshotBroker(ctx context.Context, js jetstream.JetStream) (*Projection, e
 }
 
 // brokerEvent is just one historical message from any of the four finger-
-// printed subhects, tagged with the timestamp Jetstream stored at it.
+// printed subjects, tagged with the timestamp JetStream stored at it.
 type brokerEvent struct {
 	at  time.Time
 	obj any

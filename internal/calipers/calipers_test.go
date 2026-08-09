@@ -78,6 +78,50 @@ func TestMain_IncidentsPrintsHumanReadableTextByDefault(t *testing.T) {
 	}
 }
 
+// TestMain_IncidentsWithAFingerprintRendersTheDetailView pins that
+// shiftPositional routes a bare fingerprint to the kubectl-describe-shaped
+// detail view instead of the one-line list — and, since the fingerprint has
+// to survive alongside --inbox, this is also the regression test for
+// runIncidents once having parsed args instead of the shifted rest.
+func TestMain_IncidentsWithAFingerprintRendersTheDetailView(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+	writeYAML(t, filepath.Join(inbox, "detections"), "det-1.yaml",
+		signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: time.Now()})
+	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", decisiontest.Held("fp-1"))
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.Main([]string{"incidents", "fp-1", "--inbox", inbox}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Verdict:") {
+		t.Errorf("want the detail view's Verdict line, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "fp-1") {
+		t.Errorf("want stdout to mention fp-1, got %q", stdout.String())
+	}
+}
+
+// TestMain_IncidentsWithAnUnknownFingerprintFails pins the not-found path: a
+// fingerprint absent from the projection is an error, not a silent empty
+// detail view.
+func TestMain_IncidentsWithAnUnknownFingerprintFails(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.Main([]string{"incidents", "fp-missing", "--inbox", inbox}, &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("want exit code 1, got %d (stdout: %s)", code, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "no incident at fingerprint") {
+		t.Errorf("want stderr to explain the miss, got %q", stderr.String())
+	}
+}
+
 func TestMain_ApprovePublishesAnAuditableApproval(t *testing.T) {
 	t.Parallel()
 	outbox := t.TempDir()

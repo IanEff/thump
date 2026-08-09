@@ -31,7 +31,7 @@ func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
 	writeYAML(t, filepath.Join(inbox, "detections"), "det-1.yaml",
 		signal.Detection{Fingerprint: fp, OriginService: svc, DetectedAt: t0})
 	writeYAML(t, filepath.Join(inbox, "proposals"), "prop-1.yaml", set)
-	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", decision.Governed{
+	governed := decision.Governed{
 		Decision: decision.Decision{
 			SignalRef:     fp,
 			Verdict:       decision.VerdictApproved,
@@ -39,7 +39,8 @@ func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
 			EvaluatedAt:   t0.Add(2 * time.Minute),
 		},
 		Set: set,
-	})
+	}
+	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", governed)
 	writeYAML(t, filepath.Join(inbox, "outcomes"), "out-1.yaml", outcome.Outcome{
 		SignalRef:   fp,
 		DecisionRef: "dec-1",
@@ -57,7 +58,7 @@ func TestTick_FoldsEveryBoundaryObjectTypeIntoTheProjection(t *testing.T) {
 	if !ok {
 		t.Fatal("want an incident for fp-1, got none")
 	}
-	want := incident.Incident{Fingerprint: fp, Stage: incident.StageApplied, Service: svc, UpdatedAt: t0.Add(3 * time.Minute)}
+	want := incident.Incident{Fingerprint: fp, Stage: incident.StageApplied, Service: svc, UpdatedAt: t0.Add(3 * time.Minute), Governed: &governed}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("wrong incident after Tick folded all four objects", diff)
 	}
