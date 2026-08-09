@@ -3,6 +3,8 @@
 // citation and a change event name a subject the same way.
 package subjects
 
+import "sort"
+
 // Coordinates are the cluster facts a caller can state about one piece of
 // evidence or one change event. Callers know different subsets — a log query
 // knows a namespace and stream labels, an ArgoCD resource entry knows a
@@ -56,6 +58,45 @@ func (x SubjectIndex) For(c Coordinates) string {
 		return ""
 	}
 	return subject
+}
+
+// LabelKeys returns every label key declared across x's rules, sorted and de-
+// duplicate.
+func (x SubjectIndex) LabelKeys() []string {
+	seen := make(map[string]any)
+	for _, rule := range x {
+		for k := range rule.Labels {
+			seen[k] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// ExampleLabel returns one label key/value pair from the first rule in x
+// that declares any — a tool description's worked example, drawn from what
+// the rig actually authored rather than invented. ok is false when no rule
+// declares a label.
+func (x SubjectIndex) ExampleLabel() (key, value string, ok bool) {
+	for _, rule := range x {
+		if len(rule.Labels) == 0 {
+			continue
+		}
+		keys := make([]string, 0, len(rule.Labels))
+		for k := range rule.Labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return keys[0], rule.Labels[keys[0]], true
+	}
+	return "", "", false
 }
 
 // matches reports whether c satisfies every coordinate rule declares. An

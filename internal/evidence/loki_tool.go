@@ -42,12 +42,15 @@ type LokiTool struct {
 var _ reason.Tool = (*LokiTool)(nil)
 
 func (l *LokiTool) Spec() reason.ToolSpec {
+	desc := "read-only log query. namespace is required."
+	if keys := l.Subjects.LabelKeys(); len(keys) > 0 {
+		desc += " Known label keys: " + strings.Join(keys, ", ") + "."
+	}
+	desc += " query is an optional line-filter substring (NOT LogQL syndax)" +
+		" - do not pass raw LogQL, it will be escaped as literal."
 	return reason.ToolSpec{
-		Name: "loki",
-		Description: "read-only log query. namespace is required. Known label keys: " +
-			"app, ceph_daemon_id, ceph_daemon_type, component, container, instance, job, " +
-			"node_name, pod, service_name. query is an optional line-filter substring " +
-			"(NOT LogQL syntax) — do not pass raw LogQL, it will be escaped as a literal.",
+		Name:        "loki",
+		Description: desc,
 		InputSchema: schema.Of[lokiInput](),
 	}
 }
