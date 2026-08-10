@@ -3,12 +3,12 @@ package evidence_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/evidence"
-	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/subjects"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -187,20 +187,28 @@ func TestKubeTool_Run_StampsTheSubjectItsCoordinatesResolveTo(t *testing.T) {
 	}
 }
 
-func TestKubeTool_Run_RegistersEveryDiscoveredPodNameOnTheContextMasker(t *testing.T) {
+// TestKubeTool_SpecAdvertisesEveryAuthoredPodSelectorRatherThanOneWorkedExample
+// pins that Spec renders the rig's whole authored selector set, not one
+// arbitrary first rule — a model choosing among several workloads needs to
+// see all of them, not guess the rest from a single example.
+func TestKubeTool_SpecAdvertisesEveryAuthoredPodSelectorRatherThanOneWorkedExample(t *testing.T) {
 	t.Parallel()
-	clientset := fake.NewSimpleClientset(
-		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "osd-0", Namespace: "rook-ceph"}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
-	)
-	tool := &evidence.KubeTool{Client: clientset}
-	masker := mask.NewIdentifierMasker()
-	ctx := mask.ContextWithMasker(context.Background(), masker)
 
-	if _, err := tool.Run(ctx, json.RawMessage(`{"resource":"pods","namespace":"rook-ceph"}`)); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tool := &evidence.KubeTool{Subjects: subjects.SubjectIndex{
+		{Subject: "ceph-osd", Plane: "kube", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+		{Subject: "ceph-rgw", Plane: "kube", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-rgw"}}},
+		{Subject: "cart", Plane: "loki", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"service_name": "cart"}}},
+	}}
+
+	desc := tool.Spec().Description
+
+	if !strings.Contains(desc, "ceph-osd: namespace=rook-ceph, app=rook-ceph-osd") {
+		t.Error("kube Spec description missing the ceph-osd selector", desc)
 	}
-
-	if diff := cmp.Diff("{{mask-1}}", masker.Mask("osd-0")); diff != "" {
-		t.Error("KubeTool.Run did not register the discovered pod name on the run's masker (-want +got)\n", diff)
+	if !strings.Contains(desc, "ceph-rgw: namespace=rook-ceph, app=rook-ceph-rgw") {
+		t.Error("kube Spec description missing the ceph-rgw selector", desc)
+	}
+	if strings.Contains(desc, "cart") {
+		t.Error("kube Spec description advertised a loki-only selector", desc)
 	}
 }

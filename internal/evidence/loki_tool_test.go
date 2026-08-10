@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -189,5 +190,30 @@ func TestLokiTool_RunGivenUndecodableArgsReturnsError(t *testing.T) {
 	_, err := tool.Run(context.Background(), json.RawMessage(`not json`))
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+// TestLokiTool_SpecAdvertisesEveryAuthoredStreamSelector pins that Spec
+// renders the rig's whole authored selector set for the loki plane, not just
+// the label keys — a key alone leaves the value to be guessed, and a guessed
+// selector returns nothing while reading exactly like an empty cluster.
+func TestLokiTool_SpecAdvertisesEveryAuthoredStreamSelector(t *testing.T) {
+	t.Parallel()
+
+	tool := &evidence.LokiTool{Subjects: subjects.SubjectIndex{
+		{Subject: "cart", Plane: "loki", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"service_name": "cart"}}},
+		{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+	}}
+
+	desc := tool.Spec().Description
+
+	if !strings.Contains(desc, "cart: namespace=otel-demo, service_name=cart") {
+		t.Error("loki Spec description missing the cart selector", desc)
+	}
+	if !strings.Contains(desc, "ceph-osd: namespace=rook-ceph, app=rook-ceph-osd") {
+		t.Error("loki Spec description missing the ceph-osd selector", desc)
+	}
+	if strings.Contains(desc, "syndax") {
+		t.Error("loki Spec description still carries the syndax typo", desc)
 	}
 }
