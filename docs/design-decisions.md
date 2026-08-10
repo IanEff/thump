@@ -559,6 +559,22 @@ attributed *confidently*.
 reconstructs no field it cannot read. A gap in the record is fixed at the
 recording end, never guessed at the reading end.
 
+## D-24 · Obfuscating the subject while publishing the evidence surface — **Removed** (2026-08-09)
+
+`internal/mask` gave the affected service, the change-event targets, the topology
+nodes and every discovered pod name a `{{mask-N}}` placeholder before the prompt
+crossed to the provider. It never masked the tool specs, which name all 37 evidence
+queries, every label key and a worked selector example — so `rook-ceph-osd` shipped
+in the tool block on the same turn `ceph-osd` was hidden in the prompt. The subject
+name is the only join key the seed prompt carries (`sao.Signal.Metric` is empty
+across the whole graded corpus) and the kube digest is nothing but identifiers, so
+the mask removed the model's ability to correlate three tools and returned no
+confidentiality in exchange.
+
+**We do:** identifiers reach the provider. The bound on a steered model is the
+catalog, the authored magnitude, and hiss's separate identity — never obfuscation.
+Rebuilding this needs the tool specs in scope and a new row here.
+
 ---
 
 ## Departures from other source material

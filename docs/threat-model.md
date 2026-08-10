@@ -66,15 +66,14 @@ Raw payloads never enter the conversation at all: an `EvidenceRef` carries a dig
 and a backend ref, and has no `Raw` field — a boundary stated in `api/v1/proposal`'s own doc
 comment as one that will never be added.
 
-**The residual, precisely.** Identifiers are masked before they cross to the provider and
-restored on the way back (`internal/mask`, wired at `internal/clank/engine.go:224`). What
-gets masked is what gets registered: the affected service, every change-event target, every
-upstream and downstream topology node (`engine.go:208-222`), and pod names the kube tool
-returns (`internal/evidence/kube_tool.go:88`). **Namespaces are registered nowhere**, and any
-identifier appearing only inside a Loki line or a Prometheus label that isn't one of those
-registered strings reaches the provider verbatim. The mechanism is real and running; its
-coverage is a function of that registration list, and the list is shorter than the package
-doc claims.
+**The residual, precisely.** Identifiers are not masked. A namespace, a pod name, a
+service name and a metric name all reach the provider as written. An obfuscation
+layer was removed rather than repaired: it hid the affected service's name in the
+prompt while the tool descriptions named every evidence query, label key and
+workload on the rig — so it bought no confidentiality anyone could state, and cost
+the reasoner the one key it needed to join three tools (D-24). What bounds a steered
+model is the three clauses above, none of which depend on the provider not knowing
+what things are called.
 
 ## The trust ceiling
 

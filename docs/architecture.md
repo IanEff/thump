@@ -391,7 +391,6 @@ internal/
   reason/        reasoner loop primitives and LLM provider interfaces
   anthropic/     Anthropic Claude provider client implementation
   gemini/        Google Gemini provider client implementation
-  mask/          prompt and payload credential masking
   schema/        OpenAPI and JSON schema definitions
   subjects/      cluster coordinate to topology node resolution index
   actuate/       the ONLY client-go site — compiled mechanisms and their binding
