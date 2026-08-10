@@ -198,9 +198,10 @@ func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration, 
 // Run dispatches ref's forward (or reverse) mutation through the Kube seam,
 // cut off at r.timeout. An unbound ref is an error, not a silent no-op —
 // thump records it as a failure with text, same as a timed-out or failing
-// mutation does. Every bound op today is a cluster mutation, so a successful
-// Run always reports ResultApplied; a maintenanceRelease op reporting
-// ResultProposed is Step 2's addition, not this one's.
+// mutation does. The Result reported is the dispatched op's own — see
+// resultOf — because a maintenanceRelease op ran fine and mutated nothing;
+// reporting ResultApplied for it would start transport.go's convergence
+// watcher against a change nobody has accepted.
 func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64, notes string) (outcome.Result, error) {
 	b, ok := r.bindings[ref]
 	if !ok {
@@ -217,7 +218,26 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 	if err := op.do(ctx, d); err != nil {
 		return "", fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
 	}
-	return outcome.ResultApplied, nil
+	return resultOf(op), nil
+}
+
+// resultOf reports what kind of op actually ran: every op mutates the
+// cluster directly except maintenanceReleaseOp, which leaves an artifact
+// for review instead. A seqOp's result is its last step's, since that's the
+// one still pending review (or the one that mutated) once the sequence
+// finishes.
+func resultOf(op operation) outcome.Result {
+	switch o := op.(type) {
+	case maintenanceReleaseOp:
+		return outcome.ResultProposed
+	case seqOp:
+		if len(o) == 0 {
+			return outcome.ResultApplied
+		}
+		return resultOf(o[len(o)-1])
+	default:
+		return outcome.ResultApplied
+	}
 }
 
 // scaleOp merge-patches a Deployment's spec.replicas to a fixed count — the
@@ -261,11 +281,10 @@ type dispatch struct {
 	notes string // thump's rendering of the ranked set, empty for a mutation.
 }
 
-// Release is one corrective maintenance release: the changed source, the
-// version it carries, and the notes a reviewer read before accepting it.
+// Release is one corrective maintenance release: the changed source and the
+// notes a reviewer reads before accepting it.
 type Release struct {
 	Key     string // open release per authored contract ref
-	Version string
 	Path    string // the file in the GitOps source this release changes.
 	Content []byte
 	Notes   string

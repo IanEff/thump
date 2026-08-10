@@ -575,15 +575,28 @@ func enrichFromCatalog(cat *contract.StaticCatalog, proposals []proposal.Candida
 		}
 		if c.Reversal.Method != "" {
 			proposals[i].ReversalPath = &proposal.ReversalPath{
-				Method:   c.Reversal.Method,
-				Watching: c.SuccessCriteria.Metric,
-				Trigger:  c.SuccessCriteria.Target,
+				Method:    c.Reversal.Method,
+				Watching:  c.SuccessCriteria.Metric,
+				Trigger:   c.SuccessCriteria.Target,
+				Automatic: automaticReversal(c.Execution.Reverse),
 			}
 			proposals[i].GovernanceLevel = &proposal.GovernanceLevel{Band: string(decision.BandActReversible)}
 		} else {
 			proposals[i].GovernanceLevel = &proposal.GovernanceLevel{Band: string(decision.BandActDisruptive)}
 		}
 	}
+}
+
+// automaticReversal reports whether the engine can finish this contract's
+// undo on its own. A maintenanceRelease step leaves a release for a
+// reviewer to merge — nobody has landed anything until they do.
+func automaticReversal(steps []contract.Step) bool {
+	for _, s := range steps {
+		if s.Verb == "maintenanceRelease" {
+			return false
+		}
+	}
+	return true
 }
 
 // withCallIDs guarantees every call in a turn has an identifier its

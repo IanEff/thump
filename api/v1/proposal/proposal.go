@@ -178,6 +178,8 @@ type ReversalPath struct {
 	Method   string `json:"method,omitempty" yaml:"method,omitempty"`
 	Watching string `json:"watching,omitempty" yaml:"watching,omitempty"` // the metric to watch for reversal's own success criteria
 	Trigger  string `json:"trigger,omitempty" yaml:"trigger,omitempty"`   // the target value that fires the reversal
+	// Automatic reports whether this undo runs to completion on its own.
+	Automatic bool `json:"automatic,omitempty" yaml:"automatic,omitempty"`
 }
 
 // GovernanceLevel is a request, not a verdict — clank emits the band and

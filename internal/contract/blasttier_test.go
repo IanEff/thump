@@ -11,7 +11,7 @@ import (
 func TestShippedCatalog_EveryActuatableActionHasABlastTier(t *testing.T) {
 	t.Parallel()
 	cat := configtest.ShippedCatalog(t)
-	bound, err := actuate.BoundRefs(cat)
+	bound, err := actuate.BoundRefs(cat, true)
 	if err != nil {
 		t.Fatalf("the shipped catalog holds an action with no executable mechanism: %v", err)
 	}

@@ -37,6 +37,7 @@ proposals:
     severityReductionPct: 0.7
   rank: 1
   reversalPath:
+    automatic: true
     method: release-rebalance
     trigger: HEALTH_OK
     watching: ceph_health

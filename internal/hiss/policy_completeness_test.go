@@ -25,7 +25,7 @@ func TestPolicy_FloorsCoverEveryActuatableClass(t *testing.T) {
 	}
 	cat := configtest.ShippedCatalog(t)
 
-	bound, err := actuate.BoundRefs(cat)
+	bound, err := actuate.BoundRefs(cat, true)
 	if err != nil {
 		t.Fatalf("the shipped catalog holds an action with no executable mechanism: %v", err)
 	}

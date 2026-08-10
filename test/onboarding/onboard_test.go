@@ -190,7 +190,7 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 	// thump: the authored action is executable, not merely catalogued — the
 	// binding comes from its execution block, so a ref reaches a real
 	// mechanism with no Go edit.
-	bound, err := actuate.BoundRefs(cat)
+	bound, err := actuate.BoundRefs(cat, true)
 	if err != nil {
 		t.Fatalf("acme's authored action names no executable mechanism: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestOperator_AnAuthoredActionNamingNoMechanismFailsAtLoad(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load fixture catalog: %v", err)
 			}
-			if _, err := actuate.BoundRefs(cat); err == nil {
+			if _, err := actuate.BoundRefs(cat, true); err == nil {
 				t.Error("an authored action with no reachable mechanism must fail at load, got nil error")
 			}
 		})

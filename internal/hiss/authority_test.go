@@ -3,6 +3,7 @@ package hiss_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -212,7 +213,7 @@ func TestAuthority_LivePolicyApprovesAStampedReversibleAct(t *testing.T) {
 		Gate:     &proposal.GateResult{BudgetOK: true, DedupeOK: true, EvidenceOK: true, Passed: true},
 		Proposals: []proposal.Candidate{{
 			ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-			ReversalPath:    &proposal.ReversalPath{Method: "release-rebalance"},
+			ReversalPath:    &proposal.ReversalPath{Method: "release-rebalance", Automatic: true},
 			GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 		}},
 		Recommended: "p1", Status: &proposal.Status{Phase: "proposed"},
@@ -318,7 +319,7 @@ func governedSet() proposal.Set {
 				ID: "p1", ContractRef: "throttle-non-critical-paths",
 				Confidence: 0.87, // ≥ the 0.75 floor (Claim 3 lowers this)
 				ReversalPath: &proposal.ReversalPath{ // present — the I-12 veto stays quiet (Claim 5 nils this)
-					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
+					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery", Automatic: true,
 				},
 				Rank: 1, // GovernanceLevel deliberately nil — D-3; Claim 4 pins absence-is-lowest
 			},
@@ -346,5 +347,51 @@ func calmPolicy() hiss.Policy {
 		AutoBand:        map[string]decision.Band{"tier-1": decision.BandActReversible},
 		FreezeWindows:   nil,  // Claim 6 adds one
 		RequireReversal: true, // prod posture, always (I-12)
+	}
+}
+
+// TestAuthority_HoldsAReleaseShapedCandidateThatNoHumanHasAcceptedYet pins
+// the whole chain a unit test on RiskBand cannot: the catalog authors a
+// reversal, clank stamps it onto the Candidate, and hiss bands it. A release
+// whose undo is a second release a reviewer must merge has to reach a human
+// before it is cut, not after.
+func TestAuthority_HoldsAReleaseShapedCandidateThatNoHumanHasAcceptedYet(t *testing.T) {
+	t.Parallel()
+
+	ps := governedSet()
+	ps.Proposals[0].BlastTier = proposal.BlastLow
+	ps.Proposals[0].ReversalPath = &proposal.ReversalPath{
+		Method:    "revert-cart-failure-release",
+		Automatic: false, // a reviewer lands the revert, not the engine
+	}
+
+	got := decide(t, ps, calmPolicy())
+
+	if diff := cmp.Diff(decision.VerdictHold, got.Verdict); diff != "" {
+		t.Error("wrong verdict for an action whose undo needs a human", diff)
+	}
+	if !slices.Contains(got.Reasons, hiss.ReasonRiskCeiling) {
+		t.Errorf("want ReasonRiskCeiling among the hold reasons, got %v", got.Reasons)
+	}
+}
+
+// TestAuthority_ApprovesTheSameCandidateWhenTheEngineCanFinishTheUndo is the
+// sibling of the test above on the identical policy — without it, the hold
+// above could pass for the wrong reason (calmPolicy simply never
+// auto-approving anything), rather than because Automatic was false.
+func TestAuthority_ApprovesTheSameCandidateWhenTheEngineCanFinishTheUndo(t *testing.T) {
+	t.Parallel()
+
+	ps := governedSet()
+	ps.Proposals[0].BlastTier = proposal.BlastLow
+	ps.Proposals[0].ReversalPath = &proposal.ReversalPath{
+		Method:    "revert-cart-failure-release",
+		Automatic: true, // the engine completes the undo itself
+	}
+
+	got := decide(t, ps, calmPolicy())
+
+	if diff := cmp.Diff(decision.VerdictApproved, got.Verdict); diff != "" {
+		t.Error("wrong verdict for an action whose undo the engine completes itself", diff)
 	}
 }
