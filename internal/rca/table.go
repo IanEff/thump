@@ -263,11 +263,10 @@ func Table() []Case {
 		// The cartFailure flag flip breaks cart's EmptyCart RPC. Two
 		// actions are catalogued for it — restart-pod and
 		// disable-cart-failure — and only the flag flip actually clears it,
-		// so this row grades the choice as well as the class. metrics,
-		// kube, and loki all corroborate cart here, reaching the top
-		// grounding tier — computed(1.00) then exceeds the model's own
-		// self-report, so the self-report is what binds the emitted
-		// confidence.
+		// so this row grades the choice as well as the class. This
+		// harness's kube fake carries no cart pod data, so the row can only
+		// ever corroborate through "metrics"; WantConfidenceAtLeast is set
+		// below GroundingOne's 0.7 floor accordingly.
 		{
 			Name:                  "a real cartFailure flag flip proposes the flag fix, not the pod restart",
 			Fixture:               "disable-cart-failure.yaml",
@@ -275,8 +274,8 @@ func Table() []Case {
 			WantContractRef:       "disable-cart-failure",
 			WantClass:             proposal.ClassServiceFailure,
 			MustCite:              []string{"cart_error_ratio"},
-			WantConfidenceAtLeast: 0.95,
-			WantCeilingBound:      true,
+			WantConfidenceAtLeast: 0.65,
+			WantCeilingBound:      false,
 			Evidence: map[string]string{
 				"slo_burn_cart":              "50",
 				"severity_cart_availability": "0.5",

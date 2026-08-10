@@ -7,6 +7,25 @@ pods:
     labels:
       app: rook-ceph-mon
     phase: Running
+  # Ceph's subject rules carry no plane:, so one pod answers both the kube
+  # and loki legs. The OSD pod carries both label vocabularies the index
+  # declares for ceph-osd, so either authored selector resolves it.
+  - name: rook-ceph-osd-0
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-osd
+      ceph_daemon_type: osd
+    phase: Running
+  - name: rook-ceph-rgw-a
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-rgw
+    phase: Running
+  - name: rook-ceph-operator-0
+    namespace: rook-ceph
+    labels:
+      app: rook-ceph-operator
+    phase: Running
   - name: cart-0
     namespace: otel-demo
     labels:
