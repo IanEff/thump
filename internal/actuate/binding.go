@@ -15,10 +15,10 @@ import (
 var ErrUnbindable = errors.New("actuate: contract names no executable mechanism")
 
 // bind maps every contract in a StaticCatalog to its concrete mutation.
-func bind(cat *contract.StaticCatalog) (map[string]binding, error) {
+func bind(cat *contract.StaticCatalog, forgeWired bool) (map[string]binding, error) {
 	out := make(map[string]binding)
 	for _, c := range cat.Contracts() {
-		b, err := bindingFor(c)
+		b, err := bindingFor(c, forgeWired)
 		if err != nil {
 			return nil, err
 		}
@@ -29,12 +29,12 @@ func bind(cat *contract.StaticCatalog) (map[string]binding, error) {
 
 // bindingFor turns one contract's authored execution block into the
 // pair of mutations Run dispatches.
-func bindingFor(c contract.ActionContract) (binding, error) {
-	forward, err := opFor(c.Execution.Forward)
+func bindingFor(c contract.ActionContract, forgeWired bool) (binding, error) {
+	forward, err := opFor(c.Execution.Forward, forgeWired)
 	if err != nil {
 		return binding{}, fmt.Errorf("contract %q forward: %w", c.Name, err)
 	}
-	reverse, err := opFor(c.Execution.Reverse)
+	reverse, err := opFor(c.Execution.Reverse, forgeWired)
 	if err != nil {
 		return binding{}, fmt.Errorf("contract %q reverse: %w", c.Name, err)
 	}
@@ -42,16 +42,16 @@ func bindingFor(c contract.ActionContract) (binding, error) {
 }
 
 // opFor collapses an authored step list into one operation.
-func opFor(steps []contract.Step) (operation, error) {
+func opFor(steps []contract.Step, forgeWired bool) (operation, error) {
 	switch len(steps) {
 	case 0:
 		return nil, fmt.Errorf("no steps authored: %w", ErrUnbindable)
 	case 1:
-		return mechanismFor(steps[0])
+		return mechanismFor(steps[0], forgeWired)
 	}
 	seq := make(seqOp, 0, len(steps))
 	for i, s := range steps {
-		op, err := mechanismFor(s)
+		op, err := mechanismFor(s, forgeWired)
 		if err != nil {
 			return nil, fmt.Errorf("step %d: %w", i+1, err)
 		}
@@ -63,7 +63,7 @@ func opFor(steps []contract.Step) (operation, error) {
 // mechanismFor selects the compiled mutation a step names. The verb set is
 // closed, and every required target is checked here — this switch is where
 // the autonomy boundary stays in Go while the table lives in YAML.
-func mechanismFor(s contract.Step) (operation, error) {
+func mechanismFor(s contract.Step, forgeWired bool) (operation, error) {
 	switch s.Verb {
 	case "exec":
 		if s.Namespace == "" || s.Selector == "" || len(s.Command) == 0 {
@@ -88,6 +88,14 @@ func mechanismFor(s contract.Step) (operation, error) {
 			namespace: s.Namespace, configMap: s.ConfigMap, dataKey: s.DataKey,
 			flag: s.Flag, variant: s.Variant,
 		}, nil
+	case "maintenanceRelease":
+		if !forgeWired {
+			return nil, fmt.Errorf("maintenanceRelease needs a forge wired: %w", ErrUnbindable)
+		}
+		if s.Repo == "" || s.Path == "" || s.Flag == "" || s.Variant == "" {
+			return nil, fmt.Errorf("maintenanceRelease needs repo, path, flag, and variant: %w", ErrUnbindable)
+		}
+		return maintenanceReleaseOp{repo: s.Repo, path: s.Path, flag: s.Flag, variant: s.Variant}, nil
 	default:
 		return nil, fmt.Errorf("verb %q has no mechanism: %w", s.Verb, ErrUnbindable)
 	}
@@ -95,8 +103,8 @@ func mechanismFor(s contract.Step) (operation, error) {
 
 // BoundRefs returns the contract refs cat can actually execute, sorted for a
 // stable comparison.
-func BoundRefs(cat *contract.StaticCatalog) ([]string, error) {
-	b, err := bind(cat)
+func BoundRefs(cat *contract.StaticCatalog, forgeWired bool) ([]string, error) {
+	b, err := bind(cat, forgeWired)
 	if err != nil {
 		return nil, err
 	}

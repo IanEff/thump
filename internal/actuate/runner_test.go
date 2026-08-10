@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -311,3 +312,103 @@ func TestRunner_TimesOutAHungMutationRatherThanBlockingForever(t *testing.T) {
 		}
 	})
 }
+
+// TestRunner_CutsOneReleasePerContractRefWhenADecisionIsRedelivered pins the
+// idempotency key to the authored ref. A JetStream consumer redelivers on any
+// missed ack, and an op that cut a fresh release per delivery would turn one
+// governed decision into a queue of individually-acceptable releases against
+// the same file.
+func TestRunner_CutsOneReleasePerContractRefWhenADecisionIsRedelivered(t *testing.T) {
+	t.Parallel()
+
+	f := &recordForge{doc: `{"flags":{"cartFailure":{"defaultVariant":"on"}}}`}
+	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.ShippedCatalog(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if _, err := r.Run(t.Context(), "disable-cart-failure-release", false, nil, "dummy notes"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if diff := cmp.Diff([]string{"disable-cart-failure-release"}, f.keys); diff != "" {
+		t.Error("wrong release keys cut for one redelivered decision", diff)
+	}
+}
+
+// TestNewWith_RefusesAReleaseContractWhenNoForgeIsWired pins the load-time
+// refusal. A contract naming a delivery pipeline the process cannot reach is
+// a startup error, never a runtime failure discovered the first time
+// governance approves it.
+func TestNewWith_RefusesAReleaseContractWhenNoForgeIsWired(t *testing.T) {
+	t.Parallel()
+
+	_, err := actuate.NewWithForgeForTest(&recordKube{}, nil, configtest.ShippedCatalog(t))
+
+	if !errors.Is(err, actuate.ErrUnbindable) {
+		t.Fatalf("want ErrUnbindable for a release contract with no forge, got %v", err)
+	}
+}
+
+// TestRunner_LeavesEveryOtherFlagAloneWhenCuttingARelease pins the
+// read-modify-write against the source of record. The flagd document is one
+// opaque blob holding every flag, so a release that rewrote only its own key
+// would disarm every other flag in the same commit.
+func TestRunner_LeavesEveryOtherFlagAloneWhenCuttingARelease(t *testing.T) {
+	t.Parallel()
+
+	f := &recordForge{doc: `{"flags":{"cartFailure":{"defaultVariant":"on"},"adServiceFailure":{"defaultVariant":"on"}}}`}
+	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.ShippedCatalog(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := r.Run(t.Context(), "disable-cart-failure-release", false, nil, "dummy notes"); err != nil {
+		t.Fatal(err)
+	}
+
+	var got struct {
+		Flags map[string]struct {
+			DefaultVariant string `json:"defaultVariant"`
+		} `json:"flags"`
+	}
+	if err := json.Unmarshal(f.content, &got); err != nil {
+		t.Fatalf("released document isn't valid JSON: %v\ndocument: %s", err, f.content)
+	}
+	if diff := cmp.Diff("off", got.Flags["cartFailure"].DefaultVariant); diff != "" {
+		t.Error("wrong variant for the flag under release", diff)
+	}
+	if diff := cmp.Diff("on", got.Flags["adServiceFailure"].DefaultVariant); diff != "" {
+		t.Error("an untouched flag drifted in the released document", diff)
+	}
+}
+
+// recordForge is a fake actuate.Forge: it records every release cut so a test
+// can assert the exact artifact, and never reaches a real forge. doc is the
+// canned source-of-record document Read hands back.
+type recordForge struct {
+	doc     string
+	err     error
+	keys    []string // every distinct Release.Key cut, in order
+	content []byte   // the most recent released document
+	notes   string
+}
+
+func (f *recordForge) Read(context.Context, string) ([]byte, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []byte(f.doc), nil
+}
+
+func (f *recordForge) Cut(_ context.Context, rel actuate.Release) (string, error) {
+	if !slices.Contains(f.keys, rel.Key) {
+		f.keys = append(f.keys, rel.Key)
+	}
+	f.content, f.notes = rel.Content, rel.Notes
+	return "https://forge.example/release/1", f.err
+}
+
+func (f *recordForge) Withdraw(context.Context, string) (bool, error) { return false, f.err }

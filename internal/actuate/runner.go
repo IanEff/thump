@@ -81,21 +81,11 @@ func (f flagVariantOp) do(ctx context.Context, d dispatch) error {
 		return fmt.Errorf("read %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
 	}
 
-	var doc map[string]any
-	if err := json.Unmarshal([]byte(current), &doc); err != nil {
-		return fmt.Errorf("parse %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
-	}
-	flags, _ := doc["flags"].(map[string]any)
-	def, ok := flags[f.flag].(map[string]any)
-	if !ok {
-		return fmt.Errorf("flag %q not defined in %s/%s[%s]", f.flag, f.namespace, f.configMap, f.dataKey)
-	}
-	def["defaultVariant"] = f.variant
-
-	updated, err := json.Marshal(doc)
+	updated, err := setDefaultVariant([]byte(current), f.flag, f.variant)
 	if err != nil {
-		return fmt.Errorf("marshal %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
+		return fmt.Errorf("%s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
 	}
+
 	patch, err := json.Marshal(map[string]any{"data": map[string]string{f.dataKey: string(updated)}})
 	if err != nil {
 		return fmt.Errorf("build merge patch for %s/%s: %w", f.namespace, f.configMap, err)
@@ -140,6 +130,33 @@ type binding struct {
 	reverse operation
 }
 
+// maintenanceReleaseOp rewrites one flagd flag in the GitOps source of record
+// and leaves a release for review.
+type maintenanceReleaseOp struct {
+	repo, path, flag, variant string
+}
+
+func (m maintenanceReleaseOp) do(ctx context.Context, d dispatch) error {
+	if d.forge == nil {
+		return fmt.Errorf("no forge wired for %s: %w", m.path, ErrUnbindable)
+	}
+	current, err := d.forge.Read(ctx, m.path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", m.path, err)
+	}
+
+	updated, err := setDefaultVariant(current, m.flag, m.variant)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", m.path, err)
+	}
+
+	_, err = d.forge.Cut(ctx, Release{
+		Key: d.ref, Path: m.path, Content: updated, Notes: d.notes,
+	})
+
+	return err
+}
+
 // actuateTimeout bounds one Runner.Run call. Transport.handle (thump.go)
 // never calls broker.Handler's heartbeat for the live-execute path — that
 // choice assumes rendering-and-executing stays fast, which client-go's own
@@ -171,7 +188,7 @@ func newWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) {
 // ordinary tests always go through newWith's fixed actuateTimeout; only a
 // test proving the bound itself needs a shorter one to stay fast.
 func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration, forge Forge) (*Runner, error) {
-	b, err := bind(cat)
+	b, err := bind(cat, forge != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -262,4 +279,21 @@ type Forge interface {
 	// Withdraw retracts the release for key if it is still open, and
 	// reports whether it had already been accepted.
 	Withdraw(ctx context.Context, key string) (accepted bool, err error)
+}
+
+// setDefaultVariant returns doc with flag's defaultVariant set to variant.
+func setDefaultVariant(doc []byte, flag, variant string) ([]byte, error) {
+	var parsed map[string]any
+	if err := json.Unmarshal(doc, &parsed); err != nil {
+		return nil, fmt.Errorf("parse flagd document: %w", err)
+	}
+	flags, _ := parsed["flags"].(map[string]any)
+
+	def, ok := flags[flag].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("flag %q not defined in flagd document", flag)
+	}
+	def["defaultVariant"] = variant
+
+	return json.Marshal(parsed)
 }

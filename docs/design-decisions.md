@@ -575,6 +575,63 @@ confidentiality in exchange.
 catalog, the authored magnitude, and hiss's separate identity — never obfuscation.
 Rebuilding this needs the tool specs in scope and a new row here.
 
+## D-25 · Accepting a release is an ack, not a request — **Ratified** (2026-08-10)
+
+**The problem:** a `maintenanceRelease` action moves the human decision
+downstream. hiss still governs before the actuator cuts anything — the human
+who used to click approve on an `ApprovalRequest` now clicks accept on a pull
+request. Same person, different door, and the door change is worth writing
+down rather than leaving for someone to reverse-engineer out of `binding.go`.
+
+Whether that door change is charter-legal isn't a judgment call.
+`ecosystem-integration-architecture.md` §5 row 2 already draws the line:
+external tools may acknowledge a held action, never request one. Accepting
+the release is exactly that acknowledgment — the release body is
+`Order.Notes`, hiss's already-rendered `Set`, not a proposal reaching in from
+outside.
+
+**What we do now:** nothing watches for the accept. `transport.go:97`'s gate
+already reads `oc.Result == outcome.ResultApplied`, and a release-mode order
+reports `ResultProposed`, so the convergence watcher correctly never starts —
+no change needed to that line. But an incident whose release nobody merges
+sits at `proposed` forever. `ResultPartialNonConverging` is the right
+terminal state for that (I-6, defence 4), but reaching it needs a watcher
+that polls the forge for acceptance, with its own restart-recovery story —
+the same shape as `rebuildHolds`.
+
+**Declined for now:** that watcher. AG's job.
+
+## D-26 · A release's notes are a second, unsealed egress leg — **Ratified** (2026-08-10)
+
+**The problem:** `Order.Notes` renders the whole ranked `Set` — losing
+candidates, confidence, citations, every subject identifier in the winning
+row — straight into `Release.Content`. `Forge.Cut` lands that in
+`IanEff/thump-test`'s git history, and `gh repo view IanEff/thump-test
+--json visibility` reports `PUBLIC`. Nothing about that history un-happens
+once someone's read it.
+
+D-24 doesn't cover this leg. Its argument is that masking the subject bought
+no confidentiality because the tool specs already carried every identifier
+on the same turn — an argument about one reader, the model provider. A
+release lands in front of a different reader, and `threat-model.md`'s two
+existing disclosure rows both lean on a control this leg doesn't have: the
+object-store row is sealed AES-256-GCM before upload, the etcd row
+deliberately holds only `ApprovalRequest`. The release body is plaintext by
+construction — a reviewer has to be able to read it to accept it.
+
+**What we do now:** ship the full body, against the rig's own public test
+repo, and add the missing actor to `threat-model.md` instead of leaving it
+undiscoverable. The edge is the one D-10 already drew for
+`accelerate-recovery`'s ArgoCD self-heal: forge visibility is a property of
+somebody's deployment, not this engine, and nothing in `catalog.yaml` can
+tell an operator running a private fork that their fork stays private.
+
+**Declined for now:** a redacted `Notes` body — verdict, contract ref,
+confidence, no identifiers — with the full `Set` reachable only through
+`calipers incidents <fingerprint>`. That's the right long-term shape. It's
+also a second rendering path with its own tests, so it belongs in an issue
+rather than a silent default. Not filed yet.
+
 ---
 
 ## Departures from other source material
