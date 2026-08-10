@@ -517,3 +517,58 @@ for beat in ["rattle", "clank", "hiss", "thump"]:
         resource_deps=deps,
         trigger_mode=TRIGGER_MODE_MANUAL,  # same "you decide when it wakes" posture (W0-4)
     )
+
+# thump-notify-echo: a Slack-webhook stand-in for verifying the notify wire
+# format before a live session (phase-af-cut-not-clobber.md Step 0c).
+# slack.Webhook (internal/notify/slack/slack.go) posts a POST {"text": ...}
+# to whatever URL it's given and only cares about the 2xx it gets back —
+# nothing about the wire is Slack-specific, so an echo receiver proves the
+# contract without a real webhook URL. mendhak/http-https-echo logs every
+# request (headers + body) to stdout, so `kubectl logs
+# deploy/thump-notify-echo -n thump` shows the digest slack.digest()
+# rendered, no debugger needed.
+#
+# thump-test only: it's the one profile whose values file points
+# notify.slackWebhookURL here (deploy/tilt-values-thump-test.yaml). Raw
+# k8s_yaml(), not part of the chart — this is dev-session scaffolding, not
+# something a real `helm install` should ever carry, and it never touches
+# ~/projects/ceph/thump-test's GitOps tree (that repo is public; see Step
+# 4b's disclosure argument for why nothing test-only belongs there). The
+# "thump" namespace already exists by this point (ENSURE_NS's local() call
+# above runs before any k8s_yaml), so no resource_deps is needed.
+if cluster_name == "thump-test":
+    k8s_yaml(blob("""
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thump-notify-echo
+  namespace: thump
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: thump-notify-echo}
+  template:
+    metadata:
+      labels: {app: thump-notify-echo}
+    spec:
+      containers:
+        - name: echo
+          image: mendhak/http-https-echo:31
+          ports:
+            - containerPort: 8080
+          env:
+            - name: HTTP_PORT
+              value: "8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thump-notify-echo
+  namespace: thump
+spec:
+  selector: {app: thump-notify-echo}
+  ports:
+    - port: 8080
+      targetPort: 8080
+"""))
+    k8s_resource("thump-notify-echo", labels=["infra"])
