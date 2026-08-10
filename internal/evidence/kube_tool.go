@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/api/v1/proposal"
-	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/schema"
 	"github.com/ianeff/thump/internal/subjects"
@@ -41,12 +40,12 @@ var _ reason.Tool = (*KubeTool)(nil)
 // Spec advertises the "kube" tool — resource currently supports only "pods".
 func (k *KubeTool) Spec() reason.ToolSpec {
 	desc := "read-only kubernetes resource query (supports resource: 'pods')." +
-		" selector is an optional map of label equality pairs"
-	if key, value, ok := k.Subjects.ExampleLabel(); ok {
-		desc += fmt.Sprintf(", e.g. {%q: %q}", key, value)
+		" selector is an optional map of label equality pairs — narrow to one" +
+		" workload with it; an unnarrowed namespace query spans every workload in" +
+		" it and cannot be evidence about any one of them."
+	if sels := k.Subjects.Selectors("kube"); len(sels) > 0 {
+		desc += " Authored selectors: " + strings.Join(sels, "; ") + "."
 	}
-	desc += " — narrow to one workload with it; an unnarrowed namespace query" +
-		" spans every workload in it and cannot be evidence about any one of them."
 	return reason.ToolSpec{
 		Name:        "kube",
 		Description: desc,
@@ -90,7 +89,6 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 		}
 		var statuses []string
 		for _, p := range list.Items {
-			mask.RegisterIdentifier(ctx, p.Name)
 			statuses = append(statuses, fmt.Sprintf("%s (%s)", p.Name, p.Status.Phase))
 		}
 		summary = strings.Join(statuses, ", ")

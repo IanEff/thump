@@ -16,7 +16,6 @@ func TestEvidenceIsALeafPackage(t *testing.T) {
 		"github.com/ianeff/thump/api/v1/proposal",
 		"github.com/ianeff/thump/api/v1/signal",
 		"github.com/ianeff/thump/internal/httpx",
-		"github.com/ianeff/thump/internal/mask",
 		"github.com/ianeff/thump/internal/reason",
 		"github.com/ianeff/thump/internal/schema",
 		"github.com/ianeff/thump/internal/subjects",
