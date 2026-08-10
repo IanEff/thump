@@ -227,11 +227,13 @@ queries:
 #
 # ⚠️ THESE ARE FACTS ABOUT THIS CLUSTER, NOT ABOUT THUMP. Verify on the rig:
 #   kubectl get pods -n rook-ceph --show-labels
+#   kubectl get pods -n otel-demo --show-labels
 #   curl -s "$LOKI_URL/loki/api/v1/label/service_name/values"
 # The `app:` values below are the ones chaos/*.yaml already targets live; the
 # `service_name:` values are the ones the OTel demo's own SLI queries use.
-# otel-demo gets loki rules only — the demo chart's pod labels are a different
-# vocabulary and are not pinned here until they're read off the cluster.
+# otel-demo's pod label vocabulary (app.kubernetes.io/name) differs from its
+# loki stream label (service_name), so each node gets two rules, one per
+# plane — see the field comment on Plane in internal/subjects/subjects.go.
 subjects:
   # Ceph — `app` is both a pod label and a loki stream label on this rig, so
   # one rule serves the kube selector and the log stream selector alike.
@@ -256,24 +258,58 @@ subjects:
   # SLI queries already join on; the values match the catalog entity names.
   - subject: cart
     namespace: otel-demo
+    plane: loki
     labels:
       service_name: cart
   - subject: checkout
     namespace: otel-demo
+    plane: loki
     labels:
       service_name: checkout
   - subject: frontend
     namespace: otel-demo
+    plane: loki
     labels:
       service_name: frontend
   - subject: product-catalog
     namespace: otel-demo
+    plane: loki
     labels:
       service_name: product-catalog
   - subject: flagd
     namespace: otel-demo
+    plane: loki
     labels:
       service_name: flagd
+
+  # OTel demo, kube plane — the demo chart's Helm labels, read off the live
+  # rig (kubectl get pods -n otel-demo --show-labels): every workload carries
+  # app.kubernetes.io/name set to its own component name.
+  - subject: cart
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: cart
+  - subject: checkout
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: checkout
+  - subject: frontend
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: frontend
+  - subject: product-catalog
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: product-catalog
+  - subject: flagd
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: flagd
 
   # acme — one service owns the whole namespace, so an unnarrowed query there
   # is still honestly about acme-api. This is the only shape that needs no
