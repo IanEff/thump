@@ -3,7 +3,7 @@
   "signalRef": "slo_burn:ceph-rgw",
   "saoSnapshot": {
     "version": 1,
-    "assembledAt": "2026-08-07T15:50:21.904499-04:00",
+    "assembledAt": "2026-08-10T07:59:32.112677-04:00",
     "signal": {
       "confidence": 1,
       "severity": {
@@ -35,24 +35,6 @@
   "evidence": [
     {
       "tool": "metrics",
-      "query": "acme_api_error_ratio",
-      "summary": "query returned no data",
-      "subject": "acme-api"
-    },
-    {
-      "tool": "metrics",
-      "query": "cart_error_ratio",
-      "summary": "query returned no data",
-      "subject": "cart"
-    },
-    {
-      "tool": "metrics",
-      "query": "product_catalog_error_ratio",
-      "summary": "query returned no data",
-      "subject": "product-catalog"
-    },
-    {
-      "tool": "metrics",
       "query": "rgw_failed_rate",
       "summary": "rgw_failed_rate = 0",
       "ref": "metrics://rgw_failed_rate",
@@ -61,21 +43,19 @@
     },
     {
       "tool": "metrics",
-      "query": "severity_acme_api_availability",
-      "summary": "query returned no data",
-      "subject": "acme-api"
+      "query": "rgw_request_rate",
+      "summary": "rgw_request_rate = 209.4",
+      "ref": "metrics://rgw_request_rate",
+      "live": true,
+      "subject": "ceph-rgw"
     },
     {
       "tool": "metrics",
-      "query": "severity_cart_availability",
-      "summary": "query returned no data",
-      "subject": "cart"
-    },
-    {
-      "tool": "metrics",
-      "query": "severity_product_catalog_availability",
-      "summary": "query returned no data",
-      "subject": "product-catalog"
+      "query": "rgw_get_put_latency_ms",
+      "summary": "rgw_get_put_latency_ms = 173.2",
+      "ref": "metrics://rgw_get_put_latency_ms",
+      "live": true,
+      "subject": "ceph-rgw"
     },
     {
       "tool": "metrics",
@@ -85,15 +65,15 @@
     },
     {
       "tool": "metrics",
-      "query": "acme_db_connections_saturation",
+      "query": "severity_rgw_saturation",
       "summary": "query returned no data",
-      "subject": "acme-db"
+      "subject": "ceph-rgw"
     },
     {
       "tool": "metrics",
-      "query": "cluster_used_ratio",
-      "summary": "cluster_used_ratio = 0.0997",
-      "ref": "metrics://cluster_used_ratio",
+      "query": "ceph_health",
+      "summary": "ceph_health = 0",
+      "ref": "metrics://ceph_health",
       "live": true,
       "subject": "ceph-cluster"
     },
@@ -107,6 +87,31 @@
     },
     {
       "tool": "metrics",
+      "query": "pgs_undersized",
+      "summary": "query returned no data",
+      "subject": "cephblockpool"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"resource\":\"pods\",\"namespace\":\"rook-ceph\",\"selector\":{\"app\":\"rook-ceph-rgw\"}}",
+      "summary": "no pods found",
+      "subject": "ceph-rgw"
+    },
+    {
+      "tool": "loki",
+      "query": "{namespace=\"rook-ceph\", app=\"rook-ceph-rgw\"}",
+      "summary": "no matching log lines",
+      "subject": "ceph-rgw"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"namespace\":\"rook-ceph\",\"resource\":\"pods\"}",
+      "summary": "rook-ceph-mon-a (Running)",
+      "ref": "kube://rook-ceph/pods",
+      "live": true
+    },
+    {
+      "tool": "metrics",
       "query": "osds_down",
       "summary": "osds_down = 0",
       "ref": "metrics://osds_down",
@@ -115,52 +120,62 @@
     },
     {
       "tool": "metrics",
-      "query": "nodes_not_ready",
-      "summary": "nodes_not_ready = 0",
-      "ref": "metrics://nodes_not_ready",
-      "live": true
-    },
-    {
-      "tool": "metrics",
-      "query": "demo_pods_not_running",
-      "summary": "query returned no data"
-    },
-    {
-      "tool": "metrics",
-      "query": "argocd_apps_out_of_sync",
-      "summary": "query returned no data",
-      "subject": "argocd"
-    },
-    {
-      "tool": "metrics",
-      "query": "ceph_health",
-      "summary": "ceph_health = 0",
-      "ref": "metrics://ceph_health",
+      "query": "osds_out",
+      "summary": "osds_out = 0",
+      "ref": "metrics://osds_out",
       "live": true,
       "subject": "ceph-cluster"
     },
     {
-      "tool": "kube",
-      "query": "{\"resource\":\"pods\",\"namespace\":\"default\"}",
-      "summary": "no pods found"
+      "tool": "loki",
+      "query": "{namespace=\"rook-ceph\"}",
+      "summary": "no matching log lines"
     },
     {
-      "tool": "kube",
-      "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\"}",
-      "summary": "no pods found"
+      "tool": "metrics",
+      "query": "recovery_ops_rate",
+      "summary": "recovery_ops_rate = 0",
+      "ref": "metrics://recovery_ops_rate",
+      "live": true,
+      "subject": "ceph-cluster"
     },
     {
-      "tool": "kube",
-      "query": "{\"resource\":\"pods\",\"namespace\":\"rook-ceph\"}",
-      "summary": "rook-ceph-mon-a (Running)",
-      "ref": "kube://rook-ceph/pods",
-      "live": true
+      "tool": "metrics",
+      "query": "pgs_backfilling",
+      "summary": "pgs_backfilling = 0",
+      "ref": "metrics://pgs_backfilling",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "cluster_used_ratio",
+      "summary": "cluster_used_ratio = 0.0997",
+      "ref": "metrics://cluster_used_ratio",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "fullest_pool_ratio",
+      "summary": "fullest_pool_ratio = 0.02",
+      "ref": "metrics://fullest_pool_ratio",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "rook_pods_not_running",
+      "summary": "rook_pods_not_running = 0",
+      "ref": "metrics://rook_pods_not_running",
+      "live": true,
+      "subject": "ceph-cluster"
     }
   ],
   "serviceTier": "tier-1",
   "status": {
     "phase": "no_action",
-    "reason": "The signal identifies ceph-rgw as affected with 20% severity, but lacks context mapping ceph-rgw to a specific service. Telemetry queries return no data or nominal values across all monitored services and infrastructure (acme_api, cart, product_catalog, rgw, ceph, nodes, pods). Without identifying the specific affected service or observing a corresponding telemetry anomaly (error rate, latency, resource utilization, or degradation), no failure class can be diagnosed and no action can be proposed.",
+    "reason": "RGW telemetry shows zero failures ([cite: rgw_failed_rate]), healthy Ceph cluster ([cite: ceph_health] = 0, [cite: pgs_degraded] = 0), abundant capacity ([cite: cluster_used_ratio] = 0.0997, [cite: fullest_pool_ratio] = 0.02), no degraded placement groups, and no recovery activity. Elevated latency ([cite: rgw_get_put_latency_ms] = 173.2 ms) is not accompanied by failures or saturation evidence. The topology shows healthy upstream dependencies. The 20% severity signal does not map to evidence of dependency_saturation (no upstream failure/rate), resource_exhaustion (no capacity constraint), redundancy_degraded (no PG degradation), or service_failure (no error rate). This is insufficient to diagnose a failure class requiring action.",
     "observedAt": "0001-01-01T00:00:00Z"
   }
 }
