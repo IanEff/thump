@@ -3,7 +3,11 @@
 // citation and a change event name a subject the same way.
 package subjects
 
-import "sort"
+import (
+	"slices"
+	"sort"
+	"strings"
+)
 
 // Coordinates are the cluster facts a caller can state about one piece of
 // evidence or one change event. Callers know different subsets — a log query
@@ -24,6 +28,11 @@ type Coordinates struct {
 // coordinates it declares.
 type SubjectRule struct {
 	Subject string `json:"subject"`
+	// Plane is which query surface these coordinates address — "kube" for API
+	// server labels, "loki" for log stream labels, empty for both. A rig whose
+	// pod labels and stream labels are different vocabularies must say so, or a
+	// tool advertises a selector that can never match.
+	Plane string `json:"plane,omitempty"`
 	Coordinates
 }
 
@@ -60,33 +69,14 @@ func (x SubjectIndex) For(c Coordinates) string {
 	return subject
 }
 
-// LabelKeys returns every label key declared across x's rules, sorted and de-
-// duplicate.
-func (x SubjectIndex) LabelKeys() []string {
-	seen := make(map[string]any)
+// Selectors renders one advertisable line per rule addressable on plane: the
+// topology node, and the coordinates a query must carry to reach it. A
+// description naming only label keys leaves the values to be guessed, and a
+// guessed selector returns nothing while reading exactly like an empty cluster.
+func (x SubjectIndex) Selectors(plane string) []string {
+	var lines []string
 	for _, rule := range x {
-		for k := range rule.Labels {
-			seen[k] = struct{}{}
-		}
-	}
-	if len(seen) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(seen))
-	for k := range seen {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-// ExampleLabel returns one label key/value pair from the first rule in x
-// that declares any — a tool description's worked example, drawn from what
-// the rig actually authored rather than invented. ok is false when no rule
-// declares a label.
-func (x SubjectIndex) ExampleLabel() (key, value string, ok bool) {
-	for _, rule := range x {
-		if len(rule.Labels) == 0 {
+		if len(rule.Labels) == 0 || (rule.Plane != "" && rule.Plane != plane) {
 			continue
 		}
 		keys := make([]string, 0, len(rule.Labels))
@@ -94,9 +84,18 @@ func (x SubjectIndex) ExampleLabel() (key, value string, ok bool) {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		return keys[0], rule.Labels[keys[0]], true
+
+		pairs := make([]string, 0, len(keys)+1)
+		if rule.Namespace != "" {
+			pairs = append(pairs, "namespace="+rule.Namespace)
+		}
+		for _, k := range keys {
+			pairs = append(pairs, k+"="+rule.Labels[k])
+		}
+		lines = append(lines, rule.Subject+": "+strings.Join(pairs, ", "))
 	}
-	return "", "", false
+	sort.Strings(lines)
+	return slices.Compact(lines)
 }
 
 // matches reports whether c satisfies every coordinate rule declares. An

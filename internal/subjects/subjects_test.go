@@ -116,3 +116,75 @@ func TestSubjectIndex_For(t *testing.T) {
 		})
 	}
 }
+
+// TestSubjectIndex_Selectors pins that Selectors renders only the rules
+// addressable on the requested plane, skips labelless rules (they narrow
+// nothing a tool description could advertise), and never repeats a line two
+// rules would otherwise render identically.
+func TestSubjectIndex_Selectors(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		index subjects.SubjectIndex
+		plane string
+		want  []string
+	}{
+		"Selectors includes a plane-tagged rule when the requested plane matches": {
+			index: subjects.SubjectIndex{
+				{Subject: "cart", Plane: "kube", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"app": "cart"}}},
+			},
+			plane: "kube",
+			want:  []string{"cart: namespace=otel-demo, app=cart"},
+		},
+		"Selectors excludes a plane-tagged rule when the requested plane differs": {
+			index: subjects.SubjectIndex{
+				{Subject: "cart", Plane: "loki", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"service_name": "cart"}}},
+			},
+			plane: "kube",
+			want:  nil,
+		},
+		"Selectors includes an untagged rule on every plane": {
+			index: subjects.SubjectIndex{
+				{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+			},
+			plane: "loki",
+			want:  []string{"ceph-osd: namespace=rook-ceph, app=rook-ceph-osd"},
+		},
+		"Selectors excludes a rule with no labels": {
+			index: subjects.SubjectIndex{
+				{Subject: "acme-api", Coordinates: subjects.Coordinates{Namespace: "acme"}},
+			},
+			plane: "kube",
+			want:  nil,
+		},
+		"Selectors sorts label keys within one rule's rendered line": {
+			index: subjects.SubjectIndex{
+				{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"ceph_daemon_type": "osd", "app": "rook-ceph-osd"}}},
+			},
+			plane: "kube",
+			want:  []string{"ceph-osd: namespace=rook-ceph, app=rook-ceph-osd, ceph_daemon_type=osd"},
+		},
+		"Selectors deduplicates two rules that render the same line": {
+			index: subjects.SubjectIndex{
+				{Subject: "ceph-osd", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+				{Subject: "ceph-osd", Plane: "kube", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Labels: map[string]string{"app": "rook-ceph-osd"}}},
+			},
+			plane: "kube",
+			want:  []string{"ceph-osd: namespace=rook-ceph, app=rook-ceph-osd"},
+		},
+		"Selectors on a nil index renders nothing rather than panicking": {
+			index: nil,
+			plane: "kube",
+			want:  nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if diff := cmp.Diff(tc.want, tc.index.Selectors(tc.plane)); diff != "" {
+				t.Error("wrong selectors rendered for the requested plane (-want +got)\n", diff)
+			}
+		})
+	}
+}
