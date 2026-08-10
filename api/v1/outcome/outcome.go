@@ -73,9 +73,15 @@ const (
 	// to PhaseActed (in-flight, still deduping); calibration skips it, since
 	// there is nothing settled yet to score.
 	ResultApplied Result = "applied"
-	ResultSuccess Result = "success"
-	ResultFailure Result = "failure"
-	ResultUnknown Result = "unknown"
+	// ResultProposed is a live action that produced a reviewable artifact
+	// instead of a mutation: the change exists, nobody has accepted it, and
+	// nothing in the cluster has moved. Distinct from ResultApplied, which
+	// asserts the mutation ran — the convergence watcher starts on that word
+	// and must not start on this one.
+	ResultProposed Result = "proposed"
+	ResultSuccess  Result = "success"
+	ResultFailure  Result = "failure"
+	ResultUnknown  Result = "unknown"
 	// ResultBlocked is a live order a disarmed kill-switch refused — a
 	// recorded refusal, never a silent skip, and never a failure, so it needs
 	// no error text to be Auditable. Distinct from a decline (hiss's, before
