@@ -28,6 +28,15 @@ prometheus:
 loki:
   url: http://loki.logging.svc.cluster.local:3100
 
+# internal/notify/slack.Webhook POSTs a one-line digest of every held/
+# escalated decision here (buildNotifier warns and runs with no notifier
+# when this is empty). Nothing about the wire format is Slack-specific —
+# any URL that accepts a POSTed {"text": ...} and answers 2xx works, which
+# is what lets a dev rig point this at a plain echo receiver instead of a
+# real incoming webhook.
+notify:
+  slackWebhookURL: ""
+
 # ARGOCD_ENABLED wires ArgoChangeSource — clank's causal scorer has never
 # executed on a rig without it, because every proposal.ChangeSnapshot it
 # read was empty (phase-w-plan.md's headline finding). Both cluster

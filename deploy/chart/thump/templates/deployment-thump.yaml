@@ -111,6 +111,8 @@ spec:
               value: {{ .Values.prometheus.url | quote }}
             - name: EVIDENCE_QUERIES
               value: /etc/thump/whir/evidence-queries.yaml
+            - name: SLACK_WEBHOOK_URL
+              value: {{ .Values.notify.slackWebhookURL | quote }}
           volumeMounts:
             - name: wal
               mountPath: /var/thump/wal
