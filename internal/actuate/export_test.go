@@ -19,7 +19,14 @@ func NewWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) { return newW
 // actuateTimeout down to something synctest can advance instantly, rather
 // than waiting out the real production bound.
 func NewWithTimeoutForTest(k Kube, cat *contract.StaticCatalog, timeout time.Duration) (*Runner, error) {
-	return newWithTimeout(k, cat, timeout)
+	return newWithTimeout(k, cat, timeout, nil)
+}
+
+// NewWithForgeForTest is NewWith plus a Forge — the second constructor Step
+// 3's release tests need, kept separate so NewWith's ~10 existing call sites
+// stay untouched by this seam's addition.
+func NewWithForgeForTest(k Kube, forge Forge, cat *contract.StaticCatalog) (*Runner, error) {
+	return newWithTimeout(k, cat, actuateTimeout, forge)
 }
 
 // FirstRunningForTest exposes firstRunning to actuate_test — pure

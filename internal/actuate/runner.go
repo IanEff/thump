@@ -47,7 +47,7 @@ type Kube interface {
 // a patch of a resource. A binding pairs the forward op with its reverse so
 // the undo is authored right next to the action it undoes.
 type operation interface {
-	do(ctx context.Context, k Kube) error
+	do(ctx context.Context, d dispatch) error
 }
 
 // execOp runs argv inside the pod matched by selector — the shape every ceph
@@ -60,8 +60,8 @@ type execOp struct {
 	command   []string
 }
 
-func (e execOp) do(ctx context.Context, k Kube) error {
-	return k.Exec(ctx, e.namespace, e.selector, e.command)
+func (e execOp) do(ctx context.Context, d dispatch) error {
+	return d.kube.Exec(ctx, e.namespace, e.selector, e.command)
 }
 
 // flagVariantOp flips one flagd flag's defaultVariant by reading the target
@@ -75,8 +75,8 @@ type flagVariantOp struct {
 	namespace, configMap, dataKey, flag, variant string
 }
 
-func (f flagVariantOp) do(ctx context.Context, k Kube) error {
-	current, err := k.GetConfigMapKey(ctx, f.namespace, f.configMap, f.dataKey)
+func (f flagVariantOp) do(ctx context.Context, d dispatch) error {
+	current, err := d.kube.GetConfigMapKey(ctx, f.namespace, f.configMap, f.dataKey)
 	if err != nil {
 		return fmt.Errorf("read %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
 	}
@@ -101,7 +101,7 @@ func (f flagVariantOp) do(ctx context.Context, k Kube) error {
 		return fmt.Errorf("build merge patch for %s/%s: %w", f.namespace, f.configMap, err)
 	}
 
-	return k.Patch(ctx, "", "v1", "configmaps", f.namespace, f.configMap, patch)
+	return d.kube.Patch(ctx, "", "v1", "configmaps", f.namespace, f.configMap, patch)
 }
 
 // restartOp triggers a rolling restart of a Deployment by merge-patching a
@@ -116,7 +116,7 @@ type restartOp struct {
 	namespace, deployment string
 }
 
-func (r restartOp) do(ctx context.Context, k Kube) error {
+func (r restartOp) do(ctx context.Context, d dispatch) error {
 	patch, err := json.Marshal(map[string]any{
 		"spec": map[string]any{
 			"template": map[string]any{
@@ -131,7 +131,7 @@ func (r restartOp) do(ctx context.Context, k Kube) error {
 	if err != nil {
 		return fmt.Errorf("build merge patch for %s/%s restart: %w", r.namespace, r.deployment, err)
 	}
-	return k.Patch(ctx, "apps", "v1", "deployments", r.namespace, r.deployment, patch)
+	return d.kube.Patch(ctx, "apps", "v1", "deployments", r.namespace, r.deployment, patch)
 }
 
 // binding is a ref's forward mutation and its authored undo.
@@ -155,6 +155,7 @@ const actuateTimeout = 20 * time.Second
 // cluster mutation and applies it through the injected Kube seam.
 type Runner struct {
 	kube     Kube
+	forge    Forge
 	bindings map[string]binding
 	timeout  time.Duration // bounds one Run call; see actuateTimeout
 }
@@ -163,18 +164,18 @@ type Runner struct {
 // liveKube) and tests (NewWith, over a fake). Every ref a Runner can execute
 // is bound from cat, so nothing outside the authored catalog is reachable.
 func newWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) {
-	return newWithTimeout(k, cat, actuateTimeout)
+	return newWithTimeout(k, cat, actuateTimeout, nil)
 }
 
 // newWithTimeout is newWith with the Run bound overridable — production and
 // ordinary tests always go through newWith's fixed actuateTimeout; only a
 // test proving the bound itself needs a shorter one to stay fast.
-func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration) (*Runner, error) {
+func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration, forge Forge) (*Runner, error) {
 	b, err := bind(cat)
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{kube: k, bindings: b, timeout: timeout}, nil
+	return &Runner{kube: k, forge: forge, bindings: b, timeout: timeout}, nil
 }
 
 // Run dispatches ref's forward (or reverse) mutation through the Kube seam,
@@ -183,7 +184,7 @@ func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration) 
 // mutation does. Every bound op today is a cluster mutation, so a successful
 // Run always reports ResultApplied; a maintenanceRelease op reporting
 // ResultProposed is Step 2's addition, not this one's.
-func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64, _ string) (outcome.Result, error) {
+func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64, notes string) (outcome.Result, error) {
 	b, ok := r.bindings[ref]
 	if !ok {
 		return "", fmt.Errorf("actuate: ref %q is not bound to an action", ref)
@@ -194,7 +195,9 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 	if reverse {
 		op = b.reverse
 	}
-	if err := op.do(ctx, r.kube); err != nil {
+
+	d := dispatch{kube: r.kube, forge: r.forge, ref: ref, notes: notes}
+	if err := op.do(ctx, d); err != nil {
 		return "", fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
 	}
 	return outcome.ResultApplied, nil
@@ -209,14 +212,14 @@ type scaleOp struct {
 	replicas              int
 }
 
-func (s scaleOp) do(ctx context.Context, k Kube) error {
+func (s scaleOp) do(ctx context.Context, d dispatch) error {
 	patch, err := json.Marshal(map[string]any{
 		"spec": map[string]any{"replicas": s.replicas},
 	})
 	if err != nil {
 		return fmt.Errorf("build merge patch for %s/%s scale: %w", s.namespace, s.deployment, err)
 	}
-	return k.Patch(ctx, "apps", "v1", "deployments", s.namespace, s.deployment, patch)
+	return d.kube.Patch(ctx, "apps", "v1", "deployments", s.namespace, s.deployment, patch)
 }
 
 // seqOp runs its operations in order, stopping at the first failure —
@@ -224,11 +227,39 @@ func (s scaleOp) do(ctx context.Context, k Kube) error {
 // needs no verb of its own.
 type seqOp []operation
 
-func (s seqOp) do(ctx context.Context, k Kube) error {
+func (s seqOp) do(ctx context.Context, d dispatch) error {
 	for _, op := range s {
-		if err := op.do(ctx, k); err != nil {
+		if err := op.do(ctx, d); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// dispatch is what one Run call hands its operation.
+type dispatch struct {
+	kube  Kube
+	forge Forge
+	ref   string // the authored contract ref
+	notes string // thump's rendering of the ranked set, empty for a mutation.
+}
+
+// Release is one corrective maintenance release: the changed source, the
+// version it carries, and the notes a reviewer read before accepting it.
+type Release struct {
+	Key     string // open release per authored contract ref
+	Version string
+	Path    string // the file in the GitOps source this release changes.
+	Content []byte
+	Notes   string
+}
+
+type Forge interface {
+	// Read returns the current bytes at path on the default branch.
+	Read(ctx context.Context, path string) ([]byte, error)
+	// Cut publishes rel for review and returns where a human can find it.
+	Cut(ctx context.Context, rel Release) (url string, err error)
+	// Withdraw retracts the release for key if it is still open, and
+	// reports whether it had already been accepted.
+	Withdraw(ctx context.Context, key string) (accepted bool, err error)
 }
