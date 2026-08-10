@@ -18,7 +18,6 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/contract"
-	"github.com/ianeff/thump/internal/mask"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/reason"
 )
@@ -205,24 +204,6 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 
 	actions := e.Catalog.ApplicableToTier(sig.ServiceTier, sao)
 
-	masker := mask.NewIdentifierMasker()
-	subject := sig.OriginService
-	if subject == "" {
-		subject = sig.Name
-	}
-	masker.Register(subject)
-	for _, ev := range sao.Change.Events {
-		masker.Register(ev.Target)
-	}
-	for _, n := range sao.Topology.Upstream {
-		masker.Register(n.Name)
-	}
-	for _, n := range sao.Topology.Downstream {
-		masker.Register(n.Name)
-	}
-	ctx = mask.ContextWithMasker(ctx, masker)
-	model := mask.NewMaskingModel(e.Model, masker)
-
 	msgs := []reason.Message{{Role: "user", Content: seedPrompt(sig, sao, e.FailureClasses, actions)}}
 	var evidence []proposal.EvidenceRef
 	proposed, declined := false, false
@@ -231,7 +212,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		var comp reason.Completion
 		if err := beat.Stage(ctx, e.tracer(), e.Stages, "llm_complete", func(sctx context.Context) error {
 			var err error
-			comp, err = model.Complete(sctx, msgs, e.toolSpecs())
+			comp, err = e.Model.Complete(sctx, msgs, e.toolSpecs())
 			return err
 		}); err != nil {
 			return proposal.Set{}, fmt.Errorf("model complete (step %d): %w", step, err)

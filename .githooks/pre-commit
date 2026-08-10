@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuses a commit if go.mod carries otelc's build-transient replace directives.
+# Installed via `task hooks:install`. See Taskfile.yaml's otelc:check-gomod.
+task otelc:check-gomod

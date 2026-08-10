@@ -1,0 +1,41 @@
+# Additive to rbac-acme-actuate.yaml, kept in its own file for the same
+# reviewability reason as rbac-rook-ceph-read.yaml/rbac-rook-ceph-actuate.yaml.
+# Same shape as rbac-rook-ceph-read.yaml: the kube evidence tool's Client.List
+# runs as thump:default and isn't restricted to the namespaces
+# SubjectIndex.Selectors advertises — evidence-queries.yaml's acme-api rule
+# carries no labels (whole namespace, one service, see that file's comment)
+# so it never shows up in the kube tool's "Authored selectors" description,
+# but nothing stops the model choosing namespace: acme on its own. Found
+# missing alongside the otel-demo gap this fixes — same bug, unproven live
+# for acme specifically (no chaos scenario has exercised it yet).
+#
+# Gated on domains.acme.enabled: the acme namespace only exists on the
+# thump-test cluster profile — see values.yaml's domains comment.
+{{- if .Values.domains.acme.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: thump-acme-read
+  namespace: acme
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: thump-acme-read
+  namespace: acme
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: thump
+roleRef:
+  kind: Role
+  name: thump-acme-read
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

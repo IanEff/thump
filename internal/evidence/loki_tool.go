@@ -43,10 +43,10 @@ var _ reason.Tool = (*LokiTool)(nil)
 
 func (l *LokiTool) Spec() reason.ToolSpec {
 	desc := "read-only log query. namespace is required."
-	if keys := l.Subjects.LabelKeys(); len(keys) > 0 {
-		desc += " Known label keys: " + strings.Join(keys, ", ") + "."
+	if sels := l.Subjects.Selectors("loki"); len(sels) > 0 {
+		desc += " Authored stream selectors: " + strings.Join(sels, "; ") + "."
 	}
-	desc += " query is an optional line-filter substring (NOT LogQL syndax)" +
+	desc += " query is an optional line-filter substring (NOT LogQL syntax)" +
 		" - do not pass raw LogQL, it will be escaped as literal."
 	return reason.ToolSpec{
 		Name:        "loki",

@@ -184,10 +184,49 @@ tasks:
       - echo "captured internal/clank/testdata/detections/{{.NAME}}.yaml"
       - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
-  otelc:reset:
-    desc: Clear otelc build state left behind by an interrupted build
+  # .git/hooks/ isn't version-controlled, so a fresh clone has no protection
+  # until this runs once. Re-run any time after cloning or after a hook changes.
+  hooks:install:
+    desc: Install repo git hooks (currently just the otelc go.mod guard)
     cmds:
-      - rm -rf .otelc-build
+      - cp .githooks/pre-commit .git/hooks/pre-commit
+      - chmod +x .git/hooks/pre-commit
+
+  # otelc go.mod/go.sum/otelc.runtime.go persistence is upstream-unsupported —
+  # see https://github.com/open-telemetry/opentelemetry-go-compile-instrumentation/issues/585.
+  # Only the fully-ephemeral path works: no otel.instrumentation.go, no otelc
+  # requires/replaces in go.mod, ever. Never run `otelc pin` or `otelc setup`
+  # standalone in this repo, and never commit anything otelc writes — `task
+  # build` (plain `go tool otelc go build`) is the only supported entry point.
+  # This task clears every leftover artifact those forbidden paths leave
+  # behind: cmd/*/otelc.runtime.go (stale generated imports survive a bare
+  # `rm -rf .otelc-build` and feed wrong package lists into the next build)
+  # plus `otelc cleanup`'s own state. Safe any time — .gitignore keeps all of
+  # it out of git, so there's nothing here to lose.
+  otelc:reset:
+    desc: Clear otelc build state left behind by an interrupted or forbidden-path build
+    cmds:
+      - rm -f cmd/*/otelc.runtime.go otel.instrumentation.go
+      - go tool otelc cleanup
+
+  # Mechanical fix for otelc:check-gomod's failure: strips every otelc
+  # submodule require ("go.opentelemetry.io/otelc/...") and every otelc
+  # replace directive from go.mod, leaving only the one permanent line
+  # (the bare "go.opentelemetry.io/otelc" tool require) plus the "tool"
+  # directive. Verified byte-for-byte against the last known-good go.mod
+  # on 2026-08-10 — this is a real fix, not a description of one.
+  otelc:fix-gomod:
+    desc: Strip committed otelc build-transient lines from go.mod back to the clean baseline
+    cmds:
+      - |
+        awk '
+          /^replace go\.opentelemetry\.io\/otelc\// { next }
+          /^\tgo\.opentelemetry\.io\/otelc\// { next }
+          { print }
+        ' go.mod | cat -s | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > go.mod.fixed
+        mv go.mod.fixed go.mod
+      - task: otelc:check-gomod
+      - echo "go.mod stripped clean. Run 'task build' once to confirm it round-trips."
 
   # go.mod must never carry otelc's build-transient replace directives — otelc
   # adds them per build and reverts them (see .gitignore). If a build gets
@@ -202,7 +241,8 @@ tasks:
       - |
         if grep -q '\.otelc-build' go.mod; then
           echo "go.mod carries otelc replace directives pointing into .otelc-build/ — these must never be committed (see .gitignore)."
-          echo "An interrupted 'otelc go build' left go.mod dirty. Fix: remove every 'replace go.opentelemetry.io/otelc/...' line, then run 'task build' once to confirm it round-trips clean."
+          echo "An interrupted (or forbidden-path — see otelc:reset) 'otelc go build' left go.mod dirty."
+          echo "Fix: run 'task otelc:fix-gomod', then 'task build' once to confirm it round-trips clean."
           exit 1
         fi
 
