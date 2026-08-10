@@ -453,14 +453,20 @@ k8s_yaml(rendered)
 if domains.get("acme", {}).get("enabled", False):
     k8s_resource(
         new_name="acme-rbac",
-        objects=["thump-acme-actuate:role", "thump-acme-actuate:rolebinding"],
+        objects=[
+            "thump-acme-actuate:role", "thump-acme-actuate:rolebinding",
+            "thump-acme-read:role", "thump-acme-read:rolebinding",
+        ],
         resource_deps=["acme-namespace"],
         labels=["infra"],
     )
 if domains.get("otelDemo", {}).get("enabled", False):
     k8s_resource(
         new_name="otel-demo-rbac",
-        objects=["thump-otel-demo-actuate:role", "thump-otel-demo-actuate:rolebinding"],
+        objects=[
+            "thump-otel-demo-actuate:role", "thump-otel-demo-actuate:rolebinding",
+            "thump-otel-demo-read:role", "thump-otel-demo-read:rolebinding",
+        ],
         resource_deps=["otel-demo-namespace"],
         labels=["infra"],
     )
