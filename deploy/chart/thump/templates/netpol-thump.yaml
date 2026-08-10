@@ -30,6 +30,18 @@ spec:
       ports:
         - protocol: TCP
           port: 4222
+    # thump-notify-echo (Tiltfile, thump-test only) is a plain HTTP fixture on
+    # 8080 standing in for a real Slack webhook — phase-af-cut-not-clobber.md
+    # Step 0c. It predates this rule, so notify() timed out against it until
+    # this egress leg was added; a real webhook would be HTTPS/443, already
+    # covered below.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: thump-notify-echo
+      ports:
+        - protocol: TCP
+          port: 8080
     # The automatic-reversal Converger reads Prometheus (internal/converge)
     # to ask "did the action work?" — same monitoring:9090 egress clank uses
     # for its evidence tool.
