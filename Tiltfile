@@ -351,8 +351,17 @@ DEV_REGISTRY = cluster["registry"]
 COMMIT = str(local("git rev-parse --verify HEAD || echo none")).strip()
 
 # Fast host-native compilation for local dev loop (Option 2).
-# `go tool otelc setup` instruments the source tree on load (idempotent, ~1s).
-local("go tool otelc setup ./cmd/bootstrap ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump", quiet=True, echo_off=True)
+#
+# `go tool otelc go build` (not a bare `go build`), same entry point
+# Taskfile.yaml's `build` task uses — the only supported one. otelc's own
+# instrumentation packages never live in go.mod (upstream issue #585,
+# .gitignore's comment, Taskfile.yaml's otelc:check-gomod); `otelc go build`
+# pins them in transiently, builds, and unpins in one invocation. A
+# standalone `otelc setup` beforehand (this file's prior approach) writes
+# cmd/*/otelc.runtime.go without ever pinning go.mod to match it, so a
+# plain `go build` right after can't resolve the packages it just
+# generated imports for — reproduced live 2026-08-10, see
+# thump-running-notes.
 
 if cluster["platform"] == "linux/amd64":
     target_arch = "amd64"
@@ -365,7 +374,7 @@ for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
     cmd = (
         "mkdir -p bin/dev && "
         + "CGO_ENABLED=0 GOOS=linux GOARCH=" + target_arch + " "
-        + "go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
+        + "go tool otelc go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
         + "-o bin/dev/" + beat + " ./cmd/" + beat + " && "
         + "docker build " + platform_flag + "-f Dockerfile.dev --build-arg BEAT=" + beat + " -t $EXPECTED_REF bin/dev"
     )
