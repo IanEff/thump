@@ -7,3 +7,28 @@ pods:
     labels:
       app: rook-ceph-mon
     phase: Running
+  - name: cart-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: cart
+    phase: Running
+  - name: checkout-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: checkout
+    phase: Running
+  - name: frontend-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: frontend
+    phase: Running
+  - name: product-catalog-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: product-catalog
+    phase: Running
+  - name: flagd-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: flagd
+    phase: Running

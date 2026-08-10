@@ -16,9 +16,16 @@ import "github.com/ianeff/thump/api/v1/proposal"
 // decoy got there by luck, and MustNotCite catches it even when WantClass
 // still matches.
 type Case struct {
-	Name     string            // the graded claim, read as a sentence in the report
-	Fixture  string            // filename under internal/clank/testdata/detections/
-	Evidence map[string]string // real signal + planted decoy, keyed by evidence-queries.yaml query name
+	Name    string // the graded claim, read as a sentence in the report
+	Fixture string // filename under internal/clank/testdata/detections/
+	// Evidence is real signal + planted decoy for this row, keyed by either
+	// an evidence-queries.yaml query name (fakePrometheus's lookup) or a
+	// subjects: subject name (fakeLoki's) — the two key spaces are disjoint
+	// on every shipped rig config, but nothing enforces that beyond
+	// TestTable_GradesOnlyQueriesTheShippedEvidenceConfigDefines; a rig
+	// naming a subject the same as a query would misdirect evidence
+	// silently.
+	Evidence map[string]string
 
 	WantDisposition string // "propose" | "insufficient"
 	WantContractRef string // checked only when WantDisposition == "propose"
@@ -256,10 +263,11 @@ func Table() []Case {
 		// The cartFailure flag flip breaks cart's EmptyCart RPC. Two
 		// actions are catalogued for it — restart-pod and
 		// disable-cart-failure — and only the flag flip actually clears it,
-		// so this row grades the choice as well as the class. This
-		// harness's kube fake carries no cart pod data, so the row can only
-		// ever corroborate through "metrics"; WantConfidenceAtLeast is set
-		// below GroundingOne's 0.7 floor accordingly.
+		// so this row grades the choice as well as the class. metrics,
+		// kube, and loki all corroborate cart here, reaching the top
+		// grounding tier — computed(1.00) then exceeds the model's own
+		// self-report, so the self-report is what binds the emitted
+		// confidence.
 		{
 			Name:                  "a real cartFailure flag flip proposes the flag fix, not the pod restart",
 			Fixture:               "disable-cart-failure.yaml",
@@ -267,13 +275,14 @@ func Table() []Case {
 			WantContractRef:       "disable-cart-failure",
 			WantClass:             proposal.ClassServiceFailure,
 			MustCite:              []string{"cart_error_ratio"},
-			WantConfidenceAtLeast: 0.65,
-			WantCeilingBound:      false,
+			WantConfidenceAtLeast: 0.95,
+			WantCeilingBound:      true,
 			Evidence: map[string]string{
 				"slo_burn_cart":              "50",
 				"severity_cart_availability": "0.5",
 				"cart_error_ratio":           "0.4737",
 				"demo_pods_not_running":      "0",
+				"cart":                       "ERROR cart-6f9d4c: EmptyCart RPC failed, payment gateway timeout",
 			},
 		},
 

@@ -15,11 +15,12 @@ import (
 	"github.com/ianeff/thump/internal/rca"
 )
 
-// deadKnobLimitation is printed first, every run, because a sweep over
-// groundingMany and causal would look authoritative and isn't: two backends
-// are wired but no graded row cites a second one, and LikelihoodOK is
-// structurally false in this harness, so both surfaces are flat.
-const deadKnobLimitation = "groundingMany is not swept: two backends are wired, but no graded row cites a second one, and only a cited backend raises the tier — so the surface is flat. causal is not swept: LikelihoodOK is structurally false in this harness."
+// deadKnobLimitation is printed first, every run, because a grid missing an
+// axis would otherwise look complete rather than partial: groundingMany
+// isn't a swept dimension here even though a graded row can now corroborate
+// on two backends, and causal stays flat because LikelihoodOK is
+// structurally false in this harness.
+const deadKnobLimitation = "groundingMany is not a swept axis — at least one graded row now corroborates on two backends, so a sweep over it would no longer measure a flat surface, but this grid doesn't vary it yet. causal is not swept: LikelihoodOK is structurally false in this harness."
 
 // Main sweeps GroundingNone and GroundingOne over recorded transcripts and
 // prints the grid beside a NotYet. It never writes
