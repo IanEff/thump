@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/contract"
 )
 
@@ -179,11 +180,13 @@ func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration) 
 // Run dispatches ref's forward (or reverse) mutation through the Kube seam,
 // cut off at r.timeout. An unbound ref is an error, not a silent no-op —
 // thump records it as a failure with text, same as a timed-out or failing
-// mutation does.
-func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64) error {
+// mutation does. Every bound op today is a cluster mutation, so a successful
+// Run always reports ResultApplied; a maintenanceRelease op reporting
+// ResultProposed is Step 2's addition, not this one's.
+func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64, _ string) (outcome.Result, error) {
 	b, ok := r.bindings[ref]
 	if !ok {
-		return fmt.Errorf("actuate: ref %q is not bound to an action", ref)
+		return "", fmt.Errorf("actuate: ref %q is not bound to an action", ref)
 	}
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
@@ -192,9 +195,9 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 		op = b.reverse
 	}
 	if err := op.do(ctx, r.kube); err != nil {
-		return fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
+		return "", fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
 	}
-	return nil
+	return outcome.ResultApplied, nil
 }
 
 // scaleOp merge-patches a Deployment's spec.replicas to a fixed count — the

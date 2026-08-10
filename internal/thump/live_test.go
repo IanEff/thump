@@ -14,22 +14,31 @@ import (
 
 // fakeRunner is a scriptable ActionRunner: it records the (ref, reverse,
 // params) it was dispatched with — so a test can prove Live handed it the
-// Order's own fields — and returns a programmable error to drive the
-// success/failure branches.
+// Order's own fields — and returns a programmable Result/error to drive the
+// applied/proposed/failure branches. A zero-value result scripts
+// ResultApplied, so existing callers that only care about failure need not
+// name it.
 type fakeRunner struct {
 	called     bool
 	gotRef     string
 	gotReverse bool
 	gotParams  map[string]float64
+	result     outcome.Result
 	err        error
 }
 
-func (r *fakeRunner) Run(_ context.Context, ref string, reverse bool, params map[string]float64) error {
+func (r *fakeRunner) Run(_ context.Context, ref string, reverse bool, params map[string]float64, _ string) (outcome.Result, error) {
 	r.called = true
 	r.gotRef = ref
 	r.gotReverse = reverse
 	r.gotParams = params
-	return r.err
+	if r.err != nil {
+		return "", r.err
+	}
+	if r.result == "" {
+		return outcome.ResultApplied, nil
+	}
+	return r.result, nil
 }
 
 func TestLive_RunsTheForwardActionAndRecordsAnAuditableApplied(t *testing.T) {
@@ -133,5 +142,41 @@ func TestLive_ComposesUnderADisarmedKillSwitch(t *testing.T) {
 	}
 	if rev.Result != outcome.ResultApplied {
 		t.Errorf("exempted reversal result = %q, want %q", rev.Result, outcome.ResultApplied)
+	}
+}
+
+// TestLive_ReportsTheRunnersOwnResultRatherThanAssumingApplied pins the
+// disposition to the runner. A maintenance release runs without error and
+// applies nothing, and transport.handle reads ResultApplied to decide
+// whether to start a convergence window — so a runner that cannot say
+// "proposed" starts a success window against a change nobody has accepted.
+func TestLive_ReportsTheRunnersOwnResultRatherThanAssumingApplied(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		runnerResult outcome.Result
+		runnerErr    error
+		want         outcome.Result
+	}{
+		"Execute records applied when the runner mutated the cluster": {outcome.ResultApplied, nil, outcome.ResultApplied},
+		"Execute records proposed when the runner cut a release":      {outcome.ResultProposed, nil, outcome.ResultProposed},
+		"Execute records failure when the runner returned an error":   {outcome.ResultApplied, errors.New("connection refused"), outcome.ResultFailure},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			l := thump.Live{Runner: &fakeRunner{result: tc.runnerResult, err: tc.runnerErr}}
+
+			got := l.Execute(t.Context(), goldenOrder(), frozenNow())
+
+			if diff := cmp.Diff(tc.want, got.Result); diff != "" {
+				t.Error("wrong outcome result for the runner's report", diff)
+			}
+			if err := got.Auditable(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

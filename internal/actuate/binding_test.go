@@ -37,7 +37,7 @@ func TestRunner_ExecutesAnActionBoundOnlyInConfig(t *testing.T) {
 				t.Fatalf("build runner from acme catalog: %v", err)
 			}
 
-			if err := r.Run(context.Background(), "acme-shed-load", tc.reverse, nil); err != nil {
+			if _, err := r.Run(context.Background(), "acme-shed-load", tc.reverse, nil, "dummy notes"); err != nil {
 				t.Fatalf("Run(acme-shed-load, reverse=%v) returned error: %v", tc.reverse, err)
 			}
 
