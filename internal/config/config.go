@@ -30,32 +30,26 @@ type BrokerStore struct {
 	TLSKeyFile  string // TLS_KEY_FILE — required only in the broker path
 	TLSCAFile   string // TLS_CA_FILE — required only in the broker path; the private CA both ends verify against
 	SealKey     []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments (and clank's transcripts) before they reach the bucket
-	// S3TLSInsecureSkipVerify — optional, defaults false; never set outside
-	// the dev cluster profile (docs/dev-environment.md). S3Mock's HTTPS port
-	// carries a bundled self-signed certificate with no supported way to
-	// swap in one signed by thump-ca, so RequireURL's https-only floor can
-	// only be satisfied by skipping peer verification — traffic still runs
-	// encrypted, just unauthenticated. Same "no real network segment to
-	// protect" posture deploy/dev/values/cilium.yaml's encryption.enabled:
-	// false already takes for WireGuard on this laptop-only cluster.
-	S3TLSInsecureSkipVerify bool // S3_TLS_INSECURE_SKIP_VERIFY — optional
 }
 
-// loadBrokerStore reads the ten broker-path vars every beat's Load* function
-// requires once it's running in broker mode.
+// loadBrokerStore reads the nine broker-path vars every beat's Load* function
+// requires once it's running in broker mode. S3_ENDPOINT allows http as well
+// as https — the dev cluster profile's S3Mock backend serves plain HTTP with
+// no in-process TLS, same declared-plaintext posture as OTLPEndpoint's http
+// branch; every other profile's operator-supplied endpoint is a real https
+// bucket.
 func loadBrokerStore(l *loader) BrokerStore {
 	return BrokerStore{
-		WALDir:                  l.Require("WAL_DIR"),
-		WALConfig:               l.Require("WAL_CONFIG"),
-		S3Endpoint:              l.RequireURL("S3_ENDPOINT", "https"),
-		S3Bucket:                l.Require("S3_BUCKET"),
-		S3AccessKey:             l.Require("S3_ACCESS_KEY"),
-		S3SecretKey:             l.Require("S3_SECRET_KEY"),
-		TLSCertFile:             l.Require("TLS_CERT_FILE"),
-		TLSKeyFile:              l.Require("TLS_KEY_FILE"),
-		TLSCAFile:               l.Require("TLS_CA_FILE"),
-		SealKey:                 l.RequireBase64Key("THUMP_SEAL_KEY", 32),
-		S3TLSInsecureSkipVerify: l.OptionalBool("S3_TLS_INSECURE_SKIP_VERIFY"),
+		WALDir:      l.Require("WAL_DIR"),
+		WALConfig:   l.Require("WAL_CONFIG"),
+		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "http", "https"),
+		S3Bucket:    l.Require("S3_BUCKET"),
+		S3AccessKey: l.Require("S3_ACCESS_KEY"),
+		S3SecretKey: l.Require("S3_SECRET_KEY"),
+		TLSCertFile: l.Require("TLS_CERT_FILE"),
+		TLSKeyFile:  l.Require("TLS_KEY_FILE"),
+		TLSCAFile:   l.Require("TLS_CA_FILE"),
+		SealKey:     l.RequireBase64Key("THUMP_SEAL_KEY", 32),
 	}
 }
 
@@ -285,22 +279,21 @@ func LoadBootstrap() (Bootstrap, error) {
 // kubectl-double-base64 hint an operator running this by hand needs and a
 // generic RequireBase64Key error does not.
 type Corpus struct {
-	S3Endpoint              string // S3_ENDPOINT — required
-	S3Bucket                string // S3_BUCKET — required
-	S3AccessKey             string // S3_ACCESS_KEY — required
-	S3SecretKey             string // S3_SECRET_KEY — required
-	S3TLSInsecureSkipVerify bool   // S3_TLS_INSECURE_SKIP_VERIFY — optional; see BrokerStore's field comment
+	S3Endpoint  string // S3_ENDPOINT — required
+	S3Bucket    string // S3_BUCKET — required
+	S3AccessKey string // S3_ACCESS_KEY — required
+	S3SecretKey string // S3_SECRET_KEY — required
 }
 
-// LoadCorpus reads the WAL miner's environment once.
+// LoadCorpus reads the WAL miner's environment once. See loadBrokerStore's
+// comment for why S3_ENDPOINT allows both http and https.
 func LoadCorpus() (Corpus, error) {
 	l := &loader{}
 	c := Corpus{
-		S3Endpoint:              l.RequireURL("S3_ENDPOINT", "https"),
-		S3Bucket:                l.Require("S3_BUCKET"),
-		S3AccessKey:             l.Require("S3_ACCESS_KEY"),
-		S3SecretKey:             l.Require("S3_SECRET_KEY"),
-		S3TLSInsecureSkipVerify: l.OptionalBool("S3_TLS_INSECURE_SKIP_VERIFY"),
+		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "http", "https"),
+		S3Bucket:    l.Require("S3_BUCKET"),
+		S3AccessKey: l.Require("S3_ACCESS_KEY"),
+		S3SecretKey: l.Require("S3_SECRET_KEY"),
 	}
 	return c, l.err()
 }

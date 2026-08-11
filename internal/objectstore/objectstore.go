@@ -8,10 +8,8 @@ package objectstore
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/sealbox"
@@ -31,15 +29,7 @@ import (
 // transcript S3Store) must build its client through here, never
 // s3.NewFromConfig directly — the GCS signing workarounds below are
 // load-bearing for any of them, not just the shipper.
-//
-// insecureSkipVerify must only ever be true on the dev cluster profile
-// (docs/dev-environment.md, internal/config's BrokerStore field comment):
-// S3Mock's HTTPS port carries a bundled self-signed certificate with no
-// supported way to swap in one this repo's own CA signed, so trusting it
-// means skipping peer verification rather than pinning it. Every other
-// profile talks to a real bucket over a publicly-trusted CA and always
-// passes false.
-func NewS3Client(ctx context.Context, endpoint, accessKey, secretKey string, insecureSkipVerify bool) (*s3.Client, error) {
+func NewS3Client(ctx context.Context, endpoint, accessKey, secretKey string) (*s3.Client, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion("us-east-1"),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
@@ -50,13 +40,6 @@ func NewS3Client(ctx context.Context, endpoint, accessKey, secretKey string, ins
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
-		if insecureSkipVerify {
-			o.HTTPClient = &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: dev cluster profile only, against S3Mock's own bundled self-signed cert on a laptop-only network — see the doc comment above
-				},
-			}
-		}
 		// GCS's S3-compatibility XML API doesn't understand the SDK's default
 		// chunked/trailer-checksum PutObject wire format (STREAMING-...-TRAILER) —
 		// it computes a different signature than the SDK sent, so every write 403s
@@ -103,8 +86,8 @@ func NewS3Client(ctx context.Context, endpoint, accessKey, secretKey string, ins
 // NewS3SegmentSink builds a publish.SegmentSink over an S3-compatible
 // endpoint from plain config values, via NewS3Client above, wrapped in an
 // EncryptingSink so every segment is sealed before it reaches the bucket.
-func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKey string, insecureSkipVerify bool, key sealbox.Key) (publish.SegmentSink, error) {
-	client, err := NewS3Client(ctx, endpoint, accessKey, secretKey, insecureSkipVerify)
+func NewS3SegmentSink(ctx context.Context, endpoint, bucket, accessKey, secretKey string, key sealbox.Key) (publish.SegmentSink, error) {
+	client, err := NewS3Client(ctx, endpoint, accessKey, secretKey)
 	if err != nil {
 		return nil, err
 	}

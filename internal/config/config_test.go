@@ -542,7 +542,7 @@ func TestConfigIsALeafPackage(t *testing.T) {
 	leaftest.AssertLeaf(t, "encoding/base64", "errors", "net/url", "fmt", "os", "slices", "strconv", "time")
 }
 
-func TestLoadThump_RefusesAPlaintextS3EndpointAtLoadTime(t *testing.T) {
+func TestLoadThump_AcceptsEitherSchemeButRefusesASchemelessS3EndpointAtLoadTime(t *testing.T) {
 	cases := map[string]struct {
 		endpoint string
 		wantErr  bool
@@ -550,9 +550,8 @@ func TestLoadThump_RefusesAPlaintextS3EndpointAtLoadTime(t *testing.T) {
 		"LoadThump accepts an https S3 endpoint in the broker path": {
 			endpoint: "https://storage.googleapis.com",
 		},
-		"LoadThump refuses a plaintext http endpoint rather than shipping transcripts in the clear": {
-			endpoint: "http://minio.thump.svc:9000",
-			wantErr:  true,
+		"LoadThump accepts a plaintext http S3 endpoint — the dev profile's S3Mock has no real network segment to protect": {
+			endpoint: "http://s3mock.thump.svc.cluster.local:9090",
 		},
 		"LoadThump refuses a schemeless endpoint rather than letting the SDK choose a wire": {
 			endpoint: "storage.googleapis.com",
@@ -585,24 +584,24 @@ func TestLoadThump_RefusesAPlaintextS3EndpointAtLoadTime(t *testing.T) {
 	}
 }
 
-func TestEveryBrokerLoader_RefusesAPlaintextS3EndpointNotJustThumps(t *testing.T) {
+func TestEveryBrokerLoader_AcceptsAPlaintextS3EndpointNotJustThumps(t *testing.T) {
 	cases := map[string]struct {
 		load func(bool) error
 		env  func(*testing.T)
 	}{
-		"LoadClank refuses a plaintext S3 endpoint in the broker path": {
+		"LoadClank accepts a plaintext S3 endpoint in the broker path": {
 			load: func(b bool) error { _, err := config.LoadClank(b); return err },
 			env:  setClankEnv,
 		},
-		"LoadHiss refuses a plaintext S3 endpoint in the broker path": {
+		"LoadHiss accepts a plaintext S3 endpoint in the broker path": {
 			load: func(b bool) error { _, err := config.LoadHiss(b); return err },
 			env:  setHissEnv,
 		},
-		"LoadRattle refuses a plaintext S3 endpoint in the broker path": {
+		"LoadRattle accepts a plaintext S3 endpoint in the broker path": {
 			load: func(b bool) error { _, err := config.LoadRattle(b); return err },
 			env:  setRattleEnv,
 		},
-		"LoadThump refuses a plaintext S3 endpoint in the broker path": {
+		"LoadThump accepts a plaintext S3 endpoint in the broker path": {
 			load: func(b bool) error { _, err := config.LoadThump(b); return err },
 			env:  setThumpEnv,
 		},
@@ -610,19 +609,20 @@ func TestEveryBrokerLoader_RefusesAPlaintextS3EndpointNotJustThumps(t *testing.T
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			tc.env(t)
-			t.Setenv("S3_ENDPOINT", "http://minio.thump.svc:9000")
+			setThumpBrokerEnv(t)
+			t.Setenv("S3_ENDPOINT", "http://s3mock.thump.svc.cluster.local:9090")
 
-			if err := tc.load(true); err == nil {
-				t.Error("every beat ships WAL segments to the same bucket — hardening one loader and not the rest is a hole with a test in front of it")
+			if err := tc.load(true); err != nil {
+				t.Errorf("every beat's dev profile talks to S3Mock over plain HTTP — hardening one loader and not the rest is a hole with a test in front of it: %v", err)
 			}
 		})
 	}
 }
 
-func TestLoadThump_ReportsAPlaintextEndpointAlongsideEveryOtherMissingVar(t *testing.T) {
+func TestLoadThump_ReportsASchemelessEndpointAlongsideEveryOtherMissingVar(t *testing.T) {
 	setThumpEnv(t)
 	setThumpBrokerEnv(t)
-	t.Setenv("S3_ENDPOINT", "http://minio.thump.svc:9000")
+	t.Setenv("S3_ENDPOINT", "minio.thump.svc:9000")
 	t.Setenv("S3_BUCKET", "")
 	t.Setenv("ACTION_CATALOG", "")
 
@@ -885,14 +885,25 @@ func TestLoadCorpus_Valid_PopulatesStruct(t *testing.T) {
 	}
 }
 
-func TestLoadCorpus_RefusesAPlaintextS3Endpoint(t *testing.T) {
+func TestLoadCorpus_AcceptsAPlaintextS3Endpoint(t *testing.T) {
 	t.Setenv("S3_ENDPOINT", "http://s3.thump.svc:9000")
 	t.Setenv("S3_BUCKET", "thump-wal")
 	t.Setenv("S3_ACCESS_KEY", "access")
 	t.Setenv("S3_SECRET_KEY", "secret")
 
+	if _, err := config.LoadCorpus(); err != nil {
+		t.Errorf("LoadCorpus must accept a plaintext S3_ENDPOINT — the miner reads from the same dev S3Mock every beat ships sealed segments to: %v", err)
+	}
+}
+
+func TestLoadCorpus_RefusesASchemelessS3Endpoint(t *testing.T) {
+	t.Setenv("S3_ENDPOINT", "s3.thump.svc:9000")
+	t.Setenv("S3_BUCKET", "thump-wal")
+	t.Setenv("S3_ACCESS_KEY", "access")
+	t.Setenv("S3_SECRET_KEY", "secret")
+
 	if _, err := config.LoadCorpus(); err == nil {
-		t.Error("LoadCorpus must refuse a plaintext S3_ENDPOINT — the miner reads the same bucket every beat ships sealed segments to")
+		t.Error("LoadCorpus must refuse a schemeless S3_ENDPOINT rather than letting the SDK choose a wire")
 	}
 }
 
