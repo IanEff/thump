@@ -82,7 +82,7 @@ func TestRunner_DispatchesExactExecForHoldRebalance(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			k := &recordKube{}
-			r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+			r, err := actuate.NewWithForgeForTest(k, &recordForge{}, configtest.ShippedCatalog(t))
 			if err != nil {
 				t.Fatalf("build runner from shipped catalog: %v", err)
 			}
@@ -102,7 +102,7 @@ func TestRunner_DispatchesExactExecForHoldRebalance(t *testing.T) {
 
 func TestRunner_UnboundRefIsAnError(t *testing.T) {
 	t.Parallel()
-	r, err := actuate.NewWith(&recordKube{}, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(&recordKube{}, &recordForge{}, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestRunner_UnboundRefIsAnError(t *testing.T) {
 
 func TestRunner_PropagatesKubeFailure(t *testing.T) {
 	t.Parallel()
-	r, err := actuate.NewWith(&recordKube{err: errors.New("connection refused")}, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(&recordKube{err: errors.New("connection refused")}, &recordForge{}, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestRunner_DispatchesFlagVariantPatchForDisableProductCatalogFailure(t *tes
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			k := &recordKube{}
-			r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+			r, err := actuate.NewWithForgeForTest(k, &recordForge{}, configtest.ShippedCatalog(t))
 			if err != nil {
 				t.Fatalf("build runner from shipped catalog: %v", err)
 			}
@@ -184,7 +184,7 @@ func TestRunner_DispatchesDeploymentPatchForRestartCartPod(t *testing.T) {
 	t.Parallel()
 	for _, reverse := range []bool{false, true} {
 		k := &recordKube{}
-		r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+		r, err := actuate.NewWithForgeForTest(k, &recordForge{}, configtest.ShippedCatalog(t))
 		if err != nil {
 			t.Fatalf("build runner from shipped catalog: %v", err)
 		}
@@ -219,7 +219,7 @@ func TestRunner_DispatchesDeploymentPatchForRestartCartPod(t *testing.T) {
 func TestRunner_FlagVariantOp_UnknownFlagIsAnError(t *testing.T) {
 	t.Parallel()
 	k := &recordKube{getReturn: `{"flags":{"someOtherFlag":{"defaultVariant":"on"}}}`}
-	r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(k, &recordForge{}, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestNew_RefusesRatherThanHalfBuildingARunnerOffCluster(t *testing.T) {
 func TestRunner_DispatchesEveryStepOfAMultiStepForwardInAuthoredOrder(t *testing.T) {
 	t.Parallel()
 	k := &recordKube{}
-	r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(k, &recordForge{}, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestRunner_DispatchesEveryStepOfAMultiStepForwardInAuthoredOrder(t *testing
 func TestRunner_AMultiStepForwardStopsAtTheFirstFailingStep(t *testing.T) {
 	t.Parallel()
 	k := &recordKube{err: errors.New("connection refused")}
-	r, err := actuate.NewWith(k, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(k, &recordForge{}, configtest.ShippedCatalog(t))
 	if err != nil {
 		t.Fatalf("build runner from shipped catalog: %v", err)
 	}
@@ -300,7 +300,7 @@ func (k *hangingKube) Exec(ctx context.Context, _, _ string, _ []string) error {
 
 func TestRunner_TimesOutAHungMutationRatherThanBlockingForever(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		r, err := actuate.NewWithTimeoutForTest(&hangingKube{}, configtest.ShippedCatalog(t), 5*time.Second)
+		r, err := actuate.NewWithTimeoutForTest(&hangingKube{}, configtest.ShippedCatalog(t), 5*time.Second, &recordForge{})
 		if err != nil {
 			t.Fatalf("build runner from shipped catalog: %v", err)
 		}
@@ -382,6 +382,33 @@ func TestRunner_LeavesEveryOtherFlagAloneWhenCuttingARelease(t *testing.T) {
 	}
 	if diff := cmp.Diff("on", got.Flags["adServiceFailure"].DefaultVariant); diff != "" {
 		t.Error("an untouched flag drifted in the released document", diff)
+	}
+}
+
+// TestRunner_CutsTheRevertAsItsOwnReleaseRatherThanRewritingTheForwardOne
+// pins the two directions to two keys. Forward and reverse both cut against
+// the same authored path, so a shared key makes the undo update the open
+// forward release in place — the reviewer sees one release that now says
+// nothing changed, and the change it was meant to undo is still live.
+func TestRunner_CutsTheRevertAsItsOwnReleaseRatherThanRewritingTheForwardOne(t *testing.T) {
+	t.Parallel()
+
+	f := &recordForge{doc: `{"flags":{"cartFailure":{"defaultVariant":"on"}}}`}
+	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.ShippedCatalog(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := r.Run(t.Context(), "disable-cart-failure-release", false, nil, "dummy notes"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Run(t.Context(), "disable-cart-failure-release", true, nil, "dummy notes"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"disable-cart-failure-release", "disable-cart-failure-release:revert"}
+	if diff := cmp.Diff(want, f.keys); diff != "" {
+		t.Error("wrong release keys for a forward followed by its undo", diff)
 	}
 }
 

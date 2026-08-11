@@ -151,7 +151,7 @@ func (m maintenanceReleaseOp) do(ctx context.Context, d dispatch) error {
 	}
 
 	_, err = d.forge.Cut(ctx, Release{
-		Key: d.ref, Path: m.path, Content: updated, Notes: d.notes,
+		Key: releaseKey(d.ref, d.reverse), Path: m.path, Content: updated, Notes: d.notes,
 	})
 
 	return err
@@ -214,7 +214,7 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 		op = b.reverse
 	}
 
-	d := dispatch{kube: r.kube, forge: r.forge, ref: ref, notes: notes}
+	d := dispatch{kube: r.kube, forge: r.forge, ref: ref, reverse: reverse, notes: notes}
 	if err := op.do(ctx, d); err != nil {
 		return "", fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
 	}
@@ -275,10 +275,11 @@ func (s seqOp) do(ctx context.Context, d dispatch) error {
 
 // dispatch is what one Run call hands its operation.
 type dispatch struct {
-	kube  Kube
-	forge Forge
-	ref   string // the authored contract ref
-	notes string // thump's rendering of the ranked set, empty for a mutation.
+	kube    Kube
+	forge   Forge
+	ref     string // the authored contract ref
+	reverse bool   // true for an undo — see releaseKey
+	notes   string // thump's rendering of the ranked set, empty for a mutation.
 }
 
 // Release is one corrective maintenance release: the changed source and the
@@ -315,4 +316,15 @@ func setDefaultVariant(doc []byte, flag, variant string) ([]byte, error) {
 	def["defaultVariant"] = variant
 
 	return json.Marshal(parsed)
+}
+
+// releaseKey is one open release's identity — a redelivery in the same
+// direction collapses onto it, but a revert is a second review against the
+// same path, so it keys separately or it would silently rewrite the forward
+// release instead of undoing it.
+func releaseKey(ref string, reverse bool) string {
+	if reverse {
+		return ref + ":revert"
+	}
+	return ref
 }
