@@ -31,7 +31,7 @@ metadata:
   name: thump-dev
 servers: 1
 agents: 2
-image: rancher/k3s:v1.31.5-k3s1
+image: rancher/k3s:v1.36.2-k3s1
 network: thump-dev
 registries:
   create:
