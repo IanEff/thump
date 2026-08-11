@@ -60,10 +60,17 @@ approvalRequests:
 # Only otelDemo for MVP — acme is staged (config/dev's watch.yaml/
 # catalog-info.yaml comments say where its block ports from) but not wired
 # in yet; flip this on once the acme manifests/RBAC land in deploy/dev.
+#
+# rookCeph.enabled: false — this profile has no Ceph at all
+# (docs/dev-environment.md). Chart default is true (every other profile has
+# always had a rook-ceph namespace); this is the one cluster that needs the
+# override. See values.yaml's domains comment for the incident this fixes.
 domains:
   otelDemo:
     enabled: true
   acme:
+    enabled: false
+  rookCeph:
     enabled: false
 
 prometheus:
@@ -88,6 +95,14 @@ argocd:
 
 cilium:
   apiserverEgress: true
+
+# s3mock (deploy/dev/manifests/s3mock.yaml, Tiltfile-managed) serves HTTPS
+# on a bundled self-signed cert with no supported way to swap in one signed
+# by thump-ca — see values.yaml's s3.tlsInsecureSkipVerify comment and
+# internal/config/config.go's S3TLSInsecureSkipVerify field comment for the
+# full rationale. Never set true outside this one profile.
+s3:
+  tlsInsecureSkipVerify: true
 
 thump:
   executor: dry

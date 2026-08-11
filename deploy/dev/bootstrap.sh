@@ -41,13 +41,12 @@ helm repo add cilium https://helm.cilium.io --force-update >/dev/null
 helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null
 helm repo add grafana https://grafana.github.io/helm-charts --force-update >/dev/null
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
-helm repo add minio https://charts.min.io/ --force-update >/dev/null
-# Scoped to the six repos this script owns, not a bare `helm repo update` —
+# Scoped to the five repos this script owns, not a bare `helm repo update` —
 # a colleague's laptop may have unrelated broken repos configured from other
 # projects (hit live: a stale bitnami-labs entry made a bare update exit 1
 # even though every repo this script needs updated fine), and that shouldn't
 # block bootstrap here.
-helm repo update prometheus-community cilium jetstack grafana open-telemetry minio >/dev/null
+helm repo update prometheus-community cilium jetstack grafana open-telemetry >/dev/null
 
 ensure_ns() {
   kubectl create namespace "$1" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -127,18 +126,12 @@ helm upgrade --install promtail grafana/promtail \
   --values "$DEV_DIR/values/promtail.yaml" \
   --wait
 
-# 6. MinIO — the WAL/transcript durability layer (rigs use a real GCS
-# bucket instead; see deploy/dev/values/minio.yaml). Namespace "thump" is
-# created synchronously by the Tiltfile at load time (before any
-# local_resource runs), so it's already there.
-echo "-- minio --" >&2
-helm upgrade --install minio minio/minio \
-  --version 5.4.0 \
-  --namespace thump \
-  --values "$DEV_DIR/values/minio.yaml" \
-  --wait
-kubectl apply -f "$DEV_DIR/manifests/minio-bucket-job.yaml"
-kubectl wait --for=condition=Complete job/minio-create-bucket -n thump --timeout=120s
+# 6. S3Mock — the WAL/transcript durability layer (rigs use a real GCS
+# bucket instead) — is deployed by the Tiltfile itself
+# (deploy/dev/manifests/s3mock.yaml), not by this script: it's a single
+# stateless Deployment+Service with no Helm chart, and every other
+# Tilt-managed (not out-of-band-provisioned) object in this profile already
+# lives in the Tiltfile rather than here.
 
 # 7. SLO burn-rate rules — no Sloth operator, see slo-rules.yaml's header.
 echo "-- slo-rules --" >&2

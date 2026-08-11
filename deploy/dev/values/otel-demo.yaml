@@ -59,6 +59,26 @@ components:
     enabled: false
   llm:
     enabled: false
+  # checkout/product-catalog: the chart's own stock default is 20Mi
+  # (resources.limits.memory) for every component — fine for the demo's
+  # showcase-traffic assumption, too tight once load-generator (this values
+  # file leaves it enabled) drives real sustained throughput through them.
+  # Observed live 2026-08-11: both OOMKilled (exit 137) repeatedly, which in
+  # turn hung deploy/dev/bootstrap.sh's `helm upgrade --install --wait
+  # --timeout 10m` on this release — a crash-looping Deployment never
+  # reaches Available, so --wait blocks for the full 10 minutes every time.
+  # GOMEMLIMIT (16MiB, chart default, untouched here) is a Go runtime soft
+  # target for triggering GC earlier — raising it wouldn't help; it's the
+  # k8s hard memory *limit* that the OOM killer enforces regardless of what
+  # the Go runtime thinks its budget is.
+  checkout:
+    resources:
+      limits:
+        memory: 64Mi
+  product-catalog:
+    resources:
+      limits:
+        memory: 64Mi
   # flagd: read the flagd-config ConfigMap DIRECTLY instead of the chart's
   # default "init container copies ConfigMap into a config-rw emptyDir,
   # flagd reads the emptyDir" pattern. chaos/flagd-cart-failure.sh and the
