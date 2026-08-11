@@ -48,7 +48,7 @@ func Main(_ []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
 	}
-	client, err := objectstore.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3TLSInsecureSkipVerify)
+	client, err := objectstore.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1

@@ -199,7 +199,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		return 1
 	}
 
-	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3TLSInsecureSkipVerify, sealbox.Key(cfg.SealKey))
+	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
