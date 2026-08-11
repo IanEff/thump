@@ -142,7 +142,6 @@ type Step struct {
 	DataKey   string `json:"dataKey,omitempty" yaml:"dataKey,omitempty"`
 	Flag      string `json:"flag,omitempty" yaml:"flag,omitempty"`
 	Variant   string `json:"variant,omitempty" yaml:"variant,omitempty"`
-	Repo      string `json:"repo,omitempty" yaml:"repo,omitempty"`
 	Path      string `json:"path,omitempty" yaml:"path,omitempty"`
 }
 

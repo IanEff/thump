@@ -19,7 +19,7 @@ func TestShippedCatalog_EveryCatalogedActionIsActuatorBound(t *testing.T) {
 	}
 	slices.Sort(want)
 
-	bound, err := actuate.BoundRefs(cat, true)
+	bound, err := actuate.BoundRefs(cat)
 	if err != nil {
 		t.Fatalf("the shipped catalog holds an action with no executable mechanism: %v", err)
 	}

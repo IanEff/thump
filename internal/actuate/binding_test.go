@@ -91,7 +91,7 @@ func TestBindings_RejectAContractThatNamesNoExecutableMechanism(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load fixture catalog: %v", err)
 			}
-			if _, err := actuate.BoundRefs(cat, false); !errors.Is(err, actuate.ErrUnbindable) {
+			if _, err := actuate.BoundRefs(cat); !errors.Is(err, actuate.ErrUnbindable) {
 				t.Errorf("an authored action with no reachable mechanism must fail at load, got %v, want ErrUnbindable", err)
 			}
 		})

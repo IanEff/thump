@@ -92,19 +92,22 @@ func mechanismFor(s contract.Step, forgeWired bool) (operation, error) {
 		if !forgeWired {
 			return nil, fmt.Errorf("maintenanceRelease needs a forge wired: %w", ErrUnbindable)
 		}
-		if s.Repo == "" || s.Path == "" || s.Flag == "" || s.Variant == "" {
-			return nil, fmt.Errorf("maintenanceRelease needs repo, path, flag, and variant: %w", ErrUnbindable)
+		if s.Path == "" || s.Flag == "" || s.Variant == "" {
+			return nil, fmt.Errorf("maintenanceRelease needs path, flag, and variant: %w", ErrUnbindable)
 		}
-		return maintenanceReleaseOp{repo: s.Repo, path: s.Path, flag: s.Flag, variant: s.Variant}, nil
+		return maintenanceReleaseOp{path: s.Path, flag: s.Flag, variant: s.Variant}, nil
 	default:
 		return nil, fmt.Errorf("verb %q has no mechanism: %w", s.Verb, ErrUnbindable)
 	}
 }
 
 // BoundRefs returns the contract refs cat can actually execute, sorted for a
-// stable comparison.
-func BoundRefs(cat *contract.StaticCatalog, forgeWired bool) ([]string, error) {
-	b, err := bind(cat, forgeWired)
+// stable comparison — a property of the catalog, independent of runtime
+// wiring. It always binds as if a forge were wired: a missing forge is
+// newWithTimeout's refusal to make, not a reason for a release contract to
+// silently disappear from a caller asking what the catalog authors.
+func BoundRefs(cat *contract.StaticCatalog) ([]string, error) {
+	b, err := bind(cat, true)
 	if err != nil {
 		return nil, err
 	}

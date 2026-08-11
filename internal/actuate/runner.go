@@ -133,7 +133,7 @@ type binding struct {
 // maintenanceReleaseOp rewrites one flagd flag in the GitOps source of record
 // and leaves a release for review.
 type maintenanceReleaseOp struct {
-	repo, path, flag, variant string
+	path, flag, variant string
 }
 
 func (m maintenanceReleaseOp) do(ctx context.Context, d dispatch) error {

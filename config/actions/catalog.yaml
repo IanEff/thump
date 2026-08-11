@@ -193,9 +193,9 @@
     fallback: page-oncall
   execution:
     forward:
-      - {verb: maintenanceRelease, repo: IanEff/thump-test, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "off"}
+      - {verb: maintenanceRelease, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "off"}
     reverse:
-      - {verb: maintenanceRelease, repo: IanEff/thump-test, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "on"}
+      - {verb: maintenanceRelease, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "on"}
   successCriteria:
     metric: cart_error_ratio
     target: "cart_error_ratio == 0"
