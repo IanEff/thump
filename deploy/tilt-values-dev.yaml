@@ -96,13 +96,5 @@ argocd:
 cilium:
   apiserverEgress: true
 
-# s3mock (deploy/dev/manifests/s3mock.yaml, Tiltfile-managed) serves HTTPS
-# on a bundled self-signed cert with no supported way to swap in one signed
-# by thump-ca — see values.yaml's s3.tlsInsecureSkipVerify comment and
-# internal/config/config.go's S3TLSInsecureSkipVerify field comment for the
-# full rationale. Never set true outside this one profile.
-s3:
-  tlsInsecureSkipVerify: true
-
 thump:
   executor: dry

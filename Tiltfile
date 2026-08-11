@@ -257,18 +257,21 @@ kubectl_local(
 # the S3Mock instance this Tiltfile stands up directly, instead of requiring
 # Stefan to hand-populate .env for a store this repo already provisions for
 # him. ANTHROPIC_API_KEY above stays the one thing he does supply — that's
-# the point of this env, not an oversight. endpoint is https:// (not
-# http://, unlike the MinIO this replaced): internal/config/config.go's
-# RequireURL("S3_ENDPOINT", "https") has no dev bypass, and S3Mock's :9191
-# is the one port that satisfies it — see the s3mock k8s_resource below for
-# why the beats also need S3_TLS_INSECURE_SKIP_VERIFY to talk to it.
+# the point of this env, not an oversight. endpoint is http:// against
+# S3Mock's plain port 9090, not its bundled-self-signed-cert 9191:
+# internal/config/config.go's RequireURL("S3_ENDPOINT", "http", "https")
+# accepts either scheme for exactly this reason — declared plaintext for a
+# vendored dev backend that doesn't serve real TLS, the same shape I-16
+# already accepts for Prometheus/Loki (docs/invariants.md), rather than an
+# unauthenticated TLS session dressed as a secure one. See the s3mock
+# k8s_resource below for the port split.
 if cluster_name == "dev":
     s3_body = (
         ENSURE_NS
         + " && kubectl --context "
         + cluster["context"]
         + " -n thump create secret generic thump-s3 "
-        + '--from-literal=endpoint="https://s3mock.thump.svc.cluster.local:9191" --from-literal=bucket="thump-wal" '
+        + '--from-literal=endpoint="http://s3mock.thump.svc.cluster.local:9090" --from-literal=bucket="thump-wal" '
         + '--from-literal=access-key="thump-dev" --from-literal=secret-key="thump-dev-secret" '
         + "--dry-run=client -o yaml | kubectl --context "
         + cluster["context"]
@@ -693,18 +696,17 @@ for beat in ["rattle", "clank", "hiss", "thump"]:
 # that on startup). Full manifest: deploy/dev/manifests/s3mock.yaml.
 #
 # No resource_deps: unlike MinIO (installed by dev-substrate's Helm chain),
-# S3Mock needs nothing dev-substrate provides — it brings its own bundled
-# self-signed HTTPS cert rather than one from cert-manager's thump-ca, so it
-# doesn't even wait on that. It comes up in parallel with dev-substrate's
-# ~10-15 minute run, same as thump-registry.
+# S3Mock needs nothing dev-substrate provides — it comes up in parallel with
+# dev-substrate's ~10-15 minute run, same as thump-registry.
 #
-# That bundled cert is also why S3_TLS_INSECURE_SKIP_VERIFY=true is set in
-# deploy/tilt-values-dev.yaml: S3Mock has no supported way to accept a cert
-# signed by thump-ca (confirmed against adobe/S3Mock's own README,
-# 2026-08-11), so the https-only floor internal/config/config.go's
-# RequireURL enforces can only be satisfied by skipping peer verification —
-# see internal/objectstore/objectstore.go's NewS3Client for where that
-# lands.
+# Every beat dials S3Mock's plain HTTP port (9090), not its bundled
+# self-signed-cert HTTPS port (9191, still exposed for a convenience curl
+# from a debug pod). Declared plaintext rather than TLS with peer
+# verification skipped: I-16 (docs/invariants.md) forbids InsecureSkipVerify
+# categorically, and already accepts exactly this shape for Prometheus/Loki
+# — a vendored dev backend that doesn't serve real TLS, riding node-to-node
+# Cilium WireGuard instead. internal/config/config.go's
+# RequireURL("S3_ENDPOINT", "http", "https") is where that's enforced.
 if cluster_name == "dev":
     k8s_yaml("deploy/dev/manifests/s3mock.yaml")
     k8s_resource("s3mock", labels=["broker"])

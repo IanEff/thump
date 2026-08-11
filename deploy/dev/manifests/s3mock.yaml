@@ -7,10 +7,11 @@
 # COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS pre-creates thump-wal on
 # startup — confirmed against adobe/S3Mock's own README (2026-08-11), not
 # guessed. Ports 9090 (HTTP) and 9191 (HTTPS, S3Mock's own bundled
-# self-signed cert — no supported way to swap in one signed by thump-ca)
-# are also both confirmed there. RequireURL("S3_ENDPOINT", "https") in
-# internal/config/config.go means only 9191 is ever dialed by a beat; 9090
-# is exposed for convenience only (e.g. curl from a debug pod).
+# self-signed cert) are also both confirmed there.
+# RequireURL("S3_ENDPOINT", "http", "https") in internal/config/config.go
+# means every beat dials 9090, declared plaintext rather than trusting an
+# unauthenticated TLS session (I-16, docs/invariants.md); 9191 is exposed
+# for convenience only (e.g. curl from a debug pod).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
