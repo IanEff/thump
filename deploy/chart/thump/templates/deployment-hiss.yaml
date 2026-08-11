@@ -100,8 +100,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.s3.secretName }}
                   key: secret-key
-            - name: S3_TLS_INSECURE_SKIP_VERIFY
-              value: {{ .Values.s3.tlsInsecureSkipVerify | quote }}
             - name: THUMP_SEAL_KEY
               valueFrom:
                 secretKeyRef:

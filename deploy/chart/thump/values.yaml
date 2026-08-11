@@ -130,12 +130,6 @@ s3:
   bucket: ""
   accessKey: ""
   secretKey: ""
-  # tlsInsecureSkipVerify — never true outside the dev cluster profile
-  # (deploy/tilt-values-dev.yaml only). It exists because S3Mock's HTTPS
-  # port carries a bundled self-signed cert with no supported way to swap in
-  # one signed by thump-ca — see internal/config/config.go's
-  # S3TLSInsecureSkipVerify field comment for the full rationale.
-  tlsInsecureSkipVerify: false
 
 # THUMP_SEAL_KEY — every beat's broker path Require()s this once NATS_URL is
 # set: the WAL shipper's EncryptingSink and clank's S3Store both seal under

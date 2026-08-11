@@ -32,7 +32,7 @@ spec:
           port: 4222
     # s3mock (Tiltfile, dev only) is the in-cluster WAL/transcript store this
     # profile substitutes for a real S3-compatible bucket — deploy/dev/
-    # manifests/s3mock.yaml. Its HTTPS port is 9191, not 443, so the
+    # manifests/s3mock.yaml. Its HTTP port is 9090, not 443, so the
     # ipBlock:0.0.0.0/0:443 leg below doesn't reach it; same precedent as
     # thump-notify-echo's pod-selector leg in netpol-thump.yaml — a no-op
     # selector on every profile where this pod doesn't exist.
@@ -42,7 +42,7 @@ spec:
               app: s3mock
       ports:
         - protocol: TCP
-          port: 9191
+          port: 9090
     - to:
         - namespaceSelector:
             matchLabels:
