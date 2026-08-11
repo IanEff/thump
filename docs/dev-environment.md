@@ -15,7 +15,7 @@ though the config and RBAC gates are already in place for when it lands.
 - `k3d`, `helm`, `tilt`, `kubectl` — `brew install k3d helm tilt-dev/tap/tilt kubectl`
 - Docker (or OrbStack) with **at least 12 GB RAM / 6 CPU** allocated to the VM. The
   substrate (Cilium, cert-manager, Prometheus, Alertmanager, Loki, Tempo, otel-collector,
-  Grafana, MinIO) runs about 5 GB; the trimmed OTel demo adds roughly another 4 GB.
+  Grafana, S3Mock) runs about 5 GB; the trimmed OTel demo adds roughly another 4 GB.
 - An Anthropic API key. clank has no fake `Model` implementation in this repo —
   `internal/replay` only replays one recorded transcript, it can't serve a live loop —
   so `ANTHROPIC_API_KEY` in `.env` is the one thing this environment can't stand up for
