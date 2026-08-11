@@ -141,6 +141,10 @@ local_resource(
 #      shell outright and never reaches the next iteration.
 def guarded(name, body):
     kubectl = "kubectl --context " + cluster["context"]
+    if cluster_name == "dev":
+        unreachable_hint = "is the k3d cluster up? (task dev:cluster)"
+    else:
+        unreachable_hint = "is the IAP tunnel up? (just tunnel, in the rig repo)"
     preflight = (
         "waited=0; "
         + "until "
@@ -150,7 +154,9 @@ def guarded(name, body):
         + "if [ $waited -ge 60 ]; then "
         + 'echo "thump: API server for context '
         + cluster["context"]
-        + ' unreachable after ${waited}s — is the IAP tunnel up? (just tunnel, in the rig repo)" >&2; exit 1; '
+        + " unreachable after ${waited}s — "
+        + unreachable_hint
+        + '" >&2; exit 1; '
         + "fi; sleep 2; done; "
     )
     return (
@@ -380,6 +386,10 @@ if domains.get("otelDemo", {}).get("enabled", False):
 # can afford to sit through on every reload.
 def ensure_crd_cmd(name, timeout_s=60):
     kubectl = "kubectl --context " + cluster["context"]
+    if cluster_name == "dev":
+        missing_hint = "is dev-substrate (deploy/dev/bootstrap.sh) still installing kube-prometheus-stack?"
+    else:
+        missing_hint = "is the monitoring stack (kube-prometheus-stack) still installing? check the rig repo provisioning scripts"
     return (
         "waited=0; until "
         + kubectl
@@ -392,13 +402,25 @@ def ensure_crd_cmd(name, timeout_s=60):
         + " ]; then "
         + 'echo "thump: CRD '
         + name
-        + ' not found after ${waited}s — is the monitoring stack (kube-prometheus-stack) still installing? check the rig repo provisioning scripts" >&2; exit 1; '
+        + " not found after ${waited}s — "
+        + missing_hint
+        + '" >&2; exit 1; '
         + "fi; sleep 5; done"
     )
 
 
 if domain_values.get("serviceMonitor", {}).get("enabled", False):
-    kubectl_local("servicemonitor-crd", ensure_crd_cmd("servicemonitors.monitoring.coreos.com"))
+    # dev: the CRD comes from dev-substrate's own kube-prometheus-stack
+    # install (a Tilt-managed local_resource, not an out-of-band rig repo),
+    # so without this dep the two race — bootstrap.sh's Helm install easily
+    # outlasts the 60s CRD-wait budget below, and servicemonitor-crd loses
+    # every time on a cold cluster.
+    crd_deps = ["dev-substrate"] if cluster_name == "dev" else []
+    kubectl_local(
+        "servicemonitor-crd",
+        ensure_crd_cmd("servicemonitors.monitoring.coreos.com"),
+        resource_deps=crd_deps,
+    )
 
 DEV_REGISTRY = cluster["registry"]
 

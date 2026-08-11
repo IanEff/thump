@@ -11,24 +11,29 @@
 # exercising this repo's actual deployment shape.
 #
 # k3s ordering this depends on: deploy/dev/k3d.yaml already disabled
-# flannel/kube-proxy/network-policy so Cilium can claim the CNI+policy role
-# k3s would otherwise hold. deploy/dev/bootstrap.sh installs
-# prometheus-operator-crds BEFORE this chart — Cilium's own validate.yaml
-# template refuses to render any ServiceMonitor without that CRD present,
-# same ordering constraint the rig's ArgoCD sync waves (-11 then -10)
-# encode.
-kubeProxyReplacement: true
-
-# No kube-proxy means Cilium can't resolve the apiserver through a Service
-# ClusterIP — it needs a direct address. k3d puts the server container on
-# the cluster's Docker network under this DNS name (k3d.yaml names the
-# cluster "thump-dev", and k3d's node-naming convention is
-# k3d-<cluster>-server-<n>). The rig instead points this at a real GCE IP
-# (~/projects/ceph/thump-test/applications/infrastructure/cilium/values.yaml
-# — no comment there because Tofu owns that value; here it's a laptop
-# Docker-network fact, so it's worth writing down).
-k8sServiceHost: k3d-thump-dev-server-0
-k8sServicePort: 6443
+# flannel/network-policy so Cilium can claim the CNI+policy role k3s would
+# otherwise hold. deploy/dev/bootstrap.sh installs prometheus-operator-crds
+# BEFORE this chart — Cilium's own validate.yaml template refuses to render
+# any ServiceMonitor without that CRD present, same ordering constraint the
+# rig's ArgoCD sync waves (-11 then -10) encode.
+#
+# kubeProxyReplacement: false — the one deliberate divergence from the rig's
+# shape that isn't just "unsafe to assume about a laptop." Cilium's BPF
+# kube-proxy replacement needs its cgroup eBPF hooks attached at the true
+# host cgroup root (cgroupns=host) to cover every pod's socket calls. k3d's
+# node containers are themselves nested Docker containers, and kubelet
+# running inside them needs the OPPOSITE — a private cgroup namespace
+# matching its own root — to manage pod cgroups correctly. Found live,
+# 2026-08-11: forcing cgroupns=host (via Docker's default-cgroupns-mode)
+# fixed Cilium's ClusterIP routing but sent kubelet into an infinite
+# "Failed to kill all the processes attached to cgroup" retry loop,
+# crash-looping coredns/metrics-server/local-path-provisioner/hubble-relay.
+# Reverting to k3s's built-in kube-proxy (deploy/dev/k3d.yaml keeps it
+# enabled here, unlike every other profile) sidesteps the conflict — Cilium
+# still owns the CNI, policy, and Hubble observability, just not service
+# routing. If this needs revisiting, that means solving the cgroup-namespace
+# conflict first, not just flipping this back to true.
+kubeProxyReplacement: false
 
 # routingMode stays tunnel (VXLAN) like the rig — works regardless of the
 # Docker network's own routing, no assumption about the host's bridge setup

@@ -18,6 +18,17 @@ set -euo pipefail
 
 DEV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Every kubectl/helm call below must be pinned to this context explicitly —
+# unlike the rest of the Tiltfile, which always passes --context, relying on
+# the kubeconfig's ambient current-context is a live footgun: the Mac runs
+# other clusters/sessions that can leave current-context pointed anywhere
+# (localhost:8080's stub "default", a GKE rig, kind-dev, ...). Found live:
+# every call here silently ran against current-context "default" and failed
+# with "connection refused" on ensure_ns's first apply.
+CTX="k3d-thump-dev"
+kubectl() { command kubectl --context "$CTX" "$@"; }
+helm() { command helm --kube-context "$CTX" "$@"; }
+
 echo "== thump dev substrate: bootstrap starting ==" >&2
 
 # --force-update: plain `helm repo add` hard-fails (exit 1, not a skip) if
