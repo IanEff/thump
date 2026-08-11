@@ -126,7 +126,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	var store Store = NewMemStore()
 	switch {
 	case lc.NATSURL != "":
-		client, err := objectstore.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
+		client, err := objectstore.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3TLSInsecureSkipVerify)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "transcripts s3 client: %v\n", err)
 			return 1
