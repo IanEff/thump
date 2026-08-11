@@ -376,11 +376,22 @@ tasks:
   # both evaluate at Tiltfile load, so the k3d context has to exist before
   # `tilt up` runs at all. dev:up does both steps in the order Ian's other
   # profiles get for free from an out-of-band rig repo.
+  #
+  # deploy/dev/k3d.yaml sets switchCurrentContext: false (so creating this
+  # cluster never clobbers whatever context the Mac's other sessions are on)
+  # — but Tilt's own k8s_resource() apply path has no --context equivalent,
+  # it resolves the cluster purely from kubeconfig's ambient current-context.
+  # Every local_resource in the Tiltfile pins --context explicitly and
+  # doesn't care, but k8s_resource()-managed things (nats, clank, hiss,
+  # rattle, thump, ...) sat on "waiting-for-cluster" forever the one time
+  # current-context drifted to an unrelated stub. Switch it explicitly here,
+  # every run, so tilt up always has a live connection to attach to.
   dev:cluster:
     desc: Create (idempotently) the local k3d cluster deploy/dev/k3d.yaml describes
     cmds:
       - |
         k3d cluster list thump-dev >/dev/null 2>&1 || k3d cluster create --config deploy/dev/k3d.yaml
+      - kubectl config use-context k3d-thump-dev
 
   dev:up:
     desc: Bring up the full local thump dev environment (cluster + substrate + all five beats)

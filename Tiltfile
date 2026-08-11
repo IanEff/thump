@@ -252,25 +252,29 @@ kubectl_local(
 # everything else on that rig.
 #
 # dev is the one exception: there's no out-of-band bucket to source .env
-# from, so this profile hardcodes the same credentials deploy/dev/values/
-# minio.yaml's rootUser/rootPassword set, against the MinIO
-# dev-substrate installs, instead of requiring Stefan to hand-populate .env
-# for a store this repo already stands up for him. ANTHROPIC_API_KEY above
-# stays the one thing he does supply — that's the point of this env, not an
-# oversight.
+# from, so this profile hardcodes the credentials adobe/s3mock accepts —
+# it doesn't check them at all (see the s3mock k8s_resource below) — against
+# the S3Mock instance this Tiltfile stands up directly, instead of requiring
+# Stefan to hand-populate .env for a store this repo already provisions for
+# him. ANTHROPIC_API_KEY above stays the one thing he does supply — that's
+# the point of this env, not an oversight. endpoint is https:// (not
+# http://, unlike the MinIO this replaced): internal/config/config.go's
+# RequireURL("S3_ENDPOINT", "https") has no dev bypass, and S3Mock's :9191
+# is the one port that satisfies it — see the s3mock k8s_resource below for
+# why the beats also need S3_TLS_INSECURE_SKIP_VERIFY to talk to it.
 if cluster_name == "dev":
     s3_body = (
         ENSURE_NS
         + " && kubectl --context "
         + cluster["context"]
         + " -n thump create secret generic thump-s3 "
-        + '--from-literal=endpoint="http://minio.thump.svc.cluster.local:9000" --from-literal=bucket="thump-wal" '
+        + '--from-literal=endpoint="https://s3mock.thump.svc.cluster.local:9191" --from-literal=bucket="thump-wal" '
         + '--from-literal=access-key="thump-dev" --from-literal=secret-key="thump-dev-secret" '
         + "--dry-run=client -o yaml | kubectl --context "
         + cluster["context"]
         + " apply -f -"
     )
-    s3_deps = ["dev-substrate"]
+    s3_deps = ["s3mock"]
 else:
     s3_body = (
         'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; '
@@ -443,6 +447,32 @@ COMMIT = str(local("git rev-parse --verify HEAD || echo none")).strip()
 # plain `go build` right after can't resolve the packages it just
 # generated imports for — reproduced live 2026-08-10, see
 # thump-running-notes.
+#
+# `go tool otelc` itself, NOT `./otelc-native` below, is what `task build`
+# runs (Taskfile.yaml) — that path never cross-compiles, so it never hits
+# the bug this local()+direct-invocation dance works around.
+#
+# `go tool <name>` resolves and EXECUTES a binary honoring the ambient
+# GOOS/GOARCH, same as `go run` — and just as broken cross-OS: GOOS=linux
+# is hardcoded below for every profile here (containers are always Linux,
+# whatever the host is), so `go tool otelc` tries to build ITSELF as a
+# Linux binary and then exec it on this Darwin host, failing "exec format
+# error". Reproduced live 2026-08-11 on the dev profile, but the bug is
+# universal, not dev-specific — ceph-lab/rook-gke/rook-gce-k3s/thump-test
+# hit the identical failure the moment this Tiltfile tries to build any
+# beat for them, this just hadn't been re-verified live since `otelc setup`
+# was swapped for `otelc go build` above. Building otelc once here, under
+# the host's own native GOOS/GOARCH (no override), and invoking that binary
+# directly per beat — bypassing `go tool`'s dispatch entirely — sidesteps
+# it: the binary itself always runs host-native, and only the `go build` it
+# execs internally (a plain subprocess inheriting the per-beat env below)
+# ever sees GOOS=linux.
+OTELC_NATIVE = "bin/dev/otelc-native"
+local(
+    "mkdir -p bin/dev && go build -o " + OTELC_NATIVE + " go.opentelemetry.io/otelc/tool/cmd/otelc",
+    quiet=True,
+    echo_off=True,
+)
 
 if cluster["platform"] == "linux/amd64":
     target_arch = "amd64"
@@ -455,14 +485,38 @@ for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
     cmd = (
         "mkdir -p bin/dev && "
         + "CGO_ENABLED=0 GOOS=linux GOARCH=" + target_arch + " "
-        + "go tool otelc go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
+        + "./" + OTELC_NATIVE + " go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
         + "-o bin/dev/" + beat + " ./cmd/" + beat + " && "
         + "docker build " + platform_flag + "-f Dockerfile.dev --build-arg BEAT=" + beat + " -t $EXPECTED_REF bin/dev"
     )
     custom_build(
         DEV_REGISTRY + "/thump-" + beat,
         command=cmd,
-        deps=["cmd/" + beat, "internal", "go.mod", "go.sum", ".otelc-build"],
+        # .otelc-build is NOT a dep, deliberately: it's otelc's own transient
+        # build-state directory (.gitignore's comment), written by the `go
+        # build` step above as output — not read as a source input by
+        # anything. Listing it here (an earlier version of this loop did)
+        # makes custom_build watch its own output: every build writes to
+        # .otelc-build, which Tilt sees as a changed dep and re-triggers
+        # immediately — an infinite self-rebuild loop, observed live
+        # 2026-08-11 as thump-bootstrap rebuilding continuously. The fix is
+        # to never list a build's own output directory as one of its deps.
+        #
+        # go.mod/go.sum are ALSO not deps, for the same reason, one level
+        # deeper: `otelc go build` (this loop's `cmd`, above) pins its
+        # instrumentation packages into the module root's go.mod/go.sum,
+        # builds, then unpins — a real write-then-restore on disk, not
+        # metadata. Confirmed live 2026-08-11 by reading otelc v1.0.1's own
+        # source (tool/internal/setup/state.go's getBackupFiles, pin.go's
+        # AutoPin): every `otelc go build` backs up and restores go.mod and
+        # go.sum around the build, unconditionally. Watching them here means
+        # every beat's build re-triggers itself — and since all 5 beats
+        # share one module root, one beat's build re-triggers all 5,
+        # compounding the loop instead of just repeating it. A real go.mod
+        # edit (an actual `go get`) won't auto-rebuild under Tilt anymore;
+        # `tilt trigger` after one is the manual escape hatch, worth it to
+        # not live-loop the build on every single compile.
+        deps=["cmd/" + beat, "internal"],
     )
 
 
@@ -572,10 +626,29 @@ if domain_values.get("serviceMonitor", {}).get("enabled", False):
 # On dev, nats-tls (certificates.yaml) can't issue until dev-substrate's
 # cert-manager + thump-ca ClusterIssuer exist — without this dep, NATS's
 # StatefulSet pod is stuck waiting on a Secret volume that never appears.
+#
+# objects=[...]: thump-nats:configmap and nats-tls:certificate have no owner
+# reference to the nats StatefulSet Tilt can discover on its own, so without
+# this they land in the "uncategorized" bucket alongside every other orphan
+# object in the chart (RBAC, other Certificates, ...) — same bucket the
+# acme-rbac/otel-demo-rbac/servicemonitor-crd comments above describe, and
+# proven to bite this exact pair live 2026-08-11: an unrelated rook-ceph RBAC
+# object failing on "namespace not found" took thump-nats:configmap and
+# nats-tls:certificate down with it, permanently (the uncategorized bucket
+# retries as one unit, so one object that can never succeed on this profile
+# blocks every object sharing the bucket, forever — not just delayed).
+# Folding both into the "nats" resource here means they apply exactly when
+# the StatefulSet does, gated on the same nats_deps, immune to whatever else
+# is or isn't wrong elsewhere in the uncategorized set.
 nats_deps = ["thump-registry", "thump-nats-js-key-secret"]
 if cluster_name == "dev":
     nats_deps.append("dev-substrate")
-k8s_resource("nats", labels=["broker"], resource_deps=nats_deps)
+k8s_resource(
+    "nats",
+    objects=["thump-nats:configmap", "nats-tls:certificate"],
+    labels=["broker"],
+    resource_deps=nats_deps,
+)
 
 # thump-bootstrap: a Helm pre-install/pre-upgrade hook Job (job-bootstrap.yaml)
 # that calls broker.ConnectAndEnsure against NATS. Under a real `helm install`
@@ -611,6 +684,30 @@ for beat in ["rattle", "clank", "hiss", "thump"]:
         resource_deps=deps,
         trigger_mode=TRIGGER_MODE_MANUAL,  # same "you decide when it wakes" posture (W0-4)
     )
+
+# s3mock (cluster=dev only): adobe/s3mock replaces MinIO as this profile's
+# WAL/transcript durability layer (2026-08-11 — MinIO was this PR's original
+# choice, but Ian had already settled on S3Mock for local dev on 2026-07-07;
+# lighter on laptop memory, and it needs no bucket-creation Job — the
+# manifest's COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS env var does
+# that on startup). Full manifest: deploy/dev/manifests/s3mock.yaml.
+#
+# No resource_deps: unlike MinIO (installed by dev-substrate's Helm chain),
+# S3Mock needs nothing dev-substrate provides — it brings its own bundled
+# self-signed HTTPS cert rather than one from cert-manager's thump-ca, so it
+# doesn't even wait on that. It comes up in parallel with dev-substrate's
+# ~10-15 minute run, same as thump-registry.
+#
+# That bundled cert is also why S3_TLS_INSECURE_SKIP_VERIFY=true is set in
+# deploy/tilt-values-dev.yaml: S3Mock has no supported way to accept a cert
+# signed by thump-ca (confirmed against adobe/S3Mock's own README,
+# 2026-08-11), so the https-only floor internal/config/config.go's
+# RequireURL enforces can only be satisfied by skipping peer verification —
+# see internal/objectstore/objectstore.go's NewS3Client for where that
+# lands.
+if cluster_name == "dev":
+    k8s_yaml("deploy/dev/manifests/s3mock.yaml")
+    k8s_resource("s3mock", labels=["broker"])
 
 # thump-notify-echo: a Slack-webhook stand-in for verifying the notify wire
 # format before a live session (phase-af-cut-not-clobber.md Step 0c).
