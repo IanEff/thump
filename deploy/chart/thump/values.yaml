@@ -130,6 +130,12 @@ s3:
   bucket: ""
   accessKey: ""
   secretKey: ""
+  # tlsInsecureSkipVerify — never true outside the dev cluster profile
+  # (deploy/tilt-values-dev.yaml only). It exists because S3Mock's HTTPS
+  # port carries a bundled self-signed cert with no supported way to swap in
+  # one signed by thump-ca — see internal/config/config.go's
+  # S3TLSInsecureSkipVerify field comment for the full rationale.
+  tlsInsecureSkipVerify: false
 
 # THUMP_SEAL_KEY — every beat's broker path Require()s this once NATS_URL is
 # set: the WAL shipper's EncryptingSink and clank's S3Store both seal under
@@ -159,11 +165,28 @@ thump:
 # profile that lacks the domain. Off by default so ceph-lab/rook-gke/
 # rook-gce-k3s still deploy clean; enable per-cluster in that profile's
 # tilt-values file only when the domain is actually present.
+#
+# rookCeph defaults true, the opposite of the two above — every profile
+# until dev (docs/dev-environment.md) has always had a rook-ceph namespace,
+# so rbac-rook-ceph-{read,actuate}.yaml rendered unconditionally with no gate
+# at all until now. dev is the first profile that genuinely has no Ceph;
+# leaving the RBAC ungated there doesn't fail chart-lint (schema-valid
+# either way, same blind spot as otelDemo/acme above) but does fail hard at
+# apply time — found live 2026-08-11: Tilt's "uncategorized" bucket applies
+# every object with no workload owner as one batch, so
+# thump-rook-ceph-read/actuate's Role/RoleBinding failing on "namespaces
+# \"rook-ceph\" not found" took thump-nats:configmap and nats-tls:certificate
+# down with them, the same failure class the acme-rbac comment below
+# describes — except this pair had no resource_deps guard to begin with, so
+# unlike acme it never recovers on its own; it fails every reconcile,
+# forever, until the cluster grows a rook-ceph namespace that dev never will.
 domains:
   otelDemo:
     enabled: false
   acme:
     enabled: false
+  rookCeph:
+    enabled: true
 
 # Cilium clusters give the kube-apiserver a reserved security identity that a
 # plain NetworkPolicy ipBlock rule cannot match — so a live thump can't reach

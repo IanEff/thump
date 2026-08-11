@@ -30,6 +30,19 @@ spec:
       ports:
         - protocol: TCP
           port: 4222
+    # s3mock (Tiltfile, dev only) is the in-cluster WAL/transcript store this
+    # profile substitutes for a real S3-compatible bucket — deploy/dev/
+    # manifests/s3mock.yaml. Its HTTPS port is 9191, not 443, so the
+    # ipBlock:0.0.0.0/0:443 leg below doesn't reach it; same posture as the
+    # thump-notify-echo leg right below — a no-op selector on every profile
+    # where this pod doesn't exist.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: s3mock
+      ports:
+        - protocol: TCP
+          port: 9191
     # thump-notify-echo (Tiltfile, thump-test only) is a plain HTTP fixture on
     # 8080 standing in for a real Slack webhook — phase-af-cut-not-clobber.md
     # Step 0c. It predates this rule, so notify() timed out against it until
