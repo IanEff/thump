@@ -77,6 +77,7 @@ func (Actuator) Render(g decision.Governed, cat *contract.StaticCatalog, now tim
 		Description: ct.Action.Description,
 		Success:     ct.SuccessCriteria,
 		RenderedAt:  now,
+		Notes:       renderNotes(ps),
 	}
 	if len(ct.Action.ScopeParameters) > 0 {
 		o.Parameters = make(map[string]float64, len(ct.Action.ScopeParameters))

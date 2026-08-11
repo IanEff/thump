@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/config"
 )
 
@@ -20,4 +21,11 @@ func (tr *Transport) HandleForTest(ctx context.Context, g decision.Governed, hea
 // W0b's silent-fallback warning hangs off.
 func BuildNotifierForTest(cfg config.Thump, ctor func(url string) Notifier) Notifier {
 	return buildNotifier(cfg, ctor)
+}
+
+// RenderNotesForTest exposes renderNotes to thump_test, so its rendering
+// rules can be pinned directly against a hand-built Set rather than only
+// indirectly through Actuator.Render's golden fixture.
+func RenderNotesForTest(ps proposal.Set) string {
+	return renderNotes(ps)
 }

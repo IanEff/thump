@@ -39,6 +39,7 @@ type Transport struct {
 	Log        *OutcomeLog                          // every Outcome produced, queryable by ByResult
 	Exec       Executor                             // how an Order is carried out — DryRun in v1
 	Reversal   *ReversalWatcher                     // fires the authred undo when a live forward Order's success window elapses unmet.
+	Acceptance *AcceptanceWatcher                   // polls a release-mode order's acceptance before any convergence watch can mean anything; nil in production until a real ReleaseProbe exists, same as Reversal when unconfigured.
 	Now        func() time.Time                     // overridable clock for deterministic tests; nil means time.Now
 	Tracer     trace.Tracer                         // spans "render" under whatever trace ctx already carries; nil-safe via tracer()
 	Stages     *beat.StageRecorder                  // RED metrics for "render" — nil-safe, same discipline as Tracer
@@ -94,8 +95,15 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 			return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
 		}
 		oc := tr.Exec.Execute(ctx, order, tr.now())
-		if tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultApplied {
+		switch {
+		case tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultApplied:
+			// a cluster mutation ran directly — watch its SLO convergence window.
 			go tr.watchAndSettle(ctx, order)
+		case tr.Acceptance != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultProposed:
+			// a release-mode order: nothing in the cluster moved yet, only a
+			// reviewable artifact exists — poll whether a human ever merged it
+			// before any convergence watch can mean anything.
+			go tr.watchAndAccept(ctx, order)
 		}
 		if err := tr.OrderPub.Publish(ctx, "thump.orders", order); err != nil {
 			return fmt.Errorf("thump: publish order for %s: %w", g.Decision.SignalRef, err)
@@ -196,6 +204,61 @@ func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 	}
 	tr.Log.Record(oc)
 	slog.Info("outcome", "signalRef", undo.SignalRef, "contractRef", oc.ContractRef, "acted", true, "reversal", true)
+}
+
+// watchAndAccept polls order's release-mode acceptance once its success
+// window elapses. Not accepted means nobody merged the release — nothing
+// applied, so the terminal record is partial_non_converging carrying the
+// authored fallback, and no convergence watch starts. Accepted means Argo
+// already applied it — from here on it's an ordinary live order, so this
+// falls straight into watchAndSettle unchanged. A process restart loses an
+// in-flight poll the same way it already loses an in-flight watchAndSettle
+// (the bare go above) — accepted parity, not new debt.
+func (tr *Transport) watchAndAccept(ctx context.Context, order Order) {
+	accepted, err := tr.Acceptance.Poll(ctx, order)
+	if ctx.Err() != nil {
+		return // shutdown mid-poll, not a real acceptance read — nothing to settle
+	}
+	if err != nil {
+		tr.recordAccept(ctx, order, outcome.ResultFailure, fmt.Sprintf("acceptance poll failed: %v", err))
+		return
+	}
+	if !accepted {
+		tr.recordAccept(ctx, order, outcome.ResultPartialNonConverging, acceptanceError(order.Reversal.Fallback))
+		return
+	}
+	tr.watchAndSettle(ctx, order)
+}
+
+// recordAccept publishes and logs the terminal Outcome of an acceptance
+// poll — not-accepted or a probe error both end the release's story right
+// here, with no convergence watch to follow.
+func (tr *Transport) recordAccept(ctx context.Context, order Order, result outcome.Result, errText string) {
+	oc := outcome.Outcome{
+		ID:          fmt.Sprintf("out:%s:accept:%d", order.SignalRef, tr.now().Unix()),
+		DecisionRef: order.DecisionRef,
+		SignalRef:   order.SignalRef,
+		ContractRef: order.ContractRef,
+		Mode:        outcome.ModeLive,
+		Result:      result,
+		Error:       errText,
+		ExecutedAt:  tr.now(),
+	}
+	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", oc); err != nil {
+		slog.Error("publish acceptance outcome", "signalRef", order.SignalRef, "err", err)
+	}
+	tr.Log.Record(oc)
+	slog.Info("acceptance", "signalRef", order.SignalRef, "contractRef", oc.ContractRef, "result", oc.Result)
+}
+
+// acceptanceError renders the authored fallback for a release the window
+// closed on with nobody merging — the fallback is the operator-facing
+// reason, not a generic message.
+func acceptanceError(fallback string) string {
+	if fallback == "" {
+		return "release not accepted within the success window; no fallback authored"
+	}
+	return fmt.Sprintf("release not accepted within the success window; fallback: %s", fallback)
 }
 
 // logSeverity renders a nil severity as "unmeasured" for the slog line rather than

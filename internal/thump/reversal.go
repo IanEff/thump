@@ -62,7 +62,9 @@ func (w ReversalWatcher) now() time.Time {
 
 // reversalOf renders the undo of a forward Order: it inherits the same grant
 // and signal, executes the forward action's authored reversal.method, and
-// carries OrderReversal so a kill-switch exempts it from any disarm.
+// carries OrderReversal so a kill-switch exempts it from any disarm. Notes
+// stays empty — the undo is a single authored action, not a fresh ranked
+// Set, so there is no case to render.
 func reversalOf(o Order, now time.Time) Order {
 	return Order{
 		ID:          fmt.Sprintf("rev:%s:%d", o.SignalRef, now.Unix()),
