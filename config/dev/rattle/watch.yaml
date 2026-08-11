@@ -1,0 +1,54 @@
+# The dev environment's watch list — trimmed from config/thump-test's
+# (docs/dev-environment.md), which additionally carries the Ceph domain and
+# argocd-sync. Neither Ceph nor ArgoCD run in the dev env
+# (deploy/dev/bootstrap.sh installs neither), so those SLOs are dropped
+# outright rather than left in place naming series nothing ever emits — a
+# query naming a dead series degrades clank's evidence grounding silently
+# rather than failing loud.
+#
+# Source of record for objectives/contractRef: deploy/dev/manifests/
+# slo-rules.yaml, itself extracted from the thump-test rig's Sloth-generated
+# PrometheusRule. Dependency names must match metadata.name entries in
+# config/dev/whir/catalog-info.yaml exactly (whir strips the resource:/
+# component: prefix before comparing).
+#
+# The acme domain (docs/onboarding.md operator walkthrough) is staged for a
+# later phase, not included here — domains.acme.enabled is off in
+# deploy/tilt-values-dev.yaml. When it lands, its SLO block ports from
+# config/thump-test/rattle/watch.yaml unchanged.
+version: v1
+slos:
+  # Both are events-ratio SLIs (real error-events/total-events fraction),
+  # never a raw ratio fed into Sloth's burn math.
+  - id: product-catalog-availability
+    # productCatalogFailure makes GetProduct error (HTTP 500) for one
+    # chaos-target product id. frontend emits the SLI directly; flagd is the
+    # fault's control plane. Deliberately NOT dependent on product-catalog
+    # itself as a dependency entry — it's the SLO's object, not a
+    # precondition for trusting the signal.
+    object: product-catalog
+    tier: tier-1
+    objective: 0.99
+    contractRef: product-catalog-availability:v1
+    dependencies:
+      - name: frontend
+        role: blocking
+      - name: flagd
+        role: blocking
+
+  - id: cart-availability
+    # cartFailure breaks cart's EmptyCart RPC (gRPC status 9). Cart itself
+    # emits no rpc_server_duration and frontend emits no rpc_client series —
+    # the SLI's only in-cluster view is checkout's rpc_client_duration_*
+    # toward oteldemo.CartService, so checkout (not cart) is the blocking
+    # dependency. Also the ranker's two-eligible-action case: restart-pod
+    # vs disable-cart-failure, only the flag flip actually clears it.
+    object: cart
+    tier: tier-1
+    objective: 0.99
+    contractRef: cart-availability:v1
+    dependencies:
+      - name: checkout
+        role: blocking
+      - name: flagd
+        role: blocking

@@ -1,0 +1,102 @@
+# OTel demo (Astronomy Shop) 0.40.10 for the local thump dev environment.
+# Ported verbatim from
+# ~/projects/ceph/thump-test/applications/apps/opentelemetry-demo/values.yaml
+# — this file carries no Gateway API/hostname concerns (those live in the
+# rig's separate httproute.yaml, dropped here — see deploy/dev/bootstrap.sh's
+# comment on reaching the demo via Tilt port_forward instead), so nothing
+# needed to change.
+default:
+  envOverrides:
+    # NOT "otel-collector" — the otel-collector Helm release name doesn't
+    # contain the chart name, so the chart's fullname template falls back to
+    # "<release>-<chart>". Confirmed live on the rig via NXDOMAIN before this
+    # was corrected; deploy/dev/values/otel-collector.yaml's Helm release is
+    # named "otel-collector" the same way, so this Service name matches here
+    # too.
+    - name: OTEL_COLLECTOR_NAME
+      value: otel-collector-opentelemetry-collector.tracing.svc.cluster.local
+
+# Bundled dependency subcharts — all disabled, replaced by this env's own
+# tracing/monitoring stack (deploy/dev/values/{otel-collector,tempo,
+# kube-prometheus-stack,grafana}.yaml).
+opentelemetry-collector:
+  enabled: false
+
+jaeger:
+  enabled: false
+
+prometheus:
+  enabled: false
+
+grafana:
+  enabled: false
+
+# opensearch.enabled defaults to true in this chart version; only consumed
+# by the collector's log-export pipeline and the grafana opensearch
+# datasource, both already disabled above — Loki already covers logs.
+opensearch:
+  enabled: false
+
+# Trim: keep the connected core shopping path + the services the flagd-flag
+# picks (chaos/flagd-cart-failure.sh, config/actions/catalog.yaml's
+# disable-product-catalog-failure/disable-cart-failure/restart-cart-pod)
+# depend on. accounting/fraud-detection/product-reviews/llm are true leaves
+# with no catalog action targeting them.
+#
+# postgresql stays enabled (chart default) even though it looks like it only
+# backs the disabled product-reviews/accounting components: chart 2.2.0
+# stores the product catalog itself in Postgres, not a static file, so
+# product-catalog (a flag target, not a leaf) crash-loops instantly with no
+# indication in values.yaml alone if this is turned off. Verified live on
+# the rig — watch `kubectl get pods -n otel-demo` after first bring-up here
+# too, don't just trust this comment.
+components:
+  accounting:
+    enabled: false
+  fraud-detection:
+    enabled: false
+  product-reviews:
+    enabled: false
+  llm:
+    enabled: false
+  # checkout/product-catalog: the chart's own stock default is 20Mi
+  # (resources.limits.memory) for every component — fine for the demo's
+  # showcase-traffic assumption, too tight once load-generator (this values
+  # file leaves it enabled) drives real sustained throughput through them.
+  # Observed live 2026-08-11: both OOMKilled (exit 137) repeatedly, which in
+  # turn hung deploy/dev/bootstrap.sh's `helm upgrade --install --wait
+  # --timeout 10m` on this release — a crash-looping Deployment never
+  # reaches Available, so --wait blocks for the full 10 minutes every time.
+  # GOMEMLIMIT (16MiB, chart default, untouched here) is a Go runtime soft
+  # target for triggering GC earlier — raising it wouldn't help; it's the
+  # k8s hard memory *limit* that the OOM killer enforces regardless of what
+  # the Go runtime thinks its budget is.
+  checkout:
+    resources:
+      limits:
+        memory: 64Mi
+  product-catalog:
+    resources:
+      limits:
+        memory: 64Mi
+  # flagd: read the flagd-config ConfigMap DIRECTLY instead of the chart's
+  # default "init container copies ConfigMap into a config-rw emptyDir,
+  # flagd reads the emptyDir" pattern. chaos/flagd-cart-failure.sh and the
+  # flagVariant actuator (config/actions/catalog.yaml) both flip a flag by
+  # patching this ConfigMap at runtime, and flagd has to hot-reload IN PLACE
+  # to push the change to consumers' live flag streams — the default
+  # pattern can't do that, a ConfigMap patch never reaches the emptyDir
+  # copy, and restarting flagd to force a re-copy severs every consumer's
+  # stream, leaving them stale.
+  #
+  # null (NOT []) is required: Helm coalesce silently ignores an empty list
+  # override but honors null as "remove key".
+  flagd:
+    mountedConfigMaps:
+      - name: config-ro
+        mountPath: /etc/flagd
+        existingConfigMap: flagd-config
+    mountedEmptyDirs: null # drop config-rw (the emptyDir flagd used to read)
+    initContainers: null # drop the ConfigMap->emptyDir copy step
+    additionalVolumes: null # drop the now-redundant config-ro volume def
+    sidecarContainers: null # drop flagd-ui (wrote to the emptyDir; moot now)

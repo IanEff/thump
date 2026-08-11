@@ -1,0 +1,100 @@
+# Tilt dev-loop overrides for the fully-local dev cluster (docs/
+# dev-environment.md). `tilt up -- --cluster=dev` picks this file, per the
+# Tiltfile's CLUSTERS table. Everything here targets deploy/dev/'s
+# k3d-created cluster and deploy/dev/bootstrap.sh's substrate — sibling to
+# deploy/tilt-values-thump-test.yaml, but self-contained: no rig repo, no
+# IAP tunnel, no Ceph.
+#   - configProfile: dev selects config/dev/ (Stage 5) — the OTel demo's
+#     watch/topology/state/evidence queries only, Ceph and ArgoCD stripped.
+#   - prometheus.url / tracing.endpoint: match deploy/dev/bootstrap.sh's
+#     kube-prometheus-stack and otel-collector release names exactly —
+#     same "confirm the live Service name, don't guess" rule every other
+#     cluster profile's values file follows.
+#   - nats.storageClass: k3d ships Rancher's "local-path" provisioner by
+#     default, same class name the two k3s-based rigs use.
+#   - nats.nodeSelector/tolerations: left at the chart default
+#     unmodified — confirmed live (a throwaway k3d cluster,
+#     `kubectl get nodes -o jsonpath='...taints'`) that k3d's server node
+#     carries the control-plane label but NO NoSchedule taint, unlike the
+#     GCE rigs' k3s. The nodeSelector alone is enough to pin NATS there;
+#     the tolerations are harmless no-ops on this cluster, not load-bearing.
+#   - argocd.enabled: the chart DEFAULTS this true (every other cluster
+#     profile runs ArgoCD) — must be set false explicitly here or thump
+#     tries to read Applications from a namespace that doesn't exist.
+#   - cilium.apiserverEgress: true — Cilium is genuinely running here
+#     (deploy/dev/values/cilium.yaml), not just declared.
+#   - thump.executor: dry, deliberately NOT live. actuate.New's production
+#     wiring (internal/thump/thump.go's buildExecutor -> internal/actuate/
+#     kube.go's New -> newWith) never passes a Forge, so
+#     disable-cart-failure-release's maintenanceRelease verb fails
+#     ErrUnbindable and the whole catalog refuses to bind
+#     (internal/actuate/binding.go:91-94) — internal/forge/ is an empty
+#     directory. Arming live here is a follow-up gated on that forge
+#     landing, not something to "fix" by editing the newWith call site.
+replicas: 1
+
+image:
+  # NOT k3d-prefixed — unlike the kubectl context (k3d-thump-dev), k3d does
+  # NOT prefix a config-file `registries.create.name` with "k3d-" for the
+  # registry container itself. Confirmed live: `k3d cluster create --config
+  # deploy/dev/k3d.yaml` names the container literally "thump-dev-registry",
+  # and containerd's own registries.yaml on the node mirrors both
+  # thump-dev-registry:5000 and thump-dev-registry:5050 (this hostPort) to
+  # that container's internal :5000 — so this hostname:port is correct for
+  # both the host-side push (Tilt) and the cluster's in-node pull.
+  registry: "thump-dev-registry:5050"
+  # Placeholder — Tilt matches on registry+repo (not tag) and rewrites this
+  # to its own content-addressed tag on every build, so the literal value
+  # here never actually reaches the cluster (same as every other cluster
+  # profile's values file).
+  tag: "dev"
+
+configProfile: dev
+
+approvalRequests:
+  enabled: true
+  approvers:
+    - kind: User
+      name: system:admin
+
+# Only otelDemo for MVP — acme is staged (config/dev's watch.yaml/
+# catalog-info.yaml comments say where its block ports from) but not wired
+# in yet; flip this on once the acme manifests/RBAC land in deploy/dev.
+#
+# rookCeph.enabled: false — this profile has no Ceph at all
+# (docs/dev-environment.md). Chart default is true (every other profile has
+# always had a rook-ceph namespace); this is the one cluster that needs the
+# override. See values.yaml's domains comment for the incident this fixes.
+domains:
+  otelDemo:
+    enabled: true
+  acme:
+    enabled: false
+  rookCeph:
+    enabled: false
+
+prometheus:
+  url: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+
+nats:
+  storageClass: local-path
+
+# This cluster's kube-prometheus-stack Operator runs with an empty
+# serviceMonitorSelector (deploy/dev/values/kube-prometheus-stack.yaml,
+# serviceMonitorSelectorNilUsesHelmValues: false), so any ServiceMonitor
+# this chart creates is picked up cluster-wide with no extra labelling —
+# same posture as every other profile's values file.
+serviceMonitor:
+  enabled: true
+
+tracing:
+  endpoint: http://otel-collector-opentelemetry-collector.tracing.svc.cluster.local:4317
+
+argocd:
+  enabled: false
+
+cilium:
+  apiserverEgress: true
+
+thump:
+  executor: dry

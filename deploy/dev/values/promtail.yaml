@@ -1,0 +1,12 @@
+# Promtail for the local thump dev environment. Ported verbatim from
+# ~/projects/ceph/thump-test/applications/infrastructure/promtail/kustomization.yaml.
+config:
+  clients:
+    - url: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

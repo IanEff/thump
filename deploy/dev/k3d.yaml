@@ -1,0 +1,59 @@
+# k3d cluster config for the fully-local thump dev environment
+# (docs/dev-environment.md). One command target: `task dev:cluster`.
+#
+# Every k3s default that would fight Cilium is stripped here rather than in
+# Cilium's own values — Cilium can't retrofit kube-proxy away or reclaim the
+# CNI slot after k3s's own components have already claimed them.
+#   - flannel-backend=none / disable-network-policy: Cilium owns the CNI and
+#     policy enforcement instead of k3s's built-ins.
+#   - disable traefik/servicelb: no Gateway/Ingress path in this env (see
+#     the cilium.yaml comment on why gatewayAPI is off too) — Grafana,
+#     Prometheus, and the demo frontend are all reached by Tilt
+#     port_forward, not an Ingress.
+#
+# k3s's built-in kube-proxy stays ON here, unlike every other profile —
+# deploy/dev/values/cilium.yaml's kubeProxyReplacement comment has the full
+# story: Cilium's BPF kube-proxy replacement needs cgroup eBPF hooks attached
+# at the true host cgroup root, which conflicts with kubelet's own cgroup
+# lifecycle management inside k3d's nested-Docker node containers. Found
+# live, 2026-08-11: forcing cgroupns=host (the fix Cilium wants) sent kubelet
+# into an infinite "Failed to kill all the processes attached to cgroup"
+# retry loop, crash-looping every core pod. Keeping kube-proxy is the
+# tradeoff that avoids the conflict entirely.
+#
+# cluster-cidr matches the rig's k3s (provisioning/scripts/control-plane.sh
+# on ~/projects/ceph/thump-test), NOT k3d/k3s's own 10.42.0.0/16 default, so
+# deploy/dev/values/cilium.yaml's ipam.operator.clusterPoolIPv4PodCIDRList
+# can be ported from the rig unchanged.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: thump-dev
+servers: 1
+agents: 2
+image: rancher/k3s:v1.36.2-k3s1
+network: thump-dev
+registries:
+  create:
+    name: thump-dev-registry
+    host: "0.0.0.0"
+    hostPort: "5050"
+options:
+  k3d:
+    wait: true
+    timeout: 5m0s
+  k3s:
+    extraArgs:
+      - arg: --flannel-backend=none
+        nodeFilters: [server:*]
+      - arg: --disable-network-policy
+        nodeFilters: [server:*]
+      - arg: --disable=traefik
+        nodeFilters: [server:*]
+      - arg: --disable=servicelb
+        nodeFilters: [server:*]
+      - arg: --cluster-cidr=10.244.0.0/16
+        nodeFilters: [server:*]
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: false

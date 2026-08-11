@@ -63,6 +63,21 @@ CLUSTERS = {
         "registry": "ghcr.io/ianeff",
         "values": "deploy/tilt-values-thump-test.yaml",
     },
+    # dev: docs/dev-environment.md — the fully-local profile. Every other
+    # profile targets a cluster built by a separate rig repo; this one is
+    # built by `task dev:cluster` (deploy/dev/k3d.yaml) and its substrate is
+    # installed by this same Tiltfile (the dev-substrate local_resource,
+    # below) rather than by out-of-band provisioning. platform: None — k3d's
+    # node containers share the host kernel natively, no cross-compile
+    # needed, same reasoning as ceph-lab. registry is NOT k3d-prefixed
+    # (unlike the kubectl context) — confirmed live, see deploy/tilt-values-
+    # dev.yaml's image.registry comment.
+    "dev": {
+        "context": "k3d-thump-dev",
+        "platform": None,
+        "registry": "thump-dev-registry:5050",
+        "values": "deploy/tilt-values-dev.yaml",
+    },
 }
 
 config.define_string(
@@ -126,6 +141,10 @@ local_resource(
 #      shell outright and never reaches the next iteration.
 def guarded(name, body):
     kubectl = "kubectl --context " + cluster["context"]
+    if cluster_name == "dev":
+        unreachable_hint = "is the k3d cluster up? (task dev:cluster)"
+    else:
+        unreachable_hint = "is the IAP tunnel up? (just tunnel, in the rig repo)"
     preflight = (
         "waited=0; "
         + "until "
@@ -135,7 +154,9 @@ def guarded(name, body):
         + "if [ $waited -ge 60 ]; then "
         + 'echo "thump: API server for context '
         + cluster["context"]
-        + ' unreachable after ${waited}s — is the IAP tunnel up? (just tunnel, in the rig repo)" >&2; exit 1; '
+        + " unreachable after ${waited}s — "
+        + unreachable_hint
+        + '" >&2; exit 1; '
         + "fi; sleep 2; done; "
     )
     return (
@@ -156,8 +177,8 @@ def guarded(name, body):
     )
 
 
-def kubectl_local(name, body, labels=["infra"]):
-    local_resource(name, cmd=guarded(name, body), labels=labels)
+def kubectl_local(name, body, labels=["infra"], resource_deps=[]):
+    local_resource(name, cmd=guarded(name, body), labels=labels, resource_deps=resource_deps)
 
 
 # ensure_ns_cmd: every secret resource needs the namespace to exist first, and
@@ -175,6 +196,27 @@ def ensure_ns_cmd(name):
 
 
 ENSURE_NS = ensure_ns_cmd("thump")
+
+# dev-substrate (cluster=dev only): everything deploy/chart/thump assumes is
+# already on the cluster — cert-manager+ClusterIssuer, prometheus-operator
+# CRDs, kube-prometheus-stack, Cilium, Loki/Promtail, Tempo/otel-collector,
+# MinIO, the SLO PrometheusRule, the OTel demo — on every other profile,
+# provisioning that is a separate rig repo's job, done long before `tilt up`
+# ever runs. This profile has no rig repo, so deploy/dev/bootstrap.sh does
+# it here instead, as the one thing every other dev-cluster resource depends
+# on transitively through nats/thump-s3-secret below.
+#
+# guarded() (not a plain local_resource cmd): bootstrap.sh's very first
+# helm call needs a reachable API server exactly like every other
+# kubectl/helm call in this file, and its ~10-15 minute runtime means a
+# transient blip is expensive to just fail outright on — same reasoning as
+# every other guarded() call here, scaled up.
+if cluster_name == "dev":
+    local_resource(
+        "dev-substrate",
+        cmd=guarded("dev-substrate", "./deploy/dev/bootstrap.sh"),
+        labels=["substrate"],
+    )
 
 # thump-anthropic-secret: clank's Secret is meant to pre-exist out-of-band
 # (the lab's SOPS flow owns it in prod — see deploy/chart/thump/templates/
@@ -208,22 +250,52 @@ kubectl_local(
 # .env after every fresh `tofu apply` there, since the bucket (and its HMAC
 # key) gets torn down and recreated with `just destroy`/`just apply` same as
 # everything else on that rig.
-kubectl_local(
-    "thump-s3-secret",
-    'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; '
-    + "for v in S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY; do "
-    + '  [ -n "${!v}" ] || { echo "$v not set in .env" >&2; exit 1; }; '
-    + "done; "
-    + ENSURE_NS
-    + " && kubectl --context "
-    + cluster["context"]
-    + " -n thump create secret generic thump-s3 "
-    + '--from-literal=endpoint="$S3_ENDPOINT" --from-literal=bucket="$S3_BUCKET" '
-    + '--from-literal=access-key="$S3_ACCESS_KEY" --from-literal=secret-key="$S3_SECRET_KEY" '
-    + "--dry-run=client -o yaml | kubectl --context "
-    + cluster["context"]
-    + " apply -f -",
-)
+#
+# dev is the one exception: there's no out-of-band bucket to source .env
+# from, so this profile hardcodes the credentials adobe/s3mock accepts —
+# it doesn't check them at all (see the s3mock k8s_resource below) — against
+# the S3Mock instance this Tiltfile stands up directly, instead of requiring
+# Stefan to hand-populate .env for a store this repo already provisions for
+# him. ANTHROPIC_API_KEY above stays the one thing he does supply — that's
+# the point of this env, not an oversight. endpoint is http:// against
+# S3Mock's plain port 9090, not its bundled-self-signed-cert 9191:
+# internal/config/config.go's RequireURL("S3_ENDPOINT", "http", "https")
+# accepts either scheme for exactly this reason — declared plaintext for a
+# vendored dev backend that doesn't serve real TLS, the same shape I-16
+# already accepts for Prometheus/Loki (docs/invariants.md), rather than an
+# unauthenticated TLS session dressed as a secure one. See the s3mock
+# k8s_resource below for the port split.
+if cluster_name == "dev":
+    s3_body = (
+        ENSURE_NS
+        + " && kubectl --context "
+        + cluster["context"]
+        + " -n thump create secret generic thump-s3 "
+        + '--from-literal=endpoint="http://s3mock.thump.svc.cluster.local:9090" --from-literal=bucket="thump-wal" '
+        + '--from-literal=access-key="thump-dev" --from-literal=secret-key="thump-dev-secret" '
+        + "--dry-run=client -o yaml | kubectl --context "
+        + cluster["context"]
+        + " apply -f -"
+    )
+    s3_deps = ["s3mock"]
+else:
+    s3_body = (
+        'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; '
+        + "for v in S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY; do "
+        + '  [ -n "${!v}" ] || { echo "$v not set in .env" >&2; exit 1; }; '
+        + "done; "
+        + ENSURE_NS
+        + " && kubectl --context "
+        + cluster["context"]
+        + " -n thump create secret generic thump-s3 "
+        + '--from-literal=endpoint="$S3_ENDPOINT" --from-literal=bucket="$S3_BUCKET" '
+        + '--from-literal=access-key="$S3_ACCESS_KEY" --from-literal=secret-key="$S3_SECRET_KEY" '
+        + "--dry-run=client -o yaml | kubectl --context "
+        + cluster["context"]
+        + " apply -f -"
+    )
+    s3_deps = []
+kubectl_local("thump-s3-secret", s3_body, resource_deps=s3_deps)
 
 # thump-seal-secret / thump-nats-js-key-secret: unlike thump-anthropic-secret
 # and thump-s3-secret above, these two keys are pure internal material — no
@@ -321,6 +393,10 @@ if domains.get("otelDemo", {}).get("enabled", False):
 # can afford to sit through on every reload.
 def ensure_crd_cmd(name, timeout_s=60):
     kubectl = "kubectl --context " + cluster["context"]
+    if cluster_name == "dev":
+        missing_hint = "is dev-substrate (deploy/dev/bootstrap.sh) still installing kube-prometheus-stack?"
+    else:
+        missing_hint = "is the monitoring stack (kube-prometheus-stack) still installing? check the rig repo provisioning scripts"
     return (
         "waited=0; until "
         + kubectl
@@ -333,13 +409,25 @@ def ensure_crd_cmd(name, timeout_s=60):
         + " ]; then "
         + 'echo "thump: CRD '
         + name
-        + ' not found after ${waited}s — is the monitoring stack (kube-prometheus-stack) still installing? check the rig repo provisioning scripts" >&2; exit 1; '
+        + " not found after ${waited}s — "
+        + missing_hint
+        + '" >&2; exit 1; '
         + "fi; sleep 5; done"
     )
 
 
 if domain_values.get("serviceMonitor", {}).get("enabled", False):
-    kubectl_local("servicemonitor-crd", ensure_crd_cmd("servicemonitors.monitoring.coreos.com"))
+    # dev: the CRD comes from dev-substrate's own kube-prometheus-stack
+    # install (a Tilt-managed local_resource, not an out-of-band rig repo),
+    # so without this dep the two race — bootstrap.sh's Helm install easily
+    # outlasts the 60s CRD-wait budget below, and servicemonitor-crd loses
+    # every time on a cold cluster.
+    crd_deps = ["dev-substrate"] if cluster_name == "dev" else []
+    kubectl_local(
+        "servicemonitor-crd",
+        ensure_crd_cmd("servicemonitors.monitoring.coreos.com"),
+        resource_deps=crd_deps,
+    )
 
 DEV_REGISTRY = cluster["registry"]
 
@@ -362,6 +450,32 @@ COMMIT = str(local("git rev-parse --verify HEAD || echo none")).strip()
 # plain `go build` right after can't resolve the packages it just
 # generated imports for — reproduced live 2026-08-10, see
 # thump-running-notes.
+#
+# `go tool otelc` itself, NOT `./otelc-native` below, is what `task build`
+# runs (Taskfile.yaml) — that path never cross-compiles, so it never hits
+# the bug this local()+direct-invocation dance works around.
+#
+# `go tool <name>` resolves and EXECUTES a binary honoring the ambient
+# GOOS/GOARCH, same as `go run` — and just as broken cross-OS: GOOS=linux
+# is hardcoded below for every profile here (containers are always Linux,
+# whatever the host is), so `go tool otelc` tries to build ITSELF as a
+# Linux binary and then exec it on this Darwin host, failing "exec format
+# error". Reproduced live 2026-08-11 on the dev profile, but the bug is
+# universal, not dev-specific — ceph-lab/rook-gke/rook-gce-k3s/thump-test
+# hit the identical failure the moment this Tiltfile tries to build any
+# beat for them, this just hadn't been re-verified live since `otelc setup`
+# was swapped for `otelc go build` above. Building otelc once here, under
+# the host's own native GOOS/GOARCH (no override), and invoking that binary
+# directly per beat — bypassing `go tool`'s dispatch entirely — sidesteps
+# it: the binary itself always runs host-native, and only the `go build` it
+# execs internally (a plain subprocess inheriting the per-beat env below)
+# ever sees GOOS=linux.
+OTELC_NATIVE = "bin/dev/otelc-native"
+local(
+    "mkdir -p bin/dev && go build -o " + OTELC_NATIVE + " go.opentelemetry.io/otelc/tool/cmd/otelc",
+    quiet=True,
+    echo_off=True,
+)
 
 if cluster["platform"] == "linux/amd64":
     target_arch = "amd64"
@@ -374,14 +488,38 @@ for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
     cmd = (
         "mkdir -p bin/dev && "
         + "CGO_ENABLED=0 GOOS=linux GOARCH=" + target_arch + " "
-        + "go tool otelc go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
+        + "./" + OTELC_NATIVE + " go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
         + "-o bin/dev/" + beat + " ./cmd/" + beat + " && "
         + "docker build " + platform_flag + "-f Dockerfile.dev --build-arg BEAT=" + beat + " -t $EXPECTED_REF bin/dev"
     )
     custom_build(
         DEV_REGISTRY + "/thump-" + beat,
         command=cmd,
-        deps=["cmd/" + beat, "internal", "go.mod", "go.sum", ".otelc-build"],
+        # .otelc-build is NOT a dep, deliberately: it's otelc's own transient
+        # build-state directory (.gitignore's comment), written by the `go
+        # build` step above as output — not read as a source input by
+        # anything. Listing it here (an earlier version of this loop did)
+        # makes custom_build watch its own output: every build writes to
+        # .otelc-build, which Tilt sees as a changed dep and re-triggers
+        # immediately — an infinite self-rebuild loop, observed live
+        # 2026-08-11 as thump-bootstrap rebuilding continuously. The fix is
+        # to never list a build's own output directory as one of its deps.
+        #
+        # go.mod/go.sum are ALSO not deps, for the same reason, one level
+        # deeper: `otelc go build` (this loop's `cmd`, above) pins its
+        # instrumentation packages into the module root's go.mod/go.sum,
+        # builds, then unpins — a real write-then-restore on disk, not
+        # metadata. Confirmed live 2026-08-11 by reading otelc v1.0.1's own
+        # source (tool/internal/setup/state.go's getBackupFiles, pin.go's
+        # AutoPin): every `otelc go build` backs up and restores go.mod and
+        # go.sum around the build, unconditionally. Watching them here means
+        # every beat's build re-triggers itself — and since all 5 beats
+        # share one module root, one beat's build re-triggers all 5,
+        # compounding the loop instead of just repeating it. A real go.mod
+        # edit (an actual `go get`) won't auto-rebuild under Tilt anymore;
+        # `tilt trigger` after one is the manual escape hatch, worth it to
+        # not live-loop the build on every single compile.
+        deps=["cmd/" + beat, "internal"],
     )
 
 
@@ -488,8 +626,31 @@ if domain_values.get("serviceMonitor", {}).get("enabled", False):
     )
 
 # Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
+# On dev, nats-tls (certificates.yaml) can't issue until dev-substrate's
+# cert-manager + thump-ca ClusterIssuer exist — without this dep, NATS's
+# StatefulSet pod is stuck waiting on a Secret volume that never appears.
+#
+# objects=[...]: thump-nats:configmap and nats-tls:certificate have no owner
+# reference to the nats StatefulSet Tilt can discover on its own, so without
+# this they land in the "uncategorized" bucket alongside every other orphan
+# object in the chart (RBAC, other Certificates, ...) — same bucket the
+# acme-rbac/otel-demo-rbac/servicemonitor-crd comments above describe, and
+# proven to bite this exact pair live 2026-08-11: an unrelated rook-ceph RBAC
+# object failing on "namespace not found" took thump-nats:configmap and
+# nats-tls:certificate down with it, permanently (the uncategorized bucket
+# retries as one unit, so one object that can never succeed on this profile
+# blocks every object sharing the bucket, forever — not just delayed).
+# Folding both into the "nats" resource here means they apply exactly when
+# the StatefulSet does, gated on the same nats_deps, immune to whatever else
+# is or isn't wrong elsewhere in the uncategorized set.
+nats_deps = ["thump-registry", "thump-nats-js-key-secret"]
+if cluster_name == "dev":
+    nats_deps.append("dev-substrate")
 k8s_resource(
-    "nats", labels=["broker"], resource_deps=["thump-registry", "thump-nats-js-key-secret"]
+    "nats",
+    objects=["thump-nats:configmap", "nats-tls:certificate"],
+    labels=["broker"],
+    resource_deps=nats_deps,
 )
 
 # thump-bootstrap: a Helm pre-install/pre-upgrade hook Job (job-bootstrap.yaml)
@@ -526,6 +687,29 @@ for beat in ["rattle", "clank", "hiss", "thump"]:
         resource_deps=deps,
         trigger_mode=TRIGGER_MODE_MANUAL,  # same "you decide when it wakes" posture (W0-4)
     )
+
+# s3mock (cluster=dev only): adobe/s3mock replaces MinIO as this profile's
+# WAL/transcript durability layer (2026-08-11 — MinIO was this PR's original
+# choice, but Ian had already settled on S3Mock for local dev on 2026-07-07;
+# lighter on laptop memory, and it needs no bucket-creation Job — the
+# manifest's COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS env var does
+# that on startup). Full manifest: deploy/dev/manifests/s3mock.yaml.
+#
+# No resource_deps: unlike MinIO (installed by dev-substrate's Helm chain),
+# S3Mock needs nothing dev-substrate provides — it comes up in parallel with
+# dev-substrate's ~10-15 minute run, same as thump-registry.
+#
+# Every beat dials S3Mock's plain HTTP port (9090), not its bundled
+# self-signed-cert HTTPS port (9191, still exposed for a convenience curl
+# from a debug pod). Declared plaintext rather than TLS with peer
+# verification skipped: I-16 (docs/invariants.md) forbids InsecureSkipVerify
+# categorically, and already accepts exactly this shape for Prometheus/Loki
+# — a vendored dev backend that doesn't serve real TLS, riding node-to-node
+# Cilium WireGuard instead. internal/config/config.go's
+# RequireURL("S3_ENDPOINT", "http", "https") is where that's enforced.
+if cluster_name == "dev":
+    k8s_yaml("deploy/dev/manifests/s3mock.yaml")
+    k8s_resource("s3mock", labels=["broker"])
 
 # thump-notify-echo: a Slack-webhook stand-in for verifying the notify wire
 # format before a live session (phase-af-cut-not-clobber.md Step 0c).
@@ -581,3 +765,26 @@ spec:
       targetPort: 8080
 """))
     k8s_resource("thump-notify-echo", labels=["infra"])
+
+# dev-only convenience port-forwards. The Services below are installed by
+# deploy/dev/bootstrap.sh's own helm releases, not by this Tiltfile's
+# k8s_yaml(rendered) — Tilt has no object-graph knowledge of them to attach
+# a k8s_resource() port_forward to, so each gets its own local_resource
+# running `kubectl port-forward` as a supervised serve_cmd instead. No
+# Gateway API/Ingress in this env (deploy/dev/values/cilium.yaml's
+# gatewayAPI.enabled: false) — this is the whole "reach the UI" story.
+if cluster_name == "dev":
+    def dev_port_forward(name, service, namespace, local_port, remote_port):
+        local_resource(
+            name,
+            serve_cmd="kubectl --context " + cluster["context"]
+            + " -n " + namespace + " port-forward svc/" + service
+            + " " + str(local_port) + ":" + str(remote_port),
+            resource_deps=["dev-substrate"],
+            labels=["ui"],
+        )
+
+    dev_port_forward("grafana-ui", "grafana", "monitoring", 3000, 80)
+    dev_port_forward("prometheus-ui", "prometheus-kube-prometheus-prometheus", "monitoring", 9090, 9090)
+    dev_port_forward("hubble-ui", "hubble-ui", "kube-system", 12000, 80)
+    dev_port_forward("otel-demo-ui", "frontend-proxy", "otel-demo", 8080, 8080)

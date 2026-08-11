@@ -32,13 +32,17 @@ type BrokerStore struct {
 	SealKey     []byte // THUMP_SEAL_KEY — required only in the broker path; 32-byte AES-256 key, base64, sealing WAL segments (and clank's transcripts) before they reach the bucket
 }
 
-// loadBrokerStore reads the ten broker-path vars every beat's Load* function
-// requires once it's running in broker mode.
+// loadBrokerStore reads the nine broker-path vars every beat's Load* function
+// requires once it's running in broker mode. S3_ENDPOINT allows http as well
+// as https — the dev cluster profile's S3Mock backend serves plain HTTP with
+// no in-process TLS, same declared-plaintext posture as OTLPEndpoint's http
+// branch; every other profile's operator-supplied endpoint is a real https
+// bucket.
 func loadBrokerStore(l *loader) BrokerStore {
 	return BrokerStore{
 		WALDir:      l.Require("WAL_DIR"),
 		WALConfig:   l.Require("WAL_CONFIG"),
-		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "https"),
+		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "http", "https"),
 		S3Bucket:    l.Require("S3_BUCKET"),
 		S3AccessKey: l.Require("S3_ACCESS_KEY"),
 		S3SecretKey: l.Require("S3_SECRET_KEY"),
@@ -281,11 +285,12 @@ type Corpus struct {
 	S3SecretKey string // S3_SECRET_KEY — required
 }
 
-// LoadCorpus reads the WAL miner's environment once.
+// LoadCorpus reads the WAL miner's environment once. See loadBrokerStore's
+// comment for why S3_ENDPOINT allows both http and https.
 func LoadCorpus() (Corpus, error) {
 	l := &loader{}
 	c := Corpus{
-		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "https"),
+		S3Endpoint:  l.RequireURL("S3_ENDPOINT", "http", "https"),
 		S3Bucket:    l.Require("S3_BUCKET"),
 		S3AccessKey: l.Require("S3_ACCESS_KEY"),
 		S3SecretKey: l.Require("S3_SECRET_KEY"),

@@ -22,9 +22,9 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// NewS3Client builds an S3-compatible client (MinIO, s3mock, or real S3)
-// from plain config values — so a beat's Main never has to import the AWS
-// SDK itself to get one, the same hiding Tracer does for the OTel exporter.
+// NewS3Client builds an S3-compatible client (S3Mock, or real S3) from
+// plain config values — so a beat's Main never has to import the AWS SDK
+// itself to get one, the same hiding Tracer does for the OTel exporter.
 // Every S3 consumer in this repo (the WAL shipper's segment sink, clank's
 // transcript S3Store) must build its client through here, never
 // s3.NewFromConfig directly — the GCS signing workarounds below are

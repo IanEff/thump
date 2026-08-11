@@ -291,7 +291,7 @@ process: `objectstore.EncryptingSink` wraps every WAL segment in
 `sealbox.Key.Seal` (AES-256-GCM) ahead of `s3.Client.PutObject`, so the
 bucket's own key management is never the confidentiality boundary.
 
-**Two declared exceptions stand today.** The Prometheus and Loki query legs
+**Three declared exceptions stand today.** The Prometheus and Loki query legs
 load through `internal/config`'s plain `Optional`/`Require`, not
 `OptionalURL`/`RequireURL` — no scheme is enforced on either endpoint, because
 both backends are vendored charts that don't serve TLS. They ride node-to-node
@@ -300,7 +300,18 @@ that's accepted rather than overlooked. The OTLP exporter's `http://` branch
 is narrower and named: a single row in `declaredPlaintext`
 (`internal/httpx/tripwire_test.go`) carrying its own reason, distinct from the
 Prometheus/Loki gap because it's a single file, not an unenforced pair of env
-vars.
+vars. `S3_ENDPOINT` (`RequireURL("S3_ENDPOINT", "http", "https")`,
+`internal/config/config.go`) joins them for the same reason as Prometheus and
+Loki, not a new one: the dev cluster profile's S3Mock backend is a vendored
+dev fixture with no supported way to carry a `thump-ca`-signed cert, and that
+profile already runs `deploy/dev/values/cilium.yaml`'s
+`encryption.enabled: false` — there's no real network segment on a
+laptop-only cluster for the extra hop to protect. Every other profile's
+operator-supplied endpoint is a real bucket over `https://`; nothing at the
+type level enforces that, same as Prometheus/Loki. WAL segments and clank's
+transcripts are sealed with AES-256-GCM (`objectstore.EncryptingSink`)
+before they ever reach this leg, so the exception is about the wire
+carrying already-encrypted bytes, not about their confidentiality.
 
 *Violation smell:* a `*tls.Config` built outside `internal/tlsx`; an `http://`
 endpoint reachable through `RequireURL`/`OptionalURL` with `http` missing from

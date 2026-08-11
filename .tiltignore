@@ -12,6 +12,23 @@
 .otelc-build/matched.json
 .otelc-build/added_imports.*.json
 
+# otelc writes this straight into cmd/<beat>/ — the exact directory each
+# beat's custom_build deps= list watches for real source changes, since
+# that's where main.go lives — then removes it once the build finishes
+# (.gitignore's "them per build and takes them back out"). Left unignored,
+# each build's own write/remove cycle inside cmd/<beat>/ re-triggers that
+# same build: an infinite loop, observed live 2026-08-11 as thump-bootstrap
+# rebuilding continuously (a companion bug to the one above — that one was
+# .otelc-build/ itself once listed directly in deps=, this one is a file
+# inside a deps= path that's otherwise entirely legitimate to watch).
+#
+# The trailing "*" covers otelc.runtime.go.tmp-<random>, the temp file it
+# writes before renaming into place — the bare pattern above only matched
+# the final name, so the temp file's own create event was still slipping
+# through and re-triggering the same loop. Confirmed live 2026-08-11 via
+# `tilt get filewatch ... -o json`'s fileEvents.
+cmd/*/otelc.runtime.go*
+
 bin
 dist
 coverage.out

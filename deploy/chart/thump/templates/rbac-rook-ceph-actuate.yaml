@@ -7,6 +7,10 @@
 # scales the operator to 0 so its own reconciler can't undo the ceph config
 # set that follows; the reverse scales it back) — pinned to that one
 # Deployment name, not every Deployment in the namespace.
+# Gated on domains.rookCeph.enabled: same reasoning as
+# rbac-rook-ceph-read.yaml — the dev cluster profile has no rook-ceph
+# namespace at all.
+{{- if .Values.domains.rookCeph.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -38,3 +42,4 @@ roleRef:
   kind: Role
   name: thump-rook-ceph-actuate
   apiGroup: rbac.authorization.k8s.io
+{{- end }}

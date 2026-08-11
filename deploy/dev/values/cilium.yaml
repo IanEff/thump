@@ -1,0 +1,135 @@
+# Cilium 1.19.3 for the local thump dev environment. Ported from
+# ~/projects/ceph/thump-test/applications/infrastructure/cilium/values.yaml
+# (the thump-test rig) with laptop-specific divergences called out below —
+# read each one before "simplifying" it back to the rig's shape, and read
+# the other direction too: this file exists because
+# deploy/chart/thump/templates/ciliumnetpol-{clank,hiss,thump}.yaml is real
+# governance for the production deployment, not because thump's own config
+# requires Cilium (cilium.apiserverEgress defaults false in the chart, and
+# empty RATTLE_TRAFFIC disables the Hubble source — thump runs fine without
+# any of this). An env that never renders those CiliumNetworkPolicies isn't
+# exercising this repo's actual deployment shape.
+#
+# k3s ordering this depends on: deploy/dev/k3d.yaml already disabled
+# flannel/network-policy so Cilium can claim the CNI+policy role k3s would
+# otherwise hold. deploy/dev/bootstrap.sh installs prometheus-operator-crds
+# BEFORE this chart — Cilium's own validate.yaml template refuses to render
+# any ServiceMonitor without that CRD present, same ordering constraint the
+# rig's ArgoCD sync waves (-11 then -10) encode.
+#
+# kubeProxyReplacement: false — the one deliberate divergence from the rig's
+# shape that isn't just "unsafe to assume about a laptop." Cilium's BPF
+# kube-proxy replacement needs its cgroup eBPF hooks attached at the true
+# host cgroup root (cgroupns=host) to cover every pod's socket calls. k3d's
+# node containers are themselves nested Docker containers, and kubelet
+# running inside them needs the OPPOSITE — a private cgroup namespace
+# matching its own root — to manage pod cgroups correctly. Found live,
+# 2026-08-11: forcing cgroupns=host (via Docker's default-cgroupns-mode)
+# fixed Cilium's ClusterIP routing but sent kubelet into an infinite
+# "Failed to kill all the processes attached to cgroup" retry loop,
+# crash-looping coredns/metrics-server/local-path-provisioner/hubble-relay.
+# Reverting to k3s's built-in kube-proxy (deploy/dev/k3d.yaml keeps it
+# enabled here, unlike every other profile) sidesteps the conflict — Cilium
+# still owns the CNI, policy, and Hubble observability, just not service
+# routing. If this needs revisiting, that means solving the cgroup-namespace
+# conflict first, not just flipping this back to true.
+kubeProxyReplacement: false
+
+# routingMode stays tunnel (VXLAN) like the rig — works regardless of the
+# Docker network's own routing, no assumption about the host's bridge setup
+# needed.
+routingMode: tunnel
+
+bpf:
+  masquerade: true
+  # datapathMode omitted deliberately (default: veth). The rig sets
+  # datapathMode: netkit, which needs kernel >=6.8 AND routingMode: native
+  # (Cilium's own tuning.rst) — two facts about someone else's laptop kernel
+  # and someone else's Docker Desktop/OrbStack VM that aren't safe to assume
+  # here. veth is slower but unconditionally supported.
+
+# encryption disabled — the rig turns on WireGuard node-to-node encryption
+# (Phase R, "the fork, re-decided": thump's own mTLS covers the legs it
+# owns; WireGuard covers legs it doesn't, like Prometheus scraping every
+# workload). On a laptop every "node" is a container on the same Docker
+# host: there's no real network segment between them for WireGuard to
+# protect, and turning it on needs a loadable wireguard kernel module that
+# may not exist in the Docker Desktop/OrbStack VM — the single most likely
+# bring-up failure here, for zero dev-env value. If this needs revisiting,
+# reopen it explicitly rather than silently porting the rig's block back in.
+encryption:
+  enabled: false
+
+# gatewayAPI disabled — the rig uses it (hostNetwork Envoy bound to the
+# control-plane node's own :80/:443, requiring the Gateway API CRDs plus the
+# keepCapNetBindService capability dance) because GCP's routed VPC has no L2
+# broadcast domain for lbIPAM to answer ARP on. None of that setup buys
+# anything here: Grafana, Prometheus, Hubble UI, and the demo frontend are
+# all reached via Tilt port_forward instead.
+gatewayAPI:
+  enabled: false
+
+loadBalancer:
+  mode: snat
+  algorithm: maglev
+  acceleration: best-effort
+
+# Matches deploy/dev/k3d.yaml's --cluster-cidr=10.244.0.0/16 exactly — that
+# flag is what makes this line portable verbatim from the rig instead of
+# needing its own value.
+ipam:
+  operator:
+    clusterPoolIPv4PodCIDRList: ["10.244.0.0/16"]
+
+# k3d node containers only ever present eth0 — no ens* interfaces the way
+# GCE Ubuntu images do, so the rig's two-pattern device list collapses to
+# one.
+devices:
+  - eth+
+
+operator:
+  replicas: 1
+  dashboards:
+    enabled: false
+  prometheus:
+    serviceMonitor:
+      enabled: true
+
+# Hubble stays on, unabridged from the rig — it's the actual reason this
+# whole substrate exists in a laptop dev env rather than just "run thump
+# without Cilium." The labelsContext additions on tcp/flow give
+# non-HTTP-traffic destination attribution for a future HubbleTrafficSource
+# blast-radius query (see internal/rattle's traffic-queries comment).
+hubble:
+  enabled: true
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - "tcp:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+      - "flow:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+      - icmp
+      - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction"
+    dashboards:
+      enabled: false
+    serviceMonitor:
+      # Safe unconditionally here (unlike the rig's bootstrap-time raw
+      # `helm install`, which predates ArgoCD and therefore predates the
+      # prometheus-operator-crds app) because bootstrap.sh installs
+      # prometheus-operator-crds before this chart, full stop — there's no
+      # earlier bootstrap install to worry about.
+      enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+prometheus:
+  serviceMonitor:
+    # Same reasoning as hubble.metrics.serviceMonitor above: the CRD is
+    # guaranteed present by install ordering, so this is safe to assert
+    # unconditionally.
+    trustCRDsExist: true
+
+dashboards:
+  enabled: false
