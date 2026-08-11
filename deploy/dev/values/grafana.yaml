@@ -1,0 +1,55 @@
+# Grafana for the local thump dev environment. Ported from
+# ~/projects/ceph/thump-test/applications/infrastructure/grafana/values.yaml
+# with the rig's node-affinity rule dropped (no control-plane taint to avoid
+# here — deploy/dev/k3d.yaml's k3d nodes carry no such taint) and reached via
+# Tilt port_forward instead of a hostname/Ingress.
+adminPassword: "admin"
+
+grafana.ini:
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+
+service:
+  type: ClusterIP
+  port: 80
+
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "1"
+    searchNamespace: ALL
+  datasources:
+    enabled: true
+    label: grafana_datasource
+    labelValue: "1"
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        url: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        isDefault: true
+        editable: true
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        url: http://tempo.tracing.svc.cluster.local:3100
+        editable: true
+
+alerting: {}
+
+persistence:
+  enabled: false # dashboards loaded from ConfigMaps; nothing to persist
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

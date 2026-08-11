@@ -1,0 +1,41 @@
+# Tempo for the local thump dev environment. Ported from
+# ~/projects/ceph/thump-test/applications/infrastructure/tempo/kustomization.yaml
+# — only the storageClass changed (rook-ceph-block -> local-path, since
+# there's no Ceph here to back the rig's class).
+tempo:
+  repository: grafana/tempo
+  tag: 2.6.1
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 4Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  structuredConfig:
+    multitenancy_enabled: false
+    compactor:
+      compaction:
+        block_retention: 4h
+    ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+
+server:
+  http_listen_port: 3100
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318

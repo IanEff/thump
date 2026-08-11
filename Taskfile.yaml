@@ -130,6 +130,16 @@ tasks:
           | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
+      # deploy/tilt-values-dev.yaml (docs/dev-environment.md) exercises a
+      # values shape none of the passes above do: configProfile: dev pulls
+      # config/dev/ through configmap-{whir,rattle}.yaml's .Files.Get, and
+      # domains.otelDemo.enabled=true + argocd.enabled=false renders RBAC
+      # combinations the ceph-lab default never touches.
+      - |
+        helm template deploy/chart/thump --values deploy/tilt-values-dev.yaml --set image.tag=dev \
+          | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
 
   test:
     desc: go test -shuffle=on ./...
@@ -360,6 +370,28 @@ tasks:
     desc: go run ./cmd/calipers
     cmds:
       - go run ./cmd/calipers
+
+  # docs/dev-environment.md — the fully-local dev environment. dev:cluster is
+  # the one piece Tilt itself can't do: `allow_k8s_contexts()` and `helm()`
+  # both evaluate at Tiltfile load, so the k3d context has to exist before
+  # `tilt up` runs at all. dev:up does both steps in the order Ian's other
+  # profiles get for free from an out-of-band rig repo.
+  dev:cluster:
+    desc: Create (idempotently) the local k3d cluster deploy/dev/k3d.yaml describes
+    cmds:
+      - |
+        k3d cluster list thump-dev >/dev/null 2>&1 || k3d cluster create --config deploy/dev/k3d.yaml
+
+  dev:up:
+    desc: Bring up the full local thump dev environment (cluster + substrate + all five beats)
+    cmds:
+      - task: dev:cluster
+      - tilt up -- --cluster=dev
+
+  dev:down:
+    desc: Tear down the local k3d dev cluster entirely (irreversible — see docs/dev-environment.md before running)
+    cmds:
+      - k3d cluster delete thump-dev
 
   # The bucket pull stays the operator's job: which object store, which
   # credentials, and which segments are worth reading are all site facts, and

@@ -1,0 +1,67 @@
+# Static topology map for rattle's TopologySource (internal/whir). Trimmed
+# from config/thump-test/whir/catalog-info.yaml — the Ceph and ArgoCD
+# components/resources are dropped (this env runs neither), and the acme
+# domain's components are dropped too (domains.acme.enabled is false in
+# deploy/tilt-values-dev.yaml — no acme namespace exists here for these
+# entries to describe). When acme lands, port its block from
+# config/thump-test/whir/catalog-info.yaml unchanged.
+#
+# dependsOn edges wired 1:1 to config/dev/rattle/watch.yaml's SLO dependency
+# shape:
+#   product-catalog-availability -> product-catalog component
+#   cart-availability             -> cart component
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: frontend
+  description: Demo storefront — emits app_frontend_requests_total, the product-catalog-availability SLI.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+  dependsOn:
+    - component:default/product-catalog
+    - component:default/cart
+    - component:default/checkout
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: checkout
+  description: Checkout service — gRPC client to CartService; emits rpc_client_duration_milliseconds, the cart-availability SLI.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+  dependsOn:
+    - component:default/cart
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: product-catalog
+  description: Product catalog service. Subject of the product-catalog-availability SLO (productCatalogFailure flagd fault).
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: cart
+  description: Cart service. Subject of the cart-availability SLO (cartFailure flagd fault, EmptyCart RPC).
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: flagd
+  description: Feature-flag service — the control plane for both armed demo faults (productCatalogFailure, cartFailure). A disable-<flag>-failure action merge-patches its flagd-config ConfigMap.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: otel-demo

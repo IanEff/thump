@@ -1,0 +1,155 @@
+# evidence-queries.yaml — the dev environment's evidence surface. Trimmed
+# from config/thump-test/whir/evidence-queries.yaml: the Ceph groups (1-7),
+# ArgoCD's group 6, and the acme group (9) are dropped outright — none of
+# Ceph, ArgoCD, or acme run in this env (domains.acme.enabled is false in
+# deploy/tilt-values-dev.yaml), so a query naming any of their series would
+# just return empty and silently thin clank's evidence grounding. Only
+# group 8 (OTel demo) survives, renumbered as the whole file.
+#
+# Two blocks: `queries`, the read-only PromQL the clank `metrics` tool
+# exposes, and `subjects`, the coordinate rules the `loki` and `kube` tools
+# resolve their citations through.
+#
+# subject: pins a query to the one topology node (from catalog-info.yaml) it's
+# evidence about — internal/clank/gate.go's coherentSubject checks it against
+# the signal's own frozen topology and fails CLOSED: an untagged query can
+# still corroborate, but can never solely ground a proposal past the gate.
+#
+# ⚠️ VERIFY EVERY METRIC NAME ON THE TARGET CLUSTER BEFORE TRUSTING THIS.
+# Run once against the dev cluster:
+#   curl -s "$PROM_URL/api/v1/label/__name__/values" | tr ',' '\n' | grep -E 'slo:|kube_|app_frontend|rpc_client'
+# and reconcile each query below against what's actually there.
+version: v1
+queries:
+  # subject: tags every query below by the whir catalog-info.yaml entity it
+  # concerns — what lets the gate tell "the model investigated an unrelated
+  # app" from "the model found the actual cause" without restricting which
+  # queries the model may run.
+  - name: slo_burn_product_catalog
+    query: slo:current_burn_rate:ratio{sloth_id="product-catalog-availability"}
+    subject: product-catalog
+  - name: slo_burn_cart
+    query: slo:current_burn_rate:ratio{sloth_id="cart-availability"}
+    subject: cart
+  # severity_* pair action success windows check against — one sloth_id per
+  # armed flag.
+  - name: severity_product_catalog_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="product-catalog-availability"}
+    subject: product-catalog
+  - name: severity_cart_availability
+    query: slo:sli_error:ratio_rate5m{sloth_id="cart-availability"}
+    subject: cart
+  # Raw 0..1 error ratios — the same numerator/denominator as each SLO's own
+  # Sloth SLI (deploy/dev/manifests/slo-rules.yaml), for the model to cite
+  # directly and for disable-*-failure's SuccessCriteria.Metric/Target to
+  # check against. `or vector(0)` on the numerator keeps a healthy-but-idle
+  # window reading 0, not absent — verified live on the rig this was ported
+  # from (baseline 0/0 -> NaN is possible when the loadgenerator isn't
+  # hitting the target path).
+  - name: product_catalog_error_ratio
+    query: >-
+      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[2m])) or vector(0))
+      /
+      sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[2m]))
+    subject: product-catalog
+  - name: cart_error_ratio
+    query: >-
+      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[2m])) or vector(0))
+      /
+      sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[2m]))
+    subject: cart
+  # demo_pods_not_running spans the whole otel-demo namespace, not one
+  # component — left untagged rather than pinned to a single subject that
+  # would overclaim which node it's actually about.
+  - name: demo_pods_not_running
+    query: count(kube_pod_status_phase{namespace="otel-demo",phase!="Running"} == 1) or vector(0)
+
+# ── subject rules · the same claim, for the loki and kube tools ─────────────
+# `subject:` above tags a named PromQL query. The `metrics` tool is the only
+# one whose queries are named here — `loki` and `kube` take free-form
+# coordinates from the model, so their tag is resolved from those coordinates
+# instead: a rule matches when its namespace equals the query's and every
+# label it names appears with the same value.
+#
+# ⚠️ THESE ARE FACTS ABOUT THIS CLUSTER, NOT ABOUT THUMP. Verify on the dev
+# cluster:
+#   kubectl get pods -n otel-demo --show-labels
+#   curl -s "$LOKI_URL/loki/api/v1/label/service_name/values"
+# otel-demo's pod label vocabulary (app.kubernetes.io/name) differs from its
+# loki stream label (service_name), so each node gets two rules, one per
+# plane — see the field comment on Plane in internal/subjects/subjects.go.
+subjects:
+  - subject: cart
+    namespace: otel-demo
+    plane: loki
+    labels:
+      service_name: cart
+  - subject: checkout
+    namespace: otel-demo
+    plane: loki
+    labels:
+      service_name: checkout
+  - subject: frontend
+    namespace: otel-demo
+    plane: loki
+    labels:
+      service_name: frontend
+  - subject: product-catalog
+    namespace: otel-demo
+    plane: loki
+    labels:
+      service_name: product-catalog
+  - subject: flagd
+    namespace: otel-demo
+    plane: loki
+    labels:
+      service_name: flagd
+
+  - subject: cart
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: cart
+  - subject: checkout
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: checkout
+  - subject: frontend
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: frontend
+  - subject: product-catalog
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: product-catalog
+  - subject: flagd
+    namespace: otel-demo
+    plane: kube
+    labels:
+      app.kubernetes.io/name: flagd
+
+  # The demo names each service's Deployment after the service itself, which
+  # is also the catalog entity name.
+  - subject: cart
+    namespace: otel-demo
+    kind: Deployment
+    name: cart
+  - subject: checkout
+    namespace: otel-demo
+    kind: Deployment
+    name: checkout
+  - subject: frontend
+    namespace: otel-demo
+    kind: Deployment
+    name: frontend
+  - subject: product-catalog
+    namespace: otel-demo
+    kind: Deployment
+    name: product-catalog
+  - subject: flagd
+    namespace: otel-demo
+    kind: Deployment
+    name: flagd

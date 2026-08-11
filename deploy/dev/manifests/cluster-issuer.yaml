@@ -1,0 +1,53 @@
+# Ported verbatim from
+# ~/projects/ceph/thump-test/applications/infrastructure/cert-manager/cluster-issuer.yaml
+# — nothing laptop-specific here, this is the same private-PKI shape the
+# rig uses. A self-signed bootstrap Issuer mints a CA Certificate once;
+# every leaf cert deploy/chart/thump/templates/certificates.yaml requests
+# (nats-tls, {rattle,clank,hiss,thump}-tls, calipers-tls, bootstrap-tls,
+# prometheus-tls) is issued against the ClusterIssuer below.
+#
+# The name "thump-ca" is load-bearing: it must match the chart's
+# tls.issuerName default exactly, or every one of those six Certificates
+# fails to issue with no obvious error beyond Ready=False.
+#
+# Nothing outside this cluster ever validates these certs (internal names
+# like nats.thump.svc don't resolve on the internet), so there's no
+# ACME/DNS-01 negotiation needed — same reasoning as the rig.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: thump-ca-bootstrap
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: thump-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: thump-dev-ca
+  secretName: thump-ca-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: 8760h # 1y
+  renewBefore: 720h # 30d
+  issuerRef:
+    name: thump-ca-bootstrap
+    kind: Issuer
+    group: cert-manager.io
+---
+# A ClusterIssuer of kind `ca` looks for its Secret in cert-manager's
+# --cluster-resource-namespace, which defaults to the namespace cert-manager
+# itself runs in — this one — so thump-ca-secret above is already in the
+# right place with no extra wiring.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: thump-ca
+spec:
+  ca:
+    secretName: thump-ca-secret

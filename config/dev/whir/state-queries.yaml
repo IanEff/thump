@@ -1,0 +1,22 @@
+# Per-dependency "is it healthy right now" queries for whir's Resolver
+# (internal/whir). `dependency` must match a `metadata.name` in
+# catalog-info.yaml exactly. Each query is an instant PromQL whose result
+# means: value > 0 => healthy, value = 0 => degraded, no result / error =>
+# unknown (a state, not an error).
+#
+# Trimmed from config/thump-test/whir/state-queries.yaml — Ceph and acme
+# entries dropped (neither runs in this env). OTel demo entries carried
+# unchanged: kube_deployment_status_replicas_available in the otel-demo
+# namespace, one dependency per Deployment.
+#
+# Every query is wrapped in max()/count() on purpose: double-scraped targets
+# can return more than one series, and aggregating here keeps the resolver
+# from ever having to pick which series to believe (the singleton rule).
+version: v1
+queries:
+  - dependency: frontend
+    query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="frontend"})'
+  - dependency: checkout
+    query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="checkout"})'
+  - dependency: flagd
+    query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="flagd"})'

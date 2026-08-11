@@ -1,0 +1,53 @@
+# k3d cluster config for the fully-local thump dev environment
+# (docs/dev-environment.md). One command target: `task dev:cluster`.
+#
+# Every k3s default that would fight Cilium is stripped here rather than in
+# Cilium's own values — Cilium can't retrofit kube-proxy away or reclaim the
+# CNI slot after k3s's own components have already claimed them.
+#   - flannel-backend=none / disable-network-policy: Cilium owns the CNI and
+#     policy enforcement instead of k3s's built-ins.
+#   - disable-kube-proxy: pairs with deploy/dev/values/cilium.yaml's
+#     kubeProxyReplacement: true.
+#   - disable traefik/servicelb: no Gateway/Ingress path in this env (see
+#     the cilium.yaml comment on why gatewayAPI is off too) — Grafana,
+#     Prometheus, and the demo frontend are all reached by Tilt
+#     port_forward, not an Ingress.
+#
+# cluster-cidr matches the rig's k3s (provisioning/scripts/control-plane.sh
+# on ~/projects/ceph/thump-test), NOT k3d/k3s's own 10.42.0.0/16 default, so
+# deploy/dev/values/cilium.yaml's ipam.operator.clusterPoolIPv4PodCIDRList
+# can be ported from the rig unchanged.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: thump-dev
+servers: 1
+agents: 2
+image: rancher/k3s:v1.31.5-k3s1
+network: thump-dev
+registries:
+  create:
+    name: thump-dev-registry
+    host: "0.0.0.0"
+    hostPort: "5050"
+options:
+  k3d:
+    wait: true
+    timeout: 5m0s
+  k3s:
+    extraArgs:
+      - arg: --flannel-backend=none
+        nodeFilters: [server:*]
+      - arg: --disable-network-policy
+        nodeFilters: [server:*]
+      - arg: --disable-kube-proxy
+        nodeFilters: [server:*]
+      - arg: --disable=traefik
+        nodeFilters: [server:*]
+      - arg: --disable=servicelb
+        nodeFilters: [server:*]
+      - arg: --cluster-cidr=10.244.0.0/16
+        nodeFilters: [server:*]
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: false

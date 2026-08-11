@@ -1,0 +1,135 @@
+# kube-prometheus-stack for the local thump dev environment. Ported from
+# ~/projects/ceph/thump-test/applications/infrastructure/prometheus/values.yaml
+# with the rig's Ceph/ArgoCD-specific scrape jobs dropped (this env runs
+# neither) and storage moved to local-path.
+#
+# CRDs come from the separate prometheus-operator-crds release installed
+# first by deploy/dev/bootstrap.sh, same split the rig uses — one owner for
+# the CRDs, this chart just watches them.
+crds:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    retention: "7d"
+    scrapeInterval: 30s
+    scrapeTimeout: 10s
+    evaluationInterval: 30s
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 4Gi
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    # Pick up every ServiceMonitor/PodMonitor/PrometheusRule cluster-wide,
+    # not just ones carrying this release's chart labels — this is what
+    # lets thump's own ServiceMonitor (deploy/chart/thump/templates/
+    # servicemonitor.yaml), Cilium/Hubble's, and slo-rules.yaml's
+    # PrometheusRule all take effect with no extra labelling.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+
+    # hubble-metrics has no natural ServiceMonitor selector target here
+    # (same as the rig) — a static scrape job. The rig's argocd-metrics job
+    # is dropped: this env runs argocd.enabled: false, there's nothing at
+    # that address.
+    additionalScrapeConfigs: |
+      - job_name: "hubble-metrics"
+        static_configs:
+          - targets:
+              - "hubble-metrics.kube-system.svc.cluster.local:9965"
+        relabel_configs:
+          - target_label: job
+            replacement: hubble
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Real Alertmanager, not just Grafana unified alerting — same reasoning as
+# the rig: thump needs a real Alertmanager API/webhook surface. Default
+# config routes everything to a no-op 'null' receiver; harmless until
+# something's wired to consume it.
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# Standalone Grafana app (deploy/dev/values/grafana.yaml) stays
+# authoritative — avoid a second, redundant Grafana.
+grafana:
+  enabled: false
+
+# k3s bundles the controller-manager/scheduler/etcd/kube-proxy into a single
+# binary with no separate kubeadm-style Services these default monitors
+# expect. kube-proxy is additionally disabled outright by deploy/dev/k3d.yaml
+# (Cilium replaces it) — leaving any of these enabled just produces
+# permanently-down targets and alerts.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

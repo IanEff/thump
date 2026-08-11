@@ -1,0 +1,62 @@
+# OTel Collector for the local thump dev environment. Ported verbatim from
+# ~/projects/ceph/thump-test/applications/infrastructure/otel-collector/kustomization.yaml
+# — this is the collector thump's own beats (and the OTel demo, via
+# OTEL_COLLECTOR_NAME) point tracing.endpoint at, NOT Tempo directly: Tempo
+# only implements the OTLP traces service, and pointing metrics straight at
+# it produces "failed to upload metrics: ... Unimplemented" on every beat,
+# forever (learned live on the rig). This collector forwards traces to Tempo
+# unchanged and exposes a prometheus exporter for metrics, which is what the
+# chart's serviceMonitor.enabled below feeds to Prometheus.
+mode: deployment
+image:
+  repository: "otel/opentelemetry-collector-contrib"
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 512Mi
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    jaeger:
+      protocols:
+        thrift_compact:
+          endpoint: 0.0.0.0:6831
+  processors:
+    batch: {}
+  exporters:
+    otlp:
+      endpoint: "tempo.tracing.svc.cluster.local:4317"
+      tls:
+        insecure: true
+    prometheus:
+      endpoint: "0.0.0.0:8889"
+      resource_to_telemetry_conversion:
+        enabled: true
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp, jaeger]
+        processors: [batch]
+        exporters: [otlp]
+      metrics:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [prometheus]
+ports:
+  prometheus:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: prometheus

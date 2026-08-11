@@ -63,6 +63,21 @@ CLUSTERS = {
         "registry": "ghcr.io/ianeff",
         "values": "deploy/tilt-values-thump-test.yaml",
     },
+    # dev: docs/dev-environment.md — the fully-local profile. Every other
+    # profile targets a cluster built by a separate rig repo; this one is
+    # built by `task dev:cluster` (deploy/dev/k3d.yaml) and its substrate is
+    # installed by this same Tiltfile (the dev-substrate local_resource,
+    # below) rather than by out-of-band provisioning. platform: None — k3d's
+    # node containers share the host kernel natively, no cross-compile
+    # needed, same reasoning as ceph-lab. registry is NOT k3d-prefixed
+    # (unlike the kubectl context) — confirmed live, see deploy/tilt-values-
+    # dev.yaml's image.registry comment.
+    "dev": {
+        "context": "k3d-thump-dev",
+        "platform": None,
+        "registry": "thump-dev-registry:5050",
+        "values": "deploy/tilt-values-dev.yaml",
+    },
 }
 
 config.define_string(
@@ -156,8 +171,8 @@ def guarded(name, body):
     )
 
 
-def kubectl_local(name, body, labels=["infra"]):
-    local_resource(name, cmd=guarded(name, body), labels=labels)
+def kubectl_local(name, body, labels=["infra"], resource_deps=[]):
+    local_resource(name, cmd=guarded(name, body), labels=labels, resource_deps=resource_deps)
 
 
 # ensure_ns_cmd: every secret resource needs the namespace to exist first, and
@@ -175,6 +190,27 @@ def ensure_ns_cmd(name):
 
 
 ENSURE_NS = ensure_ns_cmd("thump")
+
+# dev-substrate (cluster=dev only): everything deploy/chart/thump assumes is
+# already on the cluster — cert-manager+ClusterIssuer, prometheus-operator
+# CRDs, kube-prometheus-stack, Cilium, Loki/Promtail, Tempo/otel-collector,
+# MinIO, the SLO PrometheusRule, the OTel demo — on every other profile,
+# provisioning that is a separate rig repo's job, done long before `tilt up`
+# ever runs. This profile has no rig repo, so deploy/dev/bootstrap.sh does
+# it here instead, as the one thing every other dev-cluster resource depends
+# on transitively through nats/thump-s3-secret below.
+#
+# guarded() (not a plain local_resource cmd): bootstrap.sh's very first
+# helm call needs a reachable API server exactly like every other
+# kubectl/helm call in this file, and its ~10-15 minute runtime means a
+# transient blip is expensive to just fail outright on — same reasoning as
+# every other guarded() call here, scaled up.
+if cluster_name == "dev":
+    local_resource(
+        "dev-substrate",
+        cmd=guarded("dev-substrate", "./deploy/dev/bootstrap.sh"),
+        labels=["substrate"],
+    )
 
 # thump-anthropic-secret: clank's Secret is meant to pre-exist out-of-band
 # (the lab's SOPS flow owns it in prod — see deploy/chart/thump/templates/
@@ -208,22 +244,45 @@ kubectl_local(
 # .env after every fresh `tofu apply` there, since the bucket (and its HMAC
 # key) gets torn down and recreated with `just destroy`/`just apply` same as
 # everything else on that rig.
-kubectl_local(
-    "thump-s3-secret",
-    'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; '
-    + "for v in S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY; do "
-    + '  [ -n "${!v}" ] || { echo "$v not set in .env" >&2; exit 1; }; '
-    + "done; "
-    + ENSURE_NS
-    + " && kubectl --context "
-    + cluster["context"]
-    + " -n thump create secret generic thump-s3 "
-    + '--from-literal=endpoint="$S3_ENDPOINT" --from-literal=bucket="$S3_BUCKET" '
-    + '--from-literal=access-key="$S3_ACCESS_KEY" --from-literal=secret-key="$S3_SECRET_KEY" '
-    + "--dry-run=client -o yaml | kubectl --context "
-    + cluster["context"]
-    + " apply -f -",
-)
+#
+# dev is the one exception: there's no out-of-band bucket to source .env
+# from, so this profile hardcodes the same credentials deploy/dev/values/
+# minio.yaml's rootUser/rootPassword set, against the MinIO
+# dev-substrate installs, instead of requiring Stefan to hand-populate .env
+# for a store this repo already stands up for him. ANTHROPIC_API_KEY above
+# stays the one thing he does supply — that's the point of this env, not an
+# oversight.
+if cluster_name == "dev":
+    s3_body = (
+        ENSURE_NS
+        + " && kubectl --context "
+        + cluster["context"]
+        + " -n thump create secret generic thump-s3 "
+        + '--from-literal=endpoint="http://minio.thump.svc.cluster.local:9000" --from-literal=bucket="thump-wal" '
+        + '--from-literal=access-key="thump-dev" --from-literal=secret-key="thump-dev-secret" '
+        + "--dry-run=client -o yaml | kubectl --context "
+        + cluster["context"]
+        + " apply -f -"
+    )
+    s3_deps = ["dev-substrate"]
+else:
+    s3_body = (
+        'set -a; source .env 2>/dev/null || { echo ".env not found at repo root — expected S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY" >&2; exit 1; }; set +a; '
+        + "for v in S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY; do "
+        + '  [ -n "${!v}" ] || { echo "$v not set in .env" >&2; exit 1; }; '
+        + "done; "
+        + ENSURE_NS
+        + " && kubectl --context "
+        + cluster["context"]
+        + " -n thump create secret generic thump-s3 "
+        + '--from-literal=endpoint="$S3_ENDPOINT" --from-literal=bucket="$S3_BUCKET" '
+        + '--from-literal=access-key="$S3_ACCESS_KEY" --from-literal=secret-key="$S3_SECRET_KEY" '
+        + "--dry-run=client -o yaml | kubectl --context "
+        + cluster["context"]
+        + " apply -f -"
+    )
+    s3_deps = []
+kubectl_local("thump-s3-secret", s3_body, resource_deps=s3_deps)
 
 # thump-seal-secret / thump-nats-js-key-secret: unlike thump-anthropic-secret
 # and thump-s3-secret above, these two keys are pure internal material — no
@@ -488,9 +547,13 @@ if domain_values.get("serviceMonitor", {}).get("enabled", False):
     )
 
 # Bring up NATS first — the beats dial it on boot; bring it up (and Ready) before them.
-k8s_resource(
-    "nats", labels=["broker"], resource_deps=["thump-registry", "thump-nats-js-key-secret"]
-)
+# On dev, nats-tls (certificates.yaml) can't issue until dev-substrate's
+# cert-manager + thump-ca ClusterIssuer exist — without this dep, NATS's
+# StatefulSet pod is stuck waiting on a Secret volume that never appears.
+nats_deps = ["thump-registry", "thump-nats-js-key-secret"]
+if cluster_name == "dev":
+    nats_deps.append("dev-substrate")
+k8s_resource("nats", labels=["broker"], resource_deps=nats_deps)
 
 # thump-bootstrap: a Helm pre-install/pre-upgrade hook Job (job-bootstrap.yaml)
 # that calls broker.ConnectAndEnsure against NATS. Under a real `helm install`
@@ -581,3 +644,26 @@ spec:
       targetPort: 8080
 """))
     k8s_resource("thump-notify-echo", labels=["infra"])
+
+# dev-only convenience port-forwards. The Services below are installed by
+# deploy/dev/bootstrap.sh's own helm releases, not by this Tiltfile's
+# k8s_yaml(rendered) — Tilt has no object-graph knowledge of them to attach
+# a k8s_resource() port_forward to, so each gets its own local_resource
+# running `kubectl port-forward` as a supervised serve_cmd instead. No
+# Gateway API/Ingress in this env (deploy/dev/values/cilium.yaml's
+# gatewayAPI.enabled: false) — this is the whole "reach the UI" story.
+if cluster_name == "dev":
+    def dev_port_forward(name, service, namespace, local_port, remote_port):
+        local_resource(
+            name,
+            serve_cmd="kubectl --context " + cluster["context"]
+            + " -n " + namespace + " port-forward svc/" + service
+            + " " + str(local_port) + ":" + str(remote_port),
+            resource_deps=["dev-substrate"],
+            labels=["ui"],
+        )
+
+    dev_port_forward("grafana-ui", "grafana", "monitoring", 3000, 80)
+    dev_port_forward("prometheus-ui", "prometheus-kube-prometheus-prometheus", "monitoring", 9090, 9090)
+    dev_port_forward("hubble-ui", "hubble-ui", "kube-system", 12000, 80)
+    dev_port_forward("otel-demo-ui", "frontend-proxy", "otel-demo", 8080, 8080)

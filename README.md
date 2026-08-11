@@ -59,7 +59,7 @@ it.
 <!-- Terminal capture: one five-beat cycle on the thump-test rig. -->
 ![One five-beat cycle on the live rig](assets/thump-cycle.gif)
 
-That's a real incident on a four-node kind cluster, not a mock-up: a fault goes in,
+That's a real incident on the thump-test rig (GCE VMs running k3s, not kind), not a mock-up: a fault goes in,
 `rattle` fingerprints the SLO burn, `clank` gathers evidence and proposes a catalogued
 action, `hiss` rules on it, `thump` executes and then watches for convergence. The rig is
 public — [github.com/IanEff/thump-test](https://github.com/IanEff/thump-test) — and the
@@ -433,18 +433,26 @@ puts all six — the five archived binaries plus `bootstrap` — in `bin/`.
 
 ## Standing it up locally
 
-thump runs against four cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
-`ceph-lab` (default), `rook-gke`, `rook-gce-k3s`, and `thump-test`. All four are
-rook/Ceph clusters because that's the rig this repo builds and chaos-tests
-against, not because thump requires one.
+thump runs against five cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
+`ceph-lab` (default), `rook-gke`, `rook-gce-k3s`, `thump-test`, and `dev`. The
+first four are rook/Ceph clusters because that's the rig this repo builds and
+chaos-tests against, not because thump requires one; each needs its own rig
+repo built out-of-band first (`~/projects/ceph/...`).
 
 `thump-test` additionally runs the OpenTelemetry Astronomy Shop demo alongside
 Ceph — a second, orthogonal domain on one cluster, sharing no signal, failure
 class, or catalog action with the first — the general-purpose claim under load
-instead of in a test fixture. Bring one up, then:
+instead of in a test fixture.
+
+`dev` is the odd one out and the one to reach for if you don't already have a
+rig: a fully local k3d cluster with no external repo, no Ceph, and no IAP
+tunnel — Cilium, cert-manager, Prometheus/Loki/Tempo, MinIO, and the OTel demo
+all come up from inside this repo. See
+[`docs/dev-environment.md`](docs/dev-environment.md).
 
 ```sh
-tilt up -- --cluster=rook-gce-k3s   # or ceph-lab, rook-gke, thump-test
+task dev:up                         # dev — no rig repo needed
+tilt up -- --cluster=rook-gce-k3s   # or ceph-lab, rook-gke, thump-test — needs a rig repo first
 ```
 
 **Dry-run is the default, and you have to opt into anything else.**

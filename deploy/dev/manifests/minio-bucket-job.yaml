@@ -1,0 +1,28 @@
+# One-shot Job creating the "thump-wal" bucket every beat's WAL shipper
+# writes to (internal/config's S3_BUCKET). Applied by deploy/dev/bootstrap.sh
+# after the minio Helm release — mc mb is idempotent (--ignore-existing), so
+# rerunning bootstrap.sh on an already-provisioned cluster is a no-op here.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-create-bucket
+  namespace: thump
+spec:
+  backoffLimit: 5
+  activeDeadlineSeconds: 120
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              until mc alias set thump-dev http://minio.thump.svc.cluster.local:9000 thump-dev thump-dev-secret; do
+                echo "waiting for minio..." >&2
+                sleep 2
+              done
+              mc mb --ignore-existing thump-dev/thump-wal

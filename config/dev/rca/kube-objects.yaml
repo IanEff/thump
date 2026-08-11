@@ -1,0 +1,31 @@
+# kube-objects.yaml seeds the graded RCA suite's kube fake — the pods this
+# env's whir/evidence-queries.yaml subject rules need present to resolve a
+# selector, never a claim about what's actually running on the live cluster.
+# Trimmed from config/thump-test/rca/kube-objects.yaml — Ceph pods dropped
+# (this env runs no Ceph).
+pods:
+  - name: cart-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: cart
+    phase: Running
+  - name: checkout-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: checkout
+    phase: Running
+  - name: frontend-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: frontend
+    phase: Running
+  - name: product-catalog-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: product-catalog
+    phase: Running
+  - name: flagd-0
+    namespace: otel-demo
+    labels:
+      app.kubernetes.io/name: flagd
+    phase: Running
