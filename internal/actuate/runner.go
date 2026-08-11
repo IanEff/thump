@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/contract"
 )
 
@@ -46,7 +47,7 @@ type Kube interface {
 // a patch of a resource. A binding pairs the forward op with its reverse so
 // the undo is authored right next to the action it undoes.
 type operation interface {
-	do(ctx context.Context, k Kube) error
+	do(ctx context.Context, d dispatch) error
 }
 
 // execOp runs argv inside the pod matched by selector — the shape every ceph
@@ -59,8 +60,8 @@ type execOp struct {
 	command   []string
 }
 
-func (e execOp) do(ctx context.Context, k Kube) error {
-	return k.Exec(ctx, e.namespace, e.selector, e.command)
+func (e execOp) do(ctx context.Context, d dispatch) error {
+	return d.kube.Exec(ctx, e.namespace, e.selector, e.command)
 }
 
 // flagVariantOp flips one flagd flag's defaultVariant by reading the target
@@ -74,33 +75,23 @@ type flagVariantOp struct {
 	namespace, configMap, dataKey, flag, variant string
 }
 
-func (f flagVariantOp) do(ctx context.Context, k Kube) error {
-	current, err := k.GetConfigMapKey(ctx, f.namespace, f.configMap, f.dataKey)
+func (f flagVariantOp) do(ctx context.Context, d dispatch) error {
+	current, err := d.kube.GetConfigMapKey(ctx, f.namespace, f.configMap, f.dataKey)
 	if err != nil {
 		return fmt.Errorf("read %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
 	}
 
-	var doc map[string]any
-	if err := json.Unmarshal([]byte(current), &doc); err != nil {
-		return fmt.Errorf("parse %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
-	}
-	flags, _ := doc["flags"].(map[string]any)
-	def, ok := flags[f.flag].(map[string]any)
-	if !ok {
-		return fmt.Errorf("flag %q not defined in %s/%s[%s]", f.flag, f.namespace, f.configMap, f.dataKey)
-	}
-	def["defaultVariant"] = f.variant
-
-	updated, err := json.Marshal(doc)
+	updated, err := setDefaultVariant([]byte(current), f.flag, f.variant)
 	if err != nil {
-		return fmt.Errorf("marshal %s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
+		return fmt.Errorf("%s/%s[%s]: %w", f.namespace, f.configMap, f.dataKey, err)
 	}
+
 	patch, err := json.Marshal(map[string]any{"data": map[string]string{f.dataKey: string(updated)}})
 	if err != nil {
 		return fmt.Errorf("build merge patch for %s/%s: %w", f.namespace, f.configMap, err)
 	}
 
-	return k.Patch(ctx, "", "v1", "configmaps", f.namespace, f.configMap, patch)
+	return d.kube.Patch(ctx, "", "v1", "configmaps", f.namespace, f.configMap, patch)
 }
 
 // restartOp triggers a rolling restart of a Deployment by merge-patching a
@@ -115,7 +106,7 @@ type restartOp struct {
 	namespace, deployment string
 }
 
-func (r restartOp) do(ctx context.Context, k Kube) error {
+func (r restartOp) do(ctx context.Context, d dispatch) error {
 	patch, err := json.Marshal(map[string]any{
 		"spec": map[string]any{
 			"template": map[string]any{
@@ -130,13 +121,40 @@ func (r restartOp) do(ctx context.Context, k Kube) error {
 	if err != nil {
 		return fmt.Errorf("build merge patch for %s/%s restart: %w", r.namespace, r.deployment, err)
 	}
-	return k.Patch(ctx, "apps", "v1", "deployments", r.namespace, r.deployment, patch)
+	return d.kube.Patch(ctx, "apps", "v1", "deployments", r.namespace, r.deployment, patch)
 }
 
 // binding is a ref's forward mutation and its authored undo.
 type binding struct {
 	forward operation
 	reverse operation
+}
+
+// maintenanceReleaseOp rewrites one flagd flag in the GitOps source of record
+// and leaves a release for review.
+type maintenanceReleaseOp struct {
+	path, flag, variant string
+}
+
+func (m maintenanceReleaseOp) do(ctx context.Context, d dispatch) error {
+	if d.forge == nil {
+		return fmt.Errorf("no forge wired for %s: %w", m.path, ErrUnbindable)
+	}
+	current, err := d.forge.Read(ctx, m.path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", m.path, err)
+	}
+
+	updated, err := setDefaultVariant(current, m.flag, m.variant)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", m.path, err)
+	}
+
+	_, err = d.forge.Cut(ctx, Release{
+		Key: releaseKey(d.ref, d.reverse), Path: m.path, Content: updated, Notes: d.notes,
+	})
+
+	return err
 }
 
 // actuateTimeout bounds one Runner.Run call. Transport.handle (thump.go)
@@ -154,6 +172,7 @@ const actuateTimeout = 20 * time.Second
 // cluster mutation and applies it through the injected Kube seam.
 type Runner struct {
 	kube     Kube
+	forge    Forge
 	bindings map[string]binding
 	timeout  time.Duration // bounds one Run call; see actuateTimeout
 }
@@ -162,28 +181,31 @@ type Runner struct {
 // liveKube) and tests (NewWith, over a fake). Every ref a Runner can execute
 // is bound from cat, so nothing outside the authored catalog is reachable.
 func newWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) {
-	return newWithTimeout(k, cat, actuateTimeout)
+	return newWithTimeout(k, cat, actuateTimeout, nil)
 }
 
 // newWithTimeout is newWith with the Run bound overridable — production and
 // ordinary tests always go through newWith's fixed actuateTimeout; only a
 // test proving the bound itself needs a shorter one to stay fast.
-func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration) (*Runner, error) {
-	b, err := bind(cat)
+func newWithTimeout(k Kube, cat *contract.StaticCatalog, timeout time.Duration, forge Forge) (*Runner, error) {
+	b, err := bind(cat, forge != nil)
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{kube: k, bindings: b, timeout: timeout}, nil
+	return &Runner{kube: k, forge: forge, bindings: b, timeout: timeout}, nil
 }
 
 // Run dispatches ref's forward (or reverse) mutation through the Kube seam,
 // cut off at r.timeout. An unbound ref is an error, not a silent no-op —
 // thump records it as a failure with text, same as a timed-out or failing
-// mutation does.
-func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64) error {
+// mutation does. The Result reported is the dispatched op's own — see
+// resultOf — because a maintenanceRelease op ran fine and mutated nothing;
+// reporting ResultApplied for it would start transport.go's convergence
+// watcher against a change nobody has accepted.
+func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string]float64, notes string) (outcome.Result, error) {
 	b, ok := r.bindings[ref]
 	if !ok {
-		return fmt.Errorf("actuate: ref %q is not bound to an action", ref)
+		return "", fmt.Errorf("actuate: ref %q is not bound to an action", ref)
 	}
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
@@ -191,10 +213,31 @@ func (r *Runner) Run(ctx context.Context, ref string, reverse bool, _ map[string
 	if reverse {
 		op = b.reverse
 	}
-	if err := op.do(ctx, r.kube); err != nil {
-		return fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
+
+	d := dispatch{kube: r.kube, forge: r.forge, ref: ref, reverse: reverse, notes: notes}
+	if err := op.do(ctx, d); err != nil {
+		return "", fmt.Errorf("actuate: %s (reverse=%v): %w", ref, reverse, err)
 	}
-	return nil
+	return resultOf(op), nil
+}
+
+// resultOf reports what kind of op actually ran: every op mutates the
+// cluster directly except maintenanceReleaseOp, which leaves an artifact
+// for review instead. A seqOp's result is its last step's, since that's the
+// one still pending review (or the one that mutated) once the sequence
+// finishes.
+func resultOf(op operation) outcome.Result {
+	switch o := op.(type) {
+	case maintenanceReleaseOp:
+		return outcome.ResultProposed
+	case seqOp:
+		if len(o) == 0 {
+			return outcome.ResultApplied
+		}
+		return resultOf(o[len(o)-1])
+	default:
+		return outcome.ResultApplied
+	}
 }
 
 // scaleOp merge-patches a Deployment's spec.replicas to a fixed count — the
@@ -206,14 +249,14 @@ type scaleOp struct {
 	replicas              int
 }
 
-func (s scaleOp) do(ctx context.Context, k Kube) error {
+func (s scaleOp) do(ctx context.Context, d dispatch) error {
 	patch, err := json.Marshal(map[string]any{
 		"spec": map[string]any{"replicas": s.replicas},
 	})
 	if err != nil {
 		return fmt.Errorf("build merge patch for %s/%s scale: %w", s.namespace, s.deployment, err)
 	}
-	return k.Patch(ctx, "apps", "v1", "deployments", s.namespace, s.deployment, patch)
+	return d.kube.Patch(ctx, "apps", "v1", "deployments", s.namespace, s.deployment, patch)
 }
 
 // seqOp runs its operations in order, stopping at the first failure —
@@ -221,11 +264,67 @@ func (s scaleOp) do(ctx context.Context, k Kube) error {
 // needs no verb of its own.
 type seqOp []operation
 
-func (s seqOp) do(ctx context.Context, k Kube) error {
+func (s seqOp) do(ctx context.Context, d dispatch) error {
 	for _, op := range s {
-		if err := op.do(ctx, k); err != nil {
+		if err := op.do(ctx, d); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// dispatch is what one Run call hands its operation.
+type dispatch struct {
+	kube    Kube
+	forge   Forge
+	ref     string // the authored contract ref
+	reverse bool   // true for an undo — see releaseKey
+	notes   string // thump's rendering of the ranked set, empty for a mutation.
+}
+
+// Release is one corrective maintenance release: the changed source and the
+// notes a reviewer reads before accepting it.
+type Release struct {
+	Key     string // open release per authored contract ref
+	Path    string // the file in the GitOps source this release changes.
+	Content []byte
+	Notes   string
+}
+
+type Forge interface {
+	// Read returns the current bytes at path on the default branch.
+	Read(ctx context.Context, path string) ([]byte, error)
+	// Cut publishes rel for review and returns where a human can find it.
+	Cut(ctx context.Context, rel Release) (url string, err error)
+	// Withdraw retracts the release for key if it is still open, and
+	// reports whether it had already been accepted.
+	Withdraw(ctx context.Context, key string) (accepted bool, err error)
+}
+
+// setDefaultVariant returns doc with flag's defaultVariant set to variant.
+func setDefaultVariant(doc []byte, flag, variant string) ([]byte, error) {
+	var parsed map[string]any
+	if err := json.Unmarshal(doc, &parsed); err != nil {
+		return nil, fmt.Errorf("parse flagd document: %w", err)
+	}
+	flags, _ := parsed["flags"].(map[string]any)
+
+	def, ok := flags[flag].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("flag %q not defined in flagd document", flag)
+	}
+	def["defaultVariant"] = variant
+
+	return json.Marshal(parsed)
+}
+
+// releaseKey is one open release's identity — a redelivery in the same
+// direction collapses onto it, but a revert is a second review against the
+// same path, so it keys separately or it would silently rewrite the forward
+// release instead of undoing it.
+func releaseKey(ref string, reverse bool) string {
+	if reverse {
+		return ref + ":revert"
+	}
+	return ref
 }

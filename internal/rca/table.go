@@ -16,9 +16,16 @@ import "github.com/ianeff/thump/api/v1/proposal"
 // decoy got there by luck, and MustNotCite catches it even when WantClass
 // still matches.
 type Case struct {
-	Name     string            // the graded claim, read as a sentence in the report
-	Fixture  string            // filename under internal/clank/testdata/detections/
-	Evidence map[string]string // real signal + planted decoy, keyed by evidence-queries.yaml query name
+	Name    string // the graded claim, read as a sentence in the report
+	Fixture string // filename under internal/clank/testdata/detections/
+	// Evidence is real signal + planted decoy for this row, keyed by either
+	// an evidence-queries.yaml query name (fakePrometheus's lookup) or a
+	// subjects: subject name (fakeLoki's) — the two key spaces are disjoint
+	// on every shipped rig config, but nothing enforces that beyond
+	// TestTable_GradesOnlyQueriesTheShippedEvidenceConfigDefines; a rig
+	// naming a subject the same as a query would misdirect evidence
+	// silently.
+	Evidence map[string]string
 
 	WantDisposition string // "propose" | "insufficient"
 	WantContractRef string // checked only when WantDisposition == "propose"
@@ -274,6 +281,7 @@ func Table() []Case {
 				"severity_cart_availability": "0.5",
 				"cart_error_ratio":           "0.4737",
 				"demo_pods_not_running":      "0",
+				"cart":                       "ERROR cart-6f9d4c: EmptyCart RPC failed, payment gateway timeout",
 			},
 		},
 

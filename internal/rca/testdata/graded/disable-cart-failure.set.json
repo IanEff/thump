@@ -3,7 +3,7 @@
   "signalRef": "slo_burn:cart",
   "saoSnapshot": {
     "version": 1,
-    "assembledAt": "2026-08-07T15:50:10.907853-04:00",
+    "assembledAt": "2026-08-10T07:59:21.443165-04:00",
     "signal": {
       "confidence": 1,
       "severity": {
@@ -34,12 +34,12 @@
   "failureClass": "service_failure",
   "hypotheses": [
     {
-      "name": "Injected cart service fault (EmptyCart RPC)",
-      "weight": 0.85
+      "name": "cartFailure flag is enabled, injecting EmptyCart RPC fault",
+      "weight": 0.95
     },
     {
-      "name": "Cart service misconfiguration or internal error",
-      "weight": 0.15
+      "name": "Checkout service intermittently fails to call cart due to transient network issue",
+      "weight": 0.05
     }
   ],
   "evidence": [
@@ -60,10 +60,28 @@
       "subject": "cart"
     },
     {
+      "tool": "kube",
+      "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\",\"selector\":{\"app.kubernetes.io/name\":\"cart\"}}",
+      "summary": "cart-0 (Running)",
+      "ref": "kube://otel-demo/pods",
+      "live": true,
+      "subject": "cart"
+    },
+    {
+      "tool": "loki",
+      "query": "{namespace=\"otel-demo\", service_name=\"cart\"}",
+      "summary": "1 log line(s); last: ERROR cart-6f9d4c: EmptyCart RPC failed, payment gateway timeout",
+      "ref": "loki://otel-demo/service_name=cart",
+      "live": true,
+      "subject": "cart"
+    },
+    {
       "tool": "metrics",
-      "query": "product_catalog_error_ratio",
-      "summary": "query returned no data",
-      "subject": "product-catalog"
+      "query": "slo_burn_cart",
+      "summary": "slo_burn_cart = 50",
+      "ref": "metrics://slo_burn_cart",
+      "live": true,
+      "subject": "cart"
     },
     {
       "tool": "metrics",
@@ -73,31 +91,25 @@
     },
     {
       "tool": "kube",
-      "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\",\"selector\":{\"app\":\"cart\"}}",
-      "summary": "no pods found"
+      "query": "{\"namespace\":\"otel-demo\",\"resource\":\"pods\",\"selector\":{\"app.kubernetes.io/name\":\"checkout\"}}",
+      "summary": "checkout-0 (Running)",
+      "ref": "kube://otel-demo/pods",
+      "live": true,
+      "subject": "checkout"
     },
     {
       "tool": "kube",
-      "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\",\"selector\":{\"app\":\"product-catalog\"}}",
-      "summary": "no pods found"
+      "query": "{\"namespace\":\"otel-demo\",\"resource\":\"pods\",\"selector\":{\"app.kubernetes.io/name\":\"flagd\"}}",
+      "summary": "flagd-0 (Running)",
+      "ref": "kube://otel-demo/pods",
+      "live": true,
+      "subject": "flagd"
     },
     {
-      "tool": "kube",
-      "query": "{\"namespace\":\"otel-demo\",\"resource\":\"pods\"}",
-      "summary": "no pods found"
-    },
-    {
-      "tool": "metrics",
-      "query": "acme_api_error_ratio",
-      "summary": "query returned no data",
-      "subject": "acme-api"
-    },
-    {
-      "tool": "metrics",
-      "query": "demo_pods_not_running",
-      "summary": "demo_pods_not_running = 0",
-      "ref": "metrics://demo_pods_not_running",
-      "live": true
+      "tool": "loki",
+      "query": "{namespace=\"otel-demo\", service_name=\"checkout\"}",
+      "summary": "no matching log lines",
+      "subject": "checkout"
     }
   ],
   "serviceTier": "tier-1",
@@ -110,8 +122,9 @@
   "proposals": [
     {
       "contractRef": "disable-cart-failure",
-      "confidence": 0.7,
-      "computedConfidence": 0.7,
+      "confidence": 0.95,
+      "computedConfidence": 1,
+      "confidenceCeilingBound": true,
       "predictedImpact": {
         "severityReductionPct": 0.9
       },
@@ -128,7 +141,7 @@
       "citations": [
         "cart_error_ratio",
         "severity_cart_availability",
-        "demo_pods_not_running"
+        "{namespace=\"otel-demo\", service_name=\"cart\"}"
       ]
     }
   ],

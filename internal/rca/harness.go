@@ -72,6 +72,7 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 	}
 
 	prom := fakePrometheus(promQLByName(ev.Queries), c.Evidence)
+	loki := fakeLoki(lokiLines(ev.Index, c.Evidence))
 
 	tools := map[string]reason.Tool{
 		// A second live backend is what makes GroundingMany reachable at
@@ -82,6 +83,7 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 			Client:   kubefake.NewSimpleClientset(kubeObjects...),
 			Subjects: ev.Index,
 		},
+		"loki": &evidence.LokiTool{BaseURL: loki.URL, Subjects: ev.Index},
 	}
 
 	cases := clank.NewCaseBase()
@@ -105,7 +107,10 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 		Tracer:         noop.Tracer{},
 	}
 
-	return harness{engine: eng, detection: det, close: prom.Close}, nil
+	return harness{engine: eng, detection: det, close: func() {
+		prom.Close()
+		loki.Close()
+	}}, nil
 }
 
 // RunCase grades one scenario against model and returns its Row. It never

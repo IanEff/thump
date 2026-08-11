@@ -25,7 +25,7 @@ func ExampleAuthority_Evaluate() {
 			ContractRef:     "throttle-non-critical-paths",
 			Confidence:      0.87,
 			BlastTier:       proposal.BlastMed,
-			ReversalPath:    &proposal.ReversalPath{Method: "restore-traffic-baseline"},
+			ReversalPath:    &proposal.ReversalPath{Method: "restore-traffic-baseline", Automatic: true},
 			GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 			Rank:            1,
 		}},
@@ -65,7 +65,7 @@ func ExampleAuthority_Evaluate_belowTheFloor() {
 			ContractRef:     "throttle-non-critical-paths",
 			Confidence:      0.60,
 			BlastTier:       proposal.BlastMed,
-			ReversalPath:    &proposal.ReversalPath{Method: "restore-traffic-baseline"},
+			ReversalPath:    &proposal.ReversalPath{Method: "restore-traffic-baseline", Automatic: true},
 			GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 		}},
 		Recommended: "p1",
@@ -101,7 +101,7 @@ func ExampleAuthority_Evaluate_heldForAHuman() {
 			ContractRef:     "accelerate-recovery",
 			Confidence:      0.95,
 			BlastTier:       proposal.BlastHigh,
-			ReversalPath:    &proposal.ReversalPath{Method: "restore-recovery-defaults"},
+			ReversalPath:    &proposal.ReversalPath{Method: "restore-recovery-defaults", Automatic: true},
 			GovernanceLevel: &proposal.GovernanceLevel{Band: string(decision.BandActReversible)},
 		}},
 		Recommended: "p1",
@@ -138,7 +138,7 @@ func ExampleAuthority_Evaluate_ungatedInput() {
 		Proposals: []proposal.Candidate{{
 			ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.99,
 			BlastTier:    proposal.BlastLow,
-			ReversalPath: &proposal.ReversalPath{Method: "restore-traffic-baseline"},
+			ReversalPath: &proposal.ReversalPath{Method: "restore-traffic-baseline", Automatic: true},
 		}},
 		Recommended: "p1",
 	}
@@ -164,7 +164,7 @@ func ExampleAuthority_Evaluate_absenceIsNotPrivilege() {
 		Proposals: []proposal.Candidate{{
 			ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
 			BlastTier:    proposal.BlastMed,
-			ReversalPath: &proposal.ReversalPath{Method: "restore-traffic-baseline"},
+			ReversalPath: &proposal.ReversalPath{Method: "restore-traffic-baseline", Automatic: true},
 			// GovernanceLevel deliberately absent — no band was requested.
 		}},
 		Recommended: "p1",
@@ -189,10 +189,10 @@ func ExampleAuthority_Evaluate_absenceIsNotPrivilege() {
 // action nobody can reverse wants a human whatever its blast radius, and a
 // reversible one that reaches wide still does.
 func ExampleRiskBand() {
-	fmt.Println(hiss.RiskBand(true, proposal.BlastLow))
-	fmt.Println(hiss.RiskBand(true, proposal.BlastMed))
-	fmt.Println(hiss.RiskBand(true, proposal.BlastHigh))
-	fmt.Println(hiss.RiskBand(false, proposal.BlastLow))
+	fmt.Println(hiss.RiskBand(true, true, proposal.BlastLow))
+	fmt.Println(hiss.RiskBand(true, true, proposal.BlastMed))
+	fmt.Println(hiss.RiskBand(true, true, proposal.BlastHigh))
+	fmt.Println(hiss.RiskBand(false, true, proposal.BlastLow))
 
 	// Output:
 	// act_reversible

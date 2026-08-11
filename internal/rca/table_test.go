@@ -8,6 +8,7 @@ import (
 
 	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/rca"
+	"github.com/ianeff/thump/internal/subjects"
 )
 
 // TestTable_GradesOnlyQueriesTheShippedEvidenceConfigDefines runs with no API
@@ -15,7 +16,9 @@ import (
 // Candidate.Citations, so a query renamed in evidence-queries.yaml turns a
 // required citation into one that can never be satisfied — the row then reads
 // as a reasoner regression on every run, and the fix gets applied to the
-// reasoner.
+// reasoner. Evidence keys are checked against both key spaces it can name —
+// see Case.Evidence's doc comment — so a typo in a loki subject name fails
+// here instead of silently scripting a fake nobody's query ever reads.
 func TestTable_GradesOnlyQueriesTheShippedEvidenceConfigDefines(t *testing.T) {
 	t.Parallel()
 
@@ -39,8 +42,10 @@ func TestTable_GradesOnlyQueriesTheShippedEvidenceConfigDefines(t *testing.T) {
 				}
 			}
 			for q := range tc.Evidence {
-				if _, ok := ev.Queries[q]; !ok {
-					t.Error("row scripts a value for a query that does not exist", q)
+				_, isQuery := ev.Queries[q]
+				isSubject := slices.ContainsFunc(ev.Index, func(r subjects.SubjectRule) bool { return r.Subject == q })
+				if !isQuery && !isSubject {
+					t.Error("row scripts a value for a query or subject that does not exist", q)
 				}
 			}
 			path := filepath.Join("..", "clank", "testdata", "detections", tc.Fixture)

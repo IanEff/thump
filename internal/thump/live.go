@@ -17,7 +17,7 @@ import (
 // command binding — it is the one place that knows what
 // "throttle-non-critical-paths" runs to act and what "unthrottle" runs to undo.
 type ActionRunner interface {
-	Run(ctx context.Context, ref string, reverse bool, params map[string]float64) error
+	Run(ctx context.Context, ref string, reverse bool, params map[string]float64, notes string) (outcome.Result, error)
 }
 
 // Live is the Executor that actually acts — it delegates to an ActionRunner
@@ -30,10 +30,11 @@ type Live struct {
 }
 
 // Execute runs o's action (its undo when o is a reversal) and reports the
-// result as a live Outcome: ResultSuccess when the runner returns nil, or
-// ResultFailure carrying the runner's error text when it does not — a failure
-// with no error text is silence, not accountability, so the text is required
-// company, not decoration.
+// result as a live Outcome: the runner's own Result on success — a mutation
+// reports ResultApplied, a maintenance release reports ResultProposed — or
+// ResultFailure carrying the runner's error text when it returns one. A
+// failure with no error text is silence, not accountability, so the text is
+// required company, not decoration.
 func (l Live) Execute(ctx context.Context, o Order, now time.Time) outcome.Outcome {
 	oc := outcome.Outcome{
 		ID:          fmt.Sprintf("out:%s:%d", o.SignalRef, now.Unix()),
@@ -41,12 +42,15 @@ func (l Live) Execute(ctx context.Context, o Order, now time.Time) outcome.Outco
 		SignalRef:   o.SignalRef,
 		ContractRef: o.ContractRef,
 		Mode:        outcome.ModeLive,
-		Result:      outcome.ResultApplied,
 		ExecutedAt:  now,
 	}
-	if err := l.Runner.Run(ctx, o.ContractRef, o.Kind == OrderReversal, o.Parameters); err != nil {
+
+	res, err := l.Runner.Run(ctx, o.ContractRef, o.Kind == OrderReversal, o.Parameters, o.Notes)
+	if err != nil {
 		oc.Result = outcome.ResultFailure
 		oc.Error = err.Error()
+	} else {
+		oc.Result = res
 	}
 	return oc
 }

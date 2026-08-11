@@ -15,7 +15,7 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// stdlib, none of it load-bearing for mischief
 		`"context"`: true, `"crypto/tls"`: true, `"errors"`: true, `"flag"`: true, `"fmt"`: true,
 		`"io"`: true, `"log/slog"`: true, `"os"`: true, `"os/signal"`: true,
-		`"path/filepath"`: true, `"sync"`: true, `"syscall"`: true, `"time"`: true,
+		`"path/filepath"`: true, `"strings"`: true, `"sync"`: true, `"syscall"`: true, `"time"`: true,
 		// the wire codec (hiss writes with it; we read with it)
 		`"sigs.k8s.io/yaml"`: true,
 		// the leaves — vocabulary only, no behavior that touches the world

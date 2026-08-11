@@ -87,6 +87,15 @@ tracing:
 cilium:
   apiserverEgress: true
 
+# Points at the Tiltfile's thump-notify-echo fixture (cluster_name ==
+# "thump-test" gate, below the CLUSTERS table), not a real Slack incoming
+# webhook — phase-af-cut-not-clobber.md Step 0c. slack.Webhook only cares
+# that the URL accepts a POSTed {"text": ...} and answers 2xx, so an echo
+# receiver proves the wire format; read its logs (`kubectl --context
+# thump-test -n thump logs deploy/thump-notify-echo`) to see the digest.
+notify:
+  slackWebhookURL: http://thump-notify-echo.thump.svc.cluster.local:8080/
+
 # ⚠️ TEMPORARY — arm-live block for the Phase-I live-proof run on thump-test
 # (2026-07-20). Remove after the run. Same shape as rook-gce-k3s's I-live v2
 # block: executor: live lets thump actually merge-patch the flagd ConfigMap;

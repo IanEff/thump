@@ -96,6 +96,7 @@ func TestShippedCatalog_RestoreOnSuccessMatchesEachActionsAuthoredIntent(t *test
 		"accelerate-recovery":             true,
 		"disable-product-catalog-failure": false,
 		"disable-cart-failure":            false,
+		"disable-cart-failure-release":    false,
 		"restart-cart-pod":                false,
 		"throttle-non-critical-paths":     false,
 		"acme-shed-load":                  false,

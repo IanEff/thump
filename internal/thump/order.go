@@ -25,6 +25,11 @@ type Order struct {
 	Reversal    ReversalPlan             `json:"reversal" yaml:"reversal,omitempty"`
 	Success     contract.SuccessCriteria `json:"success" yaml:"success,omitempty"` // rendered, not evaluated, in v1 — no convergence watcher exists yet to check it
 	RenderedAt  time.Time                `json:"renderedAt" yaml:"renderedAt,omitempty"`
+	// Notes is the human-readable case for this action, rendered from the
+	// whole ranked Set — the alternatives, their confidence, their citations,
+	// and why the winner won. Empty for a mutation; a maintenance release
+	// carries it into the artifact a reviewer reads.
+	Notes string `json:"notes,omitempty" yaml:"notes,omitempty"`
 }
 
 // OrderKind separates a forward action from its undo — the distinction a

@@ -188,6 +188,10 @@ func goldenOrder() thump.Order {
 			SeverityQuery: "severity_rgw_availability",
 		},
 		RenderedAt: frozenNow(),
+		Notes: "Recommended: p1\n\nCandidates:\n" +
+			"* #1 throttle-non-critical-paths    confidence=0.87\n" +
+			"  #2 restart-rgw-pool               confidence=0.91\n\n" +
+			"Evidence:\n  - [metrics] burn: rgw pool saturating\n",
 	}
 }
 

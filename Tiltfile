@@ -351,8 +351,17 @@ DEV_REGISTRY = cluster["registry"]
 COMMIT = str(local("git rev-parse --verify HEAD || echo none")).strip()
 
 # Fast host-native compilation for local dev loop (Option 2).
-# `go tool otelc setup` instruments the source tree on load (idempotent, ~1s).
-local("go tool otelc setup ./cmd/bootstrap ./cmd/clank ./cmd/hiss ./cmd/rattle ./cmd/thump", quiet=True, echo_off=True)
+#
+# `go tool otelc go build` (not a bare `go build`), same entry point
+# Taskfile.yaml's `build` task uses — the only supported one. otelc's own
+# instrumentation packages never live in go.mod (upstream issue #585,
+# .gitignore's comment, Taskfile.yaml's otelc:check-gomod); `otelc go build`
+# pins them in transiently, builds, and unpins in one invocation. A
+# standalone `otelc setup` beforehand (this file's prior approach) writes
+# cmd/*/otelc.runtime.go without ever pinning go.mod to match it, so a
+# plain `go build` right after can't resolve the packages it just
+# generated imports for — reproduced live 2026-08-10, see
+# thump-running-notes.
 
 if cluster["platform"] == "linux/amd64":
     target_arch = "amd64"
@@ -365,7 +374,7 @@ for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
     cmd = (
         "mkdir -p bin/dev && "
         + "CGO_ENABLED=0 GOOS=linux GOARCH=" + target_arch + " "
-        + "go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
+        + "go tool otelc go build -ldflags '-s -w -X main.version=dev -X main.commit=" + COMMIT + "' "
         + "-o bin/dev/" + beat + " ./cmd/" + beat + " && "
         + "docker build " + platform_flag + "-f Dockerfile.dev --build-arg BEAT=" + beat + " -t $EXPECTED_REF bin/dev"
     )
@@ -517,3 +526,58 @@ for beat in ["rattle", "clank", "hiss", "thump"]:
         resource_deps=deps,
         trigger_mode=TRIGGER_MODE_MANUAL,  # same "you decide when it wakes" posture (W0-4)
     )
+
+# thump-notify-echo: a Slack-webhook stand-in for verifying the notify wire
+# format before a live session (phase-af-cut-not-clobber.md Step 0c).
+# slack.Webhook (internal/notify/slack/slack.go) posts a POST {"text": ...}
+# to whatever URL it's given and only cares about the 2xx it gets back —
+# nothing about the wire is Slack-specific, so an echo receiver proves the
+# contract without a real webhook URL. mendhak/http-https-echo logs every
+# request (headers + body) to stdout, so `kubectl logs
+# deploy/thump-notify-echo -n thump` shows the digest slack.digest()
+# rendered, no debugger needed.
+#
+# thump-test only: it's the one profile whose values file points
+# notify.slackWebhookURL here (deploy/tilt-values-thump-test.yaml). Raw
+# k8s_yaml(), not part of the chart — this is dev-session scaffolding, not
+# something a real `helm install` should ever carry, and it never touches
+# ~/projects/ceph/thump-test's GitOps tree (that repo is public; see Step
+# 4b's disclosure argument for why nothing test-only belongs there). The
+# "thump" namespace already exists by this point (ENSURE_NS's local() call
+# above runs before any k8s_yaml), so no resource_deps is needed.
+if cluster_name == "thump-test":
+    k8s_yaml(blob("""
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thump-notify-echo
+  namespace: thump
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: thump-notify-echo}
+  template:
+    metadata:
+      labels: {app: thump-notify-echo}
+    spec:
+      containers:
+        - name: echo
+          image: mendhak/http-https-echo:31
+          ports:
+            - containerPort: 8080
+          env:
+            - name: HTTP_PORT
+              value: "8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thump-notify-echo
+  namespace: thump
+spec:
+  selector: {app: thump-notify-echo}
+  ports:
+    - port: 8080
+      targetPort: 8080
+"""))
+    k8s_resource("thump-notify-echo", labels=["infra"])

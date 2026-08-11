@@ -3,7 +3,7 @@
   "signalRef": "slo_burn:cephblockpool",
   "saoSnapshot": {
     "version": 1,
-    "assembledAt": "2026-08-07T15:49:58.936333-04:00",
+    "assembledAt": "2026-08-10T07:59:05.038524-04:00",
     "signal": {
       "confidence": 1,
       "severity": {
@@ -34,62 +34,22 @@
   "failureClass": "redundancy_degraded",
   "hypotheses": [
     {
-      "name": "OSD down causes degraded placement groups with stalled recovery",
-      "weight": 0.95
+      "name": "Transient OSD failure causing degradation; recovery held to prevent thrashing",
+      "weight": 0.7
     },
     {
-      "name": "Cluster in transient rebalance cycle from node failure",
-      "weight": 0.05
+      "name": "OSD down with recovery capacity available but not yet triggered",
+      "weight": 0.3
     }
   ],
   "evidence": [
     {
       "tool": "metrics",
-      "query": "severity_acme_api_availability",
-      "summary": "query returned no data",
-      "subject": "acme-api"
-    },
-    {
-      "tool": "metrics",
-      "query": "severity_cart_availability",
-      "summary": "query returned no data",
-      "subject": "cart"
-    },
-    {
-      "tool": "metrics",
-      "query": "severity_product_catalog_availability",
-      "summary": "query returned no data",
-      "subject": "product-catalog"
-    },
-    {
-      "tool": "metrics",
-      "query": "severity_rgw_availability",
-      "summary": "query returned no data",
-      "subject": "ceph-rgw"
-    },
-    {
-      "tool": "metrics",
-      "query": "severity_ceph_redundancy",
-      "summary": "query returned no data",
-      "subject": "cephblockpool"
-    },
-    {
-      "tool": "metrics",
-      "query": "acme_api_error_ratio",
-      "summary": "query returned no data",
-      "subject": "acme-api"
-    },
-    {
-      "tool": "metrics",
-      "query": "cart_error_ratio",
-      "summary": "query returned no data",
-      "subject": "cart"
-    },
-    {
-      "tool": "metrics",
-      "query": "product_catalog_error_ratio",
-      "summary": "query returned no data",
-      "subject": "product-catalog"
+      "query": "ceph_health",
+      "summary": "ceph_health = 1",
+      "ref": "metrics://ceph_health",
+      "live": true,
+      "subject": "ceph-cluster"
     },
     {
       "tool": "metrics",
@@ -123,9 +83,17 @@
     },
     {
       "tool": "metrics",
-      "query": "ceph_health",
-      "summary": "ceph_health = 1",
-      "ref": "metrics://ceph_health",
+      "query": "cluster_used_ratio",
+      "summary": "cluster_used_ratio = 0.0135",
+      "ref": "metrics://cluster_used_ratio",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "pgs_backfilling",
+      "summary": "pgs_backfilling = 0",
+      "ref": "metrics://pgs_backfilling",
       "live": true,
       "subject": "ceph-cluster"
     },
@@ -138,15 +106,40 @@
       "subject": "ceph-cluster"
     },
     {
-      "tool": "metrics",
-      "query": "slo_burn_redundancy",
-      "summary": "query returned no data",
-      "subject": "cephblockpool"
+      "tool": "kube",
+      "query": "{\"resource\":\"pods\",\"namespace\":\"rook-ceph\",\"selector\":{\"app\":\"rook-ceph-osd\"}}",
+      "summary": "no pods found",
+      "subject": "ceph-osd"
+    },
+    {
+      "tool": "loki",
+      "query": "{namespace=\"rook-ceph\", app=\"rook-ceph-osd\"}",
+      "summary": "no matching log lines",
+      "subject": "ceph-osd"
     },
     {
       "tool": "kube",
-      "query": "{\"resource\":\"pods\",\"namespace\":\"default\"}",
-      "summary": "no pods found"
+      "query": "{\"namespace\":\"rook-ceph\",\"resource\":\"pods\",\"selector\":{\"ceph_daemon_type\":\"osd\"}}",
+      "summary": "no pods found",
+      "subject": "ceph-osd"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"namespace\":\"rook-ceph\",\"resource\":\"pods\",\"selector\":{\"app\":\"rook-ceph-operator\"}}",
+      "summary": "no pods found",
+      "subject": "rook-operator"
+    },
+    {
+      "tool": "loki",
+      "query": "{namespace=\"rook-ceph\", ceph_daemon_type=\"osd\"}",
+      "summary": "no matching log lines",
+      "subject": "ceph-osd"
+    },
+    {
+      "tool": "metrics",
+      "query": "severity_ceph_redundancy",
+      "summary": "query returned no data",
+      "subject": "cephblockpool"
     },
     {
       "tool": "kube",
@@ -157,23 +150,20 @@
     },
     {
       "tool": "metrics",
-      "query": "rook_pods_not_running",
-      "summary": "rook_pods_not_running = 4",
-      "ref": "metrics://rook_pods_not_running",
-      "live": true,
+      "query": "slo_burn_ceph_health",
+      "summary": "query returned no data",
       "subject": "ceph-cluster"
     },
     {
       "tool": "metrics",
-      "query": "nodes_not_ready",
-      "summary": "nodes_not_ready = 0",
-      "ref": "metrics://nodes_not_ready",
-      "live": true
+      "query": "slo_burn_redundancy",
+      "summary": "query returned no data",
+      "subject": "cephblockpool"
     },
     {
-      "tool": "metrics",
-      "query": "demo_pods_not_running",
-      "summary": "query returned no data"
+      "tool": "loki",
+      "query": "{namespace=\"rook-ceph\"}",
+      "summary": "no matching log lines"
     }
   ],
   "serviceTier": "tier-1",
@@ -184,6 +174,29 @@
     "passed": true
   },
   "proposals": [
+    {
+      "contractRef": "hold-rebalance",
+      "confidence": 0.7,
+      "computedConfidence": 0.7,
+      "predictedImpact": {
+        "severityReductionPct": 0.7
+      },
+      "blastTier": "med",
+      "reversalPath": {
+        "method": "release-rebalance",
+        "watching": "ceph_health",
+        "trigger": "HEALTH_OK"
+      },
+      "governanceLevel": {
+        "band": "act_reversible"
+      },
+      "rank": 1,
+      "citations": [
+        "pgs_degraded",
+        "osds_down",
+        "ceph_health"
+      ]
+    },
     {
       "contractRef": "accelerate-recovery",
       "confidence": 0.7,
@@ -200,12 +213,11 @@
       "governanceLevel": {
         "band": "act_reversible"
       },
-      "rank": 1,
+      "rank": 2,
       "citations": [
         "pgs_degraded",
         "osds_down",
-        "recovery_ops_rate",
-        "ceph_health"
+        "cluster_used_ratio"
       ]
     }
   ],

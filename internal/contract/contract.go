@@ -142,6 +142,7 @@ type Step struct {
 	DataKey   string `json:"dataKey,omitempty" yaml:"dataKey,omitempty"`
 	Flag      string `json:"flag,omitempty" yaml:"flag,omitempty"`
 	Variant   string `json:"variant,omitempty" yaml:"variant,omitempty"`
+	Path      string `json:"path,omitempty" yaml:"path,omitempty"`
 }
 
 type Range struct {

@@ -171,6 +171,38 @@
     severityQuery: severity_cart_availability
     severityReductionPct: 0.9
 
+- name: disable-cart-failure-release
+  # GitOps sibling of disable-cart-failure, beside it so both modes land in
+  # one ranked set on the same detection and become directly comparable. The
+  # reversal is a second maintenanceRelease, not withdraw: withdraw only
+  # retracts an unmerged release (Part 3), it does not undo one a reviewer
+  # already merged.
+  applicableFailureClasses:
+    - service_failure
+  applicableTiers:
+    - tier-1
+  action:
+    description: >-
+      Set the cartFailure flagd flag to "off" in the GitOps source of record
+      and cut a maintenance release for review, letting the cluster's own
+      reconciler apply it; reversible by cutting a second release that a
+      reviewer must also merge.
+  blastTier: low
+  reversal:
+    method: revert-cart-failure-release
+    fallback: page-oncall
+  execution:
+    forward:
+      - {verb: maintenanceRelease, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "off"}
+    reverse:
+      - {verb: maintenanceRelease, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "on"}
+  successCriteria:
+    metric: cart_error_ratio
+    target: "cart_error_ratio == 0"
+    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    severityQuery: severity_cart_availability
+    severityReductionPct: 0.9
+
 - name: restart-cart-pod
   # cart's plausible-but-wrong alternative (Wave 7's ranker exercise): real,
   # BlastLow, reversible — clears the gate on its own merits. What

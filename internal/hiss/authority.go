@@ -89,7 +89,8 @@ func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.D
 
 	// STAGE 2 — the shaper. Runs only once every stage-1 minimum is met; it
 	// asks how much latitude an eligible Candidate gets, not eligibility.
-	d.RiskBand = RiskBand(rec.ReversalPath != nil, rec.BlastTier)
+	automatic := rec.ReversalPath != nil && rec.ReversalPath.Automatic
+	d.RiskBand = RiskBand(rec.ReversalPath != nil, automatic, rec.BlastTier)
 	if bandRank(d.RiskBand) > bandRank(pol.AutoBand[ps.ServiceTier]) {
 		d.Reasons = append(d.Reasons, ReasonRiskCeiling)
 		d.Verdict = decision.VerdictHold

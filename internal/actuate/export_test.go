@@ -18,8 +18,16 @@ func NewWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) { return newW
 // NewWithTimeoutForTest exposes newWithTimeout so a test can shrink
 // actuateTimeout down to something synctest can advance instantly, rather
 // than waiting out the real production bound.
-func NewWithTimeoutForTest(k Kube, cat *contract.StaticCatalog, timeout time.Duration) (*Runner, error) {
-	return newWithTimeout(k, cat, timeout)
+func NewWithTimeoutForTest(k Kube, cat *contract.StaticCatalog, timeout time.Duration, forge Forge) (*Runner, error) {
+	return newWithTimeout(k, cat, timeout, forge)
+}
+
+// NewWithForgeForTest is NewWith plus a Forge, for a test that dispatches a
+// maintenanceRelease-bound ref or otherwise needs the full shipped catalog to
+// bind — the shipped catalog now names one, so every Runner built over it
+// needs a forge to construct at all, fake or real.
+func NewWithForgeForTest(k Kube, forge Forge, cat *contract.StaticCatalog) (*Runner, error) {
+	return newWithTimeout(k, cat, actuateTimeout, forge)
 }
 
 // FirstRunningForTest exposes firstRunning to actuate_test — pure

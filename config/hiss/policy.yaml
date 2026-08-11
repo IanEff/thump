@@ -52,3 +52,11 @@ maxBand:
 autoBand:
   tier-1: act_reversible
 requireReversal: true
+# Any detection evaluated inside a window escalates regardless of confidence
+# or band (authority.go:79-83) — a named change freeze, not a throttle. Left
+# empty at rest; uncomment with real timestamps to prove the escalate path
+# without waiting on a confidence-floor miss.
+# freezeWindows:
+#   - name: live-proof-window
+#     start: 2026-08-10T13:30:00Z
+#     end:   2026-08-10T13:55:00Z
