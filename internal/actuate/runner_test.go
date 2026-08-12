@@ -235,7 +235,7 @@ func TestRunner_FlagVariantOp_UnknownFlagIsAnError(t *testing.T) {
 }
 
 func TestNew_RefusesRatherThanHalfBuildingARunnerOffCluster(t *testing.T) {
-	if _, err := actuate.New(configtest.ShippedCatalog(t)); !errors.Is(err, rest.ErrNotInCluster) {
+	if _, err := actuate.New(configtest.ShippedCatalog(t), nil); !errors.Is(err, rest.ErrNotInCluster) {
 		t.Errorf("New must refuse without in-cluster config, got %v", err)
 	}
 }

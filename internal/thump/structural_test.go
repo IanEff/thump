@@ -104,6 +104,11 @@ func TestThumpCannotReachInfrastructure(t *testing.T) {
 		// tripwire. Same risk profile as ledger above: a data transform with
 		// no reach outside the process, not a new capability.
 		`"github.com/ianeff/thump/internal/sealbox"`: true,
+		// The Forge vocabulary: Release only, no behaviour — same argument as
+		// contract above. internal/forge/github, the concrete client, must
+		// never appear here; that would mean the composition root was
+		// bypassed.
+		`"github.com/ianeff/thump/internal/forge"`: true,
 	}
 
 	entries, err := os.ReadDir(".")

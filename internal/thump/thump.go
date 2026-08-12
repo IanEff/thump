@@ -47,7 +47,7 @@ import (
 // testable. notifierCtor builds the concrete Notifier from a webhook URL —
 // injected because internal/thump can't import internal/notify/slack itself
 // (see buildNotifier); cmd/thump's composition root is the one place that can.
-func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string, notifierCtor func(url string) Notifier) int {
+func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, date string, notifierCtor func(url string) Notifier, forgeCtor func(repo, token string) Forge) int {
 	lc, code, exit := beat.Start("thump", args, stdout, stderr, beat.Version{Version: version, Commit: commit, Date: date})
 	if exit {
 		return code
@@ -61,6 +61,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		return 1
 	}
 	notifier := buildNotifier(cfg, notifierCtor)
+	f := buildForge(cfg, forgeCtor)
 
 	cat, err := contract.LoadCatalogFile(cfg.ActionCatalog, contract.Preconditions)
 	if err != nil {
@@ -96,7 +97,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, cfg.NATSURL, cfg, cat, notifier, tracer, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, cat, notifier, f, tracer, stages, health, stderr)
 	}
 	health.SetReady(true)
 
@@ -105,7 +106,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// OUTBOX are this path's env, not the process's — checked here, not above,
 	// so broker mode never has to satisfy them (mirrors rattle.go's NATS_URL-
 	// first branch).
-	exec, sw, err := buildExecutor(cfg, cat)
+	exec, sw, err := buildExecutor(cfg, cat, f)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
 		return 1
@@ -141,6 +142,9 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Tracer:   tracer,
 		Stages:   stages,
 	}
+	if f != nil {
+		tr.Acceptance = &AcceptanceWatcher{Probe: f}
+	}
 	if sw != nil {
 		go poll.Loop(ctx, poll.DefaultConfig, sw.Reload)
 	}
@@ -152,7 +156,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, tracer trace.Tracer, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, f Forge, tracer trace.Tracer, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 
@@ -225,7 +229,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		}
 	}()
 
-	exec, sw, err := buildExecutor(cfg, cat)
+	exec, sw, err := buildExecutor(cfg, cat, f)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
 		return 1
@@ -247,6 +251,9 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		Notifier:   notifier,
 		Tracer:     tracer,
 		Stages:     stages,
+	}
+	if f != nil {
+		tr.Acceptance = &AcceptanceWatcher{Probe: f}
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -283,19 +290,40 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 // renders; live wraps a real actuate.Runner in a GatedExecutor so an armed
 // kill-switch is required before anything touches infrastructure. The
 // returned *FileSwitch is nil in dry mode — nothing to reload.
-func buildExecutor(cfg config.Thump, cat *contract.StaticCatalog) (Executor, *FileSwitch, error) {
+func buildExecutor(cfg config.Thump, cat *contract.StaticCatalog, f Forge) (Executor, *FileSwitch, error) {
 	if cfg.Executor != "live" {
 		return DryRun{}, nil, nil
 	}
-	runner, err := actuate.New(cat)
+	runner, err := actuate.New(cat, f)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build live executor: %w", err)
 	}
+	exec, sw := gatedLive(cfg, runner)
+	return exec, sw, nil
+}
+
+// buildLiveExecutorForTest is buildExecutor's live branch, reached through
+// actuate.NewWithKube instead of actuate.New so a test can prove the shipped
+// catalog binds through production's own bind logic without an in-cluster
+// config to satisfy New's first step. Only BuildExecutorForTest calls this.
+func buildLiveExecutorForTest(cfg config.Thump, cat *contract.StaticCatalog, f Forge, k actuate.Kube) (Executor, *FileSwitch, error) {
+	if cfg.Executor != "live" {
+		return DryRun{}, nil, nil
+	}
+	runner, err := actuate.NewWithKube(k, cat, f)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build live executor: %w", err)
+	}
+	exec, sw := gatedLive(cfg, runner)
+	return exec, sw, nil
+}
+
+func gatedLive(cfg config.Thump, runner *actuate.Runner) (Executor, *FileSwitch) {
 	sw := NewFileSwitch(cfg.KillSwitchPath)
 	return GatedExecutor{
 		Inner:  Live{Runner: runner},
 		Switch: sw,
-	}, sw, nil
+	}, sw
 }
 
 // buildReversalWatcher wires the automatic-undo probe from cfg. backendTLS is
@@ -339,4 +367,12 @@ func buildNotifier(cfg config.Thump, ctor func(url string) Notifier) Notifier {
 		return nil
 	}
 	return ctor(cfg.SlackWebhookURL)
+}
+
+func buildForge(cfg config.Thump, ctor func(repo, token string) Forge) Forge {
+	if cfg.ForgeRepo == "" || cfg.ForgeToken == "" {
+		slog.Warn("no Forge configured -  maintenance releases will refuse to bind", "beat", "thump", "fix", "set FORGE_REPO and FORGE_TOKEN")
+		return nil
+	}
+	return ctor(cfg.ForgeRepo, cfg.ForgeToken)
 }

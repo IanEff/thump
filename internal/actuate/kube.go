@@ -50,7 +50,16 @@ func New(cat *contract.StaticCatalog, forge Forge) (*Runner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("actuate: dynamic client: %w", err)
 	}
-	return newWithTimeout(liveKube{cs: cs, dyn: dyn, cfg: cfg}, cat, actuateTimeout, forge)
+	return NewWithKube(liveKube{cs: cs, dyn: dyn, cfg: cfg}, cat, forge)
+}
+
+// NewWithKube is New's bind half, split out so a caller that already holds a
+// Kube — production's liveKube, or a test's fake — reaches the same
+// catalog-binding path either way. This is what lets a test prove the
+// shipped catalog binds through production's own logic without an
+// in-cluster config to satisfy New's first step.
+func NewWithKube(k Kube, cat *contract.StaticCatalog, forge Forge) (*Runner, error) {
+	return newWithTimeout(k, cat, actuateTimeout, forge)
 }
 
 // execTarget resolves selector to one concrete (pod, container) pair --
