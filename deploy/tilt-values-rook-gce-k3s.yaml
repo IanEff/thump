@@ -71,6 +71,11 @@ tracing:
 cilium:
   apiserverEgress: true
 
+forge:
+  repo: "ianeff/rook-gce-k3s-gitops"
+  secretName: thump-forge
+  secretKey: token
+
 # ⚠️ TEMPORARY — arm-live block for the I-live v2 hold-rebalance run
 # (2026-07-18). Remove after the run. executor: live lets thump actually run
 # `ceph osd set noout`; dedupeWindow shortened to 10m so a held/stuck

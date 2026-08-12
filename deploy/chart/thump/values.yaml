@@ -142,6 +142,14 @@ seal:
   secretName: thump-seal
   key: ""
 
+# Forge (GitOps source of record) integration — FORGE_REPO and FORGE_TOKEN.
+# The token rides a Secret created out-of-band (or pre-existing); this chart
+# references it by secretName/secretKey.
+forge:
+  repo: ""
+  secretName: thump-forge
+  secretKey: token
+
 # executor unset defaults to dry — a thump deployed with no override renders
 # and never acts. killSwitch.armed only seeds the mounted switch file, which
 # is re-templated on every apply, so a redeploy always resets it to false.
