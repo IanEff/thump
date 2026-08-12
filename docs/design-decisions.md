@@ -603,12 +603,12 @@ the same shape as `rebuildHolds`.
 
 ## D-26 · A release's notes are a second, unsealed egress leg — **Ratified** (2026-08-10)
 
-**The problem:** `Order.Notes` renders the whole ranked `Set` — losing
-candidates, confidence, citations, every subject identifier in the winning
-row — straight into `Release.Content`. `Forge.Cut` lands that in
-`IanEff/thump-test`'s git history, and `gh repo view IanEff/thump-test
---json visibility` reports `PUBLIC`. Nothing about that history un-happens
-once someone's read it.
+**The problem:** `Order.Notes` carries real proposal set context — rendering
+the whole ranked `Set` (losing candidates, confidence, citations, every
+subject identifier in the winning row) straight into `Release.Content`.
+`Forge.Cut` lands that in `IanEff/thump-test`'s git history, and `gh repo view
+IanEff/thump-test --json visibility` reports `PUBLIC`. Nothing about that
+history un-happens once someone's read it.
 
 D-24 doesn't cover this leg. Its argument is that masking the subject bought
 no confidentiality because the tool specs already carried every identifier
@@ -631,6 +631,12 @@ confidence, no identifiers — with the full `Set` reachable only through
 `calipers incidents <fingerprint>`. That's the right long-term shape. It's
 also a second rendering path with its own tests, so it belongs in an issue
 rather than a silent default. Not filed yet.
+
+## D-27 · Personal Access Token (PAT) identity limitation for forge releases — **Ratified** (2026-08-12)
+
+**The problem:** Releases and pull requests cut by the forge integration use a Personal Access Token (PAT). As a result, GitHub attributes these actions to the token owner (Ian) rather than a dedicated engine bot identity, making automated releases visually indistinguishable from human actions in git history.
+
+**What we do now:** Accept the PAT identity limitation for the current phase while recommending upgrading to a GitHub App / Bot identity in future production deployments to ensure proper provenance, audit separation, and clear actor attribution.
 
 ---
 

@@ -87,19 +87,11 @@ task chaos:cart-restore
 
 ## Why dry mode
 
-`deploy/tilt-values-dev.yaml` sets `thump.executor: dry`, and that isn't a conservative
-default waiting to be flipped — arming `live` here fails outright. `buildExecutor`
-(`internal/thump/thump.go`) calls `actuate.New`, which calls `newWith` with no `Forge`
-(`internal/actuate/runner.go`). `bind` refuses the `maintenanceRelease` verb when no
-forge is wired (`internal/actuate/binding.go`), and `disable-cart-failure-release`
-(`config/actions/catalog.yaml`) uses exactly that verb. `internal/forge/` is an empty
-directory — nothing in this repo wires one yet. The shipped catalog's own binding test
-looks green because it asserts against `bind(cat, true)` directly, not against what
-production actually constructs.
+`deploy/tilt-values-dev.yaml` sets `thump.executor: dry`, and that is deliberate for this cluster: the dev environment has no GitOps repository target (`FORGE_REPO`) configured to write to, not because forge support doesn't exist. `bind` refuses `maintenanceRelease` actions when no forge is configured (`internal/actuate/binding.go`), and `disable-cart-failure-release` (`config/actions/catalog.yaml`) relies on gitops release actuation.
 
 So the loop you'll see end to end is real — detection, evidence gathering, governance,
 a rendered decision — right up to the mutation itself, which thump logs instead of
-applying. Arming live here is a follow-up gated on that forge landing.
+applying. Arming live in dev requires provisioning a GitOps repo target and secret.
 
 ## What's staged for later, not built
 
