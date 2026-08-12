@@ -10,4 +10,4 @@ metadata:
     {{- include "thump.labels" . | nindent 4 }}
 data:
   policy.yaml: |
-{{ .Files.Get "config/hiss/policy.yaml" | indent 4 }}
+{{ .Files.Get (printf "config/%s/hiss/policy.yaml" .Values.configProfile) | required (printf "no policy for profile %s" .Values.configProfile) | indent 4 }}
