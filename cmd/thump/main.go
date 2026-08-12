@@ -19,7 +19,7 @@ var (
 )
 
 func main() {
-	os.Exit(thump.Main(os.Args[1:], os.Stdout, os.Stderr, version, commit, date, newSlackNotifier, newGithubForge))
+	os.Exit(thump.Main(os.Args[1:], os.Stdout, os.Stderr, version, commit, date, newSlackNotifier, newGitHubForge))
 }
 
 // newSlackNotifier is the one place in the repo that constructs a concrete
@@ -29,9 +29,9 @@ func newSlackNotifier(url string) thump.Notifier {
 	return &slack.Webhook{URL: url}
 }
 
-// newGithubForge is the one place in the repo that constructs a concrete
+// newGitHubForge is the one place in the repo that constructs a concrete
 // forge client — internal/thump stays free of it, injected through the
 // Forge interface like Notifier.
-func newGithubForge(repo, token string) thump.Forge {
+func newGitHubForge(repo, token string) thump.Forge {
 	return &github.Client{Repo: repo, Token: token}
 }
