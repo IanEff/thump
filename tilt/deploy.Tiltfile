@@ -113,12 +113,16 @@ def setup(cluster, cluster_name, domain_values, domains):
             labels = ["infra"],
         )
     if domain_values.get("serviceMonitor", {}).get("enabled", False):
+        sm_deps = ["servicemonitor-crd"]
+        if cluster_name == "dev":
+            sm_deps.append("dev-substrate")
         k8s_resource(
             new_name = "thump-servicemonitor",
-            objects = ["thump:servicemonitor:thump"],
-            resource_deps = ["servicemonitor-crd"],
+            objects = ["thump:servicemonitor:thump", "prometheus-tls:certificate"],
+            resource_deps = sm_deps,
             labels = ["infra"],
         )
+
 
     # Bring up NATS first — the beats dial it on boot; bring it up (and Ready)
     # before them. On dev, nats-tls (certificates.yaml) can't issue until
