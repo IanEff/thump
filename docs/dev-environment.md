@@ -6,8 +6,7 @@ no IAP tunnel, and no Ceph. Every other cluster profile (`ceph-lab`, `rook-gke`,
 `rook-gce-k3s`, `thump-test`) is provisioned by a separate repo under `~/projects/ceph/`;
 `dev` is provisioned by this one, via `deploy/dev/`.
 
-Two things it does not do: it does not arm `THUMP_EXECUTOR=live` (see "Why dry mode"
-below), and it does not run the `acme` domain yet — `domains.acme.enabled` is `false`,
+One thing it does not do: it does not run the `acme` domain yet — `domains.acme.enabled` is `false`,
 though the config and RBAC gates are already in place for when it lands.
 
 ## Prerequisites
@@ -78,20 +77,20 @@ kubectl logs -n thump -l app.kubernetes.io/component=rattle -f
 
 rattle's burn-rate detector scores a trailing window, so expect the first `"detection"`
 log line something like 5–6 minutes after injection, not immediately. clank reasons over
-it next (`"reasoned"`), hiss rules on the proposal (`"decision"`), and thump renders —
-never executes — the chosen action. Restore the flag when you're done:
+it next (`"reasoned"`), hiss rules on the proposal (`"decision"`), and thump executes the
+chosen action (patching `otel-demo/flagd-config`). Restore the flag when you're done:
 
 ```sh
 task chaos:cart-restore
 ```
 
-## Why dry mode
+## Live mode and forge binding
 
-`deploy/tilt-values-dev.yaml` sets `thump.executor: dry`, and that is deliberate for this cluster: the dev environment has no GitOps repository target (`FORGE_REPO`) configured to write to, not because forge support doesn't exist. `bind` refuses `maintenanceRelease` actions when no forge is configured (`internal/actuate/binding.go`), and `disable-cart-failure-release` (`config/actions/catalog.yaml`) relies on gitops release actuation.
+`deploy/tilt-values-dev.yaml` sets `thump.executor: live` with `killSwitch.armed: true`.
 
-So the loop you'll see end to end is real — detection, evidence gathering, governance,
-a rendered decision — right up to the mutation itself, which thump logs instead of
-applying. Arming live in dev requires provisioning a GitOps repo target and secret.
+Unlike the production rigs (`thump-test`, `rook-gce-k3s`), `dev` requires no GitOps target (`FORGE_REPO`). `actuate.New` (`internal/actuate/kube.go`) only requires a forge when the loaded catalog authors a `maintenanceRelease` action. The dev profile catalog (`config/dev/actions/catalog.yaml`) authors in-cluster mutations — patching `otel-demo/flagd-config` — and leaves release contracts to the rigs. `bind` validates every contract at startup, finds no release actions, and starts clean with `FORGE_REPO` unset.
+
+When `task chaos:cart-failure` fires, the loop runs end-to-end through detection, evidence gathering, governance, and actual cluster mutation.
 
 ## What's staged for later, not built
 
