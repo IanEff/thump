@@ -181,8 +181,8 @@ type Runner struct {
 // newWith is the seam constructor shared by production (New, over a
 // liveKube) and tests (NewWith, over a fake). Every ref a Runner can execute
 // is bound from cat, so nothing outside the authored catalog is reachable.
-func newWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) {
-	return newWithTimeout(k, cat, actuateTimeout, nil)
+func newWith(k Kube, cat *contract.StaticCatalog, forge Forge) (*Runner, error) {
+	return newWithTimeout(k, cat, actuateTimeout, forge)
 }
 
 // newWithTimeout is newWith with the Run bound overridable — production and
