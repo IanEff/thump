@@ -218,6 +218,8 @@ type Thump struct {
 	PromURL         string // PROM_URL — optional; empty disables the automatic reversal watcher
 	EvidenceQueries string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	SlackWebhookURL string // SLACK_WEBHOOK_URL - optional; empty means no Notifier is wired.
+	ForgeRepo       string // FORGE_REPO - "owner/name" of the GitOps source of record; empty means no forge
+	ForgeToken      string // FORGE_TOKEN - fine-grained PAT scoped to ForgeRepo
 	Inbox           string // THUMP_INBOX — required only in the offline (non-broker) path
 	Outbox          string // THUMP_OUTBOX — required only in the offline path
 	BrokerStore            // WAL/S3/TLS/seal-key — required only in the broker path
@@ -237,6 +239,8 @@ func LoadThump(broker bool) (Thump, error) {
 		PromURL:         l.Optional("PROM_URL"),
 		EvidenceQueries: l.Optional("EVIDENCE_QUERIES"),
 		SlackWebhookURL: l.Optional("SLACK_WEBHOOK_URL"),
+		ForgeRepo:       l.Optional("FORGE_REPO"),
+		ForgeToken:      l.Optional("FORGE_TOKEN"),
 	}
 	if broker {
 		t.Inbox = l.Optional("THUMP_INBOX")

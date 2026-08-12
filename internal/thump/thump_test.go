@@ -10,7 +10,7 @@ import (
 
 func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {
 	var out, errb bytes.Buffer
-	code := thump.Main([]string{"-version"}, &out, &errb, "1.2.3", "abc123", "2026-07-02", nil)
+	code := thump.Main([]string{"-version"}, &out, &errb, "1.2.3", "abc123", "2026-07-02", nil, nil)
 	if code != 0 {
 		t.Errorf("version should exit 0, got %d", code)
 	}
@@ -22,7 +22,7 @@ func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {
 func TestMain_MissingInboxReturnsOne(t *testing.T) {
 	t.Setenv("THUMP_INBOX", "") // hermetic — don't inherit the shell's
 	var out, errb bytes.Buffer
-	code := thump.Main(nil, &out, &errb, "dev", "none", "unknown", nil)
+	code := thump.Main(nil, &out, &errb, "dev", "none", "unknown", nil, nil)
 	if code != 1 {
 		t.Errorf("missing THUMP_INBOX should exit 1, got %d", code)
 	}
@@ -35,7 +35,7 @@ func TestMain_MissingOutboxReturnsOne(t *testing.T) {
 	t.Setenv("THUMP_INBOX", t.TempDir())
 	t.Setenv("THUMP_OUTBOX", "")
 	var out, errb bytes.Buffer
-	code := thump.Main(nil, &out, &errb, "dev", "none", "unknown", nil)
+	code := thump.Main(nil, &out, &errb, "dev", "none", "unknown", nil, nil)
 	if code != 1 {
 		t.Errorf("missing THUMP_OUTBOX should exit 1, got %d", code)
 	}
@@ -48,7 +48,7 @@ func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
 	t.Setenv("ACTION_CATALOG", "")
 
 	var stdout, stderr bytes.Buffer
-	code := thump.Main(nil, &stdout, &stderr, "dev", "none", "unknown", nil)
+	code := thump.Main(nil, &stdout, &stderr, "dev", "none", "unknown", nil, nil)
 
 	if code != 1 {
 		t.Errorf("want exit code 1 for missing config, got %d", code)

@@ -12,6 +12,12 @@ doesn't replace this one.
 
 ## [Unreleased]
 
+### Added
+
+- **Phase AH: Forge package & GitHub client integration.**
+  - Introduced `internal/forge` with a `GitHub` client supporting repository release creation and pull request workflows via Personal Access Token (PAT) authentication.
+  - Wired forge release creation (`maintenanceRelease` verb) into `thump`'s live execution path, passing real `proposal.Set` context rendered via `Order.Notes`.
+
 ### Changed
 
 - **The public docs are rewritten for a reader with no internal context.**

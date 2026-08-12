@@ -113,6 +113,15 @@ spec:
               value: /etc/thump/whir/evidence-queries.yaml
             - name: SLACK_WEBHOOK_URL
               value: {{ .Values.notify.slackWebhookURL | quote }}
+            {{- if .Values.forge.repo }}
+            - name: FORGE_REPO
+              value: {{ .Values.forge.repo | quote }}
+            - name: FORGE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.forge.secretName }}
+                  key: {{ .Values.forge.secretKey }}
+            {{- end }}
           volumeMounts:
             - name: wal
               mountPath: /var/thump/wal

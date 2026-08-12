@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
 	"github.com/ianeff/thump/internal/configtest"
+	"github.com/ianeff/thump/internal/forge"
 	"k8s.io/client-go/rest"
 )
 
@@ -234,7 +235,7 @@ func TestRunner_FlagVariantOp_UnknownFlagIsAnError(t *testing.T) {
 }
 
 func TestNew_RefusesRatherThanHalfBuildingARunnerOffCluster(t *testing.T) {
-	if _, err := actuate.New(configtest.ShippedCatalog(t)); !errors.Is(err, rest.ErrNotInCluster) {
+	if _, err := actuate.New(configtest.ShippedCatalog(t), nil); !errors.Is(err, rest.ErrNotInCluster) {
 		t.Errorf("New must refuse without in-cluster config, got %v", err)
 	}
 }
@@ -430,7 +431,7 @@ func (f *recordForge) Read(context.Context, string) ([]byte, error) {
 	return []byte(f.doc), nil
 }
 
-func (f *recordForge) Cut(_ context.Context, rel actuate.Release) (string, error) {
+func (f *recordForge) Cut(_ context.Context, rel forge.Release) (string, error) {
 	if !slices.Contains(f.keys, rel.Key) {
 		f.keys = append(f.keys, rel.Key)
 	}

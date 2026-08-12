@@ -7,6 +7,7 @@ package main
 import (
 	"os"
 
+	"github.com/ianeff/thump/internal/forge/github"
 	"github.com/ianeff/thump/internal/notify/slack"
 	"github.com/ianeff/thump/internal/thump"
 )
@@ -18,7 +19,7 @@ var (
 )
 
 func main() {
-	os.Exit(thump.Main(os.Args[1:], os.Stdout, os.Stderr, version, commit, date, newSlackNotifier))
+	os.Exit(thump.Main(os.Args[1:], os.Stdout, os.Stderr, version, commit, date, newSlackNotifier, newGitHubForge))
 }
 
 // newSlackNotifier is the one place in the repo that constructs a concrete
@@ -26,4 +27,11 @@ func main() {
 // Notifier interface like Exec.
 func newSlackNotifier(url string) thump.Notifier {
 	return &slack.Webhook{URL: url}
+}
+
+// newGitHubForge is the one place in the repo that constructs a concrete
+// forge client — internal/thump stays free of it, injected through the
+// Forge interface like Notifier.
+func newGitHubForge(repo, token string) thump.Forge {
+	return &github.Client{Repo: repo, Token: token}
 }

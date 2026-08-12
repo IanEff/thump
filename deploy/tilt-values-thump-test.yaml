@@ -96,6 +96,11 @@ cilium:
 notify:
   slackWebhookURL: http://thump-notify-echo.thump.svc.cluster.local:8080/
 
+forge:
+  repo: "ianeff/thump-test-gitops"
+  secretName: thump-forge
+  secretKey: token
+
 # ⚠️ TEMPORARY — arm-live block for the Phase-I live-proof run on thump-test
 # (2026-07-20). Remove after the run. Same shape as rook-gce-k3s's I-live v2
 # block: executor: live lets thump actually merge-patch the flagd ConfigMap;

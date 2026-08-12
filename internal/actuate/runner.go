@@ -19,6 +19,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/forge"
 )
 
 // Kube is the impure seam actuate reaches the cluster through — exec a
@@ -150,7 +151,7 @@ func (m maintenanceReleaseOp) do(ctx context.Context, d dispatch) error {
 		return fmt.Errorf("read %s: %w", m.path, err)
 	}
 
-	_, err = d.forge.Cut(ctx, Release{
+	_, err = d.forge.Cut(ctx, forge.Release{
 		Key: releaseKey(d.ref, d.reverse), Path: m.path, Content: updated, Notes: d.notes,
 	})
 
@@ -180,8 +181,8 @@ type Runner struct {
 // newWith is the seam constructor shared by production (New, over a
 // liveKube) and tests (NewWith, over a fake). Every ref a Runner can execute
 // is bound from cat, so nothing outside the authored catalog is reachable.
-func newWith(k Kube, cat *contract.StaticCatalog) (*Runner, error) {
-	return newWithTimeout(k, cat, actuateTimeout, nil)
+func newWith(k Kube, cat *contract.StaticCatalog, forge Forge) (*Runner, error) {
+	return newWithTimeout(k, cat, actuateTimeout, forge)
 }
 
 // newWithTimeout is newWith with the Run bound overridable — production and
@@ -282,20 +283,11 @@ type dispatch struct {
 	notes   string // thump's rendering of the ranked set, empty for a mutation.
 }
 
-// Release is one corrective maintenance release: the changed source and the
-// notes a reviewer reads before accepting it.
-type Release struct {
-	Key     string // open release per authored contract ref
-	Path    string // the file in the GitOps source this release changes.
-	Content []byte
-	Notes   string
-}
-
 type Forge interface {
 	// Read returns the current bytes at path on the default branch.
 	Read(ctx context.Context, path string) ([]byte, error)
 	// Cut publishes rel for review and returns where a human can find it.
-	Cut(ctx context.Context, rel Release) (url string, err error)
+	Cut(ctx context.Context, rel forge.Release) (url string, err error)
 	// Withdraw retracts the release for key if it is still open, and
 	// reports whether it had already been accepted.
 	Withdraw(ctx context.Context, key string) (accepted bool, err error)

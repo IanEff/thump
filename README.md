@@ -12,8 +12,9 @@ multidimensional thermostat that watches reliability signals, reasons about them
 with an LLM, and executes an authored, catalog-bound action once policy clears.
 
 What it can act on is entirely a function of what's in the catalog. Today that's
-seven actions in `config/actions/catalog.yaml` — two rook/Ceph runbooks and five
-against the OpenTelemetry demo — because those are the rigs I have on hand to
+eight actions in `config/actions/catalog.yaml` — two rook/Ceph runbooks, five
+against the OpenTelemetry demo, and one synthetic acme domain action — because
+those are the rigs I have on hand to
 build and chaos-test against. Grow the catalog and you grow what thump can act
 on; the reasoner and the governor don't change.
 [Onboarding a domain in config alone](#onboard-your-own-domain) is the test of

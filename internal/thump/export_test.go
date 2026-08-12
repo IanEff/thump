@@ -5,7 +5,9 @@ import (
 
 	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/actuate"
 	"github.com/ianeff/thump/internal/config"
+	"github.com/ianeff/thump/internal/contract"
 )
 
 // HandleForTest exposes Transport.handle to thump_test without handle
@@ -28,4 +30,16 @@ func BuildNotifierForTest(cfg config.Thump, ctor func(url string) Notifier) Noti
 // indirectly through Actuator.Render's golden fixture.
 func RenderNotesForTest(ps proposal.Set) string {
 	return renderNotes(ps)
+}
+
+func BuildExecutorForTest(cfg config.Thump, cat *contract.StaticCatalog, f Forge) (Executor, *FileSwitch, error) {
+	return buildExecutor(cfg, cat, f)
+}
+
+// BuildExecutorForTestWithKube is BuildExecutorForTest routed through
+// actuate.NewWithKube instead of actuate.New, so a test can bind the shipped
+// catalog off-cluster — over a fake Kube — while still exercising the exact
+// bind logic production's buildExecutor calls.
+func BuildExecutorForTestWithKube(cfg config.Thump, cat *contract.StaticCatalog, f Forge, k actuate.Kube) (Executor, *FileSwitch, error) {
+	return buildLiveExecutorForTest(cfg, cat, f, k)
 }
