@@ -404,6 +404,27 @@ tasks:
     cmds:
       - k3d cluster delete thump-dev
 
+  dev:gate-on:
+    desc: Freeze the dev cluster so every detection escalates to a human
+    cmds:
+      - |
+        kubectl --context k3d-thump-dev -n thump get cm thump-hiss \
+          -o jsonpath='{.data.policy\.yaml}' > /tmp/policy.yaml
+        printf 'freezeWindows:\n  - name: dev-demo\n    start: %s\n    end: %s\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          "$(date -u -v+4H +%Y-%m-%dT%H:%M:%SZ)" >> /tmp/policy.yaml
+        kubectl --context k3d-thump-dev -n thump create cm thump-hiss \
+          --from-file=policy.yaml=/tmp/policy.yaml --dry-run=client -o yaml | kubectl apply -f -
+        kubectl --context k3d-thump-dev -n thump rollout restart deploy/hiss
+
+  dev:gate-off:
+    desc: Un-freeze the dev cluster so detections resume auto-approving
+    cmds:
+      - |
+        kubectl --context k3d-thump-dev -n thump create cm thump-hiss \
+          --from-file=policy.yaml=config/dev/hiss/policy.yaml --dry-run=client -o yaml | kubectl apply -f -
+        kubectl --context k3d-thump-dev -n thump rollout restart deploy/hiss
+
   # The bucket pull stays the operator's job: which object store, which
   # credentials, and which segments are worth reading are all site facts, and
   # a tool that fetched for you would need cluster reach it has no business
