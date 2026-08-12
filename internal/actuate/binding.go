@@ -90,7 +90,7 @@ func mechanismFor(s contract.Step, forgeWired bool) (operation, error) {
 		}, nil
 	case "maintenanceRelease":
 		if !forgeWired {
-			return nil, fmt.Errorf("maintenanceRelease needs a forge wired: %w", ErrUnbindable)
+			return nil, fmt.Errorf("maintenanceRelease needs a GitOps source of record - set FORGE_REPO and FORGE_TOKEN: %w", ErrUnbindable)
 		}
 		if s.Path == "" || s.Flag == "" || s.Variant == "" {
 			return nil, fmt.Errorf("maintenanceRelease needs path, flag, and variant: %w", ErrUnbindable)

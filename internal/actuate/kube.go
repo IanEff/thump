@@ -37,7 +37,7 @@ type liveKube struct {
 // naming no reachable mechanism — a live executor that can't carry out its
 // own catalog should refuse to start, not render every action a failure at
 // runtime.
-func New(cat *contract.StaticCatalog) (*Runner, error) {
+func New(cat *contract.StaticCatalog, forge Forge) (*Runner, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("actuate: in-cluster config: %w", err)
@@ -50,7 +50,7 @@ func New(cat *contract.StaticCatalog) (*Runner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("actuate: dynamic client: %w", err)
 	}
-	return newWith(liveKube{cs: cs, dyn: dyn, cfg: cfg}, cat)
+	return newWithTimeout(liveKube{cs: cs, dyn: dyn, cfg: cfg}, cat, actuateTimeout, forge)
 }
 
 // execTarget resolves selector to one concrete (pod, container) pair --

@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/internal/actuate"
 	"github.com/ianeff/thump/internal/configtest"
+	"github.com/ianeff/thump/internal/forge"
 	"k8s.io/client-go/rest"
 )
 
@@ -430,7 +431,7 @@ func (f *recordForge) Read(context.Context, string) ([]byte, error) {
 	return []byte(f.doc), nil
 }
 
-func (f *recordForge) Cut(_ context.Context, rel actuate.Release) (string, error) {
+func (f *recordForge) Cut(_ context.Context, rel forge.Release) (string, error) {
 	if !slices.Contains(f.keys, rel.Key) {
 		f.keys = append(f.keys, rel.Key)
 	}
