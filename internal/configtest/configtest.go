@@ -121,4 +121,3 @@ func EvidenceQueries(t *testing.T, profile string) evidence.Config {
 	t.Helper()
 	return EvidenceQueriesAt(t, evidencePath(t, profile, "evidence-queries.yaml"))
 }
-

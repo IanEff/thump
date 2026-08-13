@@ -58,4 +58,3 @@ func ActuateTimeoutForTest() time.Duration { return actuateTimeout }
 func BindForTest(cat *contract.StaticCatalog, forgeWired bool) (map[string]binding, error) {
 	return bind(cat, forgeWired)
 }
-
