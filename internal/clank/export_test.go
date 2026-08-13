@@ -131,7 +131,7 @@ func CoherentLiveCitationsForTest(cand proposal.Candidate, evidence []proposal.E
 // than handing every caller an error it can't act on.
 var shippedCatalog = sync.OnceValue(func() *contract.StaticCatalog {
 	cat, err := contract.LoadCatalogFile(
-		filepath.Join("..", "..", "config", "actions", "catalog.yaml"),
+		filepath.Join("..", "..", "config", "thump-test", "actions", "catalog.yaml"),
 		contract.Preconditions,
 	)
 	if err != nil {
@@ -142,7 +142,7 @@ var shippedCatalog = sync.OnceValue(func() *contract.StaticCatalog {
 
 var shippedClasses = sync.OnceValue(func() []contract.FailureClassDefinition {
 	defs, err := contract.LoadFailureClassesFile(
-		filepath.Join("..", "..", "config", "actions", "failure-classes.yaml"),
+		filepath.Join("..", "..", "config", "thump-test", "actions", "failure-classes.yaml"),
 	)
 	if err != nil {
 		panic("clank test kit: " + err.Error())

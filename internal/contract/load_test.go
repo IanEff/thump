@@ -134,6 +134,6 @@ func TestShippedFailureClasses_DefineEveryFailureClass(t *testing.T) {
 	}
 
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Error("config/actions/failure-classes.yaml does not define exactly proposal's FailureClass consts", diff)
+		t.Error("config/thump-test/actions/failure-classes.yaml does not define exactly proposal's FailureClass consts", diff)
 	}
 }

@@ -79,11 +79,11 @@ func Main(args []string, stdout, stderr io.Writer) int {
 // recomputed — which is exactly the property a sweep needs, since the
 // weights apply after the model and cannot change what the run cited.
 func Propose(ctx context.Context, tr Transcript, w clank.ScoringWeights) (proposal.Set, error) {
-	cat, err := contract.LoadCatalogFile(configPath("actions", "catalog.yaml"), contract.Preconditions)
+	cat, err := contract.LoadCatalogFile(configPath("thump-test", "actions", "catalog.yaml"), contract.Preconditions)
 	if err != nil {
 		return proposal.Set{}, fmt.Errorf("load catalog: %w", err)
 	}
-	classes, err := contract.LoadFailureClassesFile(configPath("actions", "failure-classes.yaml"))
+	classes, err := contract.LoadFailureClassesFile(configPath("thump-test", "actions", "failure-classes.yaml"))
 	if err != nil {
 		return proposal.Set{}, fmt.Errorf("load failure classes: %w", err)
 	}

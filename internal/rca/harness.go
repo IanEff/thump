@@ -58,11 +58,11 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 		return harness{}, err
 	}
 
-	cat, err := contract.LoadCatalogFile(configPath("actions", "catalog.yaml"), contract.Preconditions)
+	cat, err := contract.LoadCatalogFile(configPath("thump-test", "actions", "catalog.yaml"), contract.Preconditions)
 	if err != nil {
 		return harness{}, fmt.Errorf("load catalog: %w", err)
 	}
-	classes, err := contract.LoadFailureClassesFile(configPath("actions", "failure-classes.yaml"))
+	classes, err := contract.LoadFailureClassesFile(configPath("thump-test", "actions", "failure-classes.yaml"))
 	if err != nil {
 		return harness{}, fmt.Errorf("load failure classes: %w", err)
 	}

@@ -27,7 +27,7 @@ func TestScenarios_NameOnlyVocabularyTheShippedCatalogAndClassesDefine(t *testin
 	}
 
 	cat, err := contract.LoadCatalogFile(
-		filepath.Join("..", "..", "config", "actions", "catalog.yaml"), contract.Preconditions)
+		filepath.Join("..", "..", "config", "thump-test", "actions", "catalog.yaml"), contract.Preconditions)
 	if err != nil {
 		t.Fatal(err)
 	}
