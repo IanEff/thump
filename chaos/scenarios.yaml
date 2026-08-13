@@ -94,3 +94,21 @@ scenarios:
       path: chaos/flagd-cart-failure.sh
       apply: exec
       args: [restore]
+
+  - name: acme-api-fault
+    domain: acme
+    signalRef: slo_burn:acme-api
+    fault:
+      path: chaos/acme-fault.sh
+      apply: exec
+      args: [inject]
+    expects:
+      failureClass: dependency_saturation
+      contractRef: acme-shed-load
+      verdict: approved
+    settleWindow: 15m
+    restore:
+      path: chaos/acme-fault.sh
+      apply: exec
+      args: [restore]
+
