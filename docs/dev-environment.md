@@ -92,6 +92,17 @@ Unlike the production rigs (`thump-test`, `rook-gce-k3s`), `dev` requires no Git
 
 When `task chaos:cart-failure` fires, the loop runs end-to-end through detection, evidence gathering, governance, and actual cluster mutation.
 
+### Operator surface
+
+When a detection requires manual intervention or governance holds an action, the operator CLI (`calipers`) can interact with the live cluster over the port-forwarded NATS server:
+
+```sh
+task dev:certs                          # extract NATS TLS certificates to bin/certs/
+task dev:incidents                      # list active incidents over NATS
+task dev:approve FP=<fingerprint>       # approve a held incident by fingerprint
+```
+
+
 ## What's staged for later, not built
 
 The `acme` synthetic domain — `docs/onboarding.md`'s own onboarding fixture — is
