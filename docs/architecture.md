@@ -398,7 +398,7 @@ internal/
   calipers/      the operator CLI's dispatch table: read projection, approve,
                  break-glass force, plus unseal/corpus/rca/tune/replay/harvest
   bootstrap/     in-cluster bootstrap job logic
-  unseal/        vault unseal and key handling, dispatched via calipers
+  unseal/        WAL-segment decryption and key handling, dispatched via calipers
   sealbox/       encrypted secrets envelope
   corpus/        corpus versioning, incident collapsing, and casebase mining,
                  dispatched via calipers

@@ -26,13 +26,14 @@ how to work here.
 
 Not bugs in business logic. These:
 
-**1 · A catalog change is an execution-surface change.** `config/actions/catalog.yaml`
-is the autonomy boundary *and*, since each action carries an `execution` block,
-the binding to a real cluster mutation. The `exec` verb takes argv, so whoever
-can merge that file can run a command in any pod thump's ServiceAccount can
-reach. What bounds it is RBAC (`pods/exec`, scoped per namespace), the global
-kill switch, and hiss's policy — **not** the verb list. So a PR touching the
-catalog gets read like a PR touching an executor, whatever else it does.
+**1 · A catalog change is an execution-surface change.** A profile's
+`config/<profile>/actions/catalog.yaml` is the autonomy boundary *and*, since
+each action carries an `execution` block, the binding to a real cluster
+mutation. The `exec` verb takes argv, so whoever can merge that file can run
+a command in any pod thump's ServiceAccount can reach. What bounds it is RBAC
+(`pods/exec`, scoped per namespace), the global kill switch, and hiss's
+policy — **not** the verb list. So a PR touching a catalog gets read like a
+PR touching an executor, whatever else it does.
 
 **2 · The seams.** Each beat has a single job and a **never**-clause, and the
 never-clauses *are* the architecture. They're tabulated once, in
@@ -101,12 +102,15 @@ opt into anything else**; going live additionally requires an armed kill switch.
 
 ## A good first change
 
-Adding to the action catalog. Author an action in `config/actions/catalog.yaml`
-with an `execution` block, make sure `config/hiss/policy.yaml` has a confidence
-floor for its (tier, failure-class) pair, and run `task ci`. No Go edit should be
-needed — if one is, either you've found a genuinely new *kind* of mutation (which
-needs a new mechanism in `internal/actuate` plus a test, and that's a real
-contribution) or a bug worth reporting. Read the ⚠️ in point 1 above first.
+Adding to the action catalog. Author an action in the profile's
+`config/<profile>/actions/catalog.yaml` — `dev` is the simplest to try
+against, since it authors no `maintenanceRelease` release contract — with an
+`execution` block, make sure that profile's `config/<profile>/hiss/policy.yaml`
+has a confidence floor for its (tier, failure-class) pair, and run `task ci`.
+No Go edit should be needed — if one is, either you've found a genuinely new
+*kind* of mutation (which needs a new mechanism in `internal/actuate` plus a
+test, and that's a real contribution) or a bug worth reporting. Read the ⚠️ in
+point 1 above first.
 
 ## Commit messages
 

@@ -11,8 +11,8 @@ in [`design-decisions.md`](design-decisions.md).
 
 | Actor | Can cause | Bounded by |
 |---|---|---|
-| **Catalog author** (merge on `config/actions/catalog.yaml`) | Any command in any pod thump's ServiceAccount can reach. The widest authority in the system | ServiceAccount RBAC, the kill switch, hiss's policy — reviewed as an execution-surface change |
-| **Policy author** (merge on `config/hiss/policy.yaml`) | Lower confidence floors, raise the auto-fire band, remove a freeze window | Same review path; hiss refuses to start without a policy, so there is no silent default |
+| **Catalog author** (merge on a profile's `config/<profile>/actions/catalog.yaml`) | Any command in any pod thump's ServiceAccount can reach. The widest authority in the system | ServiceAccount RBAC, the kill switch, hiss's policy — reviewed as an execution-surface change |
+| **Policy author** (merge on a profile's `config/<profile>/hiss/policy.yaml`) | Lower confidence floors, raise the auto-fire band, remove a freeze window | Same review path; hiss refuses to start without a policy, so there is no silent default |
 | **Operator** (`calipers`) | Approve a held action; force one past the risk gate | Approval only releases what hiss already conditionally granted. `force` is attributed, audited, rendered `forced` everywhere, and still kill-switch-gated |
 | **Cluster admin** (RBAC on `ApprovalRequest`) | Approve a held action as an authenticated Kubernetes subject | `spec.decision` accepts `approve` and nothing else. The API server records the patch independently of this engine |
 | **The model** (Anthropic API) | Choose which catalogued action to propose, and argue for it | It cannot leave the catalog, invent a magnitude, or grant itself permission. See below |
@@ -26,12 +26,15 @@ thump reasons about live incidents and can act on a real Kubernetes cluster, so 
 interesting attack surface isn't the usual web-app list — it's the config that decides what
 the engine is allowed to do.
 
-**A change to `config/actions/catalog.yaml` is a change to the execution surface, not just
-to the reasoning it feeds.** Every action in that file carries an `execution` block, and one
-verb (`exec`) takes argv directly — `command: [ceph, osd, set, noout]`, authored plainly in
-YAML. Whoever can merge a change to that file can run a command in any pod thump's
-ServiceAccount can reach. There is no Go code standing between the catalog and the cluster
-for that verb; the file *is* the binding.
+**A change to any profile's `config/<profile>/actions/catalog.yaml` is a change to the
+execution surface, not just to the reasoning it feeds.** (`config/actions/` is the base
+copy, unread by anything deployed; `config/dev/actions/` and `config/thump-test/actions/`
+are what each profile's `thump-actions` ConfigMap actually binds —
+`deploy/chart/thump/templates/configmap-actions.yaml`.) Every action in that file carries
+an `execution` block, and one verb (`exec`) takes argv directly —
+`command: [ceph, osd, set, noout]`, authored plainly in YAML. Whoever can merge a change to
+that file can run a command in any pod thump's ServiceAccount can reach. There is no Go
+code standing between the catalog and the cluster for that verb; the file *is* the binding.
 
 **What bounds that isn't the verb list — it's RBAC.** thump's ServiceAccount is scoped per
 namespace (`deploy/chart/thump/templates/rbac-*.yaml`), every live action additionally
@@ -42,7 +45,7 @@ considered and deliberately not built — RBAC is already the enforced bound, an
 allowlist is the first thing worth adding the day this project starts taking catalog changes
 from contributors who aren't already trusted reviewers.
 
-In practice: a PR touching `config/actions/`, `config/hiss/`, or `internal/actuate` gets
+In practice: a PR touching `config/*/actions/`, `config/*/hiss/`, or `internal/actuate` gets
 reviewed as an execution-surface change, whatever else it claims to do. `CONTRIBUTING.md`
 § "What gets reviewed hardest" is the reviewer's side of the same rule.
 

@@ -175,9 +175,9 @@ can never talk itself up.
 Every action carries a human-authored `blastTier` (`low`/`med`/`high`) —
 `accelerate-recovery` is the one `high` in today's catalog, because trading
 client I/O for durability and pausing the storage operator to make it stick is a
-call a human should bless. hiss reads reversibility and tier against
-`config/hiss/policy.yaml` and **holds** anything past the auto-fire ceiling for
-an ack.
+call a human should bless. hiss reads reversibility and tier against that
+profile's `config/<profile>/hiss/policy.yaml` and **holds** anything past the
+auto-fire ceiling for an ack.
 
 Underneath that sits one coarse kill switch (`THUMP_KILLSWITCH`,
 `internal/thump/killswitch.go`) that fails closed in every ambiguous case. A
@@ -271,7 +271,7 @@ The beat table above is the concept. This is where it physically lives.
 | thump | `cmd/thump` | `internal/thump` | `thump.go` |
 | click | none (see table above) | `internal/clank/click.go`, `metrics.go` | `Click.Absorb` and `ReturnEdge` in `click.go` |
 
-`cmd/` also houses `bootstrap` (in-cluster setup job) and `calipers`, the operator CLI: `incidents`/`approve`/`force` (the hold→ack loop), `unseal` (vault unseal), `corpus` (corpus management), `rca` (graded RCA suite), `tune` (scoring weight sweep), `replay` (transcript replayer), and `harvest` (chaos scenario runner) all live behind one binary now, dispatched by verb — see `internal/calipers/calipers.go`. Investigation tools (`metrics`, `loki`, `kube`, `argocd`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
+`cmd/` also houses `bootstrap` (in-cluster setup job) and `calipers`, the operator CLI: `incidents`/`approve`/`force` (the hold→ack loop), `unseal` (WAL-segment decryption — it reaches no vault), `corpus` (corpus management), `rca` (graded RCA suite), `tune` (scoring weight sweep), `replay` (transcript replayer), and `harvest` (chaos scenario runner) all live behind one binary now, dispatched by verb — see `internal/calipers/calipers.go`. Investigation tools (`metrics`, `loki`, `kube`, `argocd`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
 
 **If you're opening one file, open `internal/clank/doc.go`.** clank is the
 reasoning plane — the seam with no prior art to copy from, and the one
@@ -434,26 +434,27 @@ puts all six — the five archived binaries plus `bootstrap` — in `bin/`.
 
 ## Standing it up locally
 
-thump runs against five cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
-`ceph-lab` (default), `rook-gke`, `rook-gce-k3s`, `thump-test`, and `dev`. The
-first four are rook/Ceph clusters because that's the rig this repo builds and
-chaos-tests against, not because thump requires one; each needs its own rig
-repo built out-of-band first (`~/projects/ceph/...`).
+thump runs against two cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
+`thump-test` and `dev`. Earlier profiles (`ceph-lab`, `rook-gke`,
+`rook-gce-k3s`) are retired.
 
-`thump-test` additionally runs the OpenTelemetry Astronomy Shop demo alongside
-Ceph — a second, orthogonal domain on one cluster, sharing no signal, failure
-class, or catalog action with the first — the general-purpose claim under load
-instead of in a test fixture.
+`thump-test` is a rook/Ceph cluster because that's the rig this repo builds
+and chaos-tests against, not because thump requires one; it needs its own rig
+repo built out-of-band first (`~/projects/ceph/...`). It additionally runs the
+OpenTelemetry Astronomy Shop demo alongside Ceph — a second, orthogonal
+domain on one cluster, sharing no signal, failure class, or catalog action
+with the first — the general-purpose claim under load instead of in a test
+fixture.
 
-`dev` is the odd one out and the one to reach for if you don't already have a
-rig: a fully local k3d cluster with no external repo, no Ceph, and no IAP
-tunnel — Cilium, cert-manager, Prometheus/Loki/Tempo, MinIO, and the OTel demo
-all come up from inside this repo. See
+`dev` is the one to reach for if you don't already have a rig: a fully local
+k3d cluster with no external repo, no Ceph, and no IAP tunnel — Cilium,
+cert-manager, Prometheus/Loki/Tempo, S3Mock, and the OTel demo all come up
+from inside this repo. See
 [`docs/dev-environment.md`](docs/dev-environment.md).
 
 ```sh
-task dev:up                         # dev — no rig repo needed
-tilt up -- --cluster=rook-gce-k3s   # or ceph-lab, rook-gke, thump-test — needs a rig repo first
+task dev:up                        # dev — no rig repo needed
+tilt up -- --cluster=thump-test    # needs a rig repo first
 ```
 
 **Dry-run is the default, and you have to opt into anything else.**

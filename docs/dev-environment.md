@@ -2,12 +2,9 @@
 
 A k3d cluster and a Tiltfile substrate that stand up everything `deploy/chart/thump`
 assumes already exists, so the whole five-beat loop runs on a laptop with no rig repo,
-no IAP tunnel, and no Ceph. Every other cluster profile (`ceph-lab`, `rook-gke`,
-`rook-gce-k3s`, `thump-test`) is provisioned by a separate repo under `~/projects/ceph/`;
-`dev` is provisioned by this one, via `deploy/dev/`.
-
-One thing it does not do: it does not run the `acme` domain yet — `domains.acme.enabled` is `false`,
-though the config and RBAC gates are already in place for when it lands.
+no IAP tunnel, and no Ceph. The other cluster profile, `thump-test`, is provisioned by
+a separate repo under `~/projects/ceph/`; `dev` is provisioned by this one, via
+`deploy/dev/`.
 
 ## Prerequisites
 
@@ -88,7 +85,7 @@ task chaos:cart-restore
 
 `deploy/tilt-values-dev.yaml` sets `thump.executor: live` with `killSwitch.armed: true`.
 
-Unlike the production rigs (`thump-test`, `rook-gce-k3s`), `dev` requires no GitOps target (`FORGE_REPO`). `actuate.New` (`internal/actuate/kube.go`) only requires a forge when the loaded catalog authors a `maintenanceRelease` action. The dev profile catalog (`config/dev/actions/catalog.yaml`) authors in-cluster mutations — patching `otel-demo/flagd-config` — and leaves release contracts to the rigs. `bind` validates every contract at startup, finds no release actions, and starts clean with `FORGE_REPO` unset.
+Unlike the production rig (`thump-test`), `dev` requires no GitOps target (`FORGE_REPO`). `actuate.New` (`internal/actuate/kube.go`) only requires a forge when the loaded catalog authors a `maintenanceRelease` action. The dev profile catalog (`config/dev/actions/catalog.yaml`) authors in-cluster mutations — patching `otel-demo/flagd-config` — and leaves release contracts to `thump-test`. `bind` validates every contract at startup, finds no release actions, and starts clean with `FORGE_REPO` unset.
 
 When `task chaos:cart-failure` fires, the loop runs end-to-end through detection, evidence gathering, governance, and actual cluster mutation.
 
@@ -103,11 +100,16 @@ task dev:approve FP=<fingerprint>       # approve a held incident by fingerprint
 ```
 
 
-## What's staged for later, not built
+## acme, the third domain
 
-The `acme` synthetic domain — `docs/onboarding.md`'s own onboarding fixture — is
-deliberately not wired into this environment yet. `domains.acme.enabled` is `false`,
-but the RBAC gate, the config (`test/onboarding/testdata/acme/`), and the SLO rule
-groups it needs (`deploy/dev/manifests/slo-rules.yaml`'s header comment names the exact
-line range to pull from) are all already in place. Flipping it on is additive, not a
-rework.
+`domains.acme.enabled` is `true` in this profile — a second, orthogonal domain
+alongside the OTel demo (this profile runs no Ceph; that's `thump-test`
+alone), standing in for someone who has never onboarded a domain and
+following `docs/onboarding.md`'s own fixture. Its
+catalog entry is `acme-shed-load` (`config/dev/actions/catalog.yaml`), scoped
+to `dependency_saturation`. Fault injection is direct, not a `task` target:
+
+```sh
+chaos/acme-fault.sh inject
+chaos/acme-fault.sh restore
+```
