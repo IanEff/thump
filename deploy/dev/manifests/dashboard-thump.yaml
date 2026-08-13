@@ -1,0 +1,266 @@
+# Part 8 of phase-ai-grows-teeth: the first dashboard for thump itself (not
+# the substrate it's watching). Delivery mechanism is the sidecar
+# deploy/dev/values/grafana.yaml already turns on (sidecar.dashboards,
+# label grafana_dashboard: "1", searchNamespace: ALL) — this ConfigMap is
+# the only new object, applied the same way as manifests/slo-rules.yaml
+# (kubectl apply, not a k8s_yaml() the Tiltfile owns).
+#
+# Panels are restricted to series that actually emit today. The full
+# agent_* inventory is seven metrics; three of them
+# (agent_proposal_confidence, agent_proposal_success_total,
+# agent_action_effectiveness_delta) stay empty until Part 2 arms live —
+# dry-run forces Result=rendered (internal/clank/click.go:54-58) — so they
+# are deliberately not built here. Building a panel on a series that cannot
+# have data yet is worse than no panel: it reads as broken, not honest.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thump-pipeline-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  thump-pipeline.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "description": "thump's own five-beat pipeline — rattle detects, clank reasons, hiss governs, thump acts. Built only on series that exist today; see the ConfigMap header for what's deliberately left out.",
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 100,
+          "title": "Pipeline (Loki)",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "description": "One series per seam word, keyed on the vocabulary the beats actually log — detection (rattle), reasoned/tool_call (clank), decision (hiss), held/settled (thump). \"outcome\" is overloaded three ways in thump (internal/thump/transport.go), so it is split here on acted/reversal rather than counted once under msg=\"outcome\" alone.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 9, "w": 16, "x": 0, "y": 1 },
+          "id": 101,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"detection\" [$__interval]))",
+              "legendFormat": "detection (rattle)",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"reasoned\" [$__interval]))",
+              "legendFormat": "reasoned (clank)",
+              "refId": "B"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"tool_call\" [$__interval]))",
+              "legendFormat": "tool_call (clank)",
+              "refId": "C"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"decision\" [$__interval]))",
+              "legendFormat": "decision (hiss)",
+              "refId": "D"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"outcome\" | acted=\"true\" [$__interval]))",
+              "legendFormat": "outcome: acted (thump)",
+              "refId": "E"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"outcome\" | acted=\"false\" [$__interval]))",
+              "legendFormat": "outcome: declined (thump)",
+              "refId": "F"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"outcome\" | reversal=\"true\" [$__interval]))",
+              "legendFormat": "outcome: reversal (thump)",
+              "refId": "G"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"held\" [$__interval]))",
+              "legendFormat": "held (thump)",
+              "refId": "H"
+            },
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum(count_over_time({namespace=\"thump\", app=\"thump\"} | json | msg=\"settled\" [$__interval]))",
+              "legendFormat": "settled (thump)",
+              "refId": "I"
+            }
+          ],
+          "title": "Pipeline events by seam",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "description": "Raw pipeline log stream. Every line carries trace_id (otelc's slog hook injects it via tracing.TraceIDFromFingerprint) — the Loki datasource's derivedFields config turns it into a one-click link to the matching Tempo trace, so one incident's whole life across rattle/clank/hiss/thump is one click away. Tempo keeps 4h; Loki keeps 24h — an old line's trace link may 404 before the line itself ages out.",
+          "gridPos": { "h": 9, "w": 8, "x": 16, "y": 1 },
+          "id": 102,
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "targets": [
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "{namespace=\"thump\", app=\"thump\"} | json | msg=~\"detection|reasoned|tool_call|decision|outcome|held|settled\"",
+              "refId": "A"
+            }
+          ],
+          "title": "Pipeline log stream (click trace_id → Tempo)",
+          "type": "logs"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 10 },
+          "id": 200,
+          "title": "Stage latency (Prometheus)",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "p95 duration of every beat.Stage boundary, by beat and stage. Wrapped in `or vector(0)` — a *Vec metric with no samples yet reads as an empty result, not a zero, so without this the tile would show \"No data\" instead of \"0\" the moment a beat starts up.",
+          "fieldConfig": {
+            "defaults": { "unit": "s" },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+          "id": 201,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum by (le, beat, stage) (rate(stage_duration_seconds_bucket[5m]))) or vector(0)",
+              "legendFormat": "{{beat}} / {{stage}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Stage p95 latency",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "Rate of stage_errors_total, by beat and stage. Same `or vector(0)` reasoning as the latency panel to its left.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
+          "id": 202,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (beat, stage) (rate(stage_errors_total[5m])) or vector(0)",
+              "legendFormat": "{{beat}} / {{stage}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Stage error rate",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 },
+          "id": 300,
+          "title": "Resolutions",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "agent_resolutions_total split by class and outcome. Deliberately never split by `intervention` — that label is hardcoded \"none\" (internal/clank/metrics.go), so grouping on it would just relabel the same series, not add information.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+          "id": 301,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (class, outcome) (rate(agent_resolutions_total[5m])) or vector(0)",
+              "legendFormat": "{{class}} / {{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Resolutions by class / outcome",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+          "id": 400,
+          "title": "SLO input",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "slo:current_burn_rate:ratio — the exact series internal/rattle/source.go:59 queries by sloth_id. This is rattle's detection input, not an output of thump's own pipeline; it belongs on this dashboard because every row above it is downstream of a signal on this line crossing threshold.",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 29 },
+          "id": 401,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "slo:current_burn_rate:ratio",
+              "legendFormat": "{{sloth_id}}",
+              "refId": "A"
+            }
+          ],
+          "title": "SLO burn rate rattle reads",
+          "type": "timeseries"
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["thump"],
+      "templating": { "list": [] },
+      "time": { "from": "now-3h", "to": "now" },
+      "timezone": "browser",
+      "title": "thump pipeline",
+      "uid": "thump-pipeline",
+      "version": 1
+    }

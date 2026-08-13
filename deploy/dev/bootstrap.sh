@@ -137,6 +137,12 @@ helm upgrade --install promtail grafana/promtail \
 echo "-- slo-rules --" >&2
 kubectl apply -f "$DEV_DIR/manifests/slo-rules.yaml"
 
+# 7b. thump's own pipeline dashboard — picked up by the Grafana sidecar
+# (values/grafana.yaml's sidecar.dashboards), not this script; applying it
+# here only needs to happen once, same as slo-rules.
+echo "-- dashboard-thump --" >&2
+kubectl apply -f "$DEV_DIR/manifests/dashboard-thump.yaml"
+
 # 8. OTel demo (Astronomy Shop) — the app-under-test.
 ensure_ns otel-demo
 echo "-- otel-demo --" >&2

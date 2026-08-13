@@ -40,6 +40,24 @@ datasources:
         uid: tempo
         url: http://tempo.tracing.svc.cluster.local:3100
         editable: true
+      - name: Loki
+        type: loki
+        uid: loki
+        # Loki's own gateway is disabled (values/loki.yaml), so this is the
+        # SingleBinary Service directly — same target promtail's client
+        # pushes to.
+        url: http://loki.logging.svc.cluster.local:3100
+        editable: true
+        jsonData:
+          derivedFields:
+            # otelc's slog hook already injects trace_id via
+            # tracing.TraceIDFromFingerprint, so any log line carries the
+            # trace of the incident that produced it — one click from a log
+            # line to its Tempo trace, no correlation step in between.
+            - datasourceUid: tempo
+              matcherRegex: '"trace_id":"(\w+)"'
+              name: TraceID
+              url: "${__value.raw}"
 
 alerting: {}
 

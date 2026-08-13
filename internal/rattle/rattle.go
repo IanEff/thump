@@ -121,7 +121,8 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			return 1
 		}
 	}
-	_, health, shutdownMetrics := beat.Metrics("rattle", metricsTLS)
+	reg, health, shutdownMetrics := beat.Metrics("rattle", metricsTLS)
+	stages := beat.NewStageRecorder(reg)
 	defer func() { _ = shutdownMetrics(ctx) }()
 
 	ctx, brokerLost := context.WithCancelCause(ctx)
@@ -202,13 +203,13 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			return nil
 		})
 		g.Go(func() error {
-			runLoop(gctx, r, log, pub, tracer)
+			runLoop(gctx, r, log, pub, tracer, stages)
 			return nil
 		})
 		return beat.ExitOnError(ctx, g.Wait())
 	}
 
-	runLoop(ctx, r, log, pub, tracer)
+	runLoop(ctx, r, log, pub, tracer, stages)
 	return 0
 }
 
@@ -251,17 +252,17 @@ const reconcileTimeout = 45 * time.Second
 // never starts until tick N returns, which is why reconcileTimeout exists:
 // without it, one stalled Prometheus call hangs every SLO's detection until
 // SIGTERM.
-func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection], tracer trace.Tracer) {
+func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection], tracer trace.Tracer, stages *beat.StageRecorder) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {
 		var detections []signal.Detection
-		err := poll.WithTimeout(reconcileTimeout, func(ctx context.Context) error {
+		err := beat.Stage(ctx, tracer, stages, "reconcile", poll.WithTimeout(reconcileTimeout, func(ctx context.Context) error {
 			var rErr error
 			detections, rErr = r.Reconcile(ctx)
 			return rErr
-		})(ctx)
+		}))
 		if err != nil {
 			log.Error("reconcile failed", "error", err)
 		} else {
