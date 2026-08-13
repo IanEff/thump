@@ -4,9 +4,9 @@
 # copy behind it, so an action added here is proposable with no Go edit, and
 # an action deleted here can no longer be proposed or executed by anything.
 #
-# dependency_saturation carries zero active catalogued remedies —
-# throttle-non-critical-paths was demoted as a dead knob, so detections in
-# this class can only ever produce an explicit decline.
+# dependency_saturation carries one active catalogued remedy in this
+# profile — acme-shed-load, below. throttle-non-critical-paths remains a
+# demoted dead knob for the Ceph/RGW case it was authored for.
 #
 # contract.LoadCatalogFile binds each Precondition.OK by looking its Name up
 # in a compiled contract.PreconditionRegistry — no contract below declares
@@ -238,13 +238,21 @@
     severityQuery: severity_rgw_saturation
     severityReductionPct: 0.7
 
-# The acme domain (docs/onboarding.md operator walkthrough, live) — a
-# synthetic third domain, orthogonal to Ceph and OTel demo, standing in for
-# "someone who has never onboarded a domain" following the doc's own example
-# verbatim (test/onboarding/testdata/acme/actions/catalog.yaml).
+# The acme domain (docs/onboarding.md operator walkthrough) — a synthetic
+# third domain, orthogonal to Ceph and OTel demo, standing in for "someone
+# who has never onboarded a domain" following the doc's own example
+# (test/onboarding/testdata/acme/actions/catalog.yaml) — except the failure
+# class: the testdata fixture and config/thump-test both scope
+# acme-shed-load to service_failure, but this profile's otel-demo trio
+# (disable-product-catalog-failure, disable-cart-failure, restart-cart-pod)
+# already claims service_failure here, and CHARTER.md's coverage row
+# requires dev's two domains to share no failure class. Scoped to
+# dependency_saturation instead — acme-db/acme-cache saturation, not
+# acme-api's own request path — so a fault in one domain can never be
+# matched by an action authored for the other.
 - name: acme-shed-load
   applicableFailureClasses:
-    - service_failure
+    - dependency_saturation
   applicableTiers:
     - tier-1
   action:

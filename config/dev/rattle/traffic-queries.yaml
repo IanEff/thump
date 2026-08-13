@@ -15,3 +15,7 @@ slos:
   - id: cart-availability
     affected: 'sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0)'
     total:    'sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m]))'
+
+  - id: acme-api-availability
+    affected: 'sum(rate(acme_api_requests_total{status="500"}[5m])) or vector(0)'
+    total:    'sum(rate(acme_api_requests_total[5m]))'

@@ -52,3 +52,14 @@ slos:
         role: blocking
       - name: flagd
         role: blocking
+
+  - id: acme-api-availability
+    object: acme-api
+    tier: tier-1
+    objective: 0.99
+    contractRef: acme-api-availability:v1
+    dependencies:
+      - name: acme-db
+        role: blocking
+      - name: acme-cache
+        role: optional
