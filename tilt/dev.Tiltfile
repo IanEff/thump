@@ -58,4 +58,4 @@ def setup(cluster):
     _dev_port_forward("prometheus-ui", "prometheus-kube-prometheus-prometheus", "monitoring", 9090, 9090)
     _dev_port_forward("hubble-ui", "hubble-ui", "kube-system", 12000, 80)
     _dev_port_forward("otel-demo-ui", "frontend-proxy", "otel-demo", 8080, 8080)
-    _dev_port_forward("nats", "nats", "thump", 4222, 4222)
+    _dev_port_forward("nats-port-forward", "nats", "thump", 4222, 4222)

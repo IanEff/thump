@@ -430,8 +430,8 @@ tasks:
     cmds:
       - mkdir -p bin/certs
       - kubectl --context k3d-thump-dev -n thump get secret nats-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > bin/certs/ca.crt
-      - kubectl --context k3d-thump-dev -n thump get secret nats-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > bin/certs/tls.crt
-      - kubectl --context k3d-thump-dev -n thump get secret nats-tls -o jsonpath='{.data.tls\.key}' | base64 -d > bin/certs/tls.key
+      - kubectl --context k3d-thump-dev -n thump get secret calipers-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > bin/certs/tls.crt
+      - kubectl --context k3d-thump-dev -n thump get secret calipers-tls -o jsonpath='{.data.tls\.key}' | base64 -d > bin/certs/tls.key
       - echo "NATS TLS certs written to bin/certs/"
 
   dev:incidents:
