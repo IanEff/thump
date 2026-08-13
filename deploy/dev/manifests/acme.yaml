@@ -1,0 +1,226 @@
+# acme — a synthetic third domain, orthogonal to Ceph and the OTel demo.
+# Ported from ~/projects/ceph/thump-test/applications/apps/acme/manifests.yaml
+# for the local dev environment (deploy/dev/manifests/acme.yaml).
+# Fully self-contained: a tiny Python HTTP server serves /metrics (Prometheus
+# text format) and drives its own traffic against itself; a ConfigMap-mounted
+# flag file (acme-fault-flag/target: "/" healthy, "/fail" faulted) is the
+# fault control thump's chaos tooling flips. Three Services front the same pod
+# under different names (api/db/cache) so up{job="acme-db"}/up{job="acme-cache"}
+# populate for real via Prometheus's own per-target scrape health, matching
+# the dependency shape declared in thump's config/dev/rattle/catalog-info.yaml.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: acme
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: acme-api-server
+  namespace: acme
+data:
+  server.py: |
+    import http.server, threading, time, urllib.request
+
+    state = {"200": 10000, "500": 50, "db_active": 10}
+    target = {"path": "/"}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/metrics":
+                body = (
+                    'acme_api_requests_total{status="200"} %d\n'
+                    'acme_api_requests_total{status="500"} %d\n'
+                    'acme_db_connections_active %d\n'
+                    'acme_db_connections_max 100\n'
+                ) % (state["200"], state["500"], state["db_active"])
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(body.encode())
+            elif self.path == "/fail":
+                state["500"] += 1
+                state["db_active"] = 95
+                self.send_response(500)
+                self.end_headers()
+            else:
+                state["200"] += 1
+                state["db_active"] = 10
+                self.send_response(200)
+                self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    def driver():
+        while True:
+            try:
+                urllib.request.urlopen("http://localhost:8000" + target["path"], timeout=2)
+            except Exception:
+                pass
+            time.sleep(1)
+
+    def flag_watcher():
+        while True:
+            try:
+                with open("/flag/target") as f:
+                    p = f.read().strip()
+                    if p in ("/", "/fail"):
+                        target["path"] = p
+            except Exception:
+                pass
+            time.sleep(2)
+
+    threading.Thread(target=driver, daemon=True).start()
+    threading.Thread(target=flag_watcher, daemon=True).start()
+    http.server.HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: acme-fault-flag
+  namespace: acme
+data:
+  target: "/"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acme-api
+  namespace: acme
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: acme-api
+  template:
+    metadata:
+      labels:
+        app: acme-api
+    spec:
+      containers:
+        - name: acme-api
+          image: python:3.12-alpine
+          command: ["python3", "/srv/server.py"]
+          ports:
+            - containerPort: 8000
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 50m, memory: 64Mi}
+          volumeMounts:
+            - name: server-code
+              mountPath: /srv
+            - name: fault-flag
+              mountPath: /flag
+      volumes:
+        - name: server-code
+          configMap:
+            name: acme-api-server
+        - name: fault-flag
+          configMap:
+            name: acme-fault-flag
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: acme-api
+  namespace: acme
+  labels:
+    app: acme-api
+    acme-role: api
+spec:
+  selector:
+    app: acme-api
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: acme-db
+  namespace: acme
+  labels:
+    app: acme-api
+    acme-role: db
+spec:
+  selector:
+    app: acme-api
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: acme-cache
+  namespace: acme
+  labels:
+    app: acme-api
+    acme-role: cache
+spec:
+  selector:
+    app: acme-api
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: acme-api
+  namespace: acme
+spec:
+  selector:
+    matchLabels:
+      acme-role: api
+  namespaceSelector:
+    matchNames: ["acme"]
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      relabelings:
+        - targetLabel: job
+          replacement: acme-api
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: acme-db
+  namespace: acme
+spec:
+  selector:
+    matchLabels:
+      acme-role: db
+  namespaceSelector:
+    matchNames: ["acme"]
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      relabelings:
+        - targetLabel: job
+          replacement: acme-db
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: acme-cache
+  namespace: acme
+spec:
+  selector:
+    matchLabels:
+      acme-role: cache
+  namespaceSelector:
+    matchNames: ["acme"]
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      relabelings:
+        - targetLabel: job
+          replacement: acme-cache
