@@ -134,7 +134,7 @@ tasks:
       # values shape none of the passes above do: configProfile: dev pulls
       # config/dev/ through configmap-{whir,rattle}.yaml's .Files.Get, and
       # domains.otelDemo.enabled=true + argocd.enabled=false renders RBAC
-      # combinations the ceph-lab default never touches.
+      # combinations the chart's plain default never touches.
       - |
         helm template deploy/chart/thump --values deploy/tilt-values-dev.yaml --set image.tag=dev \
           | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \

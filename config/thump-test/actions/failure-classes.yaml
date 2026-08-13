@@ -1,9 +1,8 @@
 # The authored failure-class definitions — rig-invariant knowledge every
 # site shares (unlike evidence-queries.yaml's query names, which vary by
-# site — ceph-lab/rook-gke/rook-gce-k3s can each name their evidence
-# differently). clank's seedPrompt renders this list so the model is told
-# what a class means instead of inferring it from which action happens to
-# be catalogued for it.
+# site — each profile can name their evidence differently). clank's
+# seedPrompt renders this list so the model is told what a class means
+# instead of inferring it from which action happens to be catalogued for it.
 #
 # This file IS the definitions: there is no Go copy behind it. Every
 # proposal.FailureClass const must appear here with a non-empty description

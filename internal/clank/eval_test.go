@@ -334,7 +334,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 	}
 	t.Logf("transcripts (read these when a row misses): %s", transcripts)
 
-	ev, err := evidence.LoadEvidenceConfig(filepath.Join("..", "..", "config", "rook-gce-k3s", "whir", "evidence-queries.yaml"))
+	ev, err := evidence.LoadEvidenceConfig(filepath.Join("..", "..", "config", "thump-test", "whir", "evidence-queries.yaml"))
 	if err != nil {
 		t.Fatalf("load evidence queries: %v", err)
 	}

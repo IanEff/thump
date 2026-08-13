@@ -376,7 +376,7 @@ func TestClientsFor_YieldsATrulyNilInterfaceWhenAClientCannotBeBuilt(t *testing.
 func TestShippedEvidenceConfigs_NameRealTopologyNodes(t *testing.T) {
 	t.Parallel()
 
-	for _, rig := range []string{"thump-test", "ceph-lab", "rook-gce-k3s", "rook-gke"} {
+	for _, rig := range []string{"dev", "thump-test"} {
 		t.Run(rig, func(t *testing.T) {
 			t.Parallel()
 			dir := filepath.Join("..", "..", "config", rig, "whir")
@@ -479,7 +479,7 @@ func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
 func TestShippedEvidenceConfigs_CarryRulesAChangedResourceCanMatch(t *testing.T) {
 	t.Parallel()
 
-	for _, rig := range []string{"thump-test", "ceph-lab", "rook-gce-k3s", "rook-gke"} {
+	for _, rig := range []string{"dev", "thump-test"} {
 		t.Run(rig, func(t *testing.T) {
 			t.Parallel()
 			dir := filepath.Join("..", "..", "config", rig, "whir")

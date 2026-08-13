@@ -47,7 +47,7 @@ type metricsInput struct {
 
 // Spec returns the schema so the model knows how to call this tool. The
 // valid `q` names are only known at runtime (loaded per-cluster from
-// evidence-queries.yaml, ceph-lab and rook-gke declare different sets), so
+// evidence-queries.yaml, each profile declares a different set), so
 // they're listed in the description here rather than a static schema enum —
 // without this the model can only discover valid names by guessing and
 // getting back "no such evidence query", which reads indistinguishably from
