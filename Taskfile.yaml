@@ -425,6 +425,27 @@ tasks:
           --from-file=policy.yaml=config/dev/hiss/policy.yaml --dry-run=client -o yaml | kubectl apply -f -
         kubectl --context k3d-thump-dev -n thump rollout restart deploy/hiss
 
+  dev:certs:
+    desc: Extract NATS client/CA TLS certificates from dev cluster into bin/certs/
+    cmds:
+      - mkdir -p bin/certs
+      - kubectl --context k3d-thump-dev -n thump get secret nats-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > bin/certs/ca.crt
+      - kubectl --context k3d-thump-dev -n thump get secret nats-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > bin/certs/tls.crt
+      - kubectl --context k3d-thump-dev -n thump get secret nats-tls -o jsonpath='{.data.tls\.key}' | base64 -d > bin/certs/tls.key
+      - echo "NATS TLS certs written to bin/certs/"
+
+  dev:incidents:
+    desc: List incidents from dev cluster over NATS port-forward (requires task dev:certs)
+    cmds:
+      - go run ./cmd/calipers incidents --nats-url tls://localhost:4222 --tls-cert bin/certs/tls.crt --tls-key bin/certs/tls.key --tls-ca bin/certs/ca.crt --server-name nats.thump.svc
+
+  dev:approve:
+    desc: "Approve a held incident by fingerprint: task dev:approve FP=<fp> (requires task dev:certs)"
+    requires:
+      vars: [FP]
+    cmds:
+      - go run ./cmd/calipers approve {{.FP}} --nats-url tls://localhost:4222 --tls-cert bin/certs/tls.crt --tls-key bin/certs/tls.key --tls-ca bin/certs/ca.crt --server-name nats.thump.svc
+
   # The bucket pull stays the operator's job: which object store, which
   # credentials, and which segments are worth reading are all site facts, and
   # a tool that fetched for you would need cluster reach it has no business

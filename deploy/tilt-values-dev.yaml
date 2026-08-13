@@ -52,9 +52,7 @@ approvalRequests:
     - kind: User
       name: system:admin
 
-# Only otelDemo for MVP — acme is staged (config/dev's watch.yaml/
-# catalog-info.yaml comments say where its block ports from) but not wired
-# in yet; flip this on once the acme manifests/RBAC land in deploy/dev.
+# otelDemo and acme domains enabled for dev profile.
 #
 # rookCeph.enabled: false — this profile has no Ceph at all
 # (docs/dev-environment.md). Chart default is true (every other profile has
@@ -64,7 +62,7 @@ domains:
   otelDemo:
     enabled: true
   acme:
-    enabled: false
+    enabled: true
   rookCeph:
     enabled: false
 
@@ -95,3 +93,7 @@ thump:
   executor: live
   killSwitch:
     armed: true
+
+beats:
+  clank:
+    dedupeWindow: 5m
