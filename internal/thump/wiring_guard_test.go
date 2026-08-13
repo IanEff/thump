@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ianeff/thump/internal/actuate"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/configtest"
@@ -57,6 +59,37 @@ func TestBuildExecutor_BindsEveryContractTheShippedCatalogAuthors(t *testing.T) 
 	}
 }
 
+func TestEveryProfileCatalog_BindsUnderThatProfilesOwnWiring(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		profile string
+		forge   thump.Forge // nil means the profile's wiring configures no forge
+	}{
+		"the dev profile binds with no forge, because it authors no release": {
+			profile: "dev", forge: nil,
+		},
+		"the thump-test profile binds with the forge its values file configures": {
+			profile: "thump-test", forge: stubForge{},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := config.Thump{Executor: "live", KillSwitchPath: filepath.Join(t.TempDir(), "switch")}
+			cat := configtest.CatalogForProfile(t, tc.profile)
+
+			_, _, err := thump.BuildExecutorForTestWithKube(cfg, cat, tc.forge, stubKube{})
+
+			if diff := cmp.Diff(error(nil), err, cmpopts.EquateErrors()); diff != "" {
+				t.Error("profile catalog does not bind under its own wiring", diff)
+			}
+		})
+	}
+}
+
 // stubKube satisfies actuate.Kube without a cluster — the guard test binds
 // the shipped catalog, it never dispatches through Kube, so every method
 // here is unreached and only needs to compile.
@@ -66,6 +99,7 @@ func (stubKube) Exec(context.Context, string, string, []string) error { return n
 func (stubKube) Patch(context.Context, string, string, string, string, string, []byte) error {
 	return nil
 }
+
 func (stubKube) GetConfigMapKey(context.Context, string, string, string) (string, error) {
 	return "", nil
 }

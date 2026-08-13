@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/thump"
 	"github.com/ianeff/thump/internal/whir"
+	"github.com/ianeff/thump/test/acme/acmefixture"
 )
 
 // acmeDir is the only place this test names a path — every domain fact below
@@ -338,6 +340,47 @@ func TestOperator_AnAuthoredActionNamingNoMechanismFailsAtLoad(t *testing.T) {
 			}
 			if _, err := actuate.BoundRefs(cat); err == nil {
 				t.Error("an authored action with no reachable mechanism must fail at load, got nil error")
+			}
+		})
+	}
+}
+
+// TestDevProfile_AuthorsEveryAcmeSubjectTheAppActuallyEmits pins the join
+// between authored config and a running workload. A query naming a series
+// nothing emits does not fail loudly - it degrades clank's grounding
+// silently, which is the failure mode config/dev/rattle/watch.yaml's own
+// header warns about, so the join is asserted rather than trusted.
+func TestDevProfile_AuthorsEveryAcmeSubjectTheAppActuallyEmits(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		query string
+		want  string
+	}{
+		"the acme-api error ratio cites a series the fixture registers": {
+			query: "acme_api_error_ratio", want: "acme_api_requests_total",
+		},
+		"the acme-db saturation query cites a series the fixture registers": {
+			query: "acme_db_connections_saturation", want: "acme_db_connections_active",
+		},
+	}
+
+	ev := configtest.EvidenceQueries(t, "dev")
+	emitted := acmefixture.RegisteredMetricNames()
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			q, ok := ev.Queries[tc.query]
+			if !ok {
+				t.Fatalf("dev profile authors no query named %q", tc.query)
+			}
+			if !strings.Contains(q.Query, tc.want) {
+				t.Errorf("query %q cites no series the fixture emits; want one of %v", tc.query, emitted)
+			}
+			if diff := cmp.Diff(true, slices.Contains(emitted, tc.want)); diff != "" {
+				t.Error("fixture stopped emitting a series the dev profile cites", diff)
 			}
 		})
 	}

@@ -2,13 +2,9 @@
 
 A k3d cluster and a Tiltfile substrate that stand up everything `deploy/chart/thump`
 assumes already exists, so the whole five-beat loop runs on a laptop with no rig repo,
-no IAP tunnel, and no Ceph. Every other cluster profile (`ceph-lab`, `rook-gke`,
-`rook-gce-k3s`, `thump-test`) is provisioned by a separate repo under `~/projects/ceph/`;
-`dev` is provisioned by this one, via `deploy/dev/`.
-
-Two things it does not do: it does not arm `THUMP_EXECUTOR=live` (see "Why dry mode"
-below), and it does not run the `acme` domain yet — `domains.acme.enabled` is `false`,
-though the config and RBAC gates are already in place for when it lands.
+no IAP tunnel, and no Ceph. The other cluster profile, `thump-test`, is provisioned by
+a separate repo under `~/projects/ceph/`; `dev` is provisioned by this one, via
+`deploy/dev/`.
 
 ## Prerequisites
 
@@ -78,26 +74,42 @@ kubectl logs -n thump -l app.kubernetes.io/component=rattle -f
 
 rattle's burn-rate detector scores a trailing window, so expect the first `"detection"`
 log line something like 5–6 minutes after injection, not immediately. clank reasons over
-it next (`"reasoned"`), hiss rules on the proposal (`"decision"`), and thump renders —
-never executes — the chosen action. Restore the flag when you're done:
+it next (`"reasoned"`), hiss rules on the proposal (`"decision"`), and thump executes the
+chosen action (patching `otel-demo/flagd-config`). Restore the flag when you're done:
 
 ```sh
 task chaos:cart-restore
 ```
 
-## Why dry mode
+## Live mode and forge binding
 
-`deploy/tilt-values-dev.yaml` sets `thump.executor: dry`, and that is deliberate for this cluster: the dev environment has no GitOps repository target (`FORGE_REPO`) configured to write to, not because forge support doesn't exist. `bind` refuses `maintenanceRelease` actions when no forge is configured (`internal/actuate/binding.go`), and `disable-cart-failure-release` (`config/actions/catalog.yaml`) relies on gitops release actuation.
+`deploy/tilt-values-dev.yaml` sets `thump.executor: live` with `killSwitch.armed: true`.
 
-So the loop you'll see end to end is real — detection, evidence gathering, governance,
-a rendered decision — right up to the mutation itself, which thump logs instead of
-applying. Arming live in dev requires provisioning a GitOps repo target and secret.
+Unlike the production rig (`thump-test`), `dev` requires no GitOps target (`FORGE_REPO`). `actuate.New` (`internal/actuate/kube.go`) only requires a forge when the loaded catalog authors a `maintenanceRelease` action. The dev profile catalog (`config/dev/actions/catalog.yaml`) authors in-cluster mutations — patching `otel-demo/flagd-config` — and leaves release contracts to `thump-test`. `bind` validates every contract at startup, finds no release actions, and starts clean with `FORGE_REPO` unset.
 
-## What's staged for later, not built
+When `task chaos:cart-failure` fires, the loop runs end-to-end through detection, evidence gathering, governance, and actual cluster mutation.
 
-The `acme` synthetic domain — `docs/onboarding.md`'s own onboarding fixture — is
-deliberately not wired into this environment yet. `domains.acme.enabled` is `false`,
-but the RBAC gate, the config (`test/onboarding/testdata/acme/`), and the SLO rule
-groups it needs (`deploy/dev/manifests/slo-rules.yaml`'s header comment names the exact
-line range to pull from) are all already in place. Flipping it on is additive, not a
-rework.
+### Operator surface
+
+When a detection requires manual intervention or governance holds an action, the operator CLI (`calipers`) can interact with the live cluster over the port-forwarded NATS server:
+
+```sh
+task dev:certs                          # extract NATS TLS certificates to bin/certs/
+task dev:incidents                      # list active incidents over NATS
+task dev:approve FP=<fingerprint>       # approve a held incident by fingerprint
+```
+
+
+## acme, the third domain
+
+`domains.acme.enabled` is `true` in this profile — a second, orthogonal domain
+alongside the OTel demo (this profile runs no Ceph; that's `thump-test`
+alone), standing in for someone who has never onboarded a domain and
+following `docs/onboarding.md`'s own fixture. Its
+catalog entry is `acme-shed-load` (`config/dev/actions/catalog.yaml`), scoped
+to `dependency_saturation`. Fault injection is direct, not a `task` target:
+
+```sh
+chaos/acme-fault.sh inject
+chaos/acme-fault.sh restore
+```

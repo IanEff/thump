@@ -29,3 +29,8 @@ pods:
     labels:
       app.kubernetes.io/name: flagd
     phase: Running
+  - name: acme-api-0
+    namespace: acme
+    labels:
+      app: acme-api
+    phase: Running

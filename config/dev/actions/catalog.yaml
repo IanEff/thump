@@ -4,9 +4,9 @@
 # copy behind it, so an action added here is proposable with no Go edit, and
 # an action deleted here can no longer be proposed or executed by anything.
 #
-# dependency_saturation carries one active catalogued remedy here —
-# acme-shed-load, below. throttle-non-critical-paths remains a demoted dead
-# knob for the Ceph/RGW case it was authored for.
+# dependency_saturation carries one active catalogued remedy in this
+# profile — acme-shed-load, below. throttle-non-critical-paths remains a
+# demoted dead knob for the Ceph/RGW case it was authored for.
 #
 # contract.LoadCatalogFile binds each Precondition.OK by looking its Name up
 # in a compiled contract.PreconditionRegistry — no contract below declares
@@ -171,38 +171,6 @@
     severityQuery: severity_cart_availability
     severityReductionPct: 0.9
 
-- name: disable-cart-failure-release
-  # GitOps sibling of disable-cart-failure, beside it so both modes land in
-  # one ranked set on the same detection and become directly comparable. The
-  # reversal is a second maintenanceRelease, not withdraw: withdraw only
-  # retracts an unmerged release (Part 3), it does not undo one a reviewer
-  # already merged.
-  applicableFailureClasses:
-    - service_failure
-  applicableTiers:
-    - tier-1
-  action:
-    description: >-
-      Set the cartFailure flagd flag to "off" in the GitOps source of record
-      and cut a maintenance release for review, letting the cluster's own
-      reconciler apply it; reversible by cutting a second release that a
-      reviewer must also merge.
-  blastTier: low
-  reversal:
-    method: revert-cart-failure-release
-    fallback: page-oncall
-  execution:
-    forward:
-      - {verb: maintenanceRelease, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "off"}
-    reverse:
-      - {verb: maintenanceRelease, path: applications/apps/opentelemetry-demo/charts/opentelemetry-demo-0.40.10/opentelemetry-demo/flagd/demo.flagd.json, flag: cartFailure, variant: "on"}
-  successCriteria:
-    metric: cart_error_ratio
-    target: "cart_error_ratio == 0"
-    window: 300000000000 # 5 * time.Minute, in nanoseconds
-    severityQuery: severity_cart_availability
-    severityReductionPct: 0.9
-
 - name: restart-cart-pod
   # cart's plausible-but-wrong alternative (Wave 7's ranker exercise): real,
   # BlastLow, reversible — clears the gate on its own merits. What
@@ -274,10 +242,14 @@
 # third domain, orthogonal to Ceph and OTel demo, standing in for "someone
 # who has never onboarded a domain" following the doc's own example
 # (test/onboarding/testdata/acme/actions/catalog.yaml) — except the failure
-# class: kept in lockstep with config/dev/actions/catalog.yaml, which scopes
-# this to dependency_saturation rather than the fixture's service_failure so
-# dev's acme domain shares no failure class with its otel-demo trio (see
-# that file's comment for the full reasoning; CHARTER.md's coverage row).
+# class: the testdata fixture and config/thump-test both scope
+# acme-shed-load to service_failure, but this profile's otel-demo trio
+# (disable-product-catalog-failure, disable-cart-failure, restart-cart-pod)
+# already claims service_failure here, and CHARTER.md's coverage row
+# requires dev's two domains to share no failure class. Scoped to
+# dependency_saturation instead — acme-db/acme-cache saturation, not
+# acme-api's own request path — so a fault in one domain can never be
+# matched by an action authored for the other.
 - name: acme-shed-load
   applicableFailureClasses:
     - dependency_saturation

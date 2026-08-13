@@ -20,3 +20,8 @@ queries:
     query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="checkout"})'
   - dependency: flagd
     query: 'max(kube_deployment_status_replicas_available{namespace="otel-demo",deployment="flagd"})'
+
+  - dependency: acme-db
+    query: 'max(up{job="acme-db"})'
+  - dependency: acme-cache
+    query: 'max(up{job="acme-cache"})'

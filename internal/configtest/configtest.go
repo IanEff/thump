@@ -11,44 +11,8 @@ import (
 	"testing"
 
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 )
-
-// shippedPath resolves a config/actions file against the repo root, located by
-// walking up from the test's working directory to the enclosing go.mod. How
-// deep the calling package sits is therefore irrelevant — a test nested below
-// internal/<pkg> reads the same shipped config as one beside it, instead of a
-// relative path that silently resolves outside the repo.
-func shippedPath(t *testing.T, name string) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("resolve working directory: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return filepath.Join(dir, "config", "actions", name)
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatalf("no go.mod above %s: cannot locate the repo root holding config/actions/%s", dir, name)
-		}
-		dir = parent
-	}
-}
-
-// ShippedCatalog loads the action catalog production runs on. An action
-// absent from here can be neither proposed nor executed by anything.
-func ShippedCatalog(t *testing.T) *contract.StaticCatalog {
-	t.Helper()
-	return CatalogAt(t, shippedPath(t, "catalog.yaml"))
-}
-
-// ShippedFailureClasses loads the authored class definitions production
-// renders into the reason loop's prompt.
-func ShippedFailureClasses(t *testing.T) []contract.FailureClassDefinition {
-	t.Helper()
-	return FailureClassesAt(t, shippedPath(t, "failure-classes.yaml"))
-}
 
 // CatalogAt loads an authored catalog from an arbitrary path — the seam a
 // fixture domain's own catalog.yaml comes through, so a synthetic domain is
@@ -70,4 +34,90 @@ func FailureClassesAt(t *testing.T, path string) []contract.FailureClassDefiniti
 		t.Fatalf("load failure classes %s: %v", path, err)
 	}
 	return defs
+}
+
+// profilePath resolves a file in config/<profile>/actions/ against the repo
+// root, located by walking up from the test's working directory to the
+// enclosing go.mod. How deep the calling package sits is therefore
+// irrelevant — a test nested below internal/<pkg> reads the same profile
+// config as one beside it, instead of a relative path that silently
+// resolves outside the repo.
+func profilePath(t *testing.T, profile, name string) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("resolve working directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "config", profile, "actions", name)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod above %s: cannot locate repo root holding config/%s/actions/%s", dir, profile, name)
+		}
+		dir = parent
+	}
+}
+
+// CatalogForProfile loads an authored catalog for a specific cluster profile.
+func CatalogForProfile(t *testing.T, profile string) *contract.StaticCatalog {
+	t.Helper()
+	return CatalogAt(t, profilePath(t, profile, "catalog.yaml"))
+}
+
+// FailureClassesForProfile loads authored failure classes for a specific profile.
+func FailureClassesForProfile(t *testing.T, profile string) []contract.FailureClassDefinition {
+	t.Helper()
+	return FailureClassesAt(t, profilePath(t, profile, "failure-classes.yaml"))
+}
+
+// ShippedCatalog defaults to the full thump-test catalog so existing tests assert against complete contract coverage.
+func ShippedCatalog(t *testing.T) *contract.StaticCatalog {
+	t.Helper()
+	return CatalogForProfile(t, "thump-test")
+}
+
+// ShippedFailureClasses defaults to thump-test failure classes.
+func ShippedFailureClasses(t *testing.T) []contract.FailureClassDefinition {
+	t.Helper()
+	return FailureClassesForProfile(t, "thump-test")
+}
+
+// EvidenceQueriesAt loads authored evidence queries from an arbitrary path —
+// the seam a fixture domain's own evidence-queries.yaml comes through.
+func EvidenceQueriesAt(t *testing.T, path string) evidence.Config {
+	t.Helper()
+	cfg, err := evidence.LoadEvidenceConfig(path)
+	if err != nil {
+		t.Fatalf("load evidence queries %s: %v", path, err)
+	}
+	return cfg
+}
+
+// evidencePath resolves a file in config/<profile>/whir/ against the repo
+// root, located by walking up from the test's working directory to the
+// enclosing go.mod.
+func evidencePath(t *testing.T, profile, name string) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("resolve working directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "config", profile, "whir", name)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod above %s: cannot locate repo root holding config/%s/whir/%s", dir, profile, name)
+		}
+		dir = parent
+	}
+}
+
+// EvidenceQueries loads authored evidence queries for a specific cluster profile.
+func EvidenceQueries(t *testing.T, profile string) evidence.Config {
+	t.Helper()
+	return EvidenceQueriesAt(t, evidencePath(t, profile, "evidence-queries.yaml"))
 }

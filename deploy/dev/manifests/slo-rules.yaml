@@ -1,21 +1,16 @@
 # Hand-authored PrometheusRule for the local thump dev environment — no
 # Sloth operator runs here, same as the rig: neither
 # ~/projects/ceph/thump-test nor this env run Sloth itself, they commit its
-# *generated* output. These six rule groups are extracted verbatim (only
+# *generated* output. These nine rule groups are extracted verbatim (only
 # `lab: thump-test` -> `lab: dev`, nothing else) from
 # ~/projects/ceph/thump-test/applications/infrastructure/sloth/prometheusrule.yaml
-# lines 941-1272 (sli+meta recordings) and 1679-1758 (alerts), covering the
-# two SLOs config/dev/rattle/watch.yaml watches:
-# product-catalog-availability and cart-availability.
+# (sli+meta recordings and alerts), covering the three SLOs config/dev/rattle/watch.yaml watches:
+# product-catalog-availability, cart-availability, and acme-api-availability.
 #
 # The meta-recordings groups are what matter most: they emit
 # slo:current_burn_rate:ratio{sloth_id=...} — the exact series
 # internal/rattle/source.go:59 queries by sloth_id. Without this rule
 # object, rattle has nothing to detect against, full stop.
-#
-# When the acme domain lands (see docs/dev-environment.md's roadmap note),
-# pull the acme-api-availability groups from the same source file — lines
-# 1273-1438 (sli+meta) and 1759-1798 (alerts) — the same way.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -438,3 +433,210 @@ spec:
           labels:
             severity: warning
             sloth_severity: ticket
+    - name: sloth-slo-sli-recordings-acme-api-availability
+      rules:
+        - expr: |
+            (sum(rate(acme_api_requests_total{status="500"}[5m])))
+            /
+            (sum(rate(acme_api_requests_total[5m])))
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 5m
+          record: slo:sli_error:ratio_rate5m
+        - expr: |
+            (sum(rate(acme_api_requests_total{status="500"}[30m])))
+            /
+            (sum(rate(acme_api_requests_total[30m])))
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 30m
+          record: slo:sli_error:ratio_rate30m
+        - expr: |
+            (sum(rate(acme_api_requests_total{status="500"}[1h])))
+            /
+            (sum(rate(acme_api_requests_total[1h])))
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 1h
+          record: slo:sli_error:ratio_rate1h
+        - expr: |
+            (sum(rate(acme_api_requests_total{status="500"}[2h])))
+            /
+            (sum(rate(acme_api_requests_total[2h])))
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 2h
+          record: slo:sli_error:ratio_rate2h
+        - expr: |
+            (sum(rate(acme_api_requests_total{status="500"}[6h])))
+            /
+            (sum(rate(acme_api_requests_total[6h])))
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 6h
+          record: slo:sli_error:ratio_rate6h
+        - expr: |
+            (sum(rate(acme_api_requests_total{status="500"}[1d])))
+            /
+            (sum(rate(acme_api_requests_total[1d])))
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 1d
+          record: slo:sli_error:ratio_rate1d
+        - expr: |
+            (sum(rate(acme_api_requests_total{status="500"}[3d])))
+            /
+            (sum(rate(acme_api_requests_total[3d])))
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 3d
+          record: slo:sli_error:ratio_rate3d
+        - expr: |
+            sum_over_time(slo:sli_error:ratio_rate5m{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"}[30d])
+            / ignoring (sloth_window)
+            count_over_time(slo:sli_error:ratio_rate5m{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"}[30d])
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_window: 30d
+          record: slo:sli_error:ratio_rate30d
+    - name: sloth-slo-meta-recordings-acme-api-availability
+      rules:
+        - expr: vector(0.99)
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+          record: slo:objective:ratio
+        - expr: vector(1-0.99)
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+          record: slo:error_budget:ratio
+        - expr: vector(30)
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+          record: slo:time_period:days
+        - expr: |
+            slo:sli_error:ratio_rate5m{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"}
+            / on(sloth_id, sloth_slo, sloth_service) group_left
+            slo:error_budget:ratio{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"}
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+          record: slo:current_burn_rate:ratio
+        - expr: |
+            slo:sli_error:ratio_rate30d{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"}
+            / on(sloth_id, sloth_slo, sloth_service) group_left
+            slo:error_budget:ratio{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"}
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+          record: slo:period_burn_rate:ratio
+        - expr: 1 - slo:period_burn_rate:ratio{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"}
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_service: acme-api
+            sloth_slo: availability
+          record: slo:period_error_budget_remaining:ratio
+        - expr: vector(1)
+          labels:
+            domain: acme
+            lab: dev
+            sloth_id: acme-api-availability
+            sloth_mode: cli-gen-k8s
+            sloth_objective: "99"
+            sloth_service: acme-api
+            sloth_slo: availability
+            sloth_spec: sloth.slok.dev/v1
+            sloth_version: 0.16.0
+          record: sloth_slo_info
+    - name: sloth-slo-alerts-acme-api-availability
+      rules:
+        - alert: AcmeAPIAvailabilitySLO
+          annotations:
+            summary: '{{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget burn rate is over expected.'
+            title: (page) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget burn rate is too fast.
+          expr: |
+            (
+                max(slo:sli_error:ratio_rate5m{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (14.4 * 0.01)) without (sloth_window)
+                and
+                max(slo:sli_error:ratio_rate1h{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (14.4 * 0.01)) without (sloth_window)
+            )
+            or
+            (
+                max(slo:sli_error:ratio_rate30m{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (6 * 0.01)) without (sloth_window)
+                and
+                max(slo:sli_error:ratio_rate6h{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (6 * 0.01)) without (sloth_window)
+            )
+          labels:
+            severity: critical
+            sloth_severity: page
+        - alert: AcmeAPIAvailabilitySLO
+          annotations:
+            summary: '{{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget burn rate is over expected.'
+            title: (ticket) {{$labels.sloth_service}} {{$labels.sloth_slo}} SLO error budget burn rate is too fast.
+          expr: |
+            (
+                max(slo:sli_error:ratio_rate2h{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (3 * 0.01)) without (sloth_window)
+                and
+                max(slo:sli_error:ratio_rate1d{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (3 * 0.01)) without (sloth_window)
+            )
+            or
+            (
+                max(slo:sli_error:ratio_rate6h{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (1 * 0.01)) without (sloth_window)
+                and
+                max(slo:sli_error:ratio_rate3d{sloth_id="acme-api-availability", sloth_service="acme-api", sloth_slo="availability"} > (1 * 0.01)) without (sloth_window)
+            )
+          labels:
+            severity: warning
+            sloth_severity: ticket
+

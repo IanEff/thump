@@ -65,3 +65,35 @@ spec:
   type: service
   lifecycle: experimental
   owner: otel-demo
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: acme-api
+  description: acme's public API — synthetic Python pod for the onboarding walkthrough. Subject of the acme-api-availability SLO.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: acme
+  dependsOn:
+    - resource:default/acme-db
+    - component:default/acme-cache
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: acme-db
+  description: Stand-in datastore dependency — same pod as acme-api, scraped under a separate job name so up{job="acme-db"} exists.
+spec:
+  type: database
+  owner: acme
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: acme-cache
+  description: Stand-in read-through cache dependency (optional). Same pod as acme-api, separate scrape job.
+spec:
+  type: service
+  lifecycle: experimental
+  owner: acme

@@ -23,14 +23,9 @@
 #     tries to read Applications from a namespace that doesn't exist.
 #   - cilium.apiserverEgress: true — Cilium is genuinely running here
 #     (deploy/dev/values/cilium.yaml), not just declared.
-#   - thump.executor: dry, deliberately NOT live. actuate.New's production
-#     wiring (internal/thump/thump.go's buildExecutor -> internal/actuate/
-#     kube.go's New -> newWith) never passes a Forge, so
-#     disable-cart-failure-release's maintenanceRelease verb fails
-#     ErrUnbindable and the whole catalog refuses to bind
-#     (internal/actuate/binding.go:91-94) — internal/forge/ is an empty
-#     directory. Arming live here is a follow-up gated on that forge
-#     landing, not something to "fix" by editing the newWith call site.
+#   - thump.executor: live with killSwitch.armed: true. The dev catalog
+#     (config/dev/actions/catalog.yaml) authors no release contracts, so
+#     bind succeeds with FORGE_REPO unset.
 replicas: 1
 
 image:
@@ -57,9 +52,7 @@ approvalRequests:
     - kind: User
       name: system:admin
 
-# Only otelDemo for MVP — acme is staged (config/dev's watch.yaml/
-# catalog-info.yaml comments say where its block ports from) but not wired
-# in yet; flip this on once the acme manifests/RBAC land in deploy/dev.
+# otelDemo and acme domains enabled for dev profile.
 #
 # rookCeph.enabled: false — this profile has no Ceph at all
 # (docs/dev-environment.md). Chart default is true (every other profile has
@@ -69,7 +62,7 @@ domains:
   otelDemo:
     enabled: true
   acme:
-    enabled: false
+    enabled: true
   rookCeph:
     enabled: false
 
@@ -97,4 +90,10 @@ cilium:
   apiserverEgress: true
 
 thump:
-  executor: dry
+  executor: live
+  killSwitch:
+    armed: true
+
+beats:
+  clank:
+    dedupeWindow: 5m

@@ -52,3 +52,9 @@ func ExecTargetForTest(ctx context.Context, cs kubernetes.Interface, namespace, 
 
 // ActuateTimeoutForTest exposes the bound on one Runner.Run call.
 func ActuateTimeoutForTest() time.Duration { return actuateTimeout }
+
+// BindForTest exposes bind to actuate_test — pure catalog binding resolution
+// without constructing a full Runner.
+func BindForTest(cat *contract.StaticCatalog, forgeWired bool) (map[string]binding, error) {
+	return bind(cat, forgeWired)
+}

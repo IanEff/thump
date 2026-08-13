@@ -33,6 +33,9 @@ def setup(cluster):
     k8s_yaml("deploy/dev/manifests/s3mock.yaml")
     k8s_resource("s3mock", labels = ["broker"])
 
+    k8s_yaml("deploy/dev/manifests/acme.yaml")
+    k8s_resource("acme-api", labels = ["acme"])
+
     # dev-only convenience port-forwards. The Services below are installed by
     # deploy/dev/bootstrap.sh's own helm releases, not by this Tiltfile's
     # k8s_yaml(rendered) — Tilt has no object-graph knowledge of them to
@@ -55,3 +58,4 @@ def setup(cluster):
     _dev_port_forward("prometheus-ui", "prometheus-kube-prometheus-prometheus", "monitoring", 9090, 9090)
     _dev_port_forward("hubble-ui", "hubble-ui", "kube-system", 12000, 80)
     _dev_port_forward("otel-demo-ui", "frontend-proxy", "otel-demo", 8080, 8080)
+    _dev_port_forward("nats", "nats", "thump", 4222, 4222)

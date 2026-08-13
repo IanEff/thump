@@ -16,7 +16,7 @@ image:
   pullPolicy: IfNotPresent
 
 # Switches whir and rattle profiles by cluster, while they're still hardwired
-configProfile: ceph-lab
+configProfile: dev
 
 # VERIFY against the lab: `kubectl -n monitoring get svc` before committing.
 prometheus:

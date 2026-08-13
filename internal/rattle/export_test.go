@@ -13,7 +13,7 @@ import (
 )
 
 func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection]) {
-	runLoop(ctx, r, log, pub, noop.Tracer{})
+	runLoop(ctx, r, log, pub, noop.Tracer{}, nil)
 }
 
 // NewReconcilerForTest exposes Main's real Reconciler assembly so a test can

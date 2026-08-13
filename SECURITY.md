@@ -24,11 +24,11 @@ can and cannot reach past, and what is deliberately left undefended are in
 [`docs/threat-model.md`](docs/threat-model.md) — start there if you're evaluating blast
 radius rather than transport.
 
-The short version, because it's the part people most often miss: **a change to
-`config/actions/catalog.yaml` is a change to the execution surface.** One verb (`exec`)
-takes argv directly, so whoever can merge that file can run a command in any pod thump's
-ServiceAccount can reach. What bounds it is RBAC, the kill switch, and a governance
-verdict — never the verb list.
+The short version, because it's the part people most often miss: **a change to any
+profile's `config/<profile>/actions/catalog.yaml` is a change to the execution
+surface.** One verb (`exec`) takes argv directly, so whoever can merge that file can run
+a command in any pod thump's ServiceAccount can reach. What bounds it is RBAC, the kill
+switch, and a governance verdict — never the verb list.
 
 ## Transport and at-rest encryption
 

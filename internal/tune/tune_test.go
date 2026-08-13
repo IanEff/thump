@@ -17,8 +17,9 @@ func TestTune_LeavesEveryConfigFileByteIdentical(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct{ file string }{
-		"tune leaves config/clank/weights.yaml untouched": {file: "../../config/clank/weights.yaml"},
-		"tune leaves config/hiss/policy.yaml untouched":   {file: "../../config/hiss/policy.yaml"},
+		"tune leaves config/clank/weights.yaml untouched":                     {file: "../../config/clank/weights.yaml"},
+		"tune leaves dev config/dev/hiss/policy.yaml untouched":               {file: "../../config/dev/hiss/policy.yaml"},
+		"tune leaves thump-test config/thump-test/hiss/policy.yaml untouched": {file: "../../config/thump-test/hiss/policy.yaml"},
 	}
 
 	for name, tc := range cases {

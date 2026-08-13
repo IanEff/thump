@@ -78,10 +78,13 @@ Notice what isn't in that list. You never author *how to reason*, *what to
 conclude*, or *when to approve*. Those are the engine's, and keeping them out of
 config is what makes the safety properties portable across domains.
 
-**Where files live.** Per-site config goes under `config/<site>/`. The action
-catalog, failure classes, and governance policy are global:
-`config/actions/` and `config/hiss/`. Copy `test/onboarding/testdata/acme/` as
-your starting skeleton and read it alongside this document:
+**Where files live.** All seven files are per-profile, under `config/<profile>/`
+— the action catalog and failure classes under `actions/`, the governance
+policy under `hiss/`, same as the topology and SLO files. `config/actions/`
+and `config/hiss/` (no profile) are a base copy `ACTION_CATALOG`/`HISS_POLICY`
+point `.env.example`'s local, non-Tilt loop at; nothing deployed reads them.
+Copy `test/onboarding/testdata/acme/` as your starting skeleton and read it
+alongside this document:
 
 ```sh
 go test ./test/onboarding -v

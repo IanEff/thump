@@ -1,0 +1,62 @@
+# hiss refuses to start without this file (hiss.go:83-85, HISS_POLICY env
+# var). Schema is hiss.Policy's YAML tags (policy.go:18) — field values here
+# match the calmPolicy() fixture in internal/hiss/authority_test.go so the
+# live run exercises the same posture the seam tests already prove out.
+version: v1
+floors:
+  tier-1:
+    # dependency_saturation/resource_exhaustion/service_failure sit at 0.75, one tier
+    # above GroundingOne (0.7, internal/clank/wiring.go DefaultScoringWeights) — a
+    # detection grounded on exactly one live in-topology citation can never clear these
+    # floors alone (confirmed live, cart-failure, 2026-08-06, three runs, identical
+    # 0.7-vs-0.75 result each time; groundedConfidence's AlignmentOK term only ever
+    # discounts, it cannot lift a result past its grounding tier's ceiling). That gap is
+    # deliberate, not a miscalibration: casebase.go's minCorroboration=2 is
+    # belief-formation defence 1, the ≥2-source floor (CLAUDE.md), and this is the same
+    # principle enforced as a governance minimum instead of a hard gate — one
+    # corroborating source is not sufficient grounds to auto-approve a tier-1 action, full
+    # stop. A single-citation detection escalating to a human is the defence working, not
+    # a defect. Raising GroundingOne or lowering these floors to make single-citation
+    # auto-approval possible would be tuning the belief-formation math to fit a demo
+    # outcome rather than the corroboration standard the rest of the system holds to.
+    dependency_saturation: 0.75 # DOCUMENTED DEAD KNOB — governance minimum for a
+    # class with zero active catalogued remedies; retained for schema completeness,
+    # but no proposal can ever reach or clear this floor.
+    resource_exhaustion: 0.75 # parity value with dependency_saturation, fixture-derived —
+    # not yet calibrated against agent_proposal_confidence/agent_proposal_success_total.
+    # This comment used to say that was a structural wait rather than a TODO, because
+    # agent_proposal_success_total only populates on ResultSuccess/ResultFailure
+    # (metrics.go recordCalibration) and thump was dry-run-only. THAT WAIT ENDED
+    # 2026-07-16: thump grew a live executor (design-decisions.md D-8), and
+    # recordCalibration has been firing on real settlements since — three on 2026-08-01
+    # alone. The value is uncalibrated because nobody has looked, not because the data
+    # cannot exist. What it needs is the observed distribution either side of a
+    # candidate floor, which is a corpus mined off the sealed WAL, not a live counter.
+    service_failure: 0.75 # parity value with dependency_saturation/resource_exhaustion.
+    # Had no live confidence datum when this was written; it has one now —
+    # disable-cart-failure proposed at 0.81, cleared this floor, auto-approved on
+    # act_reversible and applied clean (2026-08-01). One datum is not a calibration,
+    # but the class is no longer unobserved. Same corpus question as the row above.
+    redundancy_degraded: 0.3 # SEED VALUE, lowered from 0.75 fixture parity 2026-07-18 to
+    # unblock the first live approved+executed run on this class. Checked against the
+    # mined WAL corpus (internal/clank/testdata/corpus/corpus.json): two distinct settled
+    # incidents on this class, hold-rebalance at 0.8500 (partial_non_converging) and
+    # accelerate-recovery at 0.8660 (success) — both above every candidate floor between
+    # 0 and 0.85, so the corpus can't yet distinguish 0.3 from 0.75. disable-cart-failure
+    # (0.8406, success) is service_failure, not this class, and isn't in this corpus at
+    # all — its WAL segment never sealed. Two points a hair apart is a curve fit, not a
+    # calibration; a floor moved on that basis would be worse than one left seeded.
+    # Revisit once more incidents settle.
+maxBand:
+  tier-1: act_reversible
+autoBand:
+  tier-1: act_reversible
+requireReversal: true
+# Any detection evaluated inside a window escalates regardless of confidence
+# or band (authority.go:79-83) — a named change freeze, not a throttle. Left
+# empty at rest; uncomment with real timestamps to prove the escalate path
+# without waiting on a confidence-floor miss.
+# freezeWindows:
+#   - name: live-proof-window
+#     start: 2026-08-10T13:30:00Z
+#     end:   2026-08-10T13:55:00Z
