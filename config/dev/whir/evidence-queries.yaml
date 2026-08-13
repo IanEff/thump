@@ -39,24 +39,32 @@ queries:
   - name: severity_cart_availability
     query: slo:sli_error:ratio_rate5m{sloth_id="cart-availability"}
     subject: cart
-  # Raw 0..1 error ratios — the same numerator/denominator as each SLO's own
-  # Sloth SLI (deploy/dev/manifests/slo-rules.yaml), for the model to cite
-  # directly and for disable-*-failure's SuccessCriteria.Metric/Target to
-  # check against. `or vector(0)` on the numerator keeps a healthy-but-idle
-  # window reading 0, not absent — verified live on the rig this was ported
-  # from (baseline 0/0 -> NaN is possible when the loadgenerator isn't
-  # hitting the target path).
+  # Raw 0..1 error ratios — the same numerator/denominator AND window as each
+  # SLO's own Sloth SLI (deploy/dev/manifests/slo-rules.yaml's 5m rule), for
+  # the model to cite directly and for disable-*-failure's
+  # SuccessCriteria.Metric/Target to check against. A 2m window (the value
+  # this used to carry) starves on this traffic level — confirmed live,
+  # 2026-08-13: checkout->cart RPC runs ~0.07 req/s, sparse enough that the
+  # 2m rate() window returns no series at all on some polls while the same
+  # query at 5m returns data every time; the model declined a real
+  # cartFailure detection citing "cart_error_ratio returned no data" while
+  # the fault was actively injected. `or vector(0)` on the numerator keeps a
+  # healthy-but-idle window reading 0, not absent — verified live on the rig
+  # this was ported from (baseline 0/0 -> NaN is possible when the
+  # loadgenerator isn't hitting the target path); the denominator carries the
+  # same guard for the same reason, since an empty denominator makes the
+  # whole ratio absent regardless of the numerator.
   - name: product_catalog_error_ratio
     query: >-
-      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[2m])) or vector(0))
+      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])) or vector(0))
       /
-      sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[2m]))
+      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[5m])) or vector(0))
     subject: product-catalog
   - name: cart_error_ratio
     query: >-
-      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[2m])) or vector(0))
+      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
       /
-      sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[2m]))
+      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m])) or vector(0))
     subject: cart
   # demo_pods_not_running spans the whole otel-demo namespace, not one
   # component — left untagged rather than pinned to a single subject that

@@ -24,7 +24,7 @@ spec:
     - name: sloth-slo-sli-recordings-product-catalog-availability
       rules:
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])) or vector(0))
             /
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[5m])))
           labels:
@@ -36,7 +36,7 @@ spec:
             sloth_window: 5m
           record: slo:sli_error:ratio_rate5m
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30m])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30m])) or vector(0))
             /
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[30m])))
           labels:
@@ -48,7 +48,7 @@ spec:
             sloth_window: 30m
           record: slo:sli_error:ratio_rate30m
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[1h])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[1h])) or vector(0))
             /
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[1h])))
           labels:
@@ -60,7 +60,7 @@ spec:
             sloth_window: 1h
           record: slo:sli_error:ratio_rate1h
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[2h])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[2h])) or vector(0))
             /
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[2h])))
           labels:
@@ -72,7 +72,7 @@ spec:
             sloth_window: 2h
           record: slo:sli_error:ratio_rate2h
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[6h])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[6h])) or vector(0))
             /
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[6h])))
           labels:
@@ -84,7 +84,7 @@ spec:
             sloth_window: 6h
           record: slo:sli_error:ratio_rate6h
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[1d])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[1d])) or vector(0))
             /
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[1d])))
           labels:
@@ -96,7 +96,7 @@ spec:
             sloth_window: 1d
           record: slo:sli_error:ratio_rate1d
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[3d])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[3d])) or vector(0))
             /
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[3d])))
           labels:
@@ -190,7 +190,7 @@ spec:
     - name: sloth-slo-sli-recordings-cart-availability
       rules:
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
             /
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m])))
           labels:
@@ -202,7 +202,7 @@ spec:
             sloth_window: 5m
           record: slo:sli_error:ratio_rate5m
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30m])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30m])) or vector(0))
             /
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[30m])))
           labels:
@@ -214,7 +214,7 @@ spec:
             sloth_window: 30m
           record: slo:sli_error:ratio_rate30m
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[1h])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[1h])) or vector(0))
             /
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[1h])))
           labels:
@@ -226,7 +226,7 @@ spec:
             sloth_window: 1h
           record: slo:sli_error:ratio_rate1h
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[2h])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[2h])) or vector(0))
             /
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[2h])))
           labels:
@@ -238,7 +238,7 @@ spec:
             sloth_window: 2h
           record: slo:sli_error:ratio_rate2h
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[6h])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[6h])) or vector(0))
             /
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[6h])))
           labels:
@@ -250,7 +250,7 @@ spec:
             sloth_window: 6h
           record: slo:sli_error:ratio_rate6h
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[1d])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[1d])) or vector(0))
             /
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[1d])))
           labels:
@@ -262,7 +262,7 @@ spec:
             sloth_window: 1d
           record: slo:sli_error:ratio_rate1d
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[3d])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[3d])) or vector(0))
             /
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[3d])))
           labels:

@@ -128,7 +128,7 @@ func recommendedEvidence(ps proposal.Set) []proposal.EvidenceRef {
 
 	var result []proposal.EvidenceRef
 	for _, ref := range ps.Evidence {
-		if cited[ref.Query] {
+		if cited[ref.Key] {
 			result = append(result, ref)
 		}
 	}

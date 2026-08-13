@@ -28,7 +28,13 @@ def make_helpers(cluster, cluster_name):
     #   2. Retry the body. A genuine config error (.env missing, key unset)
     #      still fails on the first pass — those branches `exit 1`, which
     #      leaves the shell outright and never reaches the next iteration.
-    def _guarded(name, body):
+    def _guarded(name, body, attempts = 3):
+        # attempts defaults to 3 (transport-blip retries against a flaky IAP
+        # tunnel, the reason this wrapper exists at all). dev-substrate passes
+        # 1: its body is a ~10-15 minute non-resumable script, so retrying it
+        # after a real failure restarts from step 1 and can triple a genuine
+        # error into a 45-minute red — the retry is the amplifier there, not
+        # the cure.
         kubectl = "kubectl --context " + cluster["context"]
         if cluster_name == "dev":
             unreachable_hint = "is the k3d cluster up? (task dev:cluster)"
@@ -48,9 +54,24 @@ def make_helpers(cluster, cluster_name):
             + '" >&2; exit 1; '
             + "fi; sleep 2; done; "
         )
+        if attempts == 1:
+            return (
+                "bash -c '"
+                + preflight
+                + "{ "
+                + body
+                + "; } || { "
+                + 'echo "thump: '
+                + name
+                + ' failed — not retried, see above" >&2; exit 1; }'
+                + "'"
+            )
+        attempt_list = " ".join([str(n) for n in range(1, attempts + 1)])
         return (
             "bash -c '"
-            + "for attempt in 1 2 3; do "
+            + "for attempt in "
+            + attempt_list
+            + "; do "
             + preflight
             + "{ "
             + body
@@ -61,7 +82,9 @@ def make_helpers(cluster, cluster_name):
             + "sleep 5; done; "
             + 'echo "thump: '
             + name
-            + ' failed 3 times — this is a real error, not a blip" >&2; exit 1'
+            + ' failed '
+            + str(attempts)
+            + " times — this is a real error, not a blip\" >&2; exit 1"
             + "'"
         )
 

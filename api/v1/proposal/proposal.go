@@ -127,7 +127,8 @@ type Hypothesis struct {
 // the reason loop's conversation history.
 type EvidenceRef struct {
 	Tool    string `json:"tool,omitempty" yaml:"tool,omitempty"`       // which tool produced this, e.g. "kube", "loki", "casebase"
-	Query   string `json:"query,omitempty" yaml:"query,omitempty"`     // the exact query issued, for re-running, not for replaying results
+	Query   string `json:"query,omitempty" yaml:"query,omitempty"`     // the exact query issued, for re-running and audit — never matched against a citation, since a kube/loki query can be an unbounded, model-authored blob nobody can retype verbatim
+	Key     string `json:"key,omitempty" yaml:"key,omitempty"`         // the engine-assigned citation key shown as [cite: <key>] and matched verbatim against Candidate.Citations — short and stable by construction, unlike Query
 	Summary string `json:"summary,omitempty" yaml:"summary,omitempty"` // the one-line digest that actually enters the conversation
 	Ref     string `json:"ref,omitempty" yaml:"ref,omitempty"`         // a backend pointer to re-fetch the source data, e.g. "kube://ns/pods" — not the data itself
 	Live    bool   `json:"live,omitempty" yaml:"live,omitempty"`       // true only for fresh telemetry, never for case-base/change-snapshot lookups — the gate requires at least one Live EvidenceRef to pass (belief-formation defence 5)
@@ -154,7 +155,7 @@ type Candidate struct {
 	ReversalPath           *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence
 	GovernanceLevel        *GovernanceLevel `json:"governanceLevel,omitempty" yaml:"governanceLevel,omitempty"` // nil is read as the lowest band (BandObserve), never as elevated privilege
 	Rank                   int              `json:"rank,omitempty" yaml:"rank,omitempty"`                       // 1-indexed position after ranking; rank 1 is what Set.Recommended names
-	Citations              []string         `json:"citations,omitempty" yaml:"citations,omitempty"`             // EvidenceRef.Query names backing this Candidate - what the gate grounds and the confidence function corroborates.
+	Citations              []string         `json:"citations,omitempty" yaml:"citations,omitempty"`             // EvidenceRef.Key values backing this Candidate - what the gate grounds and the confidence function corroborates.
 }
 
 // PredictedImpact is a forecast of what this Candidate would do to the

@@ -33,8 +33,34 @@ def setup(cluster):
     k8s_yaml("deploy/dev/manifests/s3mock.yaml")
     k8s_resource("s3mock", labels = ["broker"])
 
+    # objects=[...]: acme-db/acme-cache Services front the same pod under a
+    # different name and Tilt already auto-associates them with the acme-api
+    # workload by label selector — the three ServiceMonitors and two
+    # ConfigMaps have no such selector to be discovered by, so without this
+    # they land in Tilt's "uncategorized" bucket, which retries as one unit
+    # and has no resource_deps on servicemonitor-crd (see thump-servicemonitor
+    # below for the same CRD race this avoids).
+    #
+    # resource_deps includes acme-namespace: acme.yaml used to declare
+    # Namespace/acme inline, which gave every object in the same apply batch
+    # an implicit ordering safety net even with no explicit dependency.
+    # Dropping that Namespace (infra.Tiltfile's acme-namespace local_resource
+    # already owns it — Tilt GC'ing a Namespace it also applied is the
+    # cascading-delete hazard Namespace/thump is deliberately filtered out
+    # for) removed that net, and acme-api's apply started racing
+    # acme-namespace and losing: "namespaces \"acme\" not found", the same
+    # failure class deploy.Tiltfile's acme-rbac/otel-demo-rbac comment
+    # already documents from the 2026-08-03 incident.
     k8s_yaml("deploy/dev/manifests/acme.yaml")
-    k8s_resource("acme-api", labels = ["acme"])
+    k8s_resource(
+        "acme-api",
+        objects = [
+            "acme-api-server:ConfigMap:acme", "acme-fault-flag:ConfigMap:acme",
+            "acme-api:ServiceMonitor:acme", "acme-db:ServiceMonitor:acme", "acme-cache:ServiceMonitor:acme",
+        ],
+        resource_deps = ["acme-namespace", "servicemonitor-crd"],
+        labels = ["acme"],
+    )
 
     # dev-only convenience port-forwards. The Services below are installed by
     # deploy/dev/bootstrap.sh's own helm releases, not by this Tiltfile's

@@ -109,6 +109,13 @@ func ScoreConfidencesForTest(set *proposal.Set, sao proposal.SAO, prior Prior, f
 	scoreConfidences(set, sao, prior, fingerprint, w)
 }
 
+// EvidenceKeyForTest exposes evidenceKey to clank_test, so a test asserting
+// what citation a real Propose run will produce derives it from the same
+// function the engine calls rather than duplicating the format string.
+func EvidenceKeyForTest(tool string, n int) string {
+	return evidenceKey(tool, n)
+}
+
 // CoherentLiveCitationsForTest exposes coherentLiveCitations to clank_test —
 // the corroboration count scoreConfidences feeds into the grounding tiers,
 // so a test can pin what counts as coherent without going through a full

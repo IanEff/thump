@@ -214,7 +214,7 @@ func TestOperator_OnboardsANewDomainInConfigAlone(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "acme_api_fault", Weight: 0.85}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "acme-shed-load", Confidence: 0.9,
-				Citations: []string{"acme_api_error_ratio", `{namespace="acme"}`},
+				Citations: []string{"acme_api_error_ratio", "loki-1"}, // loki's citation key is engine-assigned (kube/loki only); "loki-1" is the second evidence ref gathered this run
 			}},
 		})}}},
 	}}

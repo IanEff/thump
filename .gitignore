@@ -54,8 +54,10 @@ __debug_bin*
 
 # Agent Tooling
 .agents
-CLAUDE.md
-.claude/
+CLAUDE.local.md
+.claude/*
+!.claude/settings.json
+!.claude/skills/
 .gemini/
 .superpowers/
 .zed/

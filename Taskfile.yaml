@@ -388,9 +388,33 @@ tasks:
   # every run, so tilt up always has a live connection to attach to.
   dev:cluster:
     desc: Create (idempotently) the local k3d cluster deploy/dev/k3d.yaml describes
+    preconditions:
+      - sh: command -v k3d >/dev/null
+        msg: "k3d not found on PATH — install it before running dev:cluster"
+      - sh: command -v helm >/dev/null
+        msg: "helm not found on PATH — install it before running dev:cluster"
+      - sh: command -v tilt >/dev/null
+        msg: "tilt not found on PATH — install it before running dev:cluster"
+      - sh: command -v kubectl >/dev/null
+        msg: "kubectl not found on PATH — install it before running dev:cluster"
+      - sh: docker info >/dev/null 2>&1
+        msg: "Docker is not running — start Docker before running dev:cluster"
     cmds:
       - |
-        k3d cluster list thump-dev >/dev/null 2>&1 || k3d cluster create --config deploy/dev/k3d.yaml
+        # k3d cluster list's existence check says nothing about whether the
+        # cluster is actually running — after a laptop reboot it exists and
+        # is stopped, and everything downstream (tilt up's guarded() preflight)
+        # burns its full 60s budget against a dead API server before printing
+        # advice to run the task that just succeeded. serversRunning==0 with
+        # the cluster present means "start it", not "create it".
+        running=$(k3d cluster list thump-dev -o json 2>/dev/null | \
+          python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["serversRunning"] if d else -1)' 2>/dev/null || echo -1)
+        if [ "$running" = "-1" ]; then
+          k3d cluster create --config deploy/dev/k3d.yaml
+        elif [ "$running" = "0" ]; then
+          echo "thump-dev cluster exists but is stopped — starting it" >&2
+          k3d cluster start thump-dev
+        fi
       - kubectl config use-context k3d-thump-dev
 
   dev:up:
@@ -408,11 +432,16 @@ tasks:
     desc: Freeze the dev cluster so every detection escalates to a human
     cmds:
       - |
-        kubectl --context k3d-thump-dev -n thump get cm thump-hiss \
-          -o jsonpath='{.data.policy\.yaml}' > /tmp/policy.yaml
+        # Reads from config/dev/hiss/policy.yaml, not the live ConfigMap: a
+        # second run used to read back its own already-mutated ConfigMap and
+        # append a SECOND freezeWindows: key to the same YAML — a duplicate
+        # mapping key, not idempotent. Starting from the checked-in file makes
+        # gate-on itself idempotent regardless of how many times it's run.
+        end_ts=$(date -u -v+4H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+4 hours' +%Y-%m-%dT%H:%M:%SZ)
+        cp config/dev/hiss/policy.yaml /tmp/policy.yaml
         printf 'freezeWindows:\n  - name: dev-demo\n    start: %s\n    end: %s\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-          "$(date -u -v+4H +%Y-%m-%dT%H:%M:%SZ)" >> /tmp/policy.yaml
+          "$end_ts" >> /tmp/policy.yaml
         kubectl --context k3d-thump-dev -n thump create cm thump-hiss \
           --from-file=policy.yaml=/tmp/policy.yaml --dry-run=client -o yaml | kubectl apply -f -
         kubectl --context k3d-thump-dev -n thump rollout restart deploy/hiss

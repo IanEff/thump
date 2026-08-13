@@ -82,9 +82,9 @@ func TestGate_EvidenceMinimumReadsTheRecommendedCandidatesCitations(t *testing.T
 	sao := &proposal.SAO{Version: 1, Topology: proposal.TopologySnapshot{
 		Upstream: []proposal.NodeState{{Name: "rook-operator", State: "degraded"}},
 	}}
-	inTopo := proposal.EvidenceRef{Query: "rook_operator_health", Live: true, Subject: "rook-operator"}
-	crossDomain := proposal.EvidenceRef{Query: "product_catalog_error_ratio", Live: true, Subject: "product-catalog"}
-	stale := proposal.EvidenceRef{Query: "rook_operator_health", Live: false, Subject: "rook-operator"}
+	inTopo := proposal.EvidenceRef{Key: "rook_operator_health", Live: true, Subject: "rook-operator"}
+	crossDomain := proposal.EvidenceRef{Key: "product_catalog_error_ratio", Live: true, Subject: "product-catalog"}
+	stale := proposal.EvidenceRef{Key: "rook_operator_health", Live: false, Subject: "rook-operator"}
 
 	cases := map[string]struct {
 		evidence  []proposal.EvidenceRef

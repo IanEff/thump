@@ -270,7 +270,7 @@ func TestCoherentLiveCitations_CountsASelfSubjectCitationTowardGrounding(t *test
 		},
 	}
 	cand := proposal.Candidate{Citations: []string{"self_check"}}
-	evidence := []proposal.EvidenceRef{{Query: "self_check", Live: true, Subject: "product-catalog"}}
+	evidence := []proposal.EvidenceRef{{Key: "self_check", Live: true, Subject: "product-catalog"}}
 
 	got := clank.CoherentLiveCitationsForTest(cand, evidence, sao)
 	if diff := cmp.Diff(1, got); diff != "" {
@@ -297,25 +297,25 @@ func TestCoherentLiveCitations_CountsDistinctBackendsNotRefs(t *testing.T) {
 		"one backend queried under two different query names counts as one source": {
 			citations: []string{"q1", "q2"},
 			evidence: []proposal.EvidenceRef{
-				{Tool: "loki", Query: "q1", Live: true, Subject: "product-catalog"},
-				{Tool: "loki", Query: "q2", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Key: "q1", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Key: "q2", Live: true, Subject: "product-catalog"},
 			},
 			want: 1,
 		},
 		"two distinct backends each queried once count as two sources": {
 			citations: []string{"q1", "q2"},
 			evidence: []proposal.EvidenceRef{
-				{Tool: "loki", Query: "q1", Live: true, Subject: "product-catalog"},
-				{Tool: "kube", Query: "q2", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Key: "q1", Live: true, Subject: "product-catalog"},
+				{Tool: "kube", Key: "q2", Live: true, Subject: "product-catalog"},
 			},
 			want: 2,
 		},
 		"the same backend cited three times still counts as one source": {
 			citations: []string{"q1", "q2", "q3"},
 			evidence: []proposal.EvidenceRef{
-				{Tool: "loki", Query: "q1", Live: true, Subject: "product-catalog"},
-				{Tool: "loki", Query: "q2", Live: true, Subject: "product-catalog"},
-				{Tool: "loki", Query: "q3", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Key: "q1", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Key: "q2", Live: true, Subject: "product-catalog"},
+				{Tool: "loki", Key: "q3", Live: true, Subject: "product-catalog"},
 			},
 			want: 1,
 		},
@@ -802,8 +802,8 @@ func TestPropose_WhenModelEndsTurnWithoutATool_YieldsSyntheticReason(t *testing.
 func TestPropose_ToolMessagesCarryTheCitableKeyVerbatim(t *testing.T) {
 	t.Parallel()
 
-	// enforceCitations grades a candidate's citations against EvidenceRef.Query
-	// by exact string equality, so every gathered ref's Query must appear
+	// enforceCitations grades a candidate's citations against EvidenceRef.Key
+	// by exact string equality, so every gathered ref's Key must appear
 	// verbatim in a tool message the model received — a key the engine
 	// validates but never showed is a check the model can only pass by luck.
 	model := &fakeModel{script: []reason.Completion{
@@ -821,11 +821,11 @@ func TestPropose_ToolMessagesCarryTheCitableKeyVerbatim(t *testing.T) {
 
 	final := model.received[len(model.received)-1]
 	for _, ref := range got.Evidence {
-		if ref.Query == "" {
+		if ref.Key == "" {
 			continue
 		}
-		if !receivedToolContent(final, ref.Query) {
-			t.Errorf("citable key %q never reached the conversation:\n%+v", ref.Query, final)
+		if !receivedToolContent(final, ref.Key) {
+			t.Errorf("citable key %q never reached the conversation:\n%+v", ref.Key, final)
 		}
 	}
 }
@@ -1053,6 +1053,63 @@ func TestPropose_DeclinesACandidateCitingEvidenceTheRunNeverGathered(t *testing.
 	}
 }
 
+// TestPropose_KubeCitesByItsAssignedKeyNotTheRawCallItCannotRetype pins the
+// 2026-08-13 live blocker: kube (and loki) stamp EvidenceRef.Query with the
+// entire raw JSON of the model's own tool call — a multi-field blob a model
+// reformats rather than recalls precisely several turns later, unlike
+// metrics' short, self-chosen input.Q. A real run proposed disable-cart-
+// failure with genuine two-tool corroboration and was rejected anyway: the
+// kube citation didn't byte-match the query the run had, in fact, gathered.
+func TestPropose_KubeCitesByItsAssignedKeyNotTheRawCallItCannotRetype(t *testing.T) {
+	t.Parallel()
+
+	const rawArgs = `{"resource":"pods","namespace":"rook-ceph","selector":{"app":"rook-ceph-mon","tier":"storage"}}`
+
+	tests := map[string]struct {
+		citation string
+	}{
+		"citing the raw call verbatim still declines — Query was never the key": {
+			citation: rawArgs,
+		},
+		"citing the engine-assigned key clears the citation check": {
+			citation: clank.EvidenceKeyForTest("kube", 0),
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			model := &fakeModel{script: []reason.Completion{
+				{ToolCalls: []reason.ToolCall{{Name: "kube", Args: json.RawMessage(rawArgs)}}},
+				{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+					FailureClass: proposal.ClassDependencySaturation,
+					Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+					Proposals: []proposal.Candidate{{
+						ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
+						Citations: []string{tc.citation},
+					}},
+				})}}},
+			}}
+
+			e, _ := newTestEngine(model)
+			e.Tools["kube"] = fakeTool{name: "kube", digest: "rook-ceph-mon-a (Running)", ref: "kube://rook-ceph/pods", live: true, query: rawArgs}
+
+			got, err := e.Propose(context.Background(), sigBurnAccel())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ungrounded := got.Status.Phase == proposal.PhaseNoAction && strings.Contains(got.Status.Reason, "did not gather")
+			wantUngrounded := tc.citation == rawArgs
+			if ungrounded != wantUngrounded {
+				t.Errorf("citing %q: ungrounded=%v, want %v (phase %q, reason %q)",
+					tc.citation, ungrounded, wantUngrounded, got.Status.Phase, got.Status.Reason)
+			}
+		})
+	}
+}
+
 func TestPropose_SuppressesAnOpenDuplicate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -1150,6 +1207,42 @@ func TestSeedPrompt_StatesTheEvidenceStandardWithoutNamingAnyApp(t *testing.T) {
 		if strings.Contains(seed, banned) {
 			t.Errorf("seed prompt names an app (%q) — rig knowledge belongs in config, not code:\n%s", banned, seed)
 		}
+	}
+}
+
+func TestSeedPrompt_TellsTheModelGroundingCountsDistinctTools(t *testing.T) {
+	t.Parallel()
+
+	model := &fakeModel{}
+	eng, _ := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+	seed := model.received[0][0].Content
+
+	tests := map[string]struct {
+		fragment string
+		want     bool
+	}{
+		"the seed prompt states that grounding counts distinct tools": {
+			fragment: "DISTINCT tools", want: true,
+		},
+		"the seed prompt asks for a second tool before proposing": {
+			fragment: "second tool", want: true,
+		},
+		"the seed prompt no longer calls a single metric sufficient": {
+			fragment: "sufficient in corroboration on its own", want: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tc.want, strings.Contains(seed, tc.fragment)); diff != "" {
+				t.Error("seed prompt disagrees with groundedConfidence about what grounds a proposal", diff)
+			}
+		})
 	}
 }
 

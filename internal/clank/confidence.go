@@ -28,7 +28,7 @@ func coherentLiveCitations(cand proposal.Candidate, evidence []proposal.Evidence
 
 	backends := make(map[string]bool)
 	for _, ref := range evidence {
-		if cited[ref.Query] && ref.Live && coherentSubject(ref, sao) {
+		if cited[ref.Key] && ref.Live && coherentSubject(ref, sao) {
 			backends[ref.Tool] = true
 		}
 	}
