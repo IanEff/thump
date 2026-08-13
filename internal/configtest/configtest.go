@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/ianeff/thump/internal/contract"
+	"github.com/ianeff/thump/internal/evidence"
 )
 
 // CatalogAt loads an authored catalog from an arbitrary path — the seam a
@@ -82,3 +83,42 @@ func ShippedFailureClasses(t *testing.T) []contract.FailureClassDefinition {
 	t.Helper()
 	return FailureClassesForProfile(t, "thump-test")
 }
+
+// EvidenceQueriesAt loads authored evidence queries from an arbitrary path —
+// the seam a fixture domain's own evidence-queries.yaml comes through.
+func EvidenceQueriesAt(t *testing.T, path string) evidence.Config {
+	t.Helper()
+	cfg, err := evidence.LoadEvidenceConfig(path)
+	if err != nil {
+		t.Fatalf("load evidence queries %s: %v", path, err)
+	}
+	return cfg
+}
+
+// evidencePath resolves a file in config/<profile>/whir/ against the repo
+// root, located by walking up from the test's working directory to the
+// enclosing go.mod.
+func evidencePath(t *testing.T, profile, name string) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("resolve working directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "config", profile, "whir", name)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod above %s: cannot locate repo root holding config/%s/whir/%s", dir, profile, name)
+		}
+		dir = parent
+	}
+}
+
+// EvidenceQueries loads authored evidence queries for a specific cluster profile.
+func EvidenceQueries(t *testing.T, profile string) evidence.Config {
+	t.Helper()
+	return EvidenceQueriesAt(t, evidencePath(t, profile, "evidence-queries.yaml"))
+}
+
