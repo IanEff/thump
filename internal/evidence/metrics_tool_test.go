@@ -41,6 +41,7 @@ func TestMetricsTool_Run(t *testing.T) {
 			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "ceph_health",
+				Key:     "ceph_health",
 				Summary: "ceph_health = 1",
 				Ref:     "metrics://ceph_health",
 				Live:    true,
@@ -60,6 +61,7 @@ func TestMetricsTool_Run(t *testing.T) {
 			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "ceph_health",
+				Key:     "ceph_health",
 				Summary: "query returned no data",
 				Live:    false,
 			},
@@ -71,6 +73,7 @@ func TestMetricsTool_Run(t *testing.T) {
 			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "made_up_metric",
+				Key:     "made_up_metric",
 				Summary: "no such evidence query: made_up_metric",
 				Live:    false,
 			},
@@ -82,6 +85,7 @@ func TestMetricsTool_Run(t *testing.T) {
 			wantRef: proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   "ceph_health",
+				Key:     "ceph_health",
 				Summary: "prometheus returned status: 500 Internal Server Error",
 				Live:    false,
 			},

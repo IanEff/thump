@@ -36,6 +36,7 @@
     {
       "tool": "metrics",
       "query": "rgw_failed_rate",
+      "key": "rgw_failed_rate",
       "summary": "rgw_failed_rate = 0.0034",
       "ref": "metrics://rgw_failed_rate",
       "live": true,
@@ -44,6 +45,7 @@
     {
       "tool": "metrics",
       "query": "rgw_request_rate",
+      "key": "rgw_request_rate",
       "summary": "rgw_request_rate = 0.1074",
       "ref": "metrics://rgw_request_rate",
       "live": true,
@@ -52,18 +54,21 @@
     {
       "tool": "metrics",
       "query": "rgw_get_put_latency_ms",
+      "key": "rgw_get_put_latency_ms",
       "summary": "query returned no data",
       "subject": "ceph-rgw"
     },
     {
       "tool": "metrics",
       "query": "severity_rgw_availability",
+      "key": "severity_rgw_availability",
       "summary": "query returned no data",
       "subject": "ceph-rgw"
     },
     {
       "tool": "metrics",
       "query": "severity_rgw_saturation",
+      "key": "severity_rgw_saturation",
       "summary": "query returned no data",
       "subject": "ceph-rgw"
     },
@@ -89,6 +94,7 @@
     {
       "tool": "metrics",
       "query": "ceph_health",
+      "key": "ceph_health",
       "summary": "ceph_health = 0",
       "ref": "metrics://ceph_health",
       "live": true,
@@ -97,6 +103,7 @@
     {
       "tool": "metrics",
       "query": "osds_down",
+      "key": "osds_down",
       "summary": "osds_down = 0",
       "ref": "metrics://osds_down",
       "live": true,
@@ -105,6 +112,7 @@
     {
       "tool": "metrics",
       "query": "osds_out",
+      "key": "osds_out",
       "summary": "osds_out = 0",
       "ref": "metrics://osds_out",
       "live": true,
@@ -113,6 +121,7 @@
     {
       "tool": "metrics",
       "query": "pgs_degraded",
+      "key": "pgs_degraded",
       "summary": "pgs_degraded = 0",
       "ref": "metrics://pgs_degraded",
       "live": true,
@@ -121,12 +130,14 @@
     {
       "tool": "metrics",
       "query": "pgs_undersized",
+      "key": "pgs_undersized",
       "summary": "query returned no data",
       "subject": "cephblockpool"
     },
     {
       "tool": "metrics",
       "query": "rook_pods_not_running",
+      "key": "rook_pods_not_running",
       "summary": "rook_pods_not_running = 4",
       "ref": "metrics://rook_pods_not_running",
       "live": true,
@@ -140,6 +151,7 @@
     {
       "tool": "metrics",
       "query": "rook_pods_not_running",
+      "key": "rook_pods_not_running",
       "summary": "rook_pods_not_running = 4",
       "ref": "metrics://rook_pods_not_running",
       "live": true,

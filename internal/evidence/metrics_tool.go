@@ -79,6 +79,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
+			Key:     input.Q,
 			Summary: fmt.Sprintf("no such evidence query: %s", input.Q),
 			Live:    false,
 		}, nil
@@ -97,6 +98,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 				return proposal.EvidenceRef{
 					Tool:    "metrics",
 					Query:   input.Q,
+					Key:     input.Q,
 					Summary: fmt.Sprintf("prometheus returned status: %s", statusErr.Status),
 					Live:    false,
 					Subject: subject,
@@ -105,6 +107,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 			return proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   input.Q,
+				Key:     input.Q,
 				Summary: fmt.Sprintf("prometheus request failed: %v", err),
 				Live:    false,
 				Subject: subject,
@@ -116,6 +119,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
+			Key:     input.Q,
 			Summary: "query returned no data",
 			Live:    false,
 			Subject: subject,
@@ -130,6 +134,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 	return proposal.EvidenceRef{
 		Tool:    "metrics",
 		Query:   input.Q,
+		Key:     input.Q,
 		Summary: fmt.Sprintf("%s = %s", input.Q, v),
 		Ref:     "metrics://" + input.Q,
 		Live:    true,
