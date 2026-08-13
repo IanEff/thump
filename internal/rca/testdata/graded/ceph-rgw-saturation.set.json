@@ -36,6 +36,7 @@
     {
       "tool": "metrics",
       "query": "rgw_failed_rate",
+      "key": "rgw_failed_rate",
       "summary": "rgw_failed_rate = 0",
       "ref": "metrics://rgw_failed_rate",
       "live": true,
@@ -44,6 +45,7 @@
     {
       "tool": "metrics",
       "query": "rgw_request_rate",
+      "key": "rgw_request_rate",
       "summary": "rgw_request_rate = 209.4",
       "ref": "metrics://rgw_request_rate",
       "live": true,
@@ -52,6 +54,7 @@
     {
       "tool": "metrics",
       "query": "rgw_get_put_latency_ms",
+      "key": "rgw_get_put_latency_ms",
       "summary": "rgw_get_put_latency_ms = 173.2",
       "ref": "metrics://rgw_get_put_latency_ms",
       "live": true,
@@ -60,18 +63,21 @@
     {
       "tool": "metrics",
       "query": "severity_rgw_availability",
+      "key": "severity_rgw_availability",
       "summary": "query returned no data",
       "subject": "ceph-rgw"
     },
     {
       "tool": "metrics",
       "query": "severity_rgw_saturation",
+      "key": "severity_rgw_saturation",
       "summary": "query returned no data",
       "subject": "ceph-rgw"
     },
     {
       "tool": "metrics",
       "query": "ceph_health",
+      "key": "ceph_health",
       "summary": "ceph_health = 0",
       "ref": "metrics://ceph_health",
       "live": true,
@@ -80,6 +86,7 @@
     {
       "tool": "metrics",
       "query": "pgs_degraded",
+      "key": "pgs_degraded",
       "summary": "pgs_degraded = 0",
       "ref": "metrics://pgs_degraded",
       "live": true,
@@ -88,6 +95,7 @@
     {
       "tool": "metrics",
       "query": "pgs_undersized",
+      "key": "pgs_undersized",
       "summary": "query returned no data",
       "subject": "cephblockpool"
     },
@@ -113,6 +121,7 @@
     {
       "tool": "metrics",
       "query": "osds_down",
+      "key": "osds_down",
       "summary": "osds_down = 0",
       "ref": "metrics://osds_down",
       "live": true,
@@ -121,6 +130,7 @@
     {
       "tool": "metrics",
       "query": "osds_out",
+      "key": "osds_out",
       "summary": "osds_out = 0",
       "ref": "metrics://osds_out",
       "live": true,
@@ -134,6 +144,7 @@
     {
       "tool": "metrics",
       "query": "recovery_ops_rate",
+      "key": "recovery_ops_rate",
       "summary": "recovery_ops_rate = 0",
       "ref": "metrics://recovery_ops_rate",
       "live": true,
@@ -142,6 +153,7 @@
     {
       "tool": "metrics",
       "query": "pgs_backfilling",
+      "key": "pgs_backfilling",
       "summary": "pgs_backfilling = 0",
       "ref": "metrics://pgs_backfilling",
       "live": true,
@@ -150,6 +162,7 @@
     {
       "tool": "metrics",
       "query": "cluster_used_ratio",
+      "key": "cluster_used_ratio",
       "summary": "cluster_used_ratio = 0.0997",
       "ref": "metrics://cluster_used_ratio",
       "live": true,
@@ -158,6 +171,7 @@
     {
       "tool": "metrics",
       "query": "fullest_pool_ratio",
+      "key": "fullest_pool_ratio",
       "summary": "fullest_pool_ratio = 0.02",
       "ref": "metrics://fullest_pool_ratio",
       "live": true,
@@ -166,6 +180,7 @@
     {
       "tool": "metrics",
       "query": "rook_pods_not_running",
+      "key": "rook_pods_not_running",
       "summary": "rook_pods_not_running = 0",
       "ref": "metrics://rook_pods_not_running",
       "live": true,

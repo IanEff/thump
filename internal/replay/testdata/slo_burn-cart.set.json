@@ -46,6 +46,7 @@
     {
       "tool": "metrics",
       "query": "cart_error_ratio",
+      "key": "cart_error_ratio",
       "summary": "cart_error_ratio = 0.4737",
       "ref": "metrics://cart_error_ratio",
       "live": true,
@@ -54,6 +55,7 @@
     {
       "tool": "metrics",
       "query": "severity_cart_availability",
+      "key": "severity_cart_availability",
       "summary": "severity_cart_availability = 0.5",
       "ref": "metrics://severity_cart_availability",
       "live": true,
@@ -62,12 +64,14 @@
     {
       "tool": "metrics",
       "query": "product_catalog_error_ratio",
+      "key": "product_catalog_error_ratio",
       "summary": "query returned no data",
       "subject": "product-catalog"
     },
     {
       "tool": "metrics",
       "query": "severity_product_catalog_availability",
+      "key": "severity_product_catalog_availability",
       "summary": "query returned no data",
       "subject": "product-catalog"
     },

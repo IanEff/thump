@@ -45,7 +45,7 @@ func TestMetricsTool_ATimedOutQueryReturnsNonLiveEvidence(t *testing.T) {
 		t.Errorf("the summary must name the failure so the model can cite it, got %q", got.Summary)
 	}
 	got.Summary = "" // asserted above; the transport's wording is the stdlib's, not this test's to pin
-	want := proposal.EvidenceRef{Tool: "metrics", Query: "ceph_health", Live: false}
+	want := proposal.EvidenceRef{Tool: "metrics", Query: "ceph_health", Key: "ceph_health", Live: false}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("a timed-out metrics query must come back as non-live evidence (-want +got)", diff)
 	}

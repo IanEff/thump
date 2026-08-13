@@ -1,5 +1,5 @@
-# Fixture for TestLoadWatch_* — deliberately NOT lab data (that lives in
-# config/ceph-lab/rattle/watch.yaml and is pinned by its own golden test in
+# Fixture for TestLoadWatch_* — deliberately NOT real data (that lives in
+# config/thump-test/rattle/watch.yaml and is pinned by its own golden test in
 # rattle_test.go). Two SLOs is enough to prove parsing of every field
 # including a multi-entry dependency list.
 slos:

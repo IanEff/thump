@@ -34,7 +34,8 @@ def setup(cluster, cluster_name, h):
     if cluster_name == "dev":
         local_resource(
             "dev-substrate",
-            cmd = h.guarded("dev-substrate", "./deploy/dev/bootstrap.sh"),
+            cmd = h.guarded("dev-substrate", "./deploy/dev/bootstrap.sh", attempts = 1),
+            deps = ["deploy/dev/bootstrap.sh", "deploy/dev/values"],
             labels = ["substrate"],
         )
 

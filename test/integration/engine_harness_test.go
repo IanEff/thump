@@ -113,7 +113,7 @@ func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 	metrics := &recordingTool{
 		spec: reason.ToolSpec{Name: "metrics", Description: "read-only telemetry query for a service's live metrics"},
 		ref: proposal.EvidenceRef{
-			Tool: "metrics", Query: "payments-db-cpu",
+			Tool: "metrics", Query: "payments-db-cpu", Key: "payments-db-cpu",
 			Summary: "payments-db CPU pinned at 99%, connection pool exhausted",
 			Ref:     "metrics://payments-db/cpu", Live: true,
 		},

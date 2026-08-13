@@ -277,14 +277,22 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 				if err != nil {
 					return proposal.Set{}, fmt.Errorf("tool %q: %w", call.Name, err)
 				}
+				// A tool that can name its own evidence in a form the model
+				// can retype verbatim sets Key itself; one that can't (a
+				// raw kube call's args, a constructed LogQL string) leaves
+				// it empty and the engine assigns a short, stable label
+				// instead.
+				if ref.Key == "" {
+					ref.Key = evidenceKey(call.Name, len(evidence))
+				}
 				evidence = append(evidence, ref)
 				// The digest carries its citable key visibly: enforceCitations
-				// grades citations against EvidenceRef.Query by exact match, so
+				// grades citations against EvidenceRef.Key by exact match, so
 				// the conversation must show the model the exact string it will
 				// be graded on — a summary alone leaves the key unguessable.
 				content := ref.Summary
-				if ref.Query != "" {
-					content = fmt.Sprintf("%s [cite: %s]", ref.Summary, ref.Query)
+				if ref.Key != "" {
+					content = fmt.Sprintf("%s [cite: %s]", ref.Summary, ref.Key)
 				}
 				results = append(results, reason.ToolResult{CallID: call.ID, Name: call.Name, Digest: content})
 			}
@@ -470,8 +478,8 @@ func (e *Engine) enforceCatalog(set proposal.Set, sao proposal.SAO) error {
 func (e *Engine) enforceCitations(set proposal.Set) error {
 	gathered := make(map[string]bool, len(set.Evidence))
 	for _, ev := range set.Evidence {
-		if ev.Query != "" {
-			gathered[ev.Query] = true
+		if ev.Key != "" {
+			gathered[ev.Key] = true
 		}
 	}
 
@@ -525,7 +533,7 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 	b.WriteString("evidence & confidence rules:\n")
 	b.WriteString("- to propose an action, cite at least one LIVE telemetry result about the affected service, or a node in its declared topology.\n")
 	b.WriteString("- a citation is the exact key shown as [cite: <key>] in a tool result, repeated verbatim — never a description of the value.\n")
-	b.WriteString("- a live metric is sufficient in corroboration on its own; log lines can corroborate but are never required.\n")
+	b.WriteString("- grounding counts DISTINCT tools, not citations: one live backend cited twice grounds no better than once. Corroborate across a second tool before proposing — a metric plus logs, or a metric plus cluster state.\n")
 	b.WriteString("- state a confidence on every candidate. it is a ceiling, not the answer: the emitted number is computed from your citations' grounding, and yours can only lower it.\n")
 
 	if len(classes) > 0 {
@@ -597,6 +605,14 @@ func automaticReversal(steps []contract.Step) bool {
 		}
 	}
 	return true
+}
+
+// evidenceKey is the citation key stamped onto a gathered EvidenceRef whose
+// Query can't serve as one — short and engine-authored, so a later turn can
+// retype it verbatim. n is the ref's position in the run's whole evidence
+// list, not per-tool, so two calls to the same tool never collide.
+func evidenceKey(tool string, n int) string {
+	return fmt.Sprintf("%s-%d", tool, n)
 }
 
 // withCallIDs guarantees every call in a turn has an identifier its

@@ -1,11 +1,13 @@
 evidence:
-- live: true
+- key: ceph_health
+  live: true
   query: ceph_health
   ref: metrics://ceph_health
   subject: ceph-cluster
   summary: ceph_health = 1
   tool: metrics
-- live: true
+- key: loki-1
+  live: true
   query: '{namespace="rook-ceph", app="rook-ceph-mon"}'
   ref: loki://rook-ceph/app=rook-ceph-mon
   subject: ceph-cluster
@@ -25,7 +27,7 @@ proposals:
 - blastTier: med
   citations:
   - ceph_health
-  - '{namespace="rook-ceph", app="rook-ceph-mon"}'
+  - loki-1
   computedConfidence: 1
   confidence: 0.9
   confidenceCeilingBound: true

@@ -109,6 +109,13 @@ func ScoreConfidencesForTest(set *proposal.Set, sao proposal.SAO, prior Prior, f
 	scoreConfidences(set, sao, prior, fingerprint, w)
 }
 
+// EvidenceKeyForTest exposes evidenceKey to clank_test, so a test asserting
+// what citation a real Propose run will produce derives it from the same
+// function the engine calls rather than duplicating the format string.
+func EvidenceKeyForTest(tool string, n int) string {
+	return evidenceKey(tool, n)
+}
+
 // CoherentLiveCitationsForTest exposes coherentLiveCitations to clank_test —
 // the corroboration count scoreConfidences feeds into the grounding tiers,
 // so a test can pin what counts as coherent without going through a full
@@ -124,7 +131,7 @@ func CoherentLiveCitationsForTest(cand proposal.Candidate, evidence []proposal.E
 // than handing every caller an error it can't act on.
 var shippedCatalog = sync.OnceValue(func() *contract.StaticCatalog {
 	cat, err := contract.LoadCatalogFile(
-		filepath.Join("..", "..", "config", "actions", "catalog.yaml"),
+		filepath.Join("..", "..", "config", "thump-test", "actions", "catalog.yaml"),
 		contract.Preconditions,
 	)
 	if err != nil {
@@ -135,7 +142,7 @@ var shippedCatalog = sync.OnceValue(func() *contract.StaticCatalog {
 
 var shippedClasses = sync.OnceValue(func() []contract.FailureClassDefinition {
 	defs, err := contract.LoadFailureClassesFile(
-		filepath.Join("..", "..", "config", "actions", "failure-classes.yaml"),
+		filepath.Join("..", "..", "config", "thump-test", "actions", "failure-classes.yaml"),
 	)
 	if err != nil {
 		panic("clank test kit: " + err.Error())

@@ -61,6 +61,19 @@ helm upgrade --install prometheus-operator-crds prometheus-community/prometheus-
   --wait
 
 # 2. cilium
+#
+# k3d.yaml's --cluster-cidr and cilium.yaml's clusterPoolIPv4PodCIDRList
+# describe the same pod CIDR from two config files with no shared source —
+# cilium ships pods no route can reach if they drift, and neither file's own
+# comment cross-reference is enforced anywhere. Checked here since this is
+# the one place both are read before cilium starts allocating from either.
+k3d_cidr=$(grep -o 'cluster-cidr=[0-9./]*' "$DEV_DIR/k3d.yaml" | cut -d= -f2)
+cilium_cidr=$(grep -o 'clusterPoolIPv4PodCIDRList: \["[0-9./]*"\]' "$DEV_DIR/values/cilium.yaml" | grep -o '[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*/[0-9]*')
+if [ "$k3d_cidr" != "$cilium_cidr" ]; then
+  echo "thump: k3d.yaml's --cluster-cidr ($k3d_cidr) != cilium.yaml's clusterPoolIPv4PodCIDRList ($cilium_cidr) — cilium would allocate pod IPs the CNI can't route" >&2
+  exit 1
+fi
+
 echo "-- cilium --" >&2
 helm upgrade --install cilium cilium/cilium \
   --version 1.19.3 \

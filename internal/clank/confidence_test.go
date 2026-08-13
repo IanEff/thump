@@ -85,8 +85,8 @@ func TestScoreConfidences_CorroboratingChangeRaisesConfidenceAboveHoldingNone(t 
 
 	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: 0.9}}
 	evidence := []proposal.EvidenceRef{
-		{Tool: "metrics", Query: "metrics_q", Live: true},
-		{Tool: "loki", Query: "loki_q", Live: true},
+		{Tool: "metrics", Key: "metrics_q", Live: true},
+		{Tool: "loki", Key: "loki_q", Live: true},
 	}
 	score := func(causal []proposal.CausalScore) float64 {
 		set := proposal.Set{
@@ -128,8 +128,8 @@ func TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence(t *testing.T)
 	// would collapse to one source and pull every want below off the
 	// GroundingMany tier this table is holding fixed.
 	evidence := []proposal.EvidenceRef{
-		{Tool: "metrics", Query: "metrics_q", Live: true},
-		{Tool: "loki", Query: "loki_q", Live: true},
+		{Tool: "metrics", Key: "metrics_q", Live: true},
+		{Tool: "loki", Key: "loki_q", Live: true},
 	}
 
 	// A signal confidence of 0.6 against GroundingMany leaves headroom for the
@@ -230,8 +230,8 @@ func setWithOneCandidate(t *testing.T, selfReported, likelihood float64) *propos
 			Citations:  []string{"metrics_q", "loki_q"},
 		}},
 		Evidence: []proposal.EvidenceRef{
-			{Tool: "metrics", Query: "metrics_q", Live: true},
-			{Tool: "loki", Query: "loki_q", Live: true},
+			{Tool: "metrics", Key: "metrics_q", Live: true},
+			{Tool: "loki", Key: "loki_q", Live: true},
 		},
 		SAOSnapshot:  &sao,
 		CausalScores: causal,

@@ -65,7 +65,7 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-				Citations: []string{"ceph_health", `{namespace="rook-ceph", app="rook-ceph-mon"}`},
+				Citations: []string{"ceph_health", clank.EvidenceKeyForTest("loki", 1)},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "release-rebalance", Watching: "ceph_health", Trigger: "HEALTH_OK",
 				},
@@ -460,7 +460,7 @@ func TestGoldenPath_BareProposalStillClosesTheLoop(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "osd_capacity_loss", Weight: 0.9}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "hold-rebalance", Confidence: 0.9,
-				Citations: []string{"osds_down", mons},
+				Citations: []string{"osds_down", clank.EvidenceKeyForTest("kube", 1)},
 				// bare — no ReversalPath, no GovernanceLevel
 			}},
 		})}}},

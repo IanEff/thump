@@ -26,7 +26,7 @@ func queryConfigBeforeExtraction() rattle.QueryConfig {
 // so every rig ships the same step/window it had hardcoded.
 func TestLoadQueryConfig_TheShippedDefaultsEqualTheConstantsTheyReplaced(t *testing.T) {
 	t.Parallel()
-	for _, rig := range []string{"rook-gce-k3s", "rook-gke", "ceph-lab", "thump-test"} {
+	for _, rig := range []string{"thump-test"} {
 		t.Run(rig, func(t *testing.T) {
 			t.Parallel()
 			got, err := rattle.LoadQueryConfig(filepath.Join("..", "..", "config", rig, "rattle", "query.yaml"))

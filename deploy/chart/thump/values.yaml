@@ -164,8 +164,8 @@ thump:
 # serviceMonitor/cilium below, chart-lint can't catch a mismatch here (the
 # template is schema-valid whether or not the namespace exists) — it fails at
 # apply time, on a live cluster, the first time you deploy this chart to a
-# profile that lacks the domain. Off by default so ceph-lab/rook-gke/
-# rook-gce-k3s still deploy clean; enable per-cluster in that profile's
+# profile that lacks the domain. Off by default so a profile without these
+# namespaces still deploys clean; enable per-cluster in that profile's
 # tilt-values file only when the domain is actually present.
 #
 # rookCeph defaults true, the opposite of the two above — every profile

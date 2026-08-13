@@ -47,7 +47,7 @@ type metricsInput struct {
 
 // Spec returns the schema so the model knows how to call this tool. The
 // valid `q` names are only known at runtime (loaded per-cluster from
-// evidence-queries.yaml, ceph-lab and rook-gke declare different sets), so
+// evidence-queries.yaml, each profile declares a different set), so
 // they're listed in the description here rather than a static schema enum —
 // without this the model can only discover valid names by guessing and
 // getting back "no such evidence query", which reads indistinguishably from
@@ -79,6 +79,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
+			Key:     input.Q,
 			Summary: fmt.Sprintf("no such evidence query: %s", input.Q),
 			Live:    false,
 		}, nil
@@ -97,6 +98,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 				return proposal.EvidenceRef{
 					Tool:    "metrics",
 					Query:   input.Q,
+					Key:     input.Q,
 					Summary: fmt.Sprintf("prometheus returned status: %s", statusErr.Status),
 					Live:    false,
 					Subject: subject,
@@ -105,6 +107,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 			return proposal.EvidenceRef{
 				Tool:    "metrics",
 				Query:   input.Q,
+				Key:     input.Q,
 				Summary: fmt.Sprintf("prometheus request failed: %v", err),
 				Live:    false,
 				Subject: subject,
@@ -116,6 +119,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 		return proposal.EvidenceRef{
 			Tool:    "metrics",
 			Query:   input.Q,
+			Key:     input.Q,
 			Summary: "query returned no data",
 			Live:    false,
 			Subject: subject,
@@ -130,6 +134,7 @@ func (m *MetricsTool) Run(ctx context.Context, args json.RawMessage) (proposal.E
 	return proposal.EvidenceRef{
 		Tool:    "metrics",
 		Query:   input.Q,
+		Key:     input.Q,
 		Summary: fmt.Sprintf("%s = %s", input.Q, v),
 		Ref:     "metrics://" + input.Q,
 		Live:    true,

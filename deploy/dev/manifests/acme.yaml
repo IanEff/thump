@@ -9,11 +9,6 @@
 # populate for real via Prometheus's own per-target scrape health, matching
 # the dependency shape declared in thump's config/dev/rattle/catalog-info.yaml.
 apiVersion: v1
-kind: Namespace
-metadata:
-  name: acme
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: acme-api-server
@@ -100,7 +95,10 @@ spec:
     spec:
       containers:
         - name: acme-api
-          image: python:3.12-alpine
+          # Pinned by digest — every other image in this profile (k3s, the
+          # ten Helm charts, s3mock) is pinned; a floating tag here was the
+          # one place a laptop's Docker cache could silently drift.
+          image: python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df
           command: ["python3", "/srv/server.py"]
           ports:
             - containerPort: 8000

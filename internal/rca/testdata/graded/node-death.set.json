@@ -46,6 +46,7 @@
     {
       "tool": "metrics",
       "query": "ceph_health",
+      "key": "ceph_health",
       "summary": "ceph_health = 1",
       "ref": "metrics://ceph_health",
       "live": true,
@@ -54,6 +55,7 @@
     {
       "tool": "metrics",
       "query": "pgs_degraded",
+      "key": "pgs_degraded",
       "summary": "pgs_degraded = 48",
       "ref": "metrics://pgs_degraded",
       "live": true,
@@ -62,12 +64,14 @@
     {
       "tool": "metrics",
       "query": "pgs_undersized",
+      "key": "pgs_undersized",
       "summary": "query returned no data",
       "subject": "cephblockpool"
     },
     {
       "tool": "metrics",
       "query": "osds_down",
+      "key": "osds_down",
       "summary": "osds_down = 1",
       "ref": "metrics://osds_down",
       "live": true,
@@ -76,6 +80,7 @@
     {
       "tool": "metrics",
       "query": "osds_out",
+      "key": "osds_out",
       "summary": "osds_out = 0",
       "ref": "metrics://osds_out",
       "live": true,
@@ -84,12 +89,14 @@
     {
       "tool": "metrics",
       "query": "severity_ceph_redundancy",
+      "key": "severity_ceph_redundancy",
       "summary": "query returned no data",
       "subject": "cephblockpool"
     },
     {
       "tool": "metrics",
       "query": "pgs_backfilling",
+      "key": "pgs_backfilling",
       "summary": "pgs_backfilling = 0",
       "ref": "metrics://pgs_backfilling",
       "live": true,
@@ -98,6 +105,7 @@
     {
       "tool": "metrics",
       "query": "recovery_ops_rate",
+      "key": "recovery_ops_rate",
       "summary": "recovery_ops_rate = 120",
       "ref": "metrics://recovery_ops_rate",
       "live": true,

@@ -36,6 +36,7 @@
     {
       "tool": "metrics",
       "query": "argocd_apps_out_of_sync",
+      "key": "argocd_apps_out_of_sync",
       "summary": "argocd_apps_out_of_sync = 1",
       "ref": "metrics://argocd_apps_out_of_sync",
       "live": true,
@@ -44,6 +45,7 @@
     {
       "tool": "metrics",
       "query": "severity_acme_api_availability",
+      "key": "severity_acme_api_availability",
       "summary": "severity_acme_api_availability = 1",
       "ref": "metrics://severity_acme_api_availability",
       "live": true,
@@ -62,12 +64,14 @@
     {
       "tool": "metrics",
       "query": "slo_burn_argocd_sync",
+      "key": "slo_burn_argocd_sync",
       "summary": "query returned no data",
       "subject": "argocd"
     },
     {
       "tool": "metrics",
       "query": "ceph_health",
+      "key": "ceph_health",
       "summary": "ceph_health = 0",
       "ref": "metrics://ceph_health",
       "live": true,
@@ -76,6 +80,7 @@
     {
       "tool": "metrics",
       "query": "acme_api_error_ratio",
+      "key": "acme_api_error_ratio",
       "summary": "acme_api_error_ratio = 1",
       "ref": "metrics://acme_api_error_ratio",
       "live": true,
@@ -90,6 +95,7 @@
     {
       "tool": "metrics",
       "query": "severity_acme_api_availability",
+      "key": "severity_acme_api_availability",
       "summary": "severity_acme_api_availability = 1",
       "ref": "metrics://severity_acme_api_availability",
       "live": true,
@@ -98,11 +104,13 @@
     {
       "tool": "metrics",
       "query": "demo_pods_not_running",
+      "key": "demo_pods_not_running",
       "summary": "query returned no data"
     },
     {
       "tool": "metrics",
       "query": "rook_pods_not_running",
+      "key": "rook_pods_not_running",
       "summary": "rook_pods_not_running = 0",
       "ref": "metrics://rook_pods_not_running",
       "live": true,
@@ -116,18 +124,21 @@
     {
       "tool": "metrics",
       "query": "cart_error_ratio",
+      "key": "cart_error_ratio",
       "summary": "query returned no data",
       "subject": "cart"
     },
     {
       "tool": "metrics",
       "query": "product_catalog_error_ratio",
+      "key": "product_catalog_error_ratio",
       "summary": "query returned no data",
       "subject": "product-catalog"
     },
     {
       "tool": "metrics",
       "query": "rgw_failed_rate",
+      "key": "rgw_failed_rate",
       "summary": "rgw_failed_rate = 0",
       "ref": "metrics://rgw_failed_rate",
       "live": true,
@@ -136,6 +147,7 @@
     {
       "tool": "metrics",
       "query": "nodes_not_ready",
+      "key": "nodes_not_ready",
       "summary": "nodes_not_ready = 0",
       "ref": "metrics://nodes_not_ready",
       "live": true

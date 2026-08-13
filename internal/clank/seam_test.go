@@ -122,7 +122,7 @@ func TestSeam_FourBeatsFromDetectionToDryRunOutcome(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				Citations: []string{`{"q":"burn"}`, `{"namespace":"payments"}`},
+				Citations: []string{`{"q":"burn"}`, clank.EvidenceKeyForTest("loki", 1)},
 				ReversalPath: &proposal.ReversalPath{ // trap 1: without this, hiss's I-12 veto fires
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},
@@ -203,7 +203,7 @@ func TestSeam_FiveBeats_TheLoopClosesWithoutBelief(t *testing.T) {
 			Hypotheses:   []proposal.Hypothesis{{Name: "rgw_pool_saturation", Weight: 0.8}},
 			Proposals: []proposal.Candidate{{
 				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87,
-				Citations: []string{`{"q":"burn"}`, `{"namespace":"payments"}`},
+				Citations: []string{`{"q":"burn"}`, clank.EvidenceKeyForTest("loki", 1)},
 				ReversalPath: &proposal.ReversalPath{
 					Method: "unthrottle", Watching: "latency_p99", Trigger: "slo_recovery",
 				},

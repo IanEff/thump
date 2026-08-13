@@ -45,13 +45,14 @@ func TestMain_MissingPromURLReturnsOne(t *testing.T) {
 	}
 }
 
-// TestCephLabWatch_MatchesTheLabContract is C2's drift guard, the same
-// shape as C3's planned "shipped catalog matches Default()" golden test:
-// the checked-in config/ceph-lab/rattle/watch.yaml — not a compiled-in
-// literal anymore — must still declare exactly the lab's SLO contract. If
-// this goes red after hand-editing the YAML, that's the guard working.
-func TestCephLabWatch_MatchesTheLabContract(t *testing.T) {
-	got, err := rattle.LoadWatch("../../config/ceph-lab/rattle/watch.yaml")
+// TestThumpTestWatch_MatchesTheAuthoredContract is the drift guard: the
+// checked-in config/thump-test/rattle/watch.yaml must still declare exactly
+// the SLO contract authored for it — Ceph, the OTel demo, and acme, three
+// domains sharing one watch list but no signal, failure class, or catalog
+// action with each other. If this goes red after hand-editing the YAML,
+// that's the guard working.
+func TestThumpTestWatch_MatchesTheAuthoredContract(t *testing.T) {
+	got, err := rattle.LoadWatch("../../config/thump-test/rattle/watch.yaml")
 	if err != nil {
 		t.Fatalf("LoadWatch: %v", err)
 	}
@@ -59,6 +60,11 @@ func TestCephLabWatch_MatchesTheLabContract(t *testing.T) {
 		{
 			ID: "ceph-rgw-availability", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.999,
 			ContractRef:  "ceph-rgw-availability:v1",
+			Dependencies: []rattle.Dependency{{Name: "cephobjectstore", Role: "blocking"}, {Name: "rook-operator", Role: "blocking"}},
+		},
+		{
+			ID: "ceph-rgw-saturation", Object: "ceph-rgw", Tier: "tier-1", Objective: 0.99,
+			ContractRef:  "ceph-rgw-saturation:v1",
 			Dependencies: []rattle.Dependency{{Name: "cephobjectstore", Role: "blocking"}, {Name: "rook-operator", Role: "blocking"}},
 		},
 		{
@@ -76,14 +82,34 @@ func TestCephLabWatch_MatchesTheLabContract(t *testing.T) {
 			ContractRef:  "argocd-sync:v1",
 			Dependencies: []rattle.Dependency{{Name: "cilium", Role: "blocking"}, {Name: "rook-operator", Role: "optional"}},
 		},
+		{
+			ID: "ceph-redundancy", Object: "cephblockpool", Tier: "tier-1", Objective: 0.999,
+			ContractRef:  "ceph-redundancy:v1",
+			Dependencies: []rattle.Dependency{{Name: "cephcluster", Role: "blocking"}, {Name: "rook-operator", Role: "blocking"}},
+		},
+		{
+			ID: "product-catalog-availability", Object: "product-catalog", Tier: "tier-1", Objective: 0.99,
+			ContractRef:  "product-catalog-availability:v1",
+			Dependencies: []rattle.Dependency{{Name: "frontend", Role: "blocking"}, {Name: "flagd", Role: "blocking"}},
+		},
+		{
+			ID: "cart-availability", Object: "cart", Tier: "tier-1", Objective: 0.99,
+			ContractRef:  "cart-availability:v1",
+			Dependencies: []rattle.Dependency{{Name: "checkout", Role: "blocking"}, {Name: "flagd", Role: "blocking"}},
+		},
+		{
+			ID: "acme-api-availability", Object: "acme-api", Tier: "tier-1", Objective: 0.99,
+			ContractRef:  "acme-api-availability:v1",
+			Dependencies: []rattle.Dependency{{Name: "acme-db", Role: "blocking"}, {Name: "acme-cache", Role: "optional"}},
+		},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("config/ceph-lab/rattle/watch.yaml drifted from the lab contract (-want +got):\n%s", diff)
+		t.Errorf("config/thump-test/rattle/watch.yaml drifted from the authored contract (-want +got):\n%s", diff)
 	}
 }
 
-func TestCephLabWatch_EverySLODeclaresDependencies(t *testing.T) {
-	got, err := rattle.LoadWatch("../../config/ceph-lab/rattle/watch.yaml")
+func TestThumpTestWatch_EverySLODeclaresDependencies(t *testing.T) {
+	got, err := rattle.LoadWatch("../../config/thump-test/rattle/watch.yaml")
 	if err != nil {
 		t.Fatalf("LoadWatch: %v", err)
 	}
