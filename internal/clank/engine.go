@@ -277,16 +277,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 				if err != nil {
 					return proposal.Set{}, fmt.Errorf("tool %q: %w", call.Name, err)
 				}
-				// Key defaults to Query, which is already a short,
-				// model-chosen name for metrics — reassigning it would
-				// needlessly invalidate every recorded transcript's
-				// citations. kube and loki render Query as an unbounded,
-				// model-authored blob (raw call args, a constructed LogQL
-				// string) the model can't reliably retype several turns
-				// later, so those two get a short per-call sequential label
+				// A tool that can name its own evidence in a form the model
+				// can retype verbatim sets Key itself; one that can't (a
+				// raw kube call's args, a constructed LogQL string) leaves
+				// it empty and the engine assigns a short, stable label
 				// instead.
-				ref.Key = ref.Query
-				if needsAssignedKey[call.Name] {
+				if ref.Key == "" {
 					ref.Key = evidenceKey(call.Name, len(evidence))
 				}
 				evidence = append(evidence, ref)
@@ -610,12 +606,6 @@ func automaticReversal(steps []contract.Step) bool {
 	}
 	return true
 }
-
-// needsAssignedKey names the tools whose Query is not a citable key on its
-// own — buildTools (clank.go) is the composition root that already knows
-// the concrete evidence tools by name; this set is that same knowledge,
-// applied to citation grounding rather than construction.
-var needsAssignedKey = map[string]bool{"kube": true, "loki": true}
 
 // evidenceKey is the citation key stamped onto a gathered EvidenceRef whose
 // Query can't serve as one — short and engine-authored, so a later turn can

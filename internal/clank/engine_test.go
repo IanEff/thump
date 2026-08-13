@@ -52,7 +52,7 @@ func TestPropose_WithEvidence_YieldsARankedProposalSet(t *testing.T) {
 // decline must say why (Status.Reason), not just what (Status.Phase).
 func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	t.Parallel()
-	tool := fakeTool{name: "logs", digest: "no live signal", ref: "loki:xyz", live: false, query: "log_scan"}
+	tool := fakeTool{name: "logs", digest: "no live signal", ref: "loki:xyz", live: false, query: "log_scan", key: "log_scan"}
 	model := &fakeModel{script: []reason.Completion{
 		// turn 1: gather evidence that is never Live
 		{ToolCalls: []reason.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"log_scan"}`)}}},
@@ -372,7 +372,7 @@ func TestPropose_AnUncorroboratedCandidateCannotKeepItsSelfReportedConfidence(t 
 
 	eng, _ := newTestEngine(model)
 	eng.Intake = noChangeIntake()
-	eng.Tools["history"] = fakeTool{name: "history", digest: "3 similar incidents on file", live: false, query: "past_incidents"}
+	eng.Tools["history"] = fakeTool{name: "history", digest: "3 similar incidents on file", live: false, query: "past_incidents", key: "past_incidents"}
 
 	got, err := eng.Propose(context.Background(), sigBurnAccel())
 	if err != nil {
@@ -492,6 +492,7 @@ func (metricsTool) Run(_ context.Context, args json.RawMessage) (proposal.Eviden
 	return proposal.EvidenceRef{
 		Tool:    "metrics",
 		Query:   string(args),
+		Key:     string(args),
 		Summary: "latency_p99 elevated 3x over baseline",
 		Ref:     "metrics://latency_p99",
 		Live:    true,
@@ -631,10 +632,11 @@ type fakeTool struct {
 	ref    string
 	live   bool
 	query  string
+	key    string // left "" to exercise the engine-assigned fallback; set to pin a self-named citation
 }
 
 func (f fakeTool) Run(_ context.Context, _ json.RawMessage) (proposal.EvidenceRef, error) {
-	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live, Query: f.query}, nil
+	return proposal.EvidenceRef{Tool: f.name, Summary: f.digest, Ref: f.ref, Live: f.live, Query: f.query, Key: f.key}, nil
 }
 
 func (f fakeTool) Spec() reason.ToolSpec {
@@ -883,7 +885,7 @@ func receivedToolDigest(snapshots [][]reason.Message, digest string) bool {
 				continue
 			}
 			for _, r := range m.ToolResults {
-				if r.Digest == digest {
+				if strings.Contains(r.Digest, digest) {
 					return true
 				}
 			}
@@ -1107,6 +1109,51 @@ func TestPropose_KubeCitesByItsAssignedKeyNotTheRawCallItCannotRetype(t *testing
 					tc.citation, ungrounded, wantUngrounded, got.Status.Phase, got.Status.Reason)
 			}
 		})
+	}
+}
+
+// TestPropose_MetricsKeepsItsOwnKeyWhileKubeGetsAnEngineAssignedOne pins the
+// three-way name agreement engine.go's dispatch loop, clank.go's buildTools,
+// and each evidence tool's Spec().Name used to leave untested: a tool that
+// can name its own evidence in a form the model can retype (metrics) keeps
+// that name as Key, and a tool that can't (kube) falls through to an
+// engine-assigned one — decided per ref, not by a tool-name list.
+func TestPropose_MetricsKeepsItsOwnKeyWhileKubeGetsAnEngineAssignedOne(t *testing.T) {
+	t.Parallel()
+
+	const rawMetricsArgs = `{"q":"latency_p99"}`
+	const rawKubeArgs = `{"resource":"pods","namespace":"rook-ceph"}`
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{
+			{Name: "metrics", Args: json.RawMessage(rawMetricsArgs)},
+			{Name: "kube", Args: json.RawMessage(rawKubeArgs)},
+		}},
+		{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+			FailureClass: proposal.ClassDependencySaturation,
+			Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+			Proposals: []proposal.Candidate{{
+				ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.9,
+				Citations: []string{rawMetricsArgs, clank.EvidenceKeyForTest("kube", 1)},
+			}},
+		})}}},
+	}}
+
+	e, _ := newTestEngine(model)
+	e.Tools["kube"] = fakeTool{name: "kube", digest: "rook-ceph-mon-a (Running)", ref: "kube://rook-ceph/pods", live: true, query: rawKubeArgs}
+
+	got, err := e.Propose(context.Background(), sigBurnAccel())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Gate == nil || !got.Gate.Passed {
+		t.Fatalf("both citations should ground, got Gate=%+v Status=%+v", got.Gate, got.Status)
+	}
+	if diff := cmp.Diff(rawMetricsArgs, got.Evidence[0].Key); diff != "" {
+		t.Error("metrics names its own citation key from input.Q (-want +got)", diff)
+	}
+	if diff := cmp.Diff(clank.EvidenceKeyForTest("kube", 1), got.Evidence[1].Key); diff != "" {
+		t.Error("kube can't retype its raw call, so the engine assigns its key (-want +got)", diff)
 	}
 }
 
