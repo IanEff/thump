@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"slices"
 	"testing"
 	"testing/synctest"
@@ -323,7 +324,7 @@ func TestRunner_CutsOneReleasePerContractRefWhenADecisionIsRedelivered(t *testin
 	t.Parallel()
 
 	f := &recordForge{doc: `{"flags":{"cartFailure":{"defaultVariant":"on"}}}`}
-	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.CatalogAt(t, filepath.Join("testdata", "release-catalog.yaml")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +347,7 @@ func TestRunner_CutsOneReleasePerContractRefWhenADecisionIsRedelivered(t *testin
 func TestNewWith_RefusesAReleaseContractWhenNoForgeIsWired(t *testing.T) {
 	t.Parallel()
 
-	_, err := actuate.NewWithForgeForTest(&recordKube{}, nil, configtest.ShippedCatalog(t))
+	_, err := actuate.NewWithForgeForTest(&recordKube{}, nil, configtest.CatalogAt(t, filepath.Join("testdata", "release-catalog.yaml")))
 
 	if !errors.Is(err, actuate.ErrUnbindable) {
 		t.Fatalf("want ErrUnbindable for a release contract with no forge, got %v", err)
@@ -361,7 +362,7 @@ func TestRunner_LeavesEveryOtherFlagAloneWhenCuttingARelease(t *testing.T) {
 	t.Parallel()
 
 	f := &recordForge{doc: `{"flags":{"cartFailure":{"defaultVariant":"on"},"adServiceFailure":{"defaultVariant":"on"}}}`}
-	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.CatalogAt(t, filepath.Join("testdata", "release-catalog.yaml")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +396,7 @@ func TestRunner_CutsTheRevertAsItsOwnReleaseRatherThanRewritingTheForwardOne(t *
 	t.Parallel()
 
 	f := &recordForge{doc: `{"flags":{"cartFailure":{"defaultVariant":"on"}}}`}
-	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.ShippedCatalog(t))
+	r, err := actuate.NewWithForgeForTest(&recordKube{}, f, configtest.CatalogAt(t, filepath.Join("testdata", "release-catalog.yaml")))
 	if err != nil {
 		t.Fatal(err)
 	}

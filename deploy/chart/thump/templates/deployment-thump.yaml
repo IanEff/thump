@@ -116,11 +116,15 @@ spec:
             {{- if .Values.forge.repo }}
             - name: FORGE_REPO
               value: {{ .Values.forge.repo | quote }}
+            # optional: true — a missing forge secret is only an error when the
+            # catalog actually binds a release action, and that refusal belongs to
+            # the binder (internal/actuate/binding.go), not a wedged container.
             - name: FORGE_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.forge.secretName }}
                   key: {{ .Values.forge.secretKey }}
+                  optional: true
             {{- end }}
           volumeMounts:
             - name: wal
