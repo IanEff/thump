@@ -1,0 +1,62 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl get *)",
+      "Bash(kubectl -n * get *)",
+      "Bash(kubectl --context * get *)",
+      "Bash(kubectl logs *)",
+      "Bash(kubectl -n * logs *)",
+      "Bash(kubectl describe *)",
+      "Bash(kubectl -n * describe *)",
+      "Bash(kubectl port-forward *)",
+      "Bash(kubectl -n * port-forward *)",
+      "Bash(kubectl config current-context)",
+      "Bash(kubectl config get-contexts)",
+      "Bash(go test *)",
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(go doc *)",
+      "Bash(gotestdox *)",
+      "Bash(gofmt -l *)",
+      "Bash(task ci)",
+      "Bash(just --evaluate *)",
+      "Bash(tilt get *)",
+      "Bash(tilt logs *)",
+      "Bash(helm lint *)",
+      "Bash(curl -s *)",
+      "mcp__gopls__go_workspace",
+      "mcp__gopls__go_search",
+      "mcp__gopls__go_file_context",
+      "mcp__gopls__go_package_api",
+      "mcp__gopls__go_symbol_references",
+      "mcp__gopls__go_diagnostics",
+      "mcp__gopls__go_rename_symbol",
+      "mcp__gopls__go_vulncheck"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); sid=$(echo \"$input\" | jq -r '.session_id'); skill=$(echo \"$input\" | jq -r '.tool_input.skill // empty'); if [ \"$skill\" = \"go-navigation\" ]; then touch \"/tmp/.claude-go-nav-$sid\"; fi"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__gopls__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); sid=$(echo \"$input\" | jq -r '.session_id'); if [ ! -f \"/tmp/.claude-go-nav-$sid\" ]; then echo 'Blocked: invoke the go-navigation skill before using gopls tools (CLAUDE.md requires it before searching/reading unfamiliar Go code).' >&2; exit 2; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
