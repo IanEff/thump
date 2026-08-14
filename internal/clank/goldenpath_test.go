@@ -672,6 +672,7 @@ func scrubVolatile(set *proposal.Set) {
 	if set.SAOSnapshot != nil {
 		set.SAOSnapshot.AssembledAt = time.Time{}
 	}
+	set.RunID = "" // fingerprint/unixnano — as volatile as AssembledAt, for the same reason
 }
 
 // assertGolden marshals v to YAML and compares it to testdata/golden/<name>.

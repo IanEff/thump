@@ -172,6 +172,12 @@ func TestPropose_JournalsEveryTerminalPhase(t *testing.T) {
 			if diff := cmp.Diff(tc.wantPhase, journal.Delivered[0].Status.Phase); diff != "" {
 				t.Error("journaled set has the wrong phase (-want +got)\n", diff)
 			}
+			if got.RunID == "" {
+				t.Error("Propose returned a set with no RunID — every terminal phase must stamp one, not just proposed, so calipers transcript can join a sealed transcript back to it")
+			}
+			if diff := cmp.Diff(got.RunID, journal.Delivered[0].RunID); diff != "" {
+				t.Error("journaled set's RunID must match the run it came from (-want +got)\n", diff)
+			}
 		})
 	}
 }

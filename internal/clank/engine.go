@@ -219,6 +219,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 
 	set = proposal.Set{
 		Name:        sig.Name,
+		RunID:       runID,
 		SignalRef:   sig.Fingerprint,
 		SAOSnapshot: &sao,
 		ServiceTier: sig.ServiceTier,
