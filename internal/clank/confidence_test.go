@@ -205,6 +205,59 @@ func TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence(t *testing.T)
 	}
 }
 
+// TestScoreConfidences_RecordsEveryTermThatProducedTheComputedNumber pins
+// that the grounding tier, corroboration count, and the two *OK flags
+// survive on the graded candidate rather than dying as locals inside
+// scoreConfidences — otherwise a live run at, say, 0.50 confidence cannot
+// be attributed to a term without a transcript decrypt.
+func TestScoreConfidences_RecordsEveryTermThatProducedTheComputedNumber(t *testing.T) {
+	t.Parallel()
+
+	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: 1, OriginService: "cart"}}
+	score := func(evidence []proposal.EvidenceRef) proposal.ConfidenceTerms {
+		set := proposal.Set{
+			Proposals:   []proposal.Candidate{{ID: "p1", Confidence: 1, Citations: []string{"m-1", "l-1"}}},
+			Evidence:    evidence,
+			SAOSnapshot: &sao,
+		}
+		clank.ScoreConfidencesForTest(&set, sao, nil, "fp", clank.DefaultScoringWeights())
+		return set.Proposals[0].Terms
+	}
+
+	tests := map[string]struct {
+		evidence []proposal.EvidenceRef
+		want     proposal.ConfidenceTerms
+	}{
+		"scoreConfidences records the grounding tier it applied when two distinct backends corroborate": {
+			evidence: []proposal.EvidenceRef{
+				{Key: "m-1", Tool: "metrics", Subject: "cart", Live: true},
+				{Key: "l-1", Tool: "loki", Subject: "cart", Live: true},
+			},
+			want: proposal.ConfidenceTerms{SignalConfidence: 1, Corroborated: 2, Grounding: 1.0},
+		},
+		"scoreConfidences records a grounding tier of one when both citations came from the same backend": {
+			evidence: []proposal.EvidenceRef{
+				{Key: "m-1", Tool: "metrics", Subject: "cart", Live: true},
+				{Key: "l-1", Tool: "metrics", Subject: "cart", Live: true},
+			},
+			want: proposal.ConfidenceTerms{SignalConfidence: 1, Corroborated: 1, Grounding: 0.7},
+		},
+		"scoreConfidences records no grounding when every cited ref is untagged": {
+			evidence: []proposal.EvidenceRef{{Key: "m-1", Tool: "loki", Live: true}},
+			want:     proposal.ConfidenceTerms{SignalConfidence: 1, Corroborated: 0, Grounding: 0.3},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if diff := cmp.Diff(tc.want, score(tc.evidence)); diff != "" {
+				t.Error("wrong confidence terms recorded (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
 // setWithOneCandidate builds a one-candidate proposal.Set with two live,
 // coherent citations (GroundingMany) and, when likelihood > 0, a single
 // in-topology CausalScore carrying it. Signal confidence swings with

@@ -46,17 +46,6 @@
           }
         ]
       }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "mcp__gopls__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "input=$(cat); sid=$(echo \"$input\" | jq -r '.session_id'); if [ ! -f \"/tmp/.claude-go-nav-$sid\" ]; then echo 'Blocked: invoke the go-navigation skill before using gopls tools (CLAUDE.md requires it before searching/reading unfamiliar Go code).' >&2; exit 2; fi"
-          }
-        ]
-      }
     ]
   }
 }

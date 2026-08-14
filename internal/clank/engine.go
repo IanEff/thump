@@ -162,6 +162,7 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			return
 		}
 		causal := summarizeCausal(set.CausalScores)
+		terms := set.TermsFor(set.Recommended)
 		slog.Info("reasoned",
 			"run_id", runID,
 			"fingerprint", sig.Fingerprint,
@@ -176,6 +177,11 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 			"confidence", set.ConfidenceFor(set.Recommended),
 			"computedConfidence", set.ComputedConfidenceFor(set.Recommended),
 			"ceilingBound", set.ConfidenceCeilingBoundFor(set.Recommended),
+			"signalConfidence", terms.SignalConfidence,
+			"corroborated", terms.Corroborated,
+			"grounding", terms.Grounding,
+			"alignmentOK", terms.AlignmentOK,
+			"likelihoodOK", terms.LikelihoodOK,
 			"maxLikelihood", causal.maxLikelihood,
 			"inTopology", causal.inTopology,
 			"outOfTopology", causal.outOfTopology,

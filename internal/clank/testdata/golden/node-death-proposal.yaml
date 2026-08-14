@@ -43,6 +43,10 @@ proposals:
     method: release-rebalance
     trigger: HEALTH_OK
     watching: ceph_health
+  terms:
+    corroborated: 2
+    grounding: 1
+    signalConfidence: 1
 rankingRationale: {}
 recommended: p1
 saoSnapshot:
