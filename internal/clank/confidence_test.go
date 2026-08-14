@@ -83,10 +83,10 @@ func TestPropose_AnUnstatedConfidenceIsNoCeilingRatherThanAZeroOne(t *testing.T)
 func TestScoreConfidences_CorroboratingChangeRaisesConfidenceAboveHoldingNone(t *testing.T) {
 	t.Parallel()
 
-	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: 0.9}}
+	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: 0.9, OriginService: "checkout"}}
 	evidence := []proposal.EvidenceRef{
-		{Tool: "metrics", Key: "metrics_q", Live: true},
-		{Tool: "loki", Key: "loki_q", Live: true},
+		{Tool: "metrics", Key: "metrics_q", Live: true, Subject: "checkout"},
+		{Tool: "loki", Key: "loki_q", Live: true, Subject: "checkout"},
 	}
 	score := func(causal []proposal.CausalScore) float64 {
 		set := proposal.Set{
@@ -128,8 +128,8 @@ func TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence(t *testing.T)
 	// would collapse to one source and pull every want below off the
 	// GroundingMany tier this table is holding fixed.
 	evidence := []proposal.EvidenceRef{
-		{Tool: "metrics", Key: "metrics_q", Live: true},
-		{Tool: "loki", Key: "loki_q", Live: true},
+		{Tool: "metrics", Key: "metrics_q", Live: true, Subject: "checkout"},
+		{Tool: "loki", Key: "loki_q", Live: true, Subject: "checkout"},
 	}
 
 	// A signal confidence of 0.6 against GroundingMany leaves headroom for the
@@ -188,7 +188,7 @@ func TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence(t *testing.T)
 			if selfReported == 0 {
 				selfReported = 1
 			}
-			sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: conf}}
+			sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: conf, OriginService: "checkout"}}
 			set := proposal.Set{
 				Proposals:    []proposal.Candidate{{ID: "p1", Confidence: selfReported, Citations: []string{"metrics_q", "loki_q"}}},
 				Evidence:     evidence,
@@ -275,7 +275,7 @@ func setWithOneCandidate(t *testing.T, selfReported, likelihood float64) *propos
 		causal = []proposal.CausalScore{{EventID: "c1", InTopology: true, Likelihood: likelihood}}
 	}
 
-	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: signalConf}}
+	sao := proposal.SAO{Signal: proposal.SignalSnapshot{Confidence: signalConf, OriginService: "checkout"}}
 	return &proposal.Set{
 		Proposals: []proposal.Candidate{{
 			ID:         "p1",
@@ -283,8 +283,8 @@ func setWithOneCandidate(t *testing.T, selfReported, likelihood float64) *propos
 			Citations:  []string{"metrics_q", "loki_q"},
 		}},
 		Evidence: []proposal.EvidenceRef{
-			{Tool: "metrics", Key: "metrics_q", Live: true},
-			{Tool: "loki", Key: "loki_q", Live: true},
+			{Tool: "metrics", Key: "metrics_q", Live: true, Subject: "checkout"},
+			{Tool: "loki", Key: "loki_q", Live: true, Subject: "checkout"},
 		},
 		SAOSnapshot:  &sao,
 		CausalScores: causal,

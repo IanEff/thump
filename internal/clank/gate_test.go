@@ -61,6 +61,10 @@ func TestGate(t *testing.T) {
 			ps:   psWithSelfSubjectLiveEvidence(),
 			want: verdict{Passed: true, Reason: ""},
 		},
+		"Gate rejects a candidate whose only citation is untagged, even when the signal names no origin service": {
+			ps:   psWithUntaggedEvidenceUntaggedSignal(),
+			want: verdict{Passed: false, Reason: "evidence"},
+		},
 	}
 
 	var gate clank.ReadinessGate
@@ -233,6 +237,17 @@ func psWithSelfSubjectLiveEvidence() proposal.Set {
 			},
 		},
 		Evidence: []proposal.EvidenceRef{{Live: true, Subject: "product-catalog"}},
+	}
+}
+
+// psWithUntaggedEvidenceUntaggedSignal pins the empty-subject loophole fix:
+// an untagged ref must fail closed even when the SAO itself is untagged, not
+// silently auto-qualify because "" == "".
+func psWithUntaggedEvidenceUntaggedSignal() proposal.Set {
+	return proposal.Set{
+		Name:        "untagged_both",
+		SAOSnapshot: &proposal.SAO{Version: 1},
+		Evidence:    []proposal.EvidenceRef{{Live: true}},
 	}
 }
 

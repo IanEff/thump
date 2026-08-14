@@ -82,7 +82,7 @@ func anyCoherentLive(refs []proposal.EvidenceRef, sao *proposal.SAO) bool {
 // failing loud here (a suppressed set, visible in the audit trail as
 // reason: "evidence") is safer than it failing silent.
 func coherentSubject(ref proposal.EvidenceRef, sao *proposal.SAO) bool {
-	if sao == nil {
+	if sao == nil || ref.Subject == "" {
 		return false
 	}
 	return ref.Subject == sao.Signal.OriginService || inTopology(ref.Subject, sao)
