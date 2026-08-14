@@ -74,6 +74,18 @@ func NewWALPublisher[Out any](js jetstream.JetStream, walDir, beatName, subject 
 	return pub, w.Close, nil
 }
 
+// NewJournalPublisher builds a WAL with no JetStream leg at all, plus its
+// close func — for a record that must never reach a broker subject, not
+// merely one that reaches it after a delay. Takes no jetstream.JetStream
+// because none of its output path ever touches the broker.
+func NewJournalPublisher[Out any](walDir, beatName, subject string, wal WALConfig) (*publish.JournalPublisher[Out], func(context.Context) error, error) {
+	if walDir == "" {
+		return nil, nil, errors.New("WAL_DIR is required")
+	}
+	w := &publish.WAL{Dir: walDir, Beat: beatName, Subject: subject, MaxBytes: wal.MaxBytes, MaxAge: wal.MaxAge, SyncInterval: wal.SyncInterval}
+	return &publish.JournalPublisher[Out]{WAL: w}, w.Close, nil
+}
+
 // ErrBrokerClosed cancels a beat's run context when its broker connection is
 // gone for good — the cause that separates a lost broker from a clean SIGTERM,
 // which are otherwise the same cancelled context.

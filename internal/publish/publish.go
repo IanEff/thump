@@ -1,11 +1,12 @@
 // Package publish is the outbound half of a beat's Transport: the
-// Publisher port and three implementations over it — DirPublisher (the
-// offline directory-poll write), JetPublisher (JetStream), and
-// WALPublisher (the durability leg — journals every object to a local WAL
-// before handing it to another Publisher, so the fact survives a crash
-// between "decided" and "delivered"). A beat's network edge composes
-// WALPublisher over JetPublisher; the offline edge uses DirPublisher
-// alone.
+// Publisher port and four implementations over it — DirPublisher (the
+// offline directory-poll write), JetPublisher (JetStream), WALPublisher
+// (the durability leg — journals every object to a local WAL before
+// handing it to another Publisher, so the fact survives a crash between
+// "decided" and "delivered"), and JournalPublisher (a WAL with no
+// delivery step at all, for a record that must never reach a broker
+// subject). A beat's network edge composes WALPublisher over JetPublisher;
+// the offline edge uses DirPublisher alone.
 package publish
 
 import (
@@ -20,7 +21,7 @@ import (
 
 // Publisher is the port every Transport publishes boundary objects
 // through, parameterized on the type it carries — DirPublisher, JetPublisher,
-// and WALPublisher are its only implementations.
+// WALPublisher, and JournalPublisher are its only implementations.
 type Publisher[T any] interface {
 	Publish(ctx context.Context, subject string, obj T) error
 }

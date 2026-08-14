@@ -308,3 +308,45 @@ func TestWALPublisher_ReturnsTheStreamPublishErrorRatherThanSwallowingIt(t *test
 		t.Errorf("Publish() error = %v, want it to wrap %v", err, wantErr)
 	}
 }
+
+func TestJournalPublisher_AppendsToTheWALWithNoDeliveryStep(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	w := &publish.WAL{Dir: dir, Beat: "clank", Subject: "thump.reasoning"}
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+	pub := &publish.JournalPublisher[signal.Detection]{WAL: w}
+
+	want := signal.Detection{Fingerprint: "fp-1"}
+	if err := pub.Publish(context.Background(), "thump.reasoning", want); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(segmentDir(dir, "clank", "thump.reasoning"), "active.jsonl")) //nolint:gosec // G304: dir is t.TempDir(), not user input
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got signal.Detection
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("wrong object journaled to the WAL", diff)
+	}
+}
+
+func TestJournalPublisher_PropagatesTheWALsAppendError(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := &publish.WAL{Dir: blocker, Beat: "clank", Subject: "thump.reasoning"}
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+	pub := &publish.JournalPublisher[signal.Detection]{WAL: w}
+
+	err := pub.Publish(context.Background(), "thump.reasoning", signal.Detection{Fingerprint: "fp-1"})
+	if err == nil {
+		t.Fatal("Publish() error = nil, want non-nil when the WAL can't append")
+	}
+}

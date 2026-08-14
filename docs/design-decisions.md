@@ -640,6 +640,33 @@ rather than a silent default. Not filed yet.
 
 ---
 
+## D-28 · Journal every terminal phase, deliver only the gate-passers — **Ratified** (2026-08-14)
+
+clank's engine only ever recorded a `proposal.Set` past the pod's lifetime when the gate
+passed. Budget exhaustion, a model declining to act, an off-catalog or ungrounded
+candidate, a gate-failed decline — every other terminal outcome lived in the in-memory
+ledger and died with it. Four calibration phases in a row measured and moved nothing
+because the corpus they read from was "cases where thump acted," the population a gate
+calibration needs least.
+
+**We do:** every terminal phase is journaled to a second WAL, `clank/thump.reasoning/`,
+via `publish.JournalPublisher[T]` — a WAL with no delivery step, a distinct type rather
+than a `WALPublisher` with a nil `Next`. `thump.proposals` still gets only a gate-passing
+set; that call site didn't move.
+
+**Why not deliver everything and let hiss filter?** hiss already refuses a `Set` with
+`Gate == nil` or `Gate.Passed == false` (`hiss.ReasonUngatedInput`,
+`internal/hiss/authority.go:60-62`) — a consumer-side check it would have to get right on
+every code path, forever. Publishing nothing ungated in the first place turns that into a
+structural guarantee: hiss subscribes to one literal subject for governed input, and a
+publisher with no `Next` cannot reach it regardless of what hiss does or doesn't check.
+That guarantee holds only as long as nothing in the tree ever calls `.Publish` with the
+journal's subject — a deliberate-red exercise confirmed the failure mode is real: strip
+the gate check at the real call site and the guard test catches it. No repo-wide test
+enforces the boundary itself yet, the way `TestNotifierSDKNeverReachesCoreBeats` enforces
+its own; a grep-shaped guard for "no `.Publish` call site ever names `thump.reasoning`"
+is the natural next hardening, left for later.
+
 ## Departures from other source material
 
 The D-ledger above is indexed against one book, *Agentic Reliability

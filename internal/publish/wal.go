@@ -391,3 +391,20 @@ func (p *WALPublisher[T]) Publish(ctx context.Context, subject string, obj T) er
 	}
 	return nil
 }
+
+// JournalPublisher appends every object to WAL and delivers it nowhere
+// else — a distinct type from WALPublisher rather than a WALPublisher with
+// a nil Next, so "journal only" and "misconfigured" can never be the same
+// value.
+type JournalPublisher[T any] struct {
+	WAL *WAL
+}
+
+// Publish appends obj to WAL. subject is accepted only to satisfy
+// Publisher[T]; JournalPublisher has no delivery step to route it to.
+func (p *JournalPublisher[T]) Publish(ctx context.Context, _ string, obj T) error {
+	if err := p.WAL.Append(ctx, obj); err != nil {
+		return fmt.Errorf("journal publisher: append: %w", err)
+	}
+	return nil
+}

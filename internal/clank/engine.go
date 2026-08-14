@@ -57,6 +57,7 @@ type Engine struct {
 	Ledger         *MemProposalLog                   // every Propose run is recorded here, gated or not — the audit trail
 	Recorder       *Recorder                         // counts reason loops the dedupe precheck stopped; nil-safe, same discipline as Tracer
 	Pub            publish.Publisher[proposal.Set]   // delivery — only called when the gate passes
+	Journal        publish.Publisher[proposal.Set]   // records every terminal phase, gated or not — never reaches the broker
 	MaxSteps       int                               // hard bound on reason-loop turns; exhausting it without a propose/insufficient call ends the run budget-exhausted
 	Weights        ScoringWeights
 	Tracer         trace.Tracer        // spans the reason-loop stages under whatever trace ctx already carries; nil-safe via tracer() so existing callers need not set it
@@ -74,6 +75,23 @@ func (e *Engine) tracer() trace.Tracer {
 		return noop.Tracer{}
 	}
 	return e.Tracer
+}
+
+// journal records set to Journal, matching Ledger.Record's scope exactly —
+// every terminal phase, gated or not — rather than Pub's, which only ever
+// sees a gate-passing set. Passes no subject: Journal is a JournalPublisher,
+// which never routes on one, and a "thump."-prefixed literal here would read
+// to internal/broker's grants scanner as a real broker subject that needs a
+// nats.conf grant, when the whole point is that this record never reaches
+// the broker at all.
+func (e *Engine) journal(ctx context.Context, set proposal.Set) error {
+	if e.Journal == nil {
+		return nil
+	}
+	if err := e.Journal.Publish(ctx, "", set); err != nil {
+		return fmt.Errorf("journal: %w", err)
+	}
+	return nil
 }
 
 // Propose turns one signal.Detection into a proposal.Set. It assembles the
@@ -324,6 +342,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		if err := e.Ledger.Record(ctx, set); err != nil {
 			return proposal.Set{}, fmt.Errorf("record: %w", err)
 		}
+		if err := e.journal(ctx, set); err != nil {
+			return proposal.Set{}, err
+		}
 		return set, nil
 	}
 	if !proposed {
@@ -332,6 +353,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		}
 		if err := e.Ledger.Record(ctx, set); err != nil {
 			return proposal.Set{}, fmt.Errorf("record: %w", err)
+		}
+		if err := e.journal(ctx, set); err != nil {
+			return proposal.Set{}, err
 		}
 		return set, nil
 	}
@@ -350,6 +374,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		if err := e.Ledger.Record(ctx, set); err != nil {
 			return proposal.Set{}, fmt.Errorf("record: %w", err)
 		}
+		if err := e.journal(ctx, set); err != nil {
+			return proposal.Set{}, err
+		}
 		return set, nil
 	}
 
@@ -362,6 +389,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 		set.Status.Reason = err.Error()
 		if err := e.Ledger.Record(ctx, set); err != nil {
 			return proposal.Set{}, fmt.Errorf("record: %w", err)
+		}
+		if err := e.journal(ctx, set); err != nil {
+			return proposal.Set{}, err
 		}
 		return set, nil
 	}
@@ -410,6 +440,9 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 
 	if err := e.Ledger.Record(ctx, set); err != nil {
 		return proposal.Set{}, fmt.Errorf("record: %w", err)
+	}
+	if err := e.journal(ctx, set); err != nil {
+		return proposal.Set{}, err
 	}
 	if set.Gate.Passed && e.Pub != nil {
 		if err := e.Pub.Publish(ctx, "thump.proposals", set); err != nil {

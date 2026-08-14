@@ -35,7 +35,7 @@ func proposalFilename(ps proposal.Set) string {
 	return ps.Name
 }
 
-func newLoop(_, outbox, outcomes, declines string, model reason.Model, tools map[string]reason.Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *loop {
+func newLoop(_, outbox, outcomes, declines string, model reason.Model, tools map[string]reason.Tool, intake *Intake, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, store Store, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits, journal publish.Publisher[proposal.Set]) *loop {
 	ledger := NewMemProposalLog() // ONE ledger
 	ledger.LedgerRetention = limits.LedgerRetention
 	cases := NewCaseBase() // ONE case base
@@ -54,6 +54,7 @@ func newLoop(_, outbox, outcomes, declines string, model reason.Model, tools map
 		Ledger:         ledger, // engine records into THIS ledger
 		Recorder:       recorder,
 		Pub:            &publish.DirPublisher[proposal.Set]{Dir: outbox, Name: proposalFilename},
+		Journal:        journal,
 		Gate:           ReadinessGate{},
 		MaxSteps:       limits.MaxSteps,
 		Tracer:         tracer,
@@ -74,7 +75,7 @@ func newLoop(_, outbox, outcomes, declines string, model reason.Model, tools map
 // newBrokerEngine builds the broker-mode Engine: same shape as newLoop's, but
 // publishing to the passed WAL/JetStream publisher instead of a directory, and
 // sharing the caller's ledger and case base with the return-edge subscriber.
-func newBrokerEngine(model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits) *Engine {
+func newBrokerEngine(model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase, dedupeWindow time.Duration, tracer trace.Tracer, stages *beat.StageRecorder, recorder *Recorder, weights ScoringWeights, limits Limits, journal publish.Publisher[proposal.Set]) *Engine {
 	return &Engine{
 		Intake:         intake,
 		Model:          model,
@@ -89,6 +90,7 @@ func newBrokerEngine(model reason.Model, intake *Intake, store Store, tools map[
 		Ledger:         ledger,
 		Recorder:       recorder,
 		Pub:            pub,
+		Journal:        journal,
 		Gate:           ReadinessGate{},
 		MaxSteps:       limits.MaxSteps,
 		Tracer:         tracer,

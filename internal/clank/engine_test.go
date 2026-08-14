@@ -87,6 +87,161 @@ func TestPropose_GateDeclineSurfacesReason(t *testing.T) {
 	}
 }
 
+// withJournal wires a capture double onto e.Journal, so a test can assert on
+// what was journaled independently of what Pub delivered.
+func withJournal(e *clank.Engine) *publishtest.CapturePublisher[proposal.Set] {
+	journal := &publishtest.CapturePublisher[proposal.Set]{}
+	e.Journal = journal
+	return journal
+}
+
+func TestPropose_JournalsEveryTerminalPhase(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		model     func(t *testing.T) reason.Model
+		configure func(e *clank.Engine)
+		wantPhase string
+	}{
+		"Propose journals a run that exhausted its step budget without proposing": {
+			model: func(*testing.T) reason.Model {
+				metrics := reason.Completion{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}}
+				return &fakeModel{script: []reason.Completion{metrics, metrics, metrics, metrics}}
+			},
+			configure: func(e *clank.Engine) { e.MaxSteps = 3 },
+			wantPhase: "budget_exhausted",
+		},
+		"Propose journals a run whose model declined to name any action": {
+			model: func(*testing.T) reason.Model {
+				return &fakeModel{script: []reason.Completion{{ToolCalls: []reason.ToolCall{{
+					Name: "insufficient",
+					Args: json.RawMessage(`{"reason":"no live corroboration for the topology hypothesis"}`),
+				}}}}}
+			},
+			wantPhase: "no_action",
+		},
+		"Propose journals a run whose recommended candidate failed the gate": {
+			model: func(*testing.T) reason.Model {
+				return &fakeModel{script: []reason.Completion{
+					{ToolCalls: []reason.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"log_scan"}`)}}},
+					{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+						FailureClass: proposal.ClassDependencySaturation,
+						Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+						Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{"log_scan"}}},
+					})}}},
+				}}
+			},
+			configure: func(e *clank.Engine) {
+				e.Tools = map[string]reason.Tool{"logs": fakeTool{name: "logs", digest: "no live signal", ref: "loki:xyz", live: false, query: "log_scan", key: "log_scan"}}
+			},
+			wantPhase: "no_action",
+		},
+		"Propose journals a run that passed the gate, the same as one that did not": {
+			model: func(*testing.T) reason.Model {
+				return &fakeModel{script: []reason.Completion{
+					{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+					{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+						FailureClass: proposal.ClassDependencySaturation,
+						Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+						Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
+					})}}},
+				}}
+			},
+			wantPhase: "proposed",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			e, _ := newTestEngine(tc.model(t))
+			if tc.configure != nil {
+				tc.configure(e)
+			}
+			journal := withJournal(e)
+
+			got, err := e.Propose(context.Background(), sigBurnAccel())
+			if err != nil {
+				t.Fatalf("Propose errored: %v", err)
+			}
+			if diff := cmp.Diff(tc.wantPhase, got.Status.Phase); diff != "" {
+				t.Error("wrong terminal phase (-want +got)\n", diff)
+			}
+			if len(journal.Delivered) != 1 {
+				t.Fatalf("journal recorded %d sets, want exactly 1 for every terminal phase", len(journal.Delivered))
+			}
+			if diff := cmp.Diff(tc.wantPhase, journal.Delivered[0].Status.Phase); diff != "" {
+				t.Error("journaled set has the wrong phase (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
+func TestPropose_PublishesOnlyGatePassingSetsToTheProposalsSubject(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		model         func(t *testing.T) reason.Model
+		configure     func(e *clank.Engine)
+		wantDelivered int
+	}{
+		"a budget-exhausted run journals but never reaches thump.proposals": {
+			model: func(*testing.T) reason.Model {
+				metrics := reason.Completion{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"x"}`)}}}
+				return &fakeModel{script: []reason.Completion{metrics, metrics, metrics, metrics}}
+			},
+			configure: func(e *clank.Engine) { e.MaxSteps = 3 },
+		},
+		"a gate-failed run journals but never reaches thump.proposals": {
+			model: func(*testing.T) reason.Model {
+				return &fakeModel{script: []reason.Completion{
+					{ToolCalls: []reason.ToolCall{{Name: "logs", Args: json.RawMessage(`{"q":"log_scan"}`)}}},
+					{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+						FailureClass: proposal.ClassDependencySaturation,
+						Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+						Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{"log_scan"}}},
+					})}}},
+				}}
+			},
+			configure: func(e *clank.Engine) {
+				e.Tools = map[string]reason.Tool{"logs": fakeTool{name: "logs", digest: "no live signal", ref: "loki:xyz", live: false, query: "log_scan", key: "log_scan"}}
+			},
+		},
+		"a gate-passing run reaches thump.proposals, the same set the journal recorded": {
+			model: func(*testing.T) reason.Model {
+				return &fakeModel{script: []reason.Completion{
+					{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}},
+					{ToolCalls: []reason.ToolCall{{Name: "propose", Args: proposeArgs(t, proposal.Set{
+						FailureClass: proposal.ClassDependencySaturation,
+						Hypotheses:   []proposal.Hypothesis{{Name: "dependency_saturation", Weight: 0.8}},
+						Proposals:    []proposal.Candidate{{ID: "p1", ContractRef: "throttle-non-critical-paths", Confidence: 0.87, Citations: []string{`{"q":"latency_p99"}`}}},
+					})}}},
+				}}
+			},
+			wantDelivered: 1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			e, pub := newTestEngine(tc.model(t))
+			if tc.configure != nil {
+				tc.configure(e)
+			}
+			journal := withJournal(e)
+
+			if _, err := e.Propose(context.Background(), sigBurnAccel()); err != nil {
+				t.Fatalf("Propose errored: %v", err)
+			}
+			if len(journal.Delivered) != 1 {
+				t.Fatalf("journal recorded %d sets, want exactly 1", len(journal.Delivered))
+			}
+			if diff := cmp.Diff(tc.wantDelivered, len(pub.Delivered)); diff != "" {
+				t.Error("wrong count reaching thump.proposals (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
 func TestPropose_StampsReversalAndBandFromTheCatalog(t *testing.T) {
 	t.Parallel()
 	model := &fakeModel{script: []reason.Completion{

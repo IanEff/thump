@@ -25,7 +25,12 @@ import (
 const (
 	proposalsPrefix = "clank/thump.proposals/"
 	outcomesPrefix  = "thump/thump.outcomes/"
-	outPath         = "internal/clank/testdata/corpus/corpus.json"
+	// journalPrefix holds every terminal-phase proposal.Set clank journals,
+	// gated or not — a superset of proposalsPrefix, never joined into Cases
+	// here, only counted, since turning a miss into a graded row needs a
+	// replay pair (calipers transcript), not a bare journal line.
+	journalPrefix = "clank/thump.reasoning/"
+	outPath       = "internal/clank/testdata/corpus/corpus.json"
 )
 
 // ErrUnknownCorpusVersion means the artifact on disk was written by a
@@ -54,7 +59,7 @@ func Main(_ []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	c, err := mine(ctx, client, key, cfg.S3Bucket)
+	c, journaled, err := mine(ctx, client, key, cfg.S3Bucket)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
@@ -64,34 +69,42 @@ func Main(_ []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
 	}
-	report(stdout, c)
+	report(stdout, c, journaled)
 	return 0
 }
 
-func mine(ctx context.Context, client *s3.Client, key sealbox.Key, bucket string) (clank.Corpus, error) {
+func mine(ctx context.Context, client *s3.Client, key sealbox.Key, bucket string) (clank.Corpus, int, error) {
 	proposalKeys, proposalLines, err := Walk(ctx, client, client, key, bucket, proposalsPrefix)
 	if err != nil {
-		return clank.Corpus{}, err
+		return clank.Corpus{}, 0, err
 	}
 	outcomeKeys, outcomeLines, err := Walk(ctx, client, client, key, bucket, outcomesPrefix)
 	if err != nil {
-		return clank.Corpus{}, err
+		return clank.Corpus{}, 0, err
+	}
+	journalKeys, journalLines, err := Walk(ctx, client, client, key, bucket, journalPrefix)
+	if err != nil {
+		return clank.Corpus{}, 0, err
 	}
 
 	sets, err := DecodeEach[proposal.Set](proposalLines)
 	if err != nil {
-		return clank.Corpus{}, fmt.Errorf("decoding %s: %w", proposalsPrefix, err)
+		return clank.Corpus{}, 0, fmt.Errorf("decoding %s: %w", proposalsPrefix, err)
 	}
 	outcomes, err := DecodeEach[outcome.Outcome](outcomeLines)
 	if err != nil {
-		return clank.Corpus{}, fmt.Errorf("decoding %s: %w", outcomesPrefix, err)
+		return clank.Corpus{}, 0, fmt.Errorf("decoding %s: %w", outcomesPrefix, err)
+	}
+	journaled, err := DecodeEach[proposal.Set](journalLines)
+	if err != nil {
+		return clank.Corpus{}, 0, fmt.Errorf("decoding %s: %w", journalPrefix, err)
 	}
 
 	return clank.Corpus{
 		Cases:    clank.MineCorpus(sets, outcomes),
 		MinedAt:  time.Now(),
-		Segments: append(proposalKeys, outcomeKeys...),
-	}, nil
+		Segments: slices.Concat(proposalKeys, outcomeKeys, journalKeys),
+	}, len(journaled), nil
 }
 
 func writeCorpus(path string, mined clank.Corpus) error {
@@ -151,12 +164,13 @@ func mergeCorpus(existing, mined clank.Corpus) clank.Corpus {
 	return clank.Corpus{Version: clank.CorpusVersion, Cases: cases, MinedAt: mined.MinedAt, Segments: segments}
 }
 
-func report(w io.Writer, c clank.Corpus) {
+func report(w io.Writer, c clank.Corpus, journaled int) {
 	byClass := map[proposal.FailureClass]int{}
 	for _, cs := range c.Cases {
 		byClass[cs.FailureClass]++
 	}
 	_, _ = fmt.Fprintf(w, "mined %d cases from %d segments\n", len(c.Cases), len(c.Segments))
+	_, _ = fmt.Fprintf(w, "%d reasoning-journal records observed (every terminal phase, not yet joined into cases)\n", journaled)
 	for class, n := range byClass {
 		_, _ = fmt.Fprintf(w, " %-24s %d\n", class, n)
 	}

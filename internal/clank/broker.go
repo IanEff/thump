@@ -64,6 +64,16 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 		return 1
 	}
 
+	// The reasoning journal has no Next — every terminal phase lands here,
+	// gated or not, but nothing ever calls js.Publish for it, so hiss (which
+	// only ever subscribes to thump.proposals) structurally cannot see an
+	// ungated set.
+	journalPub, _, err := beat.NewJournalPublisher[proposal.Set](cfg.WALDir, "clank", "thump.reasoning", walConfig)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+
 	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -72,6 +82,11 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 	defer func() {
 		if err := proposalPub.WAL.Drain(ctx, sink); err != nil {
 			slog.Error("failed to drain proposal WAL", "error", err)
+		}
+	}()
+	defer func() {
+		if err := journalPub.WAL.Drain(ctx, sink); err != nil {
+			slog.Error("failed to drain reasoning journal", "error", err)
 		}
 	}()
 
@@ -88,12 +103,16 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 	// JetStream AckWait deadline on real checkpoint progress (via
 	// WithHeartbeat) rather than needing engine.go's loop to know a NATS
 	// message exists at all.
-	eng := newBrokerEngine(model, intake, HeartbeatingStore{store}, tools, cat, classes, proposalPub, ledger, cases, cfg.DedupeWindow, tracer, stages, recorder, weights, limits)
+	eng := newBrokerEngine(model, intake, HeartbeatingStore{store}, tools, cat, classes, proposalPub, ledger, cases, cfg.DedupeWindow, tracer, stages, recorder, weights, limits, journalPub)
 
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		publish.RunShipper(gctx, proposalPub.WAL, sink, walConfig.ShipInterval)
+		return nil
+	})
+	g.Go(func() error {
+		publish.RunShipper(gctx, journalPub.WAL, sink, walConfig.ShipInterval)
 		return nil
 	})
 
