@@ -108,7 +108,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 	}
 
-	kubeClient, argoClient := inClusterClients()
+	kubeClient, argoClient := InClusterClients()
 	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
 	model := anthropic.NewModel(cfg.AnthropicAPIKey, modelRequestTimeout)
@@ -214,12 +214,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	return 0
 }
 
-// inClusterClients returns the typed client the kube evidence tool needs and
+// InClusterClients returns the typed client the kube evidence tool needs and
 // the dynamic client the ArgoCD change source needs, or nil for either when
-// clank isn't running as a pod. Every failure here degrades one capability
-// rather than stopping the beat, so each one says so at WARN and names what
-// is now missing.
-func inClusterClients() (kubernetes.Interface, dynamic.Interface) {
+// the caller isn't running as a pod. Every failure here degrades one
+// capability rather than stopping the caller, so each one says so at WARN
+// and names what is now missing.
+func InClusterClients() (kubernetes.Interface, dynamic.Interface) {
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		slog.Info("not running in-cluster — no kube evidence tool and no change source", "beat", "clank")

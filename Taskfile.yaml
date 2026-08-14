@@ -194,6 +194,15 @@ tasks:
       - echo "captured internal/clank/testdata/detections/{{.NAME}}.yaml"
       - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
+  probe:
+    desc: "Fire N real, read-only reasoning runs against a captured detection: task probe DETECTION=<path> [RUNS=N] (key-gated, not part of ci)"
+    requires:
+      vars: [DETECTION]
+    vars:
+      RUNS: '{{.RUNS | default "1"}}'
+    cmds:
+      - go run ./cmd/calipers probe -detection {{.DETECTION}} -runs {{.RUNS}}
+
   # .git/hooks/ isn't version-controlled, so a fresh clone has no protection
   # until this runs once. Re-run any time after cloning or after a hook changes.
   hooks:install:
