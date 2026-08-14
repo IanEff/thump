@@ -211,7 +211,7 @@ func LoadRattle(broker bool) (Rattle, error) {
 // twice against the one dir) — one field, two consumers.
 type Thump struct {
 	ActionCatalog   string // ACTION_CATALOG - required; the authored action catalog YAML
-	Executor        string // THUMP_EXECUTOR - "dry" (default) | "live"
+	Executor        string // THUMP_EXECUTOR - "dry" (default) | "live"; anything else refuses at load time, never a silent dry-run
 	KillSwitchPath  string // THUMP_KILLSWITCH -- path to armed:bool file; only read in live mode
 	NATSURL         string // NATS_URL — optional; beat.Start already used this var to select broker mode before Load ran, so this is the same var validated a second time, not a new one
 	OTLPEndpoint    string // OTEL_EXPORTER_OTLP_ENDPOINT — optional; empty means unconfigured
@@ -232,7 +232,7 @@ func LoadThump(broker bool) (Thump, error) {
 	l := &loader{}
 	t := Thump{
 		ActionCatalog:   l.Require("ACTION_CATALOG"),
-		Executor:        l.Optional("THUMP_EXECUTOR"),
+		Executor:        l.OptionalOneOf("THUMP_EXECUTOR", "dry", "live"),
 		KillSwitchPath:  l.Optional("THUMP_KILLSWITCH"),
 		NATSURL:         l.OptionalURL("NATS_URL", "nats", "tls"),
 		OTLPEndpoint:    l.OptionalURL("OTEL_EXPORTER_OTLP_ENDPOINT", "http", "https"),
@@ -319,6 +319,18 @@ func (l *loader) Require(name string) string {
 
 func (l *loader) Optional(name string) string {
 	return os.Getenv(name)
+}
+
+// OptionalOneOf reads name like Optional, then rejects a set value outside
+// allowed — exact match, no case folding or trimming, so a near-miss fails
+// the deploy at load time instead of silently selecting whatever the zero
+// value means downstream.
+func (l *loader) OptionalOneOf(name string, allowed ...string) string {
+	v := os.Getenv(name)
+	if v != "" && !slices.Contains(allowed, v) {
+		l.errs = append(l.errs, fmt.Errorf("%s: must be one of %v, got %q", name, allowed, v))
+	}
+	return v
 }
 
 // OptionalDuration reads name as a time.Duration, defaulting to def when

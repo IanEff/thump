@@ -538,6 +538,78 @@ func TestLoadThump_ForgeRepoAndTokenOptional(t *testing.T) {
 	}
 }
 
+func TestLoadThump_ValidatesExecutor(t *testing.T) {
+	cases := map[string]struct {
+		executor string
+		wantErr  bool
+	}{
+		"LoadThump accepts an unset THUMP_EXECUTOR as the dry default": {
+			executor: "",
+		},
+		"LoadThump accepts dry": {
+			executor: "dry",
+		},
+		"LoadThump accepts live": {
+			executor: "live",
+		},
+		"LoadThump refuses Live rather than silently rendering instead of acting": {
+			executor: "Live",
+			wantErr:  true,
+		},
+		"LoadThump refuses LIVE — case is not normalized, a mistyped mode fails closed and says so": {
+			executor: "LIVE",
+			wantErr:  true,
+		},
+		"LoadThump refuses the lve typo instead of starting a beat that looks healthy and never touches anything": {
+			executor: "lve",
+			wantErr:  true,
+		},
+		"LoadThump refuses a trailing space after live": {
+			executor: "live ",
+			wantErr:  true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setThumpEnv(t)
+			t.Setenv("THUMP_EXECUTOR", tc.executor)
+
+			got, err := config.LoadThump(false)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("a %q THUMP_EXECUTOR must refuse at load time, got %+v", tc.executor, got)
+				}
+				if !strings.Contains(err.Error(), "THUMP_EXECUTOR") {
+					t.Errorf("the error must name the offending var so a redeploy fixes the right thing, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.executor, got.Executor); diff != "" {
+				t.Error("a valid executor was rewritten on the way through", diff)
+			}
+		})
+	}
+}
+
+func TestLoadThump_ReportsATypodExecutorAlongsideEveryOtherMissingVar(t *testing.T) {
+	setThumpEnv(t)
+	t.Setenv("THUMP_EXECUTOR", "Live")
+	t.Setenv("ACTION_CATALOG", "")
+
+	_, err := config.LoadThump(false)
+	if err == nil {
+		t.Fatal("two bad vars must not load")
+	}
+	for _, want := range []string{"THUMP_EXECUTOR", "ACTION_CATALOG"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%s is missing from the error — one redeploy per var discovered is what this loader exists to prevent: %v", want, err)
+		}
+	}
+}
+
 func TestLoadThump_BrokerMode_OfflinePairNotRequired(t *testing.T) {
 	// broker=true is thump's NATS path — THUMP_INBOX/OUTBOX are the offline
 	// dir-poll fallback's vars and must not be demanded when the broker path
