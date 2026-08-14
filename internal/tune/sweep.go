@@ -50,8 +50,10 @@ type Point struct {
 // dropped before the sweep starts, so one broken fixture doesn't abort every
 // grid point. GroundingMany and Causal are not grid axes: a graded row can
 // corroborate on two backends now, so GroundingMany is no longer
-// structurally unreachable, but this grid still doesn't vary it; Causal
-// stays flat because LikelihoodOK is structurally false in this harness.
+// structurally unreachable, and replay now feeds a recorded run's own change
+// events back through the causal scorer, so Causal can fire too — neither is
+// swept here, so a point-to-point difference in Grounded is always the
+// grounding-tier axes moving, never these two.
 func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 	if len(cfg.Transcripts) == 0 {
 		return nil, fmt.Errorf("tune: no transcripts — a sweep with nothing to replay reports its own defaults back")

@@ -5,7 +5,11 @@
 // right class off the decoy got there by luck.
 package rca
 
-import "github.com/ianeff/thump/api/v1/proposal"
+import (
+	"time"
+
+	"github.com/ianeff/thump/api/v1/proposal"
+)
 
 // Case is one graded root-cause scenario: a fixture whose evidence carries
 // both the real signal for WantDisposition/WantClass and a planted decoy —
@@ -52,6 +56,14 @@ type Case struct {
 	// can reach — a property of the fixture, not of the tuning, and it belongs
 	// in the report rather than being discovered halfway through a sweep.
 	WantCeilingBound bool
+
+	// Topology and Change feed the harness's Intake directly, the same
+	// snapshot shape SAOSnapshot carries on an emitted Set. The zero value
+	// of both leaves a row exactly as before: no node resolves in-topology,
+	// so the causal scorer's Likelihood can never move a candidate's
+	// confidence.
+	Topology proposal.TopologySnapshot
+	Change   proposal.ChangeSnapshot
 }
 
 // Table is the graded suite. Every row's comment is its provenance — why this
@@ -191,13 +203,19 @@ func Table() []Case {
 			},
 		},
 
-		// A real OSD pod-failure signal. noopTopology/noopChange means
-		// LikelihoodOK is never true in this harness, so the achievable
-		// confidence ceiling is whichever grounding tier the citations land
-		// on, not the causal bonus production sees on this fault —
-		// WantConfidenceAtLeast and WantCeilingBound are set conservatively
-		// below GroundingOne's 0.7 floor, to be corrected from what
-		// `task rca` actually measures.
+		// A real OSD pod-failure signal, now carrying the topology and
+		// change data the harness's Intake actually reads (PR 5): ceph-osd
+		// resolves in-topology and degraded, and the OSD pod restart that
+		// preceded the failure is a change event targeting it — the causal
+		// scorer's LiveCorroborated case. Kept single-backend on purpose
+		// (metrics only, same as before): a second live backend here would
+		// push this row's grounding tier to groundingMany, which is fixed at
+		// 1.0 rather than swept — internal/tune's grid varies groundingNone
+		// and groundingOne only, and this is the one row in the pinned
+		// corpus whose ceiling-bound flips across that range, so pinning it
+		// to groundingMany would erase the grid's only variance. Causal
+		// firing alone already moves WantCeilingBound from false to true —
+		// this row now measures the causal term, not the corroboration one.
 		{
 			Name:                  "a real OSD pod-failure holds the rebalance rather than escalating past it",
 			Fixture:               "hold-rebalance-osd-down.yaml",
@@ -206,7 +224,13 @@ func Table() []Case {
 			WantClass:             proposal.ClassRedundancyDegraded,
 			MustCite:              []string{"pgs_degraded"},
 			WantConfidenceAtLeast: 0.65,
-			WantCeilingBound:      false,
+			WantCeilingBound:      true,
+			Topology: proposal.TopologySnapshot{
+				Upstream: []proposal.NodeState{{Name: "ceph-osd", State: "degraded", TrafficShare: 0.4}},
+			},
+			Change: proposal.ChangeSnapshot{
+				Events: []proposal.ChangeEvent{{ID: "osd-pod-restart", Type: "deploy", Target: "ceph-osd", Age: 6 * time.Minute}},
+			},
 			Evidence: map[string]string{
 				"ceph_health":           "1",
 				"osds_down":             "1",
@@ -225,13 +249,15 @@ func Table() []Case {
 			},
 		},
 
-		// Same root cause and the same harness limitation as the row above
-		// — one fault, two distinct rattle signals. This is the catalog's
-		// one high-blast action, so production correctly holds it for a
-		// human via hiss's risk_ceiling rather than auto-executing. A known
-		// miss, same as rows 1 and 4: measured flip-flopping between
-		// hold-rebalance and accelerate-recovery across runs on this
-		// fixture, both catalogued remedies for the same class.
+		// Same root cause as the row above — one fault, two distinct rattle
+		// signals — but this row carries no Topology/Change of its own, so
+		// it stays causal-blind like every other row that doesn't opt in.
+		// This is the catalog's one high-blast action, so production
+		// correctly holds it for a human via hiss's risk_ceiling rather than
+		// auto-executing. A known miss, same as rows 1 and 4: measured
+		// flip-flopping between hold-rebalance and accelerate-recovery
+		// across runs on this fixture, both catalogued remedies for the
+		// same class.
 		{
 			Name:                  "a real OSD pod-failure proposes the high-blast recovery accelerant, held for a human",
 			Fixture:               "accelerate-recovery-cephblockpool.yaml",

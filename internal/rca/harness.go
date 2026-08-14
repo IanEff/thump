@@ -21,20 +21,20 @@ import (
 	"github.com/ianeff/thump/internal/reason"
 )
 
-// noopTopology and noopChange leave the graded suite's change source
-// unwired. With no change ever resolving, LikelihoodOK is never true, so
-// the Causal weight can never fire — a sweep over it measures a flat
-// surface against this harness, whatever it does against a live rig.
-type noopTopology struct{}
+// caseTopology and caseChange hand the Intake exactly the snapshot the
+// Case's author supplied — a zero-value Case leaves both empty, so no node
+// resolves in-topology and the causal scorer's Likelihood can never move a
+// candidate's confidence, the same as the harness's old unconditional noop.
+type caseTopology struct{ snap proposal.TopologySnapshot }
 
-func (noopTopology) Topology(context.Context, signal.Detection) (proposal.TopologySnapshot, error) {
-	return proposal.TopologySnapshot{}, nil
+func (t caseTopology) Topology(context.Context, signal.Detection) (proposal.TopologySnapshot, error) {
+	return t.snap, nil
 }
 
-type noopChange struct{}
+type caseChange struct{ snap proposal.ChangeSnapshot }
 
-func (noopChange) Changes(context.Context, signal.Detection) (proposal.ChangeSnapshot, error) {
-	return proposal.ChangeSnapshot{}, nil
+func (c caseChange) Changes(context.Context, signal.Detection) (proposal.ChangeSnapshot, error) {
+	return c.snap, nil
 }
 
 // harness is one built engine plus the teardown for the fake backends behind
@@ -90,7 +90,7 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 	limits := clank.DefaultLimits()
 
 	eng := &clank.Engine{
-		Intake:         clank.NewIntake(noopTopology{}, noopChange{}),
+		Intake:         clank.NewIntake(caseTopology{c.Topology}, caseChange{c.Change}),
 		Model:          model,
 		Tools:          tools,
 		Catalog:        cat,
