@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // TestOnlyHttpxBuildsAnHTTPClient pins the bound where it can actually be
@@ -153,14 +155,20 @@ func isCryptoTLS(x ast.Expr) bool {
 	return ok && id.Name == "tls"
 }
 
-// declaredPlaintext maps each non-test file allowed to name an
-// insecure-transport option to the reason that leg runs in the clear. A hit
-// anywhere else is a leg nobody decided about; adding a row is a design
-// review, not a convenience.
+// declaredPlaintext maps each non-test file allowed to run a leg in the clear
+// to the reason it does. A row exempts WithInsecure and nothing else —
+// InsecureSkipVerify is refused in every file, declared or not. Adding a row
+// is a design review, not a convenience.
 var declaredPlaintext = map[string]string{
 	"internal/otelx/trace.go": "the http:// branch of OTEL_EXPORTER_OTLP_ENDPOINT is an authored operator choice for a rig whose collector doesn't serve TLS, not a delegation to Cilium WireGuard — the https:// branch verifies the peer via tlsx.Client",
 }
 
+// TestOnlyDeclaredFilesAskForAnInsecureTransport walks every non-test .go file
+// in the tree and refuses any naming of an insecure-transport option that the
+// declaredPlaintext allowlist doesn't cover. The allowlist reaches WithInsecure
+// only: InsecureSkipVerify has no exception anywhere, because a plaintext leg
+// can be authored with its reason on record and an unauthenticated TLS session
+// dressed as a secure one cannot.
 func TestOnlyDeclaredFilesAskForAnInsecureTransport(t *testing.T) {
 	t.Parallel()
 	repoRoot, err := filepath.Abs("../..")
@@ -186,31 +194,153 @@ func TestOnlyDeclaredFilesAskForAnInsecureTransport(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if _, declared := declaredPlaintext[filepath.ToSlash(rel)]; declared {
-			return nil
-		}
+		_, declared := declaredPlaintext[filepath.ToSlash(rel)]
 		f, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
 			return err
 		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			sel, ok := n.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			switch sel.Sel.Name {
+		for _, use := range insecureTransportNames(fset, f) {
+			switch use.Name {
 			case "WithInsecure":
+				if declared {
+					continue
+				}
 				t.Errorf("%s:%d names WithInsecure — a plaintext leg needs a row in declaredPlaintext carrying the reason",
-					rel, fset.Position(sel.Pos()).Line)
+					rel, use.Line)
 			case "InsecureSkipVerify":
 				t.Errorf("%s:%d sets InsecureSkipVerify — that is not a plaintext exception, it is an unauthenticated TLS session",
-					rel, fset.Position(sel.Pos()).Line)
+					rel, use.Line)
 			}
-			return true
-		})
+		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// insecureUse is one syntactic naming of an insecure-transport option: the
+// identifier and the line, never the value — naming the option at all is the
+// violation, so a false is reported the same as a true.
+type insecureUse struct {
+	Name string // the option identifier as written, either WithInsecure or InsecureSkipVerify
+	Line int    // 1-based line of the identifier, not of the statement enclosing it
+}
+
+// TestInsecureTransportNames_ReportsEverySyntaxThatCanNameAnInsecureOption is
+// the table the real-tree walk can't be: the walk's input is the repo, so a
+// red case there would mean committing a violating file. Every syntax that can
+// name the option gets a row, because a guard that catches one spelling of a
+// setting catches nothing.
+func TestInsecureTransportNames_ReportsEverySyntaxThatCanNameAnInsecureOption(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		src  string
+		want []insecureUse
+	}{
+		"insecureTransportNames reports InsecureSkipVerify when it is written as a composite-literal field key": {
+			src: `package p
+
+import "crypto/tls"
+
+var c = &tls.Config{InsecureSkipVerify: true}
+`,
+			want: []insecureUse{{Name: "InsecureSkipVerify", Line: 5}},
+		},
+		"insecureTransportNames reports InsecureSkipVerify when it is written as a field assignment": {
+			src: `package p
+
+import "crypto/tls"
+
+func f(c *tls.Config) { c.InsecureSkipVerify = true }
+`,
+			want: []insecureUse{{Name: "InsecureSkipVerify", Line: 5}},
+		},
+		"insecureTransportNames reports InsecureSkipVerify set to false because naming the option is the violation, not the value": {
+			src: `package p
+
+import "crypto/tls"
+
+var c = &tls.Config{InsecureSkipVerify: false}
+`,
+			want: []insecureUse{{Name: "InsecureSkipVerify", Line: 5}},
+		},
+		"insecureTransportNames reports WithInsecure when it is written as a call": {
+			src: `package p
+
+import "google.golang.org/grpc"
+
+var o = grpc.WithInsecure()
+`,
+			want: []insecureUse{{Name: "WithInsecure", Line: 5}},
+		},
+		"insecureTransportNames reports both options when one file names each, in source order": {
+			src: `package p
+
+import (
+	"crypto/tls"
+
+	"google.golang.org/grpc"
+)
+
+var o = grpc.WithInsecure()
+var c = &tls.Config{InsecureSkipVerify: true}
+`,
+			want: []insecureUse{
+				{Name: "WithInsecure", Line: 9},
+				{Name: "InsecureSkipVerify", Line: 10},
+			},
+		},
+		"insecureTransportNames reports nothing for a file that builds a peer-verifying tls.Config": {
+			src: `package p
+
+import "crypto/tls"
+
+var c = &tls.Config{MinVersion: tls.VersionTLS13}
+`,
+			want: nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, "x.go", tc.src, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := insecureTransportNames(fset, f)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Error("wrong insecure-transport findings", diff)
+			}
+		})
+	}
+}
+
+// insecureTransportNames reports every identifier in f naming an option that
+// disables transport authentication, whichever syntax spells it — a selector,
+// a composite-literal field key, or a call. The value is never consulted:
+// naming the option is what needs a row in declaredPlaintext.
+func insecureTransportNames(fset *token.FileSet, f *ast.File) []insecureUse {
+	var found []insecureUse
+	record := func(id *ast.Ident) {
+		switch id.Name {
+		case "WithInsecure", "InsecureSkipVerify":
+			found = append(found, insecureUse{Name: id.Name, Line: fset.Position(id.Pos()).Line})
+		}
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.SelectorExpr:
+			record(x.Sel)
+		case *ast.KeyValueExpr:
+			if id, ok := x.Key.(*ast.Ident); ok {
+				record(id)
+			}
+		}
+		return true
+	})
+	return found
 }

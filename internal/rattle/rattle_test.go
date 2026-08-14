@@ -40,8 +40,8 @@ func TestMain_MissingPromURLReturnsOne(t *testing.T) {
 	if code != 1 {
 		t.Errorf("missing PROM_URL should exit 1, got %d", code)
 	}
-	if !strings.Contains(errb.String(), "PROM_URL") {
-		t.Error("stderr should name the missing var", errb.String())
+	if !strings.Contains(out.String(), "PROM_URL") {
+		t.Error("the startup failure record should name the missing var", out.String())
 	}
 }
 
@@ -243,8 +243,8 @@ func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
 	if code != 1 {
 		t.Errorf("want exit code 1 for missing config, got %d", code)
 	}
-	if stderr.Len() == 0 {
-		t.Error("want error message printed to stderr, got none")
+	if stdout.Len() == 0 {
+		t.Error("want a startup failure record on stdout, got none")
 	}
 }
 

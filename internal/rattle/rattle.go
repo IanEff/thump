@@ -44,19 +44,19 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 
 	cfg, err := config.LoadRattle(lc.NATSURL != "")
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		log.Error("load config", "error", err)
 		return 1
 	}
 
 	slos, err := LoadWatch(cfg.WatchPath)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load watch list: %v\n", err)
+		log.Error("load watch list", "error", err)
 		return 1
 	}
 
 	query, err := LoadQueryConfig(cfg.QueryConfig)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load query config: %v\n", err)
+		log.Error("load query config", "error", err)
 		return 1
 	}
 
