@@ -232,7 +232,7 @@ func LoadThump(broker bool) (Thump, error) {
 	l := &loader{}
 	t := Thump{
 		ActionCatalog:   l.Require("ACTION_CATALOG"),
-		Executor:        l.Optional("THUMP_EXECUTOR"),
+		Executor:        l.OptionalEnum("THUMP_EXECUTOR", "dry", "dry", "live"),
 		KillSwitchPath:  l.Optional("THUMP_KILLSWITCH"),
 		NATSURL:         l.OptionalURL("NATS_URL", "nats", "tls"),
 		OTLPEndpoint:    l.OptionalURL("OTEL_EXPORTER_OTLP_ENDPOINT", "http", "https"),
@@ -404,6 +404,22 @@ func (l *loader) RequireBase64Key(name string, n int) []byte {
 		return nil
 	}
 	return b
+}
+
+// OptionalEnum reads name as one of allowed, defaulting to def when unset. A
+// set-but-unrecognised value is a configuration error, not a fall-back to def —
+// an operator who typed something meant something, and a beat that comes up in
+// a mode nobody chose is worse than one that refuses to come up.
+func (l *loader) OptionalEnum(name, def string, allowed ...string) string {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	if !slices.Contains(allowed, v) {
+		l.errs = append(l.errs, fmt.Errorf("%s: must be one of %v, got %q", name, allowed, v))
+		return def
+	}
+	return v
 }
 
 func (l *loader) err() error {

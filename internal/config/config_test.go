@@ -481,6 +481,7 @@ func TestLoadThump_Valid_PopulatesStruct(t *testing.T) {
 	}
 	want := config.Thump{
 		ActionCatalog: "/etc/actions/catalog.yaml",
+		Executor:      "dry",
 		Inbox:         "/var/run/inbox",
 		Outbox:        "/var/run/outbox",
 	}
@@ -949,5 +950,66 @@ func TestEveryBrokerLoader_RequiresTLSFilesNotJustClanks(t *testing.T) {
 				t.Error("every beat's NATS leg needs a cert — hardening one loader and not the rest is a hole with a test in front of it")
 			}
 		})
+	}
+}
+
+// TestLoadThump_RefusesAnUnrecognisedExecutorRatherThanDisarming holds the
+// executor to two spellings. buildExecutor tests cfg.Executor != "live", so
+// every near-miss an operator can type lands in the dry branch — refusing at
+// load is what keeps a typo from being indistinguishable from a choice.
+func TestLoadThump_RefusesAnUnrecognisedExecutorRatherThanDisarming(t *testing.T) {
+	tests := map[string]struct {
+		executor string
+		wantErr  bool
+	}{
+		"LoadThump refuses an executor value that is neither live nor dry": {
+			executor: "sometimes", wantErr: true,
+		},
+		"LoadThump refuses a capitalised Live rather than silently disarming": {
+			executor: "Live", wantErr: true,
+		},
+		"LoadThump accepts live because it is the one spelling that arms the engine": {
+			executor: "live", wantErr: false,
+		},
+		"LoadThump accepts dry because naming the default explicitly is not an error": {
+			executor: "dry", wantErr: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			setThumpEnv(t)
+			t.Setenv("THUMP_EXECUTOR", tc.executor)
+
+			_, err := config.LoadThump(false /* broker */)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("an unrecognised THUMP_EXECUTOR loaded clean and would have run dry")
+				}
+				if !strings.Contains(err.Error(), "THUMP_EXECUTOR") {
+					t.Error("the load error does not name the var the operator got wrong", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestLoadThump_DefaultsTheExecutorToDryWhenTheVarIsUnset pins the default the
+// Thump.Executor field comment documents — before OptionalEnum the unset case
+// loaded as "", and only worked because "" != "live" by accident.
+func TestLoadThump_DefaultsTheExecutorToDryWhenTheVarIsUnset(t *testing.T) {
+	setThumpEnv(t)
+	t.Setenv("THUMP_EXECUTOR", "")
+
+	got, err := config.LoadThump(false /* broker */)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff("dry", got.Executor); diff != "" {
+		t.Error("an unset THUMP_EXECUTOR did not resolve to the documented default", diff)
 	}
 }
