@@ -42,6 +42,35 @@ func (CommandRunner) Run(ctx context.Context, name string, args ...string) error
 	return nil
 }
 
+// kubeContextChecker reports kubectl's active context — production wiring
+// shells out to kubectl; a test injects a stub instead of needing a real
+// kubeconfig.
+type kubeContextChecker func(ctx context.Context) (string, error)
+
+func kubectlCurrentContext(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "kubectl", "config", "current-context").Output() //nolint:gosec // G204: fixed argv, no operator input
+	if err != nil {
+		return "", fmt.Errorf("kubectl config current-context: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// verifyKubeContext refuses to fire against a cluster nobody asked for.
+// scenarios.yaml's own rig field is read only by an offline test
+// (TestScenarios_WaitOnFingerprintsTheRigsWatchListCanActuallyProduce) —
+// nothing else stops a scenario firing at whatever context happens to be
+// current.
+func verifyKubeContext(ctx context.Context, want string, check kubeContextChecker) error {
+	got, err := check(ctx)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("active kubectl context is %q, want %q — switch context or drop --kube-context to fire without this check", got, want)
+	}
+	return nil
+}
+
 type Harvest struct {
 	watcher Watcher
 	runner  Runner
@@ -198,11 +227,12 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	serverName := fs.String("server-name", "", "TLS SAN to verify the peer against, if it differs from the dialed host (e.g. a port-forwarded nats-url)")
 	only := fs.String("row", "", "run only the scenario whose name contains this substring")
 	asJSON := fs.Bool("json", false, "print each Result as JSON instead of a human line")
+	kubeContext := fs.String("kube-context", "", "expected kubectl context — refuses to fire any scenario unless the active context matches; strongly recommended, omit only to fire without the check")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *scenariosPath == "" || *natsURL == "" {
-		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path --server-name name] [--row substring] [--json]")
+		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path --server-name name] [--row substring] [--json] [--kube-context name]")
 		return 2
 	}
 
@@ -210,6 +240,15 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "harvest:", err)
 		return 1
+	}
+
+	if *kubeContext != "" {
+		if err := verifyKubeContext(context.Background(), *kubeContext, kubectlCurrentContext); err != nil {
+			_, _ = fmt.Fprintln(stderr, "harvest:", err)
+			return 1
+		}
+	} else {
+		_, _ = fmt.Fprintln(stderr, "harvest: no --kube-context given — firing against whatever kubectl context is currently active")
 	}
 
 	// A harvest most often ends with a human losing patience, not the table
