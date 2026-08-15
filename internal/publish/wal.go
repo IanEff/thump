@@ -97,11 +97,7 @@ func (w *WAL) Append(ctx context.Context, obj any) error {
 		return err
 	}
 
-	maxAge := w.MaxAge
-	if maxAge <= 0 {
-		maxAge = defaultMaxAge
-	}
-	if time.Since(w.openedAt) >= maxAge {
+	if time.Since(w.openedAt) >= w.maxAge() {
 		if err := w.seal(); err != nil {
 			return err
 		}
@@ -156,6 +152,36 @@ func (w *WAL) Close(_ context.Context) error {
 		w.closeErr = active.Close()
 	})
 	return w.closeErr
+}
+
+// SealIfStale seals the active segment once it has been open longer than
+// MaxAge, so a subject that never receives a second write still reaches the
+// sink — Append only notices staleness on a later write, and a beat that
+// publishes once a session would otherwise hold that line until shutdown.
+// A never-written or empty segment is left alone; an empty segment is not a
+// segment.
+func (w *WAL) SealIfStale() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.active == nil || w.size == 0 {
+		return nil
+	}
+	if time.Since(w.openedAt) < w.maxAge() {
+		return nil
+	}
+	if err := w.seal(); err != nil {
+		return fmt.Errorf("wal: seal if stale: %w", err)
+	}
+	return nil
+}
+
+// maxAge is MaxAge with the package default substituted when unset, shared
+// by Append and SealIfStale so the two can't drift.
+func (w *WAL) maxAge() time.Duration {
+	if w.MaxAge <= 0 {
+		return defaultMaxAge
+	}
+	return w.MaxAge
 }
 
 // Drain seals the active segment if it's non-empty, ships every sealed

@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/signal"
@@ -322,5 +324,111 @@ func TestWAL_DrainShipsTheActiveSegmentWhenItsParentContextIsAlreadyCancelled(t 
 				}
 			}
 		})
+	}
+}
+
+func TestRunShipper_SealsAndShipsAnIdleSegmentThatOutlivedMaxAgeWithNoSecondAppend(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dir := t.TempDir()
+		w := &publish.WAL{Dir: dir, Beat: "clank", Subject: "thump.proposals", MaxAge: time.Minute}
+		defer func() { _ = w.Close(context.Background()) }()
+		ctx := context.Background()
+
+		if err := w.Append(ctx, signal.Detection{Fingerprint: "fp-1"}); err != nil {
+			t.Fatal(err)
+		}
+
+		time.Sleep(2 * time.Minute)
+		synctest.Wait()
+
+		if err := w.SealIfStale(); err != nil {
+			t.Fatalf("SealIfStale() error = %v, want nil", err)
+		}
+		sink := newFakeSink()
+		if err := w.Ship(ctx, sink); err != nil {
+			t.Fatal(err)
+		}
+
+		if len(sink.puts) != 1 {
+			t.Errorf("sink received %d segments, want 1 (the idle segment sealed with no second Append): %v", len(sink.puts), sink.puts)
+		}
+		beatDir := segmentDir(dir, "clank", "thump.proposals")
+		info, err := os.Stat(filepath.Join(beatDir, "active.jsonl"))
+		if err != nil {
+			t.Fatalf("stat fresh active.jsonl after seal: %v", err)
+		}
+		if info.Size() != 0 {
+			t.Errorf("fresh active.jsonl after seal has size %d, want 0", info.Size())
+		}
+	})
+}
+
+func TestWAL_SealIfStaleLeavesASegmentYoungerThanMaxAgeAlone(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dir := t.TempDir()
+		w := &publish.WAL{Dir: dir, Beat: "clank", Subject: "thump.proposals", MaxAge: time.Minute}
+		defer func() { _ = w.Close(context.Background()) }()
+		ctx := context.Background()
+
+		if err := w.Append(ctx, signal.Detection{Fingerprint: "fp-1"}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := w.SealIfStale(); err != nil {
+			t.Fatalf("SealIfStale() error = %v, want nil", err)
+		}
+
+		beatDir := segmentDir(dir, "clank", "thump.proposals")
+		sealed, err := filepath.Glob(filepath.Join(beatDir, "*-*.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sealed) != 0 {
+			t.Errorf("SealIfStale sealed a segment younger than MaxAge: %v", sealed)
+		}
+	})
+}
+
+func TestWAL_SealIfStaleCreatesNothingOnAWALThatWasNeverWrittenTo(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	w := &publish.WAL{Dir: dir, Beat: "hiss", Subject: "thump.decisions"}
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+
+	if err := w.SealIfStale(); err != nil {
+		t.Fatalf("SealIfStale() error = %v, want nil for a never-written WAL", err)
+	}
+
+	beatDir := segmentDir(dir, "hiss", "thump.decisions")
+	if _, err := os.Stat(beatDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("SealIfStale created %s on a WAL that was never written to, stat err = %v", beatDir, err)
+	}
+}
+
+func TestWAL_SealIfStaleSkipsAnEmptyActiveSegment(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	w := &publish.WAL{Dir: dir, Beat: "rattle", Subject: "thump.detections", MaxBytes: 1}
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+	ctx := context.Background()
+
+	// MaxBytes: 1 forces Append to auto-seal, leaving a fresh, empty active
+	// segment behind — the exact state SealIfStale must not turn into a
+	// second, useless sealed segment.
+	if err := w.Append(ctx, signal.Detection{Fingerprint: "fp-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.SealIfStale(); err != nil {
+		t.Fatalf("SealIfStale() error = %v, want nil", err)
+	}
+
+	beatDir := segmentDir(dir, "rattle", "thump.detections")
+	sealed, err := filepath.Glob(filepath.Join(beatDir, "*-*.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sealed) != 1 {
+		t.Errorf("got %d sealed segments, want exactly 1 (the auto-sealed one, not an empty one from SealIfStale): %v", len(sealed), sealed)
 	}
 }
