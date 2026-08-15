@@ -1,11 +1,19 @@
 package tune_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/tune"
 )
 
@@ -51,6 +59,39 @@ func TestMain_RejectsAnApplyFlagRatherThanIgnoringIt(t *testing.T) {
 
 	if got := tune.Main([]string{"--apply"}, io.Discard, io.Discard); got != 2 {
 		t.Error("want exit 2 for --apply", got)
+	}
+}
+
+// TestMain_ReportsALabelledCaseShortfallAgainstD20sBar pins the phase's
+// point: a corpus that exists but falls short of D-20's re-entry bar must
+// say so by count, not fall back to the generic "no --transcripts"
+// complaint or run a sweep the corpus can't yet support.
+func TestMain_ReportsALabelledCaseShortfallAgainstD20sBar(t *testing.T) {
+	t.Parallel()
+
+	corpusPath := filepath.Join(t.TempDir(), "corpus.json")
+	base := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	seeded := clank.Corpus{Version: clank.CorpusVersion, Cases: []clank.Case{
+		{RunID: "run-1", SignalRef: "sig-1", DecisionRef: "dec-1", OutcomeRef: "out:1", Result: outcome.ResultSuccess, ObservedAt: base},
+		{RunID: "run-2", SignalRef: "sig-2", DecisionRef: "dec-2", OutcomeRef: "out:2", Result: outcome.ResultPartialNonConverging, ObservedAt: base},
+	}}
+	raw, err := json.Marshal(seeded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(corpusPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	code := tune.Main([]string{"-transcripts", "../rca/testdata/graded", "-corpus", corpusPath}, &stdout, io.Discard)
+	if code != 0 {
+		t.Fatalf("want exit 0 for a shortfall NotYet, got %d", code)
+	}
+
+	want := "not yet: 2 labelled cases (18 short of 20) — not enough to sweep confidently\n"
+	if !strings.HasSuffix(stdout.String(), want) {
+		t.Errorf("want stdout to end with %q, got %q", want, stdout.String())
 	}
 }
 

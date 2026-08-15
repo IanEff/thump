@@ -32,7 +32,10 @@ const (
 	// here, only counted, since turning a miss into a graded row needs a
 	// replay pair (calipers transcript), not a bare journal line.
 	journalPrefix = "clank/thump.reasoning/"
-	outPath       = "internal/clank/testdata/corpus/corpus.json"
+	// OutPath is where Main writes the committed corpus artifact — the
+	// bucket is per-rig and transient, this file is the durable record, and
+	// tune reads it from the same path by default.
+	OutPath = "internal/clank/testdata/corpus/corpus.json"
 )
 
 // ErrUnknownCorpusVersion means the artifact on disk was written by a
@@ -40,7 +43,7 @@ const (
 var ErrUnknownCorpusVersion = errors.New("corpus: artifact version is newer than this build understands")
 
 // Main mines every shipped proposal.Set and outcome.Outcome of S3_BUCKET,
-// joins them into a clank.Corpus, and writes it to outPath.
+// joins them into a clank.Corpus, and writes it to OutPath.
 // Returns 0 on success, 1 on any failure.
 func Main(_ []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
@@ -67,7 +70,7 @@ func Main(_ []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := writeCorpus(outPath, c); err != nil {
+	if err := writeCorpus(OutPath, c); err != nil {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
 	}
@@ -128,19 +131,30 @@ func mine(ctx context.Context, client *s3.Client, key sealbox.Key, bucket string
 	}, pop, nil
 }
 
-// labelledCount routes through grade.FromRecord rather than reimplementing
-// its rule — every case MineCorpus returns is already settled and collapsed,
-// so this is a count today, but stays correct if FromRecord's rule changes.
-func labelledCount(cases []clank.Case) int {
-	n := 0
+// Labels derives a settled grade.Label for every case carrying a RunID,
+// keyed by that RunID — the join key tune needs to grade a run pulled from
+// a cluster nobody here has seen, rather than matched against a fixture
+// stem.
+func Labels(cases []clank.Case) map[string]grade.Label {
+	labels := make(map[string]grade.Label)
 	for _, cs := range cases {
+		if cs.RunID == "" {
+			continue
+		}
 		set := proposal.Set{RunID: cs.RunID}
 		out := outcome.Outcome{Result: cs.Result}
-		if _, ok := grade.FromRecord(set, decision.Decision{}, out); ok {
-			n++
+		if l, ok := grade.FromRecord(set, decision.Decision{}, out); ok {
+			labels[cs.RunID] = l
 		}
 	}
-	return n
+	return labels
+}
+
+// labelledCount routes through Labels rather than reimplementing its rule —
+// every case MineCorpus returns is already settled and collapsed, so this is
+// a count today, but stays correct if Labels' rule changes.
+func labelledCount(cases []clank.Case) int {
+	return len(Labels(cases))
 }
 
 // inFlightCount reports how many (SignalRef, DecisionRef) incidents have
@@ -181,7 +195,7 @@ func declinedCount(journaled []proposal.Set) int {
 }
 
 func writeCorpus(path string, mined clank.Corpus) error {
-	existing, err := readCorpus(path)
+	existing, err := ReadCorpus(path)
 	if err != nil {
 		return err
 	}
@@ -190,7 +204,7 @@ func writeCorpus(path string, mined clank.Corpus) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // nolint:gosec // G304: operator-authored fixed path (OutPath const), not user input
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
@@ -327,8 +341,12 @@ func migrateLegacy(raw []byte) (clank.Corpus, error) {
 	}, nil
 }
 
-func readCorpus(path string) (clank.Corpus, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
+// ReadCorpus loads the corpus artifact at path, migrating a pre-tag or
+// pre-RunID layout on the way in. A missing file is not an error — it reads
+// back as an empty, current-version Corpus, since nothing has been mined yet
+// is a population to report, never a failure.
+func ReadCorpus(path string) (clank.Corpus, error) {
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-authored fixed path (OutPath const), not user input
 	if errors.Is(err, os.ErrNotExist) {
 		return clank.Corpus{Version: clank.CorpusVersion}, nil
 	}

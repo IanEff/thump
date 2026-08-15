@@ -153,7 +153,7 @@ func TestReadCorpus_RecoversTheFingerprintAPreTagArtifactLost(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got, err := corpus.ReadCorpusForTest(tc.file)
+			got, err := corpus.ReadCorpus(tc.file)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -169,7 +169,7 @@ func TestReadCorpus_LeavesRunIDEmptyOnAnArtifactThatPredatesTheField(t *testing.
 	// v2 never had RunID at all — decoding it must leave the field at its
 	// zero value, not fabricate one the way migrateLegacy recovers SignalRef
 	// for the pre-tag layout.
-	got, err := corpus.ReadCorpusForTest("testdata/corpus-v2.json")
+	got, err := corpus.ReadCorpus("testdata/corpus-v2.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestReadCorpus_RefusesAnArtifactNewerThanThisBuildWrites(t *testing.T) {
 	// A best-effort decode of an unknown layout is what produced six cases
 	// with an empty fingerprint — a zero value that reads as real data. Fail
 	// at load, where a human is looking.
-	_, err := corpus.ReadCorpusForTest("testdata/corpus-v99.json")
+	_, err := corpus.ReadCorpus("testdata/corpus-v99.json")
 	if !errors.Is(err, corpus.ErrUnknownCorpusVersion) {
 		t.Error("want ErrUnknownCorpusVersion", err)
 	}
