@@ -12,9 +12,9 @@ multidimensional thermostat that watches reliability signals, reasons about them
 with an LLM, and executes an authored, catalog-bound action once policy clears.
 
 What it can act on is entirely a function of what's in the catalog. Today that's
-eight actions in `config/actions/catalog.yaml` — two rook/Ceph runbooks, five
-against the OpenTelemetry demo, and one synthetic acme domain action — because
-those are the rigs I have on hand to
+seven actions, one per-profile catalog at `config/<profile>/actions/catalog.yaml`
+— three rook/Ceph runbooks, three against the OpenTelemetry demo, and one
+synthetic acme domain action — because those are the rigs I have on hand to
 build and chaos-test against. Grow the catalog and you grow what thump can act
 on; the reasoner and the governor don't change.
 [Onboarding a domain in config alone](#onboard-your-own-domain) is the test of
@@ -57,10 +57,7 @@ it.
 
 ## Watch it run
 
-<!-- Terminal capture: one five-beat cycle on the thump-test rig. -->
-![One five-beat cycle on the live rig](assets/thump-cycle.gif)
-
-That's a real incident on the thump-test rig (GCE VMs running k3s, not kind), not a mock-up: a fault goes in,
+Here's a real incident on the thump-test rig (GCE VMs running k3s, not kind), not a mock-up: a fault goes in,
 `rattle` fingerprints the SLO burn, `clank` gathers evidence and proposes a catalogued
 action, `hiss` rules on it, `thump` executes and then watches for convergence. The rig is
 public — [github.com/IanEff/thump-test](https://github.com/IanEff/thump-test) — and the
@@ -151,7 +148,7 @@ is what those four seams look like in Go.
 **The model proposes magnitude; it never invents it.** Every catalogued action
 carries an authored `severityReductionPct`. In today's catalog,
 `throttle-non-critical-paths` sits at 0.7, `accelerate-recovery` at 0.8, and
-`restart-cart-pod` at 0.1 (`config/actions/catalog.yaml`).
+`restart-cart-pod` at 0.1 (`config/<profile>/actions/catalog.yaml`).
 
 That last one is the interesting case. Restarting the cart pod is a real,
 reversible, low-blast action that clears the readiness gate on its own merits,
@@ -399,7 +396,7 @@ earning its keep — the bounded vocabulary is precisely why the catalog can be
 trusted as the blast-radius bound. It's also a welcome contribution.
 
 > ⚠️ **A catalog PR is an execution-surface PR.** The `exec` verb takes argv, so
-> whoever can merge `config/actions/catalog.yaml` can run a command in any pod
+> whoever can merge a `config/<profile>/actions/catalog.yaml` can run a command in any pod
 > thump's ServiceAccount can reach. What bounds this is RBAC (`pods/exec`,
 > scoped per namespace), the kill switch, and hiss's policy — *not* the verb
 > list. Scope that ServiceAccount tightly and review catalog changes

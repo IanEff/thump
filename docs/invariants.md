@@ -402,6 +402,6 @@ from the book, with what it does instead and why.
 
 One entry is worth knowing about before you touch the action catalog: the binding
 from a catalogued action to a concrete cluster mutation is **data**, authored in
-`config/actions/catalog.yaml`, and the `exec` verb takes argv. What bounds it is
+each profile's `config/<profile>/actions/catalog.yaml`, and the `exec` verb takes argv. What bounds it is
 RBAC, the kill switch, and hiss policy — **not** the verb list. A catalog PR is
 an execution-surface PR. See `CONTRIBUTING.md`.
