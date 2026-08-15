@@ -442,7 +442,11 @@ func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
 func TestBuildIntake_ComposesEveryConfiguredChangeSource(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+	// buildIntake wires KubeChangeSource and ArgoChangeSource with no way to
+	// inject a fake clock, so fixture ages must anchor to the real clock the
+	// sources will call — a hardcoded "now" only stays inside the lookback
+	// window during part of the real day and makes the test flaky.
+	now := time.Now().UTC()
 	subjects := subjects.SubjectIndex{
 		{Subject: "cart", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "cart"}},
 		{Subject: "cephblockpool", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
