@@ -210,7 +210,7 @@ func TestTranscript_AllExportsEveryRunAndSkipsOnesWithoutARecoverableSet(t *test
 		}
 	}
 
-	wantSkipped := map[string]string{noSetRunID: "no proposal.Set found (its WAL segment may still be open, not evidence of a missing record)"}
+	wantSkipped := map[string]string{noSetRunID: "no proposal.Set found (can lag turns by up to MaxAge + ShipInterval before shipping; retry after ~11 minutes)"}
 	if diff := cmp.Diff(wantSkipped, skipped); diff != "" {
 		t.Error("wrong skip report (-want +got)", diff)
 	}
