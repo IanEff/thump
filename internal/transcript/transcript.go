@@ -103,7 +103,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	if found {
 		_, _ = fmt.Fprintln(stdout, ", plus the run's proposal.Set")
 	} else {
-		_, _ = fmt.Fprintln(stdout, "; no proposal.Set found for this run-id (no published or journaled record)")
+		_, _ = fmt.Fprintln(stdout, "; no proposal.Set found for this run-id — its WAL segment may still be open (a segment only seals on a later Append past MaxAge, or on the beat's own shutdown Drain; idle time alone doesn't seal it) — this is not evidence the record doesn't exist")
 	}
 	return 0
 }
@@ -242,7 +242,7 @@ func WriteAll(ctx context.Context, client *s3.Client, key sealbox.Key, bucket, o
 			return nil, nil, err
 		}
 		if !found {
-			skipped[runID] = "no proposal.Set found"
+			skipped[runID] = "no proposal.Set found (its WAL segment may still be open, not evidence of a missing record)"
 			continue
 		}
 		if _, err := WritePair(filepath.Join(outDir, runID), turns, set, true); err != nil {
