@@ -168,6 +168,14 @@ data:
                 # need no $JS.ACK grant.
                 "$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
                 "$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
+                # harvest's Lane A terminal-state watchers (Settle selects
+                # across outcomes/declines/held so a decline or hold is
+                # terminal, not a settle timeout) — missing this pair makes
+                # every harvest run fail with "ordered consumer thump.declines:
+                # context deadline exceeded" on its first decline/held row,
+                # indistinguishable from a real decline until read here.
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.declines",
+                "$JS.API.CONSUMER.CREATE.THUMP.*.thump.held",
                 # internal/incident.SnapshotBroker rebuilds the operator's
                 # read model from all four subjects via
                 # internal/broker.DrainSubject, whose consumer is
