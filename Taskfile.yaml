@@ -594,3 +594,13 @@ tasks:
     desc: Restore cartFailure fault in otel-demo flagd
     cmds:
       - ./chaos/flagd-cart-failure.sh restore
+
+  chaos:crashloop:
+    desc: Patch product-catalog memory limit below need to force OOMKilled/CrashLoopBackOff
+    cmds:
+      - ./chaos/crashloop.sh inject
+
+  chaos:crashloop-restore:
+    desc: Restore product-catalog memory limit
+    cmds:
+      - ./chaos/crashloop.sh restore
