@@ -18,9 +18,9 @@ import (
 // deadKnobLimitation is printed first, every run, because a grid missing an
 // axis would otherwise look complete rather than partial: groundingMany
 // isn't a swept dimension here even though a graded row can now corroborate
-// on two backends, and causal stays flat because LikelihoodOK is
-// structurally false in this harness.
-const deadKnobLimitation = "groundingMany is not a swept axis — at least one graded row now corroborates on two backends, so a sweep over it would no longer measure a flat surface, but this grid doesn't vary it yet. causal is not swept: LikelihoodOK is structurally false in this harness."
+// on two backends, and causal isn't swept either even though replay can now
+// drive it.
+const deadKnobLimitation = "groundingMany is not a swept axis — at least one graded row now corroborates on two backends, so a sweep over it would no longer measure a flat surface, but this grid doesn't vary it yet. causal is not swept either: replay now feeds a recorded run's own change events through the causal scorer, so it can fire, but this grid holds it fixed rather than varying it as an axis."
 
 // Main sweeps GroundingNone and GroundingOne over recorded transcripts and
 // prints the grid beside a NotYet. It never writes

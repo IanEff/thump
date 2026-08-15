@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ianeff/thump/internal/grade"
 	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/tune"
 )
@@ -111,5 +112,77 @@ func TestRun_ErrorsWhenNoTranscriptPairsToAGradedCase(t *testing.T) {
 
 	if _, err := tune.Run(context.Background(), cfg); err == nil {
 		t.Error("want an error when no transcript pairs to a graded case, got nil")
+	}
+}
+
+// runIDLabelledTranscripts pairs two graded fixtures whose real RunID (read
+// from the checked-in transcript, not the filename) names them, with no
+// rca.Case naming either — a production-shaped pull where the only way to
+// grade them is by the RunID a settled Label carries.
+func runIDLabelledTranscripts() []tune.TranscriptPaths {
+	return []tune.TranscriptPaths{
+		{JSONL: "../rca/testdata/graded/node-death.jsonl", Set: "../rca/testdata/graded/node-death.set.json"},
+		{JSONL: "../rca/testdata/graded/ceph-osd-latency.jsonl", Set: "../rca/testdata/graded/ceph-osd-latency.set.json"},
+	}
+}
+
+// TestRun_GradesATranscriptByItsRunIDLabelWhenNoCaseMatchesItsStem pins the
+// phase's hinge: a run pulled from a cluster nobody here has seen is named
+// after its RunID, not a fixture stem, so it can only be graded if Labels is
+// consulted at all. Cases is empty, so this Grounded count could only have
+// come from the label path. A label's Correct verdict is a settled fact, not
+// a function of the swept weights, so Grounded from labelled rows holds
+// steady at exactly the one Correct label across every grid point — unlike a
+// rubric row, whose Pass can flip with the weights being swept.
+func TestRun_GradesATranscriptByItsRunIDLabelWhenNoCaseMatchesItsStem(t *testing.T) {
+	t.Parallel()
+
+	cfg := tune.SweepConfig{
+		Transcripts: runIDLabelledTranscripts(),
+		Labels: map[string]grade.Label{
+			"slo_burn:ceph-cluster/1786363080779796000": {RunID: "slo_burn:ceph-cluster/1786363080779796000", Correct: true, Source: grade.SourceConverged},
+			"slo_burn:ceph-osd/1786363093747503000":     {RunID: "slo_burn:ceph-osd/1786363093747503000", Correct: false, Source: grade.SourceReversed},
+		},
+		Objective: tune.DefaultObjective(),
+	}
+
+	points, err := tune.Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) == 0 {
+		t.Fatal("want grid points from the labelled transcripts, got none")
+	}
+
+	for _, p := range points {
+		if p.Grounded != 1 {
+			t.Errorf("want the one Correct label grounded at every grid point, got Grounded=%d at %+v", p.Grounded, p)
+		}
+	}
+}
+
+// TestRun_LeavesATranscriptUngradedWhenNeitherALabelNorACaseMatchesIt pins
+// the other side: with no Cases and no Labels naming either transcript, the
+// objective must not invent a verdict — every grid point's Grounded count
+// stays zero rather than the pre-flight check refusing to run at all, since
+// a sweep can still report its confidence-only numbers for an ungraded
+// corpus.
+func TestRun_LeavesATranscriptUngradedWhenNeitherALabelNorACaseMatchesIt(t *testing.T) {
+	t.Parallel()
+
+	cfg := tune.SweepConfig{
+		Transcripts: runIDLabelledTranscripts(),
+		Objective:   tune.DefaultObjective(),
+	}
+
+	points, err := tune.Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, p := range points {
+		if p.Grounded != 0 {
+			t.Errorf("want every point ungraded (Grounded == 0) with no label or case to judge these transcripts, got %+v", p)
+		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/grade"
 	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/replay"
 )
@@ -24,6 +25,12 @@ type SweepConfig struct {
 	// Cases are the labeled answers keyed to transcripts by
 	// rca.TranscriptName.
 	Cases []rca.Case
+	// Labels are settled verdicts keyed by RunID, read from the operator's
+	// own record (internal/grade) rather than authored by hand. A
+	// transcript whose RunID is here is graded by rca.GradeByLabel; the
+	// Cases stem match stays as the fallback so the checked-in fixtures
+	// grade exactly as they do today.
+	Labels map[string]grade.Label
 }
 
 // TranscriptPaths is one replay fixture: the conversation and the set it
@@ -94,16 +101,20 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 	for _, c := range cfg.Cases {
 		byStem[rca.TranscriptName(c)] = c
 	}
-	if len(cfg.Cases) > 0 {
+	if len(cfg.Cases) > 0 || len(cfg.Labels) > 0 {
 		matched := false
 		for _, tr := range usable {
+			if _, ok := cfg.Labels[tr.RunID]; ok {
+				matched = true
+				break
+			}
 			if _, ok := byStem[strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")]; ok {
 				matched = true
 				break
 			}
 		}
 		if !matched {
-			return nil, fmt.Errorf("tune: no transcript pairs to a graded case — a sweep with no labels scores an unlabelled mean and calls it a recommendation")
+			return nil, fmt.Errorf("tune: no transcript pairs to a graded case or a label — a sweep with no labels scores an unlabelled mean and calls it a recommendation")
 		}
 	}
 
@@ -136,8 +147,9 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 					}
 				}
 
-				stem := strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")
-				if c, ok := byStem[stem]; ok {
+				if l, ok := cfg.Labels[tr.RunID]; ok {
+					rows = append(rows, rca.GradeByLabel(l, set))
+				} else if c, ok := byStem[strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")]; ok {
 					rows = append(rows, rca.Grade(c, set))
 				}
 			}
