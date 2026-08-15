@@ -55,6 +55,55 @@ func TestWatch_FiresTheUndoOnALossOrOnAnAuthoredRestore(t *testing.T) {
 	}
 }
 
+func TestWatch_HoldOnMissSuppressesTheUndoOnAMissedWindow(t *testing.T) {
+	cases := map[string]struct {
+		probe            thump.Converger
+		holdOnMiss       bool
+		restoreOnSuccess bool
+		wantConverged    bool
+		wantFire         bool
+		wantHeld         bool
+	}{
+		"Watch given a missed window on a contract authored holdOnMiss does not fire the undo": {
+			probe: neverConverges{}, holdOnMiss: true,
+			wantConverged: false, wantFire: false, wantHeld: true,
+		},
+		"Watch given a missed window on an ordinary contract still fires the undo": {
+			probe: neverConverges{}, holdOnMiss: false,
+			wantConverged: false, wantFire: true, wantHeld: false,
+		},
+		"Watch given a met window on a holdOnMiss contract with restoreOnSuccess still restores": {
+			probe: alwaysConverges{}, holdOnMiss: true, restoreOnSuccess: true,
+			wantConverged: true, wantFire: true, wantHeld: false,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				o := goldenOrder()
+				o.Reversal.HoldOnMiss = tc.holdOnMiss
+				o.Reversal.RestoreOnSuccess = tc.restoreOnSuccess
+				w := thump.ReversalWatcher{Probe: tc.probe, Now: frozenNow}
+
+				got := w.Watch(context.Background(), o)
+
+				if diff := cmp.Diff(tc.wantConverged, got.Converged); diff != "" {
+					t.Error("wrong convergence verdict", diff)
+				}
+				if diff := cmp.Diff(tc.wantFire, got.Fire); diff != "" {
+					t.Error("wrong undo decision", diff)
+				}
+				if diff := cmp.Diff(tc.wantHeld, got.Held); diff != "" {
+					t.Error("wrong held verdict", diff)
+				}
+				if !tc.wantFire && !cmp.Equal(got.Undo, thump.Order{}) {
+					t.Error("a held or clean settlement must carry a zero Undo", cmp.Diff(thump.Order{}, got.Undo))
+				}
+			})
+		})
+	}
+}
+
 func TestWatch_RendersTheUndoOrderFromTheForwardsAuthoredReversal(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := thump.ReversalWatcher{Probe: neverConverges{}, Now: frozenNow}

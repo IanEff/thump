@@ -181,7 +181,7 @@ func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 		Mode:             outcome.ModeLive,
 		Result:           settleResult(settlement.Converged),
 		ObservedSeverity: settlement.Severity, // nil stays nil — unmeasured never becomes a fabricated 0.0
-		Error:            settleError(settlement.Converged, order.Success.Target),
+		Error:            settleError(settlement.Converged, settlement.Held, order.Success.Target, order.Reversal.Fallback),
 		ExecutedAt:       tr.now(),
 	}
 	if err := tr.OutcomePub.Publish(ctx, "thump.outcomes", conv); err != nil {
@@ -189,7 +189,8 @@ func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 	}
 	tr.Log.Record(conv)
 	slog.Info("settled", "signalRef", order.SignalRef, "contractRef", order.ContractRef,
-		"result", conv.Result, "observedSeverity", logSeverity(settlement.Severity), "fired", settlement.Fire)
+		"result", conv.Result, "observedSeverity", logSeverity(settlement.Severity), "fired", settlement.Fire,
+		"held", settlement.Held)
 
 	if !settlement.Fire {
 		return
@@ -281,9 +282,17 @@ func settleResult(converged bool) outcome.Result {
 
 // settleError gives a partial the error text Auditable() demands — silence on a
 // non-convergence is exactly the accountability gap I-6 defence 4 exists to close.
-func settleError(converged bool, target string) string {
+// A held miss names its escalation the same way acceptanceError does, since
+// HoldOnMiss suppressed the undo an ordinary contract would have fired.
+func settleError(converged, held bool, target, fallback string) string {
 	if converged {
 		return ""
+	}
+	if held {
+		if fallback == "" {
+			return fmt.Sprintf("success window elapsed without meeting %q; undo held, no fallback authored", target)
+		}
+		return fmt.Sprintf("success window elapsed without meeting %q; undo held, fallback: %s", target, fallback)
 	}
 	return fmt.Sprintf("success window elapsed without meeting %q", target)
 }
