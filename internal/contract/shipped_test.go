@@ -155,6 +155,34 @@ func TestShippedCatalog_HoldOnMissNeverDowngradesReversibility(t *testing.T) {
 	}
 }
 
+// TestCatalog_RestartCartPodNeverTargetsExactZeroOnADecayingRate pins
+// restart-cart-pod's successCriteria.target in both authored profiles: it
+// shares disable-cart-failure's metric (cart_error_ratio, a rate()) but had
+// its own uncalibrated "== 0" comparator, the same bug shape F1 fixed for
+// disable-cart-failure — a decaying rate() never lands on exact zero, so
+// every miss this action ever recorded was noise, not a real signal for
+// click to learn from.
+func TestCatalog_RestartCartPodNeverTargetsExactZeroOnADecayingRate(t *testing.T) {
+	t.Parallel()
+	want := map[string]string{
+		"dev":        "cart_error_ratio < 0.02",
+		"thump-test": "cart_error_ratio < 0.02",
+	}
+
+	got := make(map[string]string, len(want))
+	for profile := range want {
+		contracts := configtest.CatalogForProfile(t, profile).Contracts()
+		for _, c := range contracts {
+			if c.Name == "restart-cart-pod" {
+				got[profile] = c.SuccessCriteria.Target
+			}
+		}
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("restart-cart-pod's successCriteria.target drifted from the calibrated comparator (-want +got)", diff)
+	}
+}
+
 // rangeSelector pulls a PromQL range-vector selector's duration, e.g. the
 // "5m" out of "rate(foo[5m])" — the window a rate() call smooths over,
 // and so the shortest interval a success-window comparison can trust.

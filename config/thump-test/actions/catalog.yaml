@@ -200,7 +200,7 @@
       - {verb: restart, namespace: otel-demo, deployment: cart}
   successCriteria:
     metric: cart_error_ratio
-    target: "cart_error_ratio == 0"
+    target: "cart_error_ratio < 0.02" # a decaying rate() never lands on exact 0
     window: 600000000000 # 10 * time.Minute, in nanoseconds — strictly longer than the query's own rate(...[5m])
     severityQuery: severity_cart_availability
     severityReductionPct: 0.1
