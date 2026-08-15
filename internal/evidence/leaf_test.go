@@ -20,6 +20,8 @@ func TestEvidenceIsALeafPackage(t *testing.T) {
 		"github.com/ianeff/thump/internal/schema",
 		"github.com/ianeff/thump/internal/subjects",
 		"sigs.k8s.io/yaml",
+		"k8s.io/api/apps/v1",
+		"k8s.io/api/core/v1",
 		"k8s.io/apimachinery/pkg/apis/meta/v1",
 		"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
 		"k8s.io/apimachinery/pkg/labels",

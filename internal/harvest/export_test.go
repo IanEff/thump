@@ -11,3 +11,10 @@ import (
 func RunForTest(ctx context.Context, h *Harvest, table Table, only string, asJSON bool, stdout, stderr io.Writer) int {
 	return run(ctx, h, table, only, asJSON, stdout, stderr)
 }
+
+// VerifyKubeContextForTest exposes verifyKubeContext to harvest_test with a
+// stub context checker, so the cluster guard is provable without a real
+// kubeconfig.
+func VerifyKubeContextForTest(ctx context.Context, want string, check func(context.Context) (string, error)) error {
+	return verifyKubeContext(ctx, want, check)
+}

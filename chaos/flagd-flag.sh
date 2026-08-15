@@ -6,9 +6,9 @@
 # ConfigMap carries 16 flags and every one of them is reachable through the
 # same merge-patch mechanism.
 #
-# Usage: flagd-flag.sh <flag> [variant] [inject|restore]
-#   flagd-flag.sh cartFailure on inject
-#   flagd-flag.sh cartFailure off restore
+# Usage: flagd-flag.sh <flag> [inject|restore] [variant]
+#   flagd-flag.sh cartFailure inject on
+#   flagd-flag.sh cartFailure restore off
 # variant defaults to "on" for inject, "off" for restore, matching every
 # boolean fault flag in the demo's own flags.json — a non-boolean flag
 # (paymentFailure's graduated percentages, imageSlowLoad's durations) needs

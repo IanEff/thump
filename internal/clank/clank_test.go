@@ -22,6 +22,9 @@ import (
 	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/subjects"
 	"github.com/ianeff/thump/internal/whir"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -188,7 +191,7 @@ func TestBuildIntake_WarnsOnEverySilentFallback(t *testing.T) {
 			// captureLog mutates the process-wide default logger — no t.Parallel().
 			getLines := captureLog(t)
 
-			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil, nil, 2*time.Hour); err != nil {
+			if _, err := clank.BuildIntakeForTest(tc.cfg, nil, nil, nil, nil, 2*time.Hour); err != nil {
 				t.Fatal(err)
 			}
 
@@ -422,7 +425,7 @@ func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
 	}
 
 	cfg := config.Clank{PromURL: "http://prom:9090", WhirCatalog: catalogPath, WhirStateQueries: queriesPath}
-	intake, err := clank.BuildIntakeForTest(cfg, nil, nil, nil, 2*time.Hour)
+	intake, err := clank.BuildIntakeForTest(cfg, nil, nil, nil, nil, 2*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,34 +436,88 @@ func TestBuildIntake_FullyConfiguredReachesRealTopology(t *testing.T) {
 	}
 }
 
-// TestBuildIntake_FullyConfiguredReachesRealChangeSource is W1's wiring
-// pin, the ChangeSource twin of TestBuildIntake_FullyConfiguredReachesRealTopology
-// above: an Intake holding noopChange{} assembles an SAO with no events, so
-// every CausalScore is absent and confidence's Likelihood term never
-// applies (TestScoreConfidences_OnlyInTopologyCausalScoresMoveConfidence
-// pins that half). Configured, buildIntake must reach a real ArgoChangeSource
-// instead — this is the guard against the exact class of bug W1 found:
-// a composition root passing a no-op unconditionally while the suite stays
-// green because it only ever tests the no-op path.
-func TestBuildIntake_FullyConfiguredReachesRealChangeSource(t *testing.T) {
+// TestBuildIntake_ComposesEveryConfiguredChangeSource verifies that buildIntake
+// wires both KubeChangeSource and ArgoChangeSource into the fan-out change
+// source when both are configured, and that Changes concatenates their events.
+func TestBuildIntake_ComposesEveryConfiguredChangeSource(t *testing.T) {
 	t.Parallel()
 
-	// A bare fake dynamic client.
-	fake := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+	subjects := subjects.SubjectIndex{
+		{Subject: "cart", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Kind: "Deployment", Name: "cart"}},
+		{Subject: "cephblockpool", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}},
+	}
 
-	// Subject rules are part of "fully configured" for a change source: without
-	// them every resolved target is empty and the source reports nothing the
-	// topology can place, so buildIntake declines to build one.
-	subjects := subjects.SubjectIndex{{Subject: "cephblockpool", Coordinates: subjects.Coordinates{Namespace: "rook-ceph", Kind: "CephBlockPool", Name: "replicapool"}}}
+	kubeFake := kubefake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "otel-demo", Name: "cart", Generation: 2},
+		Status: appsv1.DeploymentStatus{
+			Conditions: []appsv1.DeploymentCondition{
+				{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue, LastUpdateTime: metav1.Time{Time: now.Add(-10 * time.Minute)}},
+			},
+		},
+	})
+
+	app := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "argoproj.io/v1alpha1",
+		"kind":       "Application",
+		"metadata":   map[string]any{"name": "rook-storage", "namespace": "argocd"},
+		"status": map[string]any{
+			"operationState": map[string]any{
+				"phase":      "Succeeded",
+				"finishedAt": now.Add(-20 * time.Minute).Format(time.RFC3339),
+				"operation":  map[string]any{"sync": map[string]any{"revision": "abc123"}},
+			},
+			"resources": []any{
+				map[string]any{"kind": "CephBlockPool", "namespace": "rook-ceph", "name": "replicapool"},
+			},
+		},
+	}}
+	argoFake := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{
+			{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}: "ApplicationList",
+		}, app)
+
 	cfg := config.Clank{ArgoEnabled: true}
-	intake, err := clank.BuildIntakeForTest(cfg, nil, fake, subjects, 2*time.Hour)
+	intake, err := clank.BuildIntakeForTest(cfg, nil, kubeFake, argoFake, subjects, 2*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got := clank.IntakeChangeForTest(intake)
-	if _, ok := got.(evidence.ArgoChangeSource); !ok {
-		t.Errorf("fully-configured buildIntake must reach a real ArgoChangeSource, got %T", got)
+	changeSource := clank.IntakeChangeForTest(intake)
+	snap, err := changeSource.Changes(t.Context(), signal.Detection{})
+	if err != nil {
+		t.Fatalf("unexpected error from composed change source: %v", err)
+	}
+
+	var targets []string
+	for _, e := range snap.Events {
+		targets = append(targets, e.Target)
+	}
+	slices.Sort(targets)
+	wantTargets := []string{"cart", "cephblockpool"}
+	if diff := cmp.Diff(wantTargets, targets); diff != "" {
+		t.Error("composed change source must include events from both Kube and Argo sources (-want +got)\n", diff)
+	}
+}
+
+// TestBuildIntake_WithNoConfiguredChangeSourceStillBehavesLikeTheNoop verifies
+// that an unconfigured Intake returns an empty change snapshot without error.
+func TestBuildIntake_WithNoConfiguredChangeSourceStillBehavesLikeTheNoop(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Clank{}
+	intake, err := clank.BuildIntakeForTest(cfg, nil, nil, nil, nil, 2*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	changeSource := clank.IntakeChangeForTest(intake)
+	snap, err := changeSource.Changes(t.Context(), signal.Detection{})
+	if err != nil {
+		t.Fatalf("unexpected error from unconfigured change source: %v", err)
+	}
+	if len(snap.Events) != 0 {
+		t.Errorf("unconfigured change source must return 0 events, got %d", len(snap.Events))
 	}
 }
 

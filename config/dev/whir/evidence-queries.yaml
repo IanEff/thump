@@ -1,10 +1,10 @@
 # evidence-queries.yaml — the dev environment's evidence surface. Trimmed
-# from config/thump-test/whir/evidence-queries.yaml: the Ceph groups (1-7),
-# ArgoCD's group 6, and the acme group (9) are dropped outright — none of
-# Ceph, ArgoCD, or acme run in this env (domains.acme.enabled is false in
-# deploy/tilt-values-dev.yaml), so a query naming any of their series would
-# just return empty and silently thin clank's evidence grounding. Only
-# group 8 (OTel demo) survives, renumbered as the whole file.
+# from config/thump-test/whir/evidence-queries.yaml: the Ceph groups (1-7)
+# and ArgoCD's group 6 are dropped outright — neither Ceph nor ArgoCD run in
+# this env, so a query naming their series would just return empty and
+# silently thin clank's evidence grounding. Group 8 (OTel demo) and group 9
+# (acme, `domains.acme.enabled: true` in deploy/tilt-values-dev.yaml) both
+# survive, renumbered together as the whole file.
 #
 # Two blocks: `queries`, the read-only PromQL the clank `metrics` tool
 # exposes, and `subjects`, the coordinate rules the `loki` and `kube` tools
@@ -153,6 +153,33 @@ subjects:
     labels:
       app.kubernetes.io/name: flagd
 
+  # Distributed traces in Tempo.
+  - subject: cart
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: cart
+  - subject: checkout
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: checkout
+  - subject: frontend
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: frontend
+  - subject: product-catalog
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: product-catalog
+  - subject: flagd
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: flagd
+
   # The demo names each service's Deployment after the service itself, which
   # is also the catalog entity name.
   - subject: cart
@@ -175,6 +202,25 @@ subjects:
     namespace: otel-demo
     kind: Deployment
     name: flagd
+  - subject: flagd
+    namespace: otel-demo
+    kind: ConfigMap
+    name: flagd-config
 
+  # acme-api emits access and error logs to stdout/stderr.
   - subject: acme-api
     namespace: acme
+    plane: loki
+    labels:
+      service_name: acme-api
+  - subject: acme-api
+    namespace: acme
+    plane: kube
+    labels:
+      app: acme-api
+  - subject: acme-api
+    namespace: acme
+    kind: Deployment
+    name: acme-api
+
+  # acme-api is absent from Tempo's service list (observed 2026-08-15); no traces rule authored.

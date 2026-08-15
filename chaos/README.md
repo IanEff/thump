@@ -8,13 +8,21 @@ acts.
 
 **These scripts mutate a live cluster.** Read the one you're about to run.
 
-## What this only works on
+## What this works on
 
-Everything here is authored against exactly one rig — **`thump-test`**, a four-node kind
-cluster running Rook-Ceph, ArgoCD, chaos-mesh, and the OpenTelemetry demo. It's public:
-[github.com/IanEff/thump-test](https://github.com/IanEff/thump-test). Nothing in this
-directory will do anything useful against a cluster that isn't shaped like it, and the
+The Ceph-specific fault mechanisms and `scenarios.yaml` itself are authored against exactly
+one rig — **`thump-test`**, a four-node kind cluster running Rook-Ceph, ArgoCD, chaos-mesh,
+and the OpenTelemetry demo. It's public:
+[github.com/IanEff/thump-test](https://github.com/IanEff/thump-test). Nothing in that half
+of the directory will do anything useful against a cluster that isn't shaped like it, and the
 coupling is specific rather than vague:
+
+`dev` (`k3d-thump-dev`, `docs/dev-environment.md`) is now a first-class second profile —
+`flagd-cart-failure.sh` and `acme-fault.sh` work unchanged against it, since both just patch
+an otel-demo/acme ConfigMap key with no rig-shape assumption baked in. Confirmed live
+2026-08-15: `task chaos:cart-failure` against dev drove a clean autonomous resolution
+(`thump-running-notes.md`). `scenarios.yaml` itself hasn't followed — it's still pinned to
+`rig: thump-test` file-wide (see below).
 
 - `scenarios.yaml` names its rig on line 10 (`rig: thump-test`), and every row's `signalRef`
   has to be a fingerprint that rig's `config/thump-test/rattle/watch.yaml` can actually
@@ -58,8 +66,12 @@ a terminal outcome, and restores everything on the way out — including on Ctrl
 
 ```
 calipers harvest --row cart-failure --nats-url tls://nats.thump.svc:4222 \
-  --tls-cert … --tls-key … --tls-ca …
+  --tls-cert … --tls-key … --tls-ca … --kube-context k3d-thump-dev
 ```
+
+`--kube-context` is optional but strongly recommended — without it, harvest fires against
+whatever kubectl context happens to be current, and `scenarios.yaml`'s own `rig:` field is
+checked by an offline test only, not by harvest itself.
 
 ## `preflight.sh`
 

@@ -87,7 +87,7 @@ task chaos:cart-restore
 
 Unlike the production rig (`thump-test`), `dev` requires no GitOps target (`FORGE_REPO`). `actuate.New` (`internal/actuate/kube.go`) only requires a forge when the loaded catalog authors a `maintenanceRelease` action. The dev profile catalog (`config/dev/actions/catalog.yaml`) authors in-cluster mutations — patching `otel-demo/flagd-config` — and leaves release contracts to `thump-test`. `bind` validates every contract at startup, finds no release actions, and starts clean with `FORGE_REPO` unset.
 
-When `task chaos:cart-failure` fires, the loop runs end-to-end through detection, evidence gathering, governance, and actual cluster mutation.
+When `task chaos:cart-failure` fires, the loop runs end-to-end through detection, evidence gathering, governance, and actual cluster mutation. **Confirmed live** 2026-08-15: `slo_burn:cart` cleared corroboration (3 distinct tools — `metrics`, `loki`, `kube`) at 0.95 self-reported confidence against the 0.75 floor, hiss approved, thump applied `disable-cart-failure`, and the flag was back to `off` within ~5m20s of injection with no human involved — see `thump-running-notes.md`, 2026-08-15 entry.
 
 ### Operator surface
 
@@ -98,6 +98,17 @@ task dev:certs                          # extract NATS TLS certificates to bin/c
 task dev:incidents                      # list active incidents over NATS
 task dev:approve FP=<fingerprint>       # approve a held incident by fingerprint
 ```
+
+To read what a run actually reasoned — every tool call, citation, and confidence term, not
+a log-line reconstruction — export and unseal its sealed transcript:
+
+```sh
+task dev:transcript RUN=<run_id>        # one run: bin/transcripts/<run_id>/run.jsonl + run.set.json
+task dev:transcripts                    # every run under transcripts/, same layout per run
+```
+
+`<run_id>` comes from a `"reasoned"` log line's `run_id` field. Both targets port-forward
+`svc/s3mock` to local 9091 (Tilt already owns 9090 for Prometheus) and tear it down on exit.
 
 
 ## acme, the third domain

@@ -65,6 +65,7 @@ type Clank struct {
 	PromURL          string        // PROM_URL — optional; empty disables the metrics tool
 	EvidenceQueries  string        // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
 	LokiURL          string        // LOKI_URL — optional; empty disables the loki tool
+	TempoURL         string        // TEMPO_URL — optional; empty disables the traces tool
 	WhirCatalog      string        // WHIR_CATALOG — optional; pairs with WhirStateQueries
 	WhirStateQueries string        // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
 	ArgoEnabled      bool          // ARGOCD_ENABLED - optional, default false; wires ArgoChangeSource against clank's in-cluster identity.
@@ -98,6 +99,7 @@ func LoadClank(broker bool) (Clank, error) {
 		PromURL:          l.Optional("PROM_URL"),
 		EvidenceQueries:  l.Optional("EVIDENCE_QUERIES"),
 		LokiURL:          l.Optional("LOKI_URL"),
+		TempoURL:         l.Optional("TEMPO_URL"),
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
 		ArgoEnabled:      l.OptionalBool("ARGOCD_ENABLED"),

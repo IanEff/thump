@@ -176,7 +176,7 @@ milliseconds — faster than any success window could observe. The action was a
 no-op that reported success.
 
 **What we do now:** the forward is a four-step sequence
-(`config/actions/catalog.yaml`). Scale the `rook-ceph-operator` deployment to
+(`config/<profile>/actions/catalog.yaml`). Scale the `rook-ceph-operator` deployment to
 zero, set `osd_mclock_override_recovery_settings true`, then set the two
 tunables. The reverse restores the tunables first, clears the override, and
 unpauses the operator last, so Rook comes back to find its declared values
@@ -272,7 +272,7 @@ to a concrete cluster mutation stays in Go. Data-driving it makes the catalog an
 RCE-by-config surface and widens the autonomy boundary.
 
 **We do:** the binding **table** is a per-action `execution` block in
-`config/actions/catalog.yaml`. The mutation **mechanisms** — `scale`, `restart`,
+each profile's `config/<profile>/actions/catalog.yaml`. The mutation **mechanisms** — `scale`, `restart`,
 `flagVariant`, `exec` — stay bounded, tested Go in `internal/actuate`.
 
 **Why the reversal:** config is *already* the authored autonomy boundary. Whoever

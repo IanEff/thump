@@ -1,10 +1,8 @@
 # Additive to rbac-otel-demo-actuate.yaml, kept in its own file for the same
 # reviewability reason as rbac-rook-ceph-read.yaml/rbac-rook-ceph-actuate.yaml.
 # Same shape as rbac-rook-ceph-read.yaml: the kube evidence tool's Client.List
-# runs as thump:default, and evidence-queries.yaml's otel-demo plane: kube
-# rules (cart/checkout/frontend/product-catalog/flagd) need get/list/watch on
-# pods in this namespace to resolve. deployments/replicasets included for
-# parity with rook-ceph, even though today's evidence rules only query pods.
+# and KubeChangeSource run as thump:default, querying pods for live evidence
+# and deployments/configmaps for recent change events in this namespace.
 #
 # Gated on domains.otelDemo.enabled: the otel-demo namespace only exists on
 # the thump-test cluster profile — see values.yaml's domains comment.
@@ -16,7 +14,7 @@ metadata:
   namespace: otel-demo
 rules:
   - apiGroups: [""]
-    resources: ["pods"]
+    resources: ["pods", "configmaps"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets"]

@@ -22,8 +22,9 @@ func TestToolSpecs_NeverShipARigsVocabularyToADomainThatNeverAuthoredIt(t *testi
 	}
 
 	tools := map[string]reason.Tool{
-		"loki Spec names only what acme authored": &evidence.LokiTool{Subjects: cfg.Index},
-		"kube Spec names only what acme authored": &evidence.KubeTool{Subjects: cfg.Index},
+		"loki Spec names only what acme authored":   &evidence.LokiTool{Subjects: cfg.Index},
+		"kube Spec names only what acme authored":   &evidence.KubeTool{Subjects: cfg.Index},
+		"traces Spec names only what acme authored": &evidence.TracesTool{Subjects: cfg.Index},
 	}
 	banned := []string{"ceph", "rook", "cart", "flagd", "otel", "osd", "rgw"}
 
