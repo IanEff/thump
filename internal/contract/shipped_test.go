@@ -3,7 +3,10 @@ package contract_test
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 
@@ -108,6 +111,103 @@ func TestShippedCatalog_RestoreOnSuccessMatchesEachActionsAuthoredIntent(t *test
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Error("restoreOnSuccess drifted from the authored per-action intent (-want +got)", diff)
+	}
+}
+
+// TestShippedCatalog_HoldOnMissMatchesEachActionsAuthoredIntent pins
+// holdOnMiss per action the same way its RestoreOnSuccess sibling does: true
+// only where the forward action is itself the remediation, so a missed
+// window's undo would re-inject the fault it just cleared.
+func TestShippedCatalog_HoldOnMissMatchesEachActionsAuthoredIntent(t *testing.T) {
+	t.Parallel()
+	want := map[string]bool{
+		"hold-rebalance":                  false,
+		"accelerate-recovery":             false,
+		"disable-product-catalog-failure": true,
+		"disable-cart-failure":            true,
+		"restart-cart-pod":                false,
+		"throttle-non-critical-paths":     false,
+		"acme-shed-load":                  false,
+	}
+
+	contracts := configtest.ShippedCatalog(t).Contracts()
+	got := make(map[string]bool, len(contracts))
+	for _, c := range contracts {
+		got[c.Name] = c.Reversal.HoldOnMiss
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("holdOnMiss drifted from the authored per-action intent (-want +got)", diff)
+	}
+}
+
+// TestShippedCatalog_HoldOnMissNeverDowngradesReversibility guards the
+// distinction the flag exists to preserve: holdOnMiss changes when the undo
+// fires, never whether it exists — RiskBand's act_reversible grant reads
+// Method being authored, not the trigger policy around it.
+func TestShippedCatalog_HoldOnMissNeverDowngradesReversibility(t *testing.T) {
+	t.Parallel()
+
+	contracts := configtest.ShippedCatalog(t).Contracts()
+	for _, c := range contracts {
+		if c.Reversal.HoldOnMiss && c.Reversal.Method == "" {
+			t.Errorf("%s: holdOnMiss is a trigger policy, not a reversibility downgrade — it must still declare reversal.method", c.Name)
+		}
+	}
+}
+
+// rangeSelector pulls a PromQL range-vector selector's duration, e.g. the
+// "5m" out of "rate(foo[5m])" — the window a rate() call smooths over,
+// and so the shortest interval a success-window comparison can trust.
+var rangeSelector = regexp.MustCompile(`\[(\d+)([smh])\]`)
+
+// maxRangeSelector reports the longest range-vector window named anywhere in
+// query, zero when the query has none (an instant query like ceph_health has
+// no rate() to smooth, so nothing constrains its success window from below).
+func maxRangeSelector(t *testing.T, query string) time.Duration {
+	t.Helper()
+	var longest time.Duration
+	for _, m := range rangeSelector.FindAllStringSubmatch(query, -1) {
+		n, err := strconv.Atoi(m[1])
+		if err != nil {
+			t.Fatalf("range selector %q: %v", m[0], err)
+		}
+		var unit time.Duration
+		switch m[2] {
+		case "s":
+			unit = time.Second
+		case "m":
+			unit = time.Minute
+		case "h":
+			unit = time.Hour
+		}
+		longest = max(longest, time.Duration(n)*unit)
+	}
+	return longest
+}
+
+// TestShippedCatalog_SuccessWindowOutlivesItsMetricsRateWindow pins the
+// config relationship no loader checks: a success window no longer than the
+// rate() range its own metric is smoothed over can never observe a clean
+// read, so a genuine recovery still reads as a miss. AP's Run 1 hit this
+// live — window == rate-window with an exact-==0 target, on a metric that
+// only ever decays toward zero without ever landing on it.
+func TestShippedCatalog_SuccessWindowOutlivesItsMetricsRateWindow(t *testing.T) {
+	t.Parallel()
+
+	queries := configtest.EvidenceQueriesForProfile(t, "thump-test").Queries
+	contracts := configtest.ShippedCatalog(t).Contracts()
+	for _, c := range contracts {
+		t.Run(c.Name, func(t *testing.T) {
+			q, ok := queries[c.SuccessCriteria.Metric]
+			if !ok {
+				t.Fatalf("no evidence query named %q for successCriteria.metric", c.SuccessCriteria.Metric)
+			}
+			maxRange := maxRangeSelector(t, q.Query)
+			if c.SuccessCriteria.Window <= maxRange {
+				t.Errorf("successCriteria.window %s must be strictly longer than %q's own rate window %s",
+					c.SuccessCriteria.Window, c.SuccessCriteria.Metric, maxRange)
+			}
+		})
 	}
 }
 

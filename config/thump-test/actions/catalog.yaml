@@ -130,6 +130,7 @@
   reversal:
     method: enable-product-catalog-failure
     fallback: page-oncall
+    holdOnMiss: true # this action IS the repair; its undo re-injects the fault
   execution:
     forward:
       - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: productCatalogFailure, variant: "off"}
@@ -137,8 +138,8 @@
       - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: productCatalogFailure, variant: "on"}
   successCriteria:
     metric: product_catalog_error_ratio
-    target: "product_catalog_error_ratio == 0"
-    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    target: "product_catalog_error_ratio < 0.02" # a decaying rate() never lands on exact 0
+    window: 600000000000 # 10 * time.Minute, in nanoseconds — strictly longer than the query's own rate(...[5m])
     severityQuery: severity_product_catalog_availability
     severityReductionPct: 0.9
 
@@ -159,6 +160,7 @@
   reversal:
     method: enable-cart-failure
     fallback: page-oncall
+    holdOnMiss: true # this action IS the repair; its undo re-injects the fault
   execution:
     forward:
       - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: cartFailure, variant: "off"}
@@ -166,8 +168,8 @@
       - {verb: flagVariant, namespace: otel-demo, configMap: flagd-config, dataKey: demo.flagd.json, flag: cartFailure, variant: "on"}
   successCriteria:
     metric: cart_error_ratio
-    target: "cart_error_ratio == 0"
-    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    target: "cart_error_ratio < 0.02" # a decaying rate() never lands on exact 0
+    window: 600000000000 # 10 * time.Minute, in nanoseconds — strictly longer than the query's own rate(...[5m])
     severityQuery: severity_cart_availability
     severityReductionPct: 0.9
 
@@ -199,7 +201,7 @@
   successCriteria:
     metric: cart_error_ratio
     target: "cart_error_ratio == 0"
-    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    window: 600000000000 # 10 * time.Minute, in nanoseconds — strictly longer than the query's own rate(...[5m])
     severityQuery: severity_cart_availability
     severityReductionPct: 0.1
 
@@ -268,6 +270,6 @@
   successCriteria:
     metric: acme_api_error_ratio
     target: "acme_api_error_ratio < 0.01"
-    window: 300000000000 # 5 * time.Minute, in nanoseconds
+    window: 600000000000 # 10 * time.Minute, in nanoseconds — strictly longer than the query's own rate(...[5m])
     severityQuery: severity_acme_api_availability
     severityReductionPct: 0.1
