@@ -100,7 +100,7 @@ func (l liveKube) Exec(ctx context.Context, namespace, selector string, command 
 // dynamic client — no scheme registration needed for the CephObjectStore CR.
 func (l liveKube) Patch(ctx context.Context, group, version, resource, namespace, name string, mergePatch []byte) error {
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
-	_, err := l.dyn.Resource(gvr).Namespace(namespace).Patch(ctx, name, types.MergePatchType, mergePatch, metav1.PatchOptions{})
+	_, err := l.dyn.Resource(gvr).Namespace(namespace).Patch(ctx, name, types.MergePatchType, mergePatch, metav1.PatchOptions{FieldManager: "thump-actuator"})
 	if err != nil {
 		return fmt.Errorf("patch %s %q in %s: %w", resource, name, namespace, err)
 	}

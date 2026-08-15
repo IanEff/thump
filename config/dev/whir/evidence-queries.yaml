@@ -202,6 +202,10 @@ subjects:
     namespace: otel-demo
     kind: Deployment
     name: flagd
+  - subject: flagd
+    namespace: otel-demo
+    kind: ConfigMap
+    name: flagd-config
 
   # acme-api emits access and error logs to stdout/stderr.
   - subject: acme-api

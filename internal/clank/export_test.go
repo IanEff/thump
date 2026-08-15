@@ -158,10 +158,10 @@ func ToolSpecsForTest(e *Engine) []reason.ToolSpec {
 }
 
 // BuildIntakeForTest exposes buildIntake to clank_test — the seam the
-// silent-fallback warnings hang off, and where the ArgoCD change source and
-// its subject rules are wired together.
-func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects subjects.SubjectIndex, changeLookback time.Duration) (*Intake, error) {
-	return buildIntake(cfg, backendTLS, argo, subjects, changeLookback)
+// silent-fallback warnings hang off, and where the Kube and ArgoCD change sources
+// and their subject rules are wired together.
+func BuildIntakeForTest(cfg config.Clank, backendTLS *tls.Config, kube kubernetes.Interface, argo dynamic.Interface, subjects subjects.SubjectIndex, changeLookback time.Duration) (*Intake, error) {
+	return buildIntake(cfg, backendTLS, kube, argo, subjects, changeLookback)
 }
 
 // BuildToolsForTest exposes buildTools to clank_test — the seam that decides

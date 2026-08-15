@@ -136,6 +136,13 @@ func TestPatch_SendsAMergePatchToTheAuthoredGVR(t *testing.T) {
 	if diff := cmp.Diff(types.MergePatchType, patch.GetPatchType()); diff != "" {
 		t.Error("patch type drifted", diff)
 	}
+	patchImpl, ok := patch.(k8stesting.PatchActionImpl)
+	if !ok {
+		t.Fatalf("patch was not a PatchActionImpl: %T", patch)
+	}
+	if diff := cmp.Diff("thump-actuator", patchImpl.PatchOptions.FieldManager); diff != "" {
+		t.Error("patch field manager drifted (-want +got)\n", diff)
+	}
 }
 
 func TestGetConfigMapKey_ReadsAKeyAndRefusesAnAbsentOne(t *testing.T) {

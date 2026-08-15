@@ -22,7 +22,7 @@ import (
 // Ledger and Store are left for ProbeReset, not set here — call it before
 // every Propose call the caller makes, including the first.
 func ProbeEngine(cfg config.Clank, backendTLS *tls.Config, ev evidence.Config, kube kubernetes.Interface, argo dynamic.Interface, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, model reason.Model, weights ScoringWeights, limits Limits) (*Engine, error) {
-	intake, err := buildIntake(cfg, backendTLS, argo, ev.Index, limits.ChangeLookback)
+	intake, err := buildIntake(cfg, backendTLS, kube, argo, ev.Index, limits.ChangeLookback)
 	if err != nil {
 		return nil, fmt.Errorf("build intake: %w", err)
 	}

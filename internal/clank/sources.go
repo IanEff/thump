@@ -7,18 +7,11 @@ import (
 	"github.com/ianeff/thump/api/v1/signal"
 )
 
-// noopTopology and noopChange are placeholders for clank's real telemetry /
-// change backends (Prometheus, ArgoCD), still deferred. They let Main's loop
-// run today; the proposal.SAO it assembles just carries no live topology / change
-// context until the real sources land.
+// noopTopology is a placeholder for clank's real telemetry backend (Prometheus),
+// used when unconfigured. Main's loop still runs; the proposal.SAO it assembles
+// carries no live topology context until the real source is configured.
 type noopTopology struct{}
 
 func (noopTopology) Topology(context.Context, signal.Detection) (proposal.TopologySnapshot, error) {
 	return proposal.TopologySnapshot{}, nil
-}
-
-type noopChange struct{}
-
-func (noopChange) Changes(context.Context, signal.Detection) (proposal.ChangeSnapshot, error) {
-	return proposal.ChangeSnapshot{}, nil
 }

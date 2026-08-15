@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/beat"
 	"github.com/ianeff/thump/internal/config"
@@ -112,7 +114,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
 	model := anthropic.NewModel(cfg.AnthropicAPIKey, modelRequestTimeout)
-	intake, err := buildIntake(cfg, backendTLS, argoClient, ev.Index, limits.ChangeLookback)
+	intake, err := buildIntake(cfg, backendTLS, kubeClient, argoClient, ev.Index, limits.ChangeLookback)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
 		return 1
@@ -308,14 +310,31 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev evidence.Config, ku
 	return tools
 }
 
+// fanOutChange asks every configured source and concatenates their events. An
+// empty fanOutChange returns an empty snapshot, which is what noopChange does —
+// so "no source configured" keeps its exact current meaning.
+type fanOutChange []reason.ChangeSource
+
+func (f fanOutChange) Changes(ctx context.Context, sig signal.Detection) (proposal.ChangeSnapshot, error) {
+	var out proposal.ChangeSnapshot
+	for _, src := range f {
+		snap, err := src.Changes(ctx, sig)
+		if err != nil {
+			return proposal.ChangeSnapshot{}, err
+		}
+		out.Events = append(out.Events, snap.Events...)
+	}
+	return out, nil
+}
+
 // buildIntake assembles clank's Intake from cfg — WhirTopology when
 // WHIR_CATALOG and WHIR_STATE_QUERIES are both set, noopTopology otherwise,
-// and ArgoChangeSource only when clank both wants a change source and has the
-// in-cluster identity to reach one.
+// and composes KubeChangeSource and ArgoChangeSource into a fan-out change
+// source whenever clank has the in-cluster identity and authored rules to reach them.
 // buildIntake assumes cfg has already passed config.LoadClank's validation —
 // PROM_URL is cross-required there whenever both whir vars are set, so this
 // never needs to check that combination itself.
-func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interface, subjects subjects.SubjectIndex, changeLookback time.Duration) (*Intake, error) {
+func buildIntake(cfg config.Clank, backendTLS *tls.Config, kube kubernetes.Interface, argo dynamic.Interface, subjects subjects.SubjectIndex, changeLookback time.Duration) (*Intake, error) {
 	var topo reason.TopologySource = noopTopology{}
 
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
@@ -336,21 +355,26 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, argo dynamic.Interfac
 		}
 	}
 
-	var change reason.ChangeSource = noopChange{}
-	switch {
-	case !cfg.ArgoEnabled:
-		slog.Warn("no change source configured — causal scoring is inert", "beat", "clank", "fix", "set ARGOCD_ENABLED=true")
-	case argo == nil:
+	var change fanOutChange
+	if kube != nil && len(subjects) > 0 {
+		change = append(change, evidence.KubeChangeSource{Client: kube, Subjects: subjects, ChangeLookback: changeLookback})
+	}
+	if cfg.ArgoEnabled && argo != nil && len(subjects) > 0 {
+		change = append(change, evidence.ArgoChangeSource{Client: argo, Subjects: subjects, ChangeLookback: changeLookback})
+	}
+
+	if kube == nil {
+		slog.Warn("no in-cluster kube client — the kubernetes change source is inert", "beat", "clank")
+	}
+	if cfg.ArgoEnabled && argo == nil {
 		slog.Warn("ARGOCD_ENABLED is set but clank has no in-cluster identity — causal scoring is inert", "beat", "clank")
-	case len(subjects) == 0:
-		// A change source with nothing to resolve against reports events whose
-		// targets name Kubernetes objects the topology graph has never heard
-		// of, so every score lands out of topology and the causal term drops
-		// out — inert, but inert while looking configured.
+	}
+	if len(subjects) == 0 {
 		slog.Warn("no subject rules authored — every change event will resolve outside the topology and causal scoring is inert",
 			"beat", "clank", "fix", "author subjects: in the file EVIDENCE_QUERIES names")
-	default:
-		change = evidence.ArgoChangeSource{Client: argo, Subjects: subjects, ChangeLookback: changeLookback}
+	}
+	if len(change) == 0 {
+		slog.Warn("no change source configured — causal scoring is inert", "beat", "clank")
 	}
 
 	return NewIntake(topo, change), nil
