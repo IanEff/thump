@@ -12,10 +12,8 @@
 # config/dev/whir/catalog-info.yaml exactly (whir strips the resource:/
 # component: prefix before comparing).
 #
-# The acme domain (docs/onboarding.md operator walkthrough) is staged for a
-# later phase, not included here — domains.acme.enabled is off in
-# deploy/tilt-values-dev.yaml. When it lands, its SLO block ports from
-# config/thump-test/rattle/watch.yaml unchanged.
+# The acme domain (docs/onboarding.md operator walkthrough) is included below
+# — domains.acme.enabled is true in deploy/tilt-values-dev.yaml.
 version: v1
 slos:
   # Both are events-ratio SLIs (real error-events/total-events fraction),

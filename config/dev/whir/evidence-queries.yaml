@@ -1,10 +1,10 @@
 # evidence-queries.yaml — the dev environment's evidence surface. Trimmed
-# from config/thump-test/whir/evidence-queries.yaml: the Ceph groups (1-7),
-# ArgoCD's group 6, and the acme group (9) are dropped outright — none of
-# Ceph, ArgoCD, or acme run in this env (domains.acme.enabled is false in
-# deploy/tilt-values-dev.yaml), so a query naming any of their series would
-# just return empty and silently thin clank's evidence grounding. Only
-# group 8 (OTel demo) survives, renumbered as the whole file.
+# from config/thump-test/whir/evidence-queries.yaml: the Ceph groups (1-7)
+# and ArgoCD's group 6 are dropped outright — neither Ceph nor ArgoCD run in
+# this env, so a query naming their series would just return empty and
+# silently thin clank's evidence grounding. Group 8 (OTel demo) and group 9
+# (acme, `domains.acme.enabled: true` in deploy/tilt-values-dev.yaml) both
+# survive, renumbered together as the whole file.
 #
 # Two blocks: `queries`, the read-only PromQL the clank `metrics` tool
 # exposes, and `subjects`, the coordinate rules the `loki` and `kube` tools
@@ -176,5 +176,15 @@ subjects:
     kind: Deployment
     name: flagd
 
+  # acme-api emits zero log lines (confirmed live: absent from Loki's
+  # service_name values) — no loki plane rule; a loki selector here would be
+  # as inert as leaving the subject unadvertised.
   - subject: acme-api
     namespace: acme
+    plane: kube
+    labels:
+      app: acme-api
+  - subject: acme-api
+    namespace: acme
+    kind: Deployment
+    name: acme-api
