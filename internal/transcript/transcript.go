@@ -12,8 +12,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,17 +38,21 @@ const (
 )
 
 // Main exports one live run's sealed transcript and, if recoverable, its
-// proposal.Set. Returns 0 on success, 1 on any failure, 2 on a usage error.
+// proposal.Set — or, with -all, every run under transcripts/ at once, each
+// into its own <out>/<runID>/ pair. Returns 0 on success, 1 on any failure,
+// 2 on a usage error.
 func Main(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("transcript", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	runID := fs.String("run-id", "", "the run's fingerprint/unixnano ID, from a 'reasoned' log line's run_id field (required)")
+	runID := fs.String("run-id", "", "the run's fingerprint/unixnano ID, from a 'reasoned' log line's run_id field (required unless -all)")
 	out := fs.String("out", "", "output directory for run.jsonl and run.set.json (required)")
+	all := fs.Bool("all", false, "export every run under transcripts/, one <out>/<runID>/ pair each")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *runID == "" || *out == "" {
-		_, _ = fmt.Fprintln(stderr, "usage: transcript -run-id <fingerprint/unixnano> -out <dir>")
+	const usage = "usage: transcript -run-id <fingerprint/unixnano> -out <dir>\n   or: transcript -all -out <dir>\n"
+	if *out == "" || (*all && *runID != "") || (!*all && *runID == "") {
+		_, _ = fmt.Fprint(stderr, usage)
 		return 2
 	}
 
@@ -65,6 +71,10 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "transcript:", err)
 		return 1
+	}
+
+	if *all {
+		return mainAll(ctx, client, key, cfg.S3Bucket, *out, stdout, stderr)
 	}
 
 	turns, err := WalkTurns(ctx, client, key, cfg.S3Bucket, *runID)
@@ -94,6 +104,19 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stdout, ", plus the run's proposal.Set")
 	} else {
 		_, _ = fmt.Fprintln(stdout, "; no proposal.Set found for this run-id (no published or journaled record)")
+	}
+	return 0
+}
+
+func mainAll(ctx context.Context, client *s3.Client, key sealbox.Key, bucket, out string, stdout, stderr io.Writer) int {
+	written, skipped, err := WriteAll(ctx, client, key, bucket, out)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "transcript:", err)
+		return 1
+	}
+	_, _ = fmt.Fprintf(stdout, "wrote %d run(s) to %s\n", len(written), out)
+	for _, runID := range slices.Sorted(maps.Keys(skipped)) {
+		_, _ = fmt.Fprintf(stderr, "transcript: skipped %s: %s\n", runID, skipped[runID])
 	}
 	return 0
 }
@@ -161,6 +184,73 @@ func getTurn(ctx context.Context, client *s3.Client, key sealbox.Key, bucket, ob
 		return clank.Turn{}, fmt.Errorf("transcript: decode %s: %w", objKey, err)
 	}
 	return t, nil
+}
+
+// ListRunIDs returns every distinct runID with at least one object under
+// transcripts/<runID>/, sorted. It lists the write-side prefix directly
+// rather than the proposals journal, so a run with checkpointed turns but
+// no recoverable Set is still discovered — WriteAll reports it as skipped
+// rather than it never having existed.
+func ListRunIDs(ctx context.Context, client *s3.Client, bucket string) ([]string, error) {
+	const prefix = "transcripts/"
+	p := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	})
+	found := make(map[string]struct{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("transcript: list %s: %w", prefix, err)
+		}
+		for _, obj := range page.Contents {
+			rest := strings.TrimPrefix(*obj.Key, prefix)
+			runID, _, ok := strings.Cut(rest, "/")
+			if !ok || runID == "" {
+				continue
+			}
+			found[runID] = struct{}{}
+		}
+	}
+	return slices.Sorted(maps.Keys(found)), nil
+}
+
+// WriteAll exports every run under transcripts/ into <outDir>/<runID>/, one
+// complete run.jsonl + run.set.json pair per run. A run whose turns come
+// back empty or whose proposal.Set can't be recovered is skipped and
+// reported rather than half-written — bulk output must not mix complete
+// pairs with partial ones the way the single-run verb tolerates, since a
+// pair tune can grade needs both halves. written and skipped cover every
+// runID ListRunIDs returned.
+func WriteAll(ctx context.Context, client *s3.Client, key sealbox.Key, bucket, outDir string) (written []string, skipped map[string]string, err error) {
+	runIDs, err := ListRunIDs(ctx, client, bucket)
+	if err != nil {
+		return nil, nil, err
+	}
+	skipped = make(map[string]string)
+	for _, runID := range runIDs {
+		turns, err := WalkTurns(ctx, client, key, bucket, runID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(turns) == 0 {
+			skipped[runID] = "no checkpointed turns"
+			continue
+		}
+		set, found, err := findSet(ctx, client, key, bucket, runID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !found {
+			skipped[runID] = "no proposal.Set found"
+			continue
+		}
+		if _, err := WritePair(filepath.Join(outDir, runID), turns, set, true); err != nil {
+			return nil, nil, err
+		}
+		written = append(written, runID)
+	}
+	return written, skipped, nil
 }
 
 // findSet locates runID's proposal.Set by exact RunID match — published

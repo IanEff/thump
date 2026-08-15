@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -144,6 +146,89 @@ func TestTranscript_ReportsNotFoundRatherThanGuessingAtAnUnjoinedRun(t *testing.
 	if found {
 		t.Error("want not-found for a run with no joined Set, got found")
 	}
+}
+
+// TestTranscript_AllExportsEveryRunAndSkipsOnesWithoutARecoverableSet pins
+// bulk mode's stricter posture: unlike the single-run verb, which happily
+// writes run.jsonl alone when no Set is found, --all must never mix a
+// complete pair with a partial one, so a run with turns but no Set is
+// skipped and reported rather than written.
+func TestTranscript_AllExportsEveryRunAndSkipsOnesWithoutARecoverableSet(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client, bucket := s3test.New(t)
+	key := testSealKey()
+
+	fixture := readFixtureTurns(t)
+	fixtureSet := readFixtureSet(t)
+
+	complete := []string{"run-a", "run-b", "run-c"}
+	for i, runID := range complete {
+		turns := turnsForRun(fixture, runID)
+		seedTurns(ctx, t, client, key, bucket, turns)
+		set := fixtureSet
+		set.RunID = runID
+		// each run's Set goes in its own segment object — seedProposal's fixed
+		// key would let each PutObject overwrite the last run's Set.
+		objKey := fmt.Sprintf("clank/thump.proposals/seg-%04d.wal", i+1)
+		seedSegment(ctx, t, client, key, bucket, objKey, set)
+	}
+
+	const noSetRunID = "run-no-set"
+	seedTurns(ctx, t, client, key, bucket, turnsForRun(fixture, noSetRunID))
+	// deliberately: no proposal.Set seeded for noSetRunID anywhere.
+
+	gotRunIDs, err := transcript.ListRunIDs(ctx, client, bucket)
+	if err != nil {
+		t.Fatalf("ListRunIDs: %v", err)
+	}
+	wantRunIDs := append(append([]string{}, complete...), noSetRunID)
+	sort.Strings(wantRunIDs)
+	if diff := cmp.Diff(wantRunIDs, gotRunIDs); diff != "" {
+		t.Error("wrong runIDs discovered under transcripts/ (-want +got)", diff)
+	}
+
+	out := t.TempDir()
+	written, skipped, err := transcript.WriteAll(ctx, client, key, bucket, out)
+	if err != nil {
+		t.Fatalf("WriteAll: %v", err)
+	}
+
+	sort.Strings(written)
+	if diff := cmp.Diff(complete, written); diff != "" {
+		t.Error("wrong set of runs written (-want +got)", diff)
+	}
+	for _, runID := range complete {
+		jsonlPath := filepath.Join(out, runID, "run.jsonl")
+		setPath := filepath.Join(out, runID, "run.set.json")
+		tr, err := replay.LoadTranscript(jsonlPath, setPath)
+		if err != nil {
+			t.Fatalf("LoadTranscript(%s): %v", runID, err)
+		}
+		if tr.Set.RunID != runID {
+			t.Errorf("wrote %s's pair with mismatched Set.RunID: want %s, got %s", runID, runID, tr.Set.RunID)
+		}
+	}
+
+	wantSkipped := map[string]string{noSetRunID: "no proposal.Set found"}
+	if diff := cmp.Diff(wantSkipped, skipped); diff != "" {
+		t.Error("wrong skip report (-want +got)", diff)
+	}
+	if _, err := os.Stat(filepath.Join(out, noSetRunID)); !os.IsNotExist(err) {
+		t.Errorf("want no directory written for the skipped run %s, got err=%v", noSetRunID, err)
+	}
+}
+
+// turnsForRun returns fixture's turns, each stamped with runID — a cheap
+// way to seed several distinct runs from one real recorded transcript
+// without hand-authoring turn content that WriteAll never inspects.
+func turnsForRun(fixture []clank.Turn, runID string) []clank.Turn {
+	turns := make([]clank.Turn, len(fixture))
+	for i, tn := range fixture {
+		tn.RunID = runID
+		turns[i] = tn
+	}
+	return turns
 }
 
 func readFixtureTurns(t *testing.T) []clank.Turn {
