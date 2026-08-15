@@ -514,14 +514,17 @@ A track that measures and declines to turn the knob counts as closed.
 
 ## D-20 · Weights are authored, not learned, until the corpus holds N real settled cases — **Ratified** (2026-08-07)
 
-Today, N = 1.
+For a reasonable trust curve, N needs to be something closer to 20–30. For now,
+authoring keeps expectations sane. `rca`/`replay`/`tune` don't stop existing — they
+stop being tuners and become the thing that measures N and guards against regression.
+N = 20–30 is the re-entry criterion: the number that has to be true before calibration
+reopens on evidence instead of on vibes.
 
-For a reasonable trust curve, that number needs to be something closer to
-20–30. For now, authoring keeps expectations sane. `rca`/`replay`/`tune`
-don't stop existing — they stop being tuners and become the thing that
-measures N and guards against regression. N = 20–30 is the re-entry
-criterion: the number that has to be true before calibration reopens on
-evidence instead of on vibes.
+That count is no longer read off by inspection. `calipers corpus` (`internal/corpus/mine.go`)
+reports the current N as its labelled-case bucket, and `internal/tune/tune.go`'s
+`minLabelledCases = 20` const enforces the bar mechanically: a sweep short of it returns
+`NotYet` naming the shortfall (`"N labelled cases (M short of 20) — not enough to sweep
+confidently"`) instead of running.
 
 ## D-21 · A cancelled context is not a context — **Ratified** (2026-08-07)
 
@@ -639,6 +642,54 @@ rather than a silent default. Not filed yet.
 **What we do now:** Accept the PAT identity limitation for the current phase while recommending upgrading to a GitHub App / Bot identity in future production deployments to ensure proper provenance, audit separation, and clear actor attribution.
 
 ---
+
+## D-28 · Journal every terminal phase, deliver only the gate-passers — **Ratified** (2026-08-14)
+
+clank's engine only ever recorded a `proposal.Set` past the pod's lifetime when the gate
+passed. Budget exhaustion, a model declining to act, an off-catalog or ungrounded
+candidate, a gate-failed decline — every other terminal outcome lived in the in-memory
+ledger and died with it. Four calibration phases in a row measured and moved nothing
+because the corpus they read from was "cases where thump acted," the population a gate
+calibration needs least.
+
+**We do:** every terminal phase is journaled to a second WAL, `clank/thump.reasoning/`,
+via `publish.JournalPublisher[T]` — a WAL with no delivery step, a distinct type rather
+than a `WALPublisher` with a nil `Next`. `thump.proposals` still gets only a gate-passing
+set; that call site didn't move.
+
+**Why not deliver everything and let hiss filter?** hiss already refuses a `Set` with
+`Gate == nil` or `Gate.Passed == false` (`hiss.ReasonUngatedInput`,
+`internal/hiss/authority.go:60-62`) — a consumer-side check it would have to get right on
+every code path, forever. Publishing nothing ungated in the first place turns that into a
+structural guarantee: hiss subscribes to one literal subject for governed input, and a
+publisher with no `Next` cannot reach it regardless of what hiss does or doesn't check.
+That guarantee holds only as long as nothing in the tree ever calls `.Publish` with the
+journal's subject — a deliberate-red exercise confirmed the failure mode is real: strip
+the gate check at the real call site and the guard test catches it. No repo-wide test
+enforces the boundary itself yet, the way `TestNotifierSDKNeverReachesCoreBeats` enforces
+its own; a grep-shaped guard for "no `.Publish` call site ever names `thump.reasoning`"
+is the natural next hardening, left for later.
+
+## D-29 · The gate's false negatives are unlabelled by construction — **Parked** (2026-08-15)
+
+An executed action gets a terminal verdict for free — the convergence watcher settles it
+(`internal/thump/converger.go`) or `reversal.go` undoes it. An escalated or held candidate
+gets one too — an operator resolves hiss's `ApprovalRequest`. A declined candidate gets
+neither. `grade.FromRecord` (`internal/grade/grade.go:51-53`) falls through to its
+`default` case and returns `Label{}, false` — nothing in the record ever settles whether
+the decline was right. `corpus.mine` counts the population rather than guessing at it: the
+`unlabelled (declined; no verdict exists)` bucket in its report (`internal/corpus/mine.go:262`)
+is a population to argue with, never a row the tuner infers a label for.
+
+**Why not infer one?** An executed or escalated run gets its verdict from something that
+already had to happen anyway — convergence, or an operator's approval. A decline has no
+such forcing function: rattle's own signal either clears on its own or the incident
+recurs and re-triggers, and nothing today watches that burn series back to the run that
+declined. That watcher is real, scoped work — wiring a signal's post-decline history to
+its RunID — and fabricating a label here would plant a guess at the root of every future
+weight sweep, the exact failure mode D-19 exists to prevent. The one candidate future
+source is that burn series — did the signal clear on its own, and how fast — recorded
+here as the named next step, not built.
 
 ## Departures from other source material
 

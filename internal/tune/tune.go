@@ -6,21 +6,28 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	iofs "io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 
+	"github.com/ianeff/thump/internal/corpus"
 	"github.com/ianeff/thump/internal/rca"
 )
 
 // deadKnobLimitation is printed first, every run, because a grid missing an
 // axis would otherwise look complete rather than partial: groundingMany
 // isn't a swept dimension here even though a graded row can now corroborate
-// on two backends, and causal stays flat because LikelihoodOK is
-// structurally false in this harness.
-const deadKnobLimitation = "groundingMany is not a swept axis — at least one graded row now corroborates on two backends, so a sweep over it would no longer measure a flat surface, but this grid doesn't vary it yet. causal is not swept: LikelihoodOK is structurally false in this harness."
+// on two backends, and causal isn't swept either even though replay can now
+// drive it.
+const deadKnobLimitation = "groundingMany is not a swept axis — at least one graded row now corroborates on two backends, so a sweep over it would no longer measure a flat surface, but this grid doesn't vary it yet. causal is not swept either: replay now feeds a recorded run's own change events through the causal scorer, so it can fire, but this grid holds it fixed rather than varying it as an axis."
+
+// minLabelledCases is D-20's re-entry bar (docs/design-decisions.md):
+// weights stay authored, not swept, until the corpus holds this many
+// settled cases.
+const minLabelledCases = 20
 
 // Main sweeps GroundingNone and GroundingOne over recorded transcripts and
 // prints the grid beside a NotYet. It never writes
@@ -32,6 +39,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	transcripts := fs.String("transcripts", "", "directory holding paired .jsonl/.set.json transcript fixtures")
+	corpusPath := fs.String("corpus", corpus.OutPath, "corpus artifact to read settled labels from")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -49,8 +57,19 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return emit(stdout, *asJSON, 0, nil, Proposal{}, NotYet{Reason: fmt.Sprintf("%s holds no paired .jsonl/.set.json transcripts", *transcripts)})
 	}
 
+	mined, err := corpus.ReadCorpus(*corpusPath)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	labels := corpus.Labels(mined.Cases)
+	if n := len(labels); n > 0 && n < minLabelledCases {
+		return emit(stdout, *asJSON, 0, nil, Proposal{}, NotYet{Reason: fmt.Sprintf(
+			"%d labelled cases (%d short of %d) — not enough to sweep confidently", n, minLabelledCases-n, minLabelledCases)})
+	}
+
 	cases := rca.Table()
-	points, err := Run(context.Background(), SweepConfig{Transcripts: pairs, Cases: cases, Objective: DefaultObjective()})
+	points, err := Run(context.Background(), SweepConfig{Transcripts: pairs, Cases: cases, Labels: labels, Objective: DefaultObjective()})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -61,26 +80,36 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	return emit(stdout, *asJSON, len(cases), points, prop, notYet)
 }
 
-// findTranscripts pairs every foo.jsonl in dir with a foo.set.json beside
-// it. A .jsonl with no matching .set.json is skipped rather than erroring —
+// findTranscripts pairs every foo.jsonl under dir, at any depth, with a
+// foo.set.json beside it — recursive, since calipers transcript --all writes
+// each run to its own <out>/<runID>/run.jsonl rather than a flat directory.
+// A .jsonl with no matching .set.json is skipped rather than erroring —
 // truncated.jsonl in the replay fixtures has no set for exactly this reason,
 // since the exhaustion path it exercises fires before the engine ever needs
 // one. A paired transcript that still fails to replay is not filtered here;
 // Run drops it after a failed probe, so one broken fixture doesn't abort the
 // whole sweep.
 func findTranscripts(dir string) ([]TranscriptPaths, error) {
-	entries, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	var pairs []TranscriptPaths
+	err := filepath.WalkDir(dir, func(path string, d iofs.DirEntry, err error) error {
+		if os.IsNotExist(err) {
+			return iofs.SkipAll
+		}
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ".jsonl" {
+			return nil
+		}
+		setPath := strings.TrimSuffix(path, ".jsonl") + ".set.json"
+		if _, err := os.Stat(setPath); err != nil {
+			return nil
+		}
+		pairs = append(pairs, TranscriptPaths{JSONL: path, Set: setPath})
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("tune: read %s: %w", dir, err)
-	}
-
-	var pairs []TranscriptPaths
-	for _, jsonl := range entries {
-		setPath := strings.TrimSuffix(jsonl, ".jsonl") + ".set.json"
-		if _, err := os.Stat(setPath); err != nil {
-			continue
-		}
-		pairs = append(pairs, TranscriptPaths{JSONL: jsonl, Set: setPath})
 	}
 	sort.Slice(pairs, func(i, j int) bool { return pairs[i].JSONL < pairs[j].JSONL })
 	return pairs, nil

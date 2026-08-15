@@ -16,10 +16,12 @@ import (
 	"github.com/ianeff/thump/internal/corpus"
 	"github.com/ianeff/thump/internal/harvest"
 	"github.com/ianeff/thump/internal/incident"
+	"github.com/ianeff/thump/internal/probe"
 	"github.com/ianeff/thump/internal/publish"
 	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/replay"
 	"github.com/ianeff/thump/internal/tlsx"
+	"github.com/ianeff/thump/internal/transcript"
 	"github.com/ianeff/thump/internal/tune"
 	"github.com/ianeff/thump/internal/unseal"
 )
@@ -85,7 +87,7 @@ func operatorProjection(ctx context.Context, natsURL, certFile, keyFile, caFile,
 // below by TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest so the two
 // cannot drift the way trim's own usage string once did (it named only
 // "incidents" while the switch routed four verbs).
-const topUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest> [flags]"
+const topUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript> [flags]"
 
 // Main is calipers's entry point: routing to subcommand, then
 // either the machine (--json) or human (Lip Gloss) path over
@@ -116,6 +118,10 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return replay.Main(args[1:], stdout, stderr)
 	case "harvest":
 		return harvest.Main(args[1:], stdout, stderr)
+	case "probe":
+		return probe.Main(args[1:], stdout, stderr)
+	case "transcript":
+		return transcript.Main(args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintln(stderr, topUsage)
 		return 2

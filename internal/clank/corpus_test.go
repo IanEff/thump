@@ -131,6 +131,32 @@ func TestMineCorpus_JoinsAnOutcomeToTheSetOpenWhenItSettled(t *testing.T) {
 	}
 }
 
+func TestMineCorpus_CarriesTheJoinedSetsRunIDOntoTheCase(t *testing.T) {
+	t.Parallel()
+	// RunID is the only thing that joins a mined Case back to the
+	// transcripts/ turns it came from — dropping it here is what left tune
+	// with nothing to grade a production run against.
+	set := proposal.Set{
+		RunID:     "fp/cephblockpool/1785671212",
+		SignalRef: "fp:cephblockpool",
+		Status:    &proposal.Status{ObservedAt: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)},
+	}
+	o := outcome.Outcome{
+		SignalRef:  "fp:cephblockpool",
+		Result:     outcome.ResultSuccess,
+		ExecutedAt: time.Date(2026, 8, 1, 13, 0, 0, 0, time.UTC),
+	}
+
+	got := clank.MineCorpus([]proposal.Set{set}, []outcome.Outcome{o})
+
+	if len(got) != 1 {
+		t.Fatalf("want one case, got %d", len(got))
+	}
+	if diff := cmp.Diff(set.RunID, got[0].RunID); diff != "" {
+		t.Error("mined case lost the joined set's RunID", diff)
+	}
+}
+
 func TestMineCorpus_DropsAnOutcomeWithNoSetOpenBeforeIt(t *testing.T) {
 	t.Parallel()
 	// A set that opened after the outcome it's being compared against can't

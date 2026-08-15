@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
+	"github.com/ianeff/thump/internal/grade"
 	"github.com/ianeff/thump/internal/objectstore"
 	"github.com/ianeff/thump/internal/sealbox"
 	"github.com/ianeff/thump/internal/unseal"
@@ -25,7 +27,15 @@ import (
 const (
 	proposalsPrefix = "clank/thump.proposals/"
 	outcomesPrefix  = "thump/thump.outcomes/"
-	outPath         = "internal/clank/testdata/corpus/corpus.json"
+	// journalPrefix holds every terminal-phase proposal.Set clank journals,
+	// gated or not — a superset of proposalsPrefix, never joined into Cases
+	// here, only counted, since turning a miss into a graded row needs a
+	// replay pair (calipers transcript), not a bare journal line.
+	journalPrefix = "clank/thump.reasoning/"
+	// OutPath is where Main writes the committed corpus artifact — the
+	// bucket is per-rig and transient, this file is the durable record, and
+	// tune reads it from the same path by default.
+	OutPath = "internal/clank/testdata/corpus/corpus.json"
 )
 
 // ErrUnknownCorpusVersion means the artifact on disk was written by a
@@ -33,7 +43,7 @@ const (
 var ErrUnknownCorpusVersion = errors.New("corpus: artifact version is newer than this build understands")
 
 // Main mines every shipped proposal.Set and outcome.Outcome of S3_BUCKET,
-// joins them into a clank.Corpus, and writes it to outPath.
+// joins them into a clank.Corpus, and writes it to OutPath.
 // Returns 0 on success, 1 on any failure.
 func Main(_ []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
@@ -54,48 +64,138 @@ func Main(_ []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	c, err := mine(ctx, client, key, cfg.S3Bucket)
+	c, pop, err := mine(ctx, client, key, cfg.S3Bucket)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
 	}
 
-	if err := writeCorpus(outPath, c); err != nil {
+	if err := writeCorpus(OutPath, c); err != nil {
 		_, _ = fmt.Fprintln(stderr, "corpus:", err)
 		return 1
 	}
-	report(stdout, c)
+	report(stdout, c, pop)
 	return 0
 }
 
-func mine(ctx context.Context, client *s3.Client, key sealbox.Key, bucket string) (clank.Corpus, error) {
+// populations partitions what mine() saw into what tune can act on, so the
+// corpus reports its own usable size instead of implying every row is
+// gradeable.
+type populations struct {
+	Journaled  int // every terminal-phase proposal.Set observed, gated or not
+	Labelled   int // settled cases — grade.FromRecord returned ok
+	InFlight   int // every outcome record seen for the incident is still ResultApplied
+	Unlabelled int // journaled as declined; no outcome will ever exist to label it
+}
+
+func mine(ctx context.Context, client *s3.Client, key sealbox.Key, bucket string) (clank.Corpus, populations, error) {
 	proposalKeys, proposalLines, err := Walk(ctx, client, client, key, bucket, proposalsPrefix)
 	if err != nil {
-		return clank.Corpus{}, err
+		return clank.Corpus{}, populations{}, err
 	}
 	outcomeKeys, outcomeLines, err := Walk(ctx, client, client, key, bucket, outcomesPrefix)
 	if err != nil {
-		return clank.Corpus{}, err
+		return clank.Corpus{}, populations{}, err
+	}
+	journalKeys, journalLines, err := Walk(ctx, client, client, key, bucket, journalPrefix)
+	if err != nil {
+		return clank.Corpus{}, populations{}, err
 	}
 
 	sets, err := DecodeEach[proposal.Set](proposalLines)
 	if err != nil {
-		return clank.Corpus{}, fmt.Errorf("decoding %s: %w", proposalsPrefix, err)
+		return clank.Corpus{}, populations{}, fmt.Errorf("decoding %s: %w", proposalsPrefix, err)
 	}
 	outcomes, err := DecodeEach[outcome.Outcome](outcomeLines)
 	if err != nil {
-		return clank.Corpus{}, fmt.Errorf("decoding %s: %w", outcomesPrefix, err)
+		return clank.Corpus{}, populations{}, fmt.Errorf("decoding %s: %w", outcomesPrefix, err)
+	}
+	journaled, err := DecodeEach[proposal.Set](journalLines)
+	if err != nil {
+		return clank.Corpus{}, populations{}, fmt.Errorf("decoding %s: %w", journalPrefix, err)
+	}
+
+	cases := clank.MineCorpus(sets, outcomes)
+
+	pop := populations{
+		Journaled:  len(journaled),
+		Labelled:   labelledCount(cases),
+		InFlight:   inFlightCount(outcomes),
+		Unlabelled: declinedCount(journaled),
 	}
 
 	return clank.Corpus{
-		Cases:    clank.MineCorpus(sets, outcomes),
+		Cases:    cases,
 		MinedAt:  time.Now(),
-		Segments: append(proposalKeys, outcomeKeys...),
-	}, nil
+		Segments: slices.Concat(proposalKeys, outcomeKeys, journalKeys),
+	}, pop, nil
+}
+
+// Labels derives a settled grade.Label for every case carrying a RunID,
+// keyed by that RunID — the join key tune needs to grade a run pulled from
+// a cluster nobody here has seen, rather than matched against a fixture
+// stem.
+func Labels(cases []clank.Case) map[string]grade.Label {
+	labels := make(map[string]grade.Label)
+	for _, cs := range cases {
+		if cs.RunID == "" {
+			continue
+		}
+		set := proposal.Set{RunID: cs.RunID}
+		out := outcome.Outcome{Result: cs.Result}
+		if l, ok := grade.FromRecord(set, decision.Decision{}, out); ok {
+			labels[cs.RunID] = l
+		}
+	}
+	return labels
+}
+
+// labelledCount routes through Labels rather than reimplementing its rule —
+// every case MineCorpus returns is already settled and collapsed, so this is
+// a count today, but stays correct if Labels' rule changes.
+func labelledCount(cases []clank.Case) int {
+	return len(Labels(cases))
+}
+
+// inFlightCount reports how many (SignalRef, DecisionRef) incidents have
+// only ever produced an execute-time ResultApplied record — exactly the
+// population clank.CollapseCases drops, since nothing has settled them yet.
+func inFlightCount(outcomes []outcome.Outcome) int {
+	type key struct{ signalRef, decisionRef string }
+	settled := make(map[key]bool)
+	seen := make(map[key]bool)
+	for _, o := range outcomes {
+		k := key{o.SignalRef, o.DecisionRef}
+		seen[k] = true
+		if o.Result != outcome.ResultApplied {
+			settled[k] = true
+		}
+	}
+	n := 0
+	for k := range seen {
+		if !settled[k] {
+			n++
+		}
+	}
+	return n
+}
+
+// declinedCount reports how many journaled sets governance ruled against
+// before thump ever rendered them — a declined Set never produces an
+// Outcome (proposal.go:126), so nothing but the journal itself ever
+// distinguishes this population from a run still in flight.
+func declinedCount(journaled []proposal.Set) int {
+	n := 0
+	for _, s := range journaled {
+		if s.Status != nil && s.Status.Phase == proposal.PhaseDeclined {
+			n++
+		}
+	}
+	return n
 }
 
 func writeCorpus(path string, mined clank.Corpus) error {
-	existing, err := readCorpus(path)
+	existing, err := ReadCorpus(path)
 	if err != nil {
 		return err
 	}
@@ -104,7 +204,7 @@ func writeCorpus(path string, mined clank.Corpus) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // nolint:gosec // G304: operator-authored fixed path (OutPath const), not user input
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
@@ -151,12 +251,16 @@ func mergeCorpus(existing, mined clank.Corpus) clank.Corpus {
 	return clank.Corpus{Version: clank.CorpusVersion, Cases: cases, MinedAt: mined.MinedAt, Segments: segments}
 }
 
-func report(w io.Writer, c clank.Corpus) {
+func report(w io.Writer, c clank.Corpus, pop populations) {
 	byClass := map[proposal.FailureClass]int{}
 	for _, cs := range c.Cases {
 		byClass[cs.FailureClass]++
 	}
 	_, _ = fmt.Fprintf(w, "mined %d cases from %d segments\n", len(c.Cases), len(c.Segments))
+	_, _ = fmt.Fprintf(w, "%d reasoning-journal records observed (every terminal phase, not yet joined into cases)\n", pop.Journaled)
+	total := pop.Labelled + pop.InFlight + pop.Unlabelled
+	_, _ = fmt.Fprintf(w, "corpus: %d cases — %d labelled, %d in flight, %d unlabelled (declined; no verdict exists)\n",
+		total, pop.Labelled, pop.InFlight, pop.Unlabelled)
 	for class, n := range byClass {
 		_, _ = fmt.Fprintf(w, " %-24s %d\n", class, n)
 	}
@@ -237,8 +341,12 @@ func migrateLegacy(raw []byte) (clank.Corpus, error) {
 	}, nil
 }
 
-func readCorpus(path string) (clank.Corpus, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-authored fixed path (outPath const), not user input
+// ReadCorpus loads the corpus artifact at path, migrating a pre-tag or
+// pre-RunID layout on the way in. A missing file is not an error — it reads
+// back as an empty, current-version Corpus, since nothing has been mined yet
+// is a population to report, never a failure.
+func ReadCorpus(path string) (clank.Corpus, error) {
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: operator-authored fixed path (OutPath const), not user input
 	if errors.Is(err, os.ErrNotExist) {
 		return clank.Corpus{Version: clank.CorpusVersion}, nil
 	}
@@ -252,6 +360,10 @@ func readCorpus(path string) (clank.Corpus, error) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return clank.Corpus{}, fmt.Errorf("decode %s: %w", path, err)
 	}
+	// A tagged artifact older than this build's layout (e.g. v2, pre-RunID)
+	// falls through to the same decode below — fields it never had come back
+	// as zero values, never reconstructed the way migrateLegacy recovers
+	// SignalRef for the pre-tag layout.
 	switch {
 	case probe.Version == 0:
 		return migrateLegacy(raw)

@@ -66,6 +66,7 @@ func newCase(set proposal.Set, o outcome.Outcome) Case {
 		}
 	}
 	return Case{
+		RunID:        set.RunID,
 		SignalRef:    o.SignalRef,
 		DecisionRef:  o.DecisionRef,
 		OutcomeRef:   o.ID,

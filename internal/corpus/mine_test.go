@@ -1,16 +1,24 @@
 package corpus_test
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/ianeff/thump/api/v1/outcome"
+	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/corpus"
+	"github.com/ianeff/thump/internal/s3test"
+	"github.com/ianeff/thump/internal/sealbox"
 )
 
 // caseWithRef gives each case its own DecisionRef (equal to outcomeRef,
@@ -134,6 +142,96 @@ func TestWriteCorpus_MergesIntoWhateverIsAlreadyOnDisk(t *testing.T) {
 	if diff := cmp.Diff(want, got.Cases); diff != "" {
 		t.Error("second write did not merge with the first", diff)
 	}
+}
+
+// TestMine_ReportsThreePopulationsAndLabelsEachSettledCaseByRunID pins the
+// hinge PR2 adds: a RunID stamped on a proposal.Set at propose time survives
+// onto the Case MineCorpus emits, and mine() partitions everything it walked
+// into labelled, in-flight, and unlabelled — the corpus's own usable size,
+// not an implication that every row is gradeable.
+func TestMine_ReportsThreePopulationsAndLabelsEachSettledCaseByRunID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client, bucket := s3test.New(t)
+	key := testMineSealKey()
+	base := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+
+	converged := proposal.Set{
+		RunID: "run-converged", SignalRef: "sig-a",
+		Status: &proposal.Status{ObservedAt: base},
+	}
+	reversed := proposal.Set{
+		RunID: "run-reversed", SignalRef: "sig-b",
+		Status: &proposal.Status{ObservedAt: base},
+	}
+	inFlight := proposal.Set{
+		RunID: "run-inflight", SignalRef: "sig-c",
+		Status: &proposal.Status{ObservedAt: base},
+	}
+	declined := proposal.Set{
+		RunID: "run-declined", SignalRef: "sig-d",
+		Status: &proposal.Status{ObservedAt: base, Phase: proposal.PhaseDeclined},
+	}
+
+	seedSegment(ctx, t, client, key, bucket, "clank/thump.proposals/seg-0001.wal",
+		[]proposal.Set{converged, reversed, inFlight})
+	seedSegment(ctx, t, client, key, bucket, "clank/thump.reasoning/seg-0001.wal",
+		[]proposal.Set{converged, reversed, inFlight, declined})
+	seedSegment(ctx, t, client, key, bucket, "thump/thump.outcomes/seg-0001.wal", []outcome.Outcome{
+		{SignalRef: "sig-a", DecisionRef: "dec-a", Result: outcome.ResultSuccess, ExecutedAt: base.Add(time.Hour)},
+		{SignalRef: "sig-b", DecisionRef: "dec-b", Result: outcome.ResultPartialNonConverging, ExecutedAt: base.Add(time.Hour)},
+		{SignalRef: "sig-c", DecisionRef: "dec-c", Result: outcome.ResultApplied, ExecutedAt: base.Add(time.Hour)},
+	})
+
+	gotCorpus, gotPop, err := corpus.MineForTest(ctx, client, key, bucket)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantPop := corpus.PopulationsForTest(4, 2, 1, 1)
+	if diff := cmp.Diff(wantPop, gotPop); diff != "" {
+		t.Error("wrong populations mined", diff)
+	}
+
+	gotRunIDs := make(map[string]bool, len(gotCorpus.Cases))
+	for _, c := range gotCorpus.Cases {
+		gotRunIDs[c.RunID] = true
+	}
+	wantRunIDs := map[string]bool{"run-converged": true, "run-reversed": true}
+	if diff := cmp.Diff(wantRunIDs, gotRunIDs); diff != "" {
+		t.Error("labelled cases lost their RunID on the way through MineCorpus", diff)
+	}
+}
+
+func seedSegment[T any](ctx context.Context, t *testing.T, client *s3.Client, key sealbox.Key, bucket, objKey string, items []T) {
+	t.Helper()
+	lines := make([][]byte, len(items))
+	for i, it := range items {
+		b, err := json.Marshal(it)
+		if err != nil {
+			t.Fatalf("marshal item %d: %v", i, err)
+		}
+		lines[i] = b
+	}
+	sealed, err := key.Seal(bytes.Join(lines, []byte("\n")))
+	if err != nil {
+		t.Fatalf("seal segment: %v", err)
+	}
+	if _, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(objKey),
+		Body:   bytes.NewReader(sealed),
+	}); err != nil {
+		t.Fatalf("put %s: %v", objKey, err)
+	}
+}
+
+func testMineSealKey() sealbox.Key {
+	var k sealbox.Key
+	for i := range k {
+		k[i] = byte(i)
+	}
+	return k
 }
 
 func readCorpusForTest(t *testing.T, path string) (clank.Corpus, error) {

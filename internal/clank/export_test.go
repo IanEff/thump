@@ -46,7 +46,7 @@ func BuildLedgerForTest(ctx context.Context, js jetstream.JetStream, retention t
 // about, so it's wired to a noop.Tracer{} here rather than making every call
 // site pass one.
 func NewLoopForTest(model reason.Model, tools map[string]reason.Tool, intake *Intake, cat *contract.StaticCatalog, outbox, outcomes string, store Store) *loop {
-	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits())
+	return newLoop("", outbox, outcomes, "", model, tools, intake, cat, shippedClasses(), store, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits(), nil)
 }
 
 // ShippedCatalogForTest exposes the production catalog (the one Main wires)
@@ -67,7 +67,7 @@ func ShippedFailureClassesForTest() []contract.FailureClassDefinition {
 
 // NewBrokerEngineForTest exposes the broker-mode Engine construction to tests.
 func NewBrokerEngineForTest(model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, pub publish.Publisher[proposal.Set], ledger *MemProposalLog, cases *CaseBase) *Engine {
-	return newBrokerEngine(model, intake, store, tools, cat, shippedClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits())
+	return newBrokerEngine(model, intake, store, tools, cat, shippedClasses(), pub, ledger, cases, time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits(), nil)
 }
 
 // SeedForTest backdates ps into the ledger as if Record had run age ago —

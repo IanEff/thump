@@ -16,6 +16,7 @@ import "time"
 // answers as "considered N actions, ranked them thus," never as a bare choice.
 type Set struct {
 	Name             string            `json:"name,omitempty" yaml:"name,omitempty"`
+	RunID            string            `json:"runID,omitempty" yaml:"runID,omitempty"`               // fingerprint/unixnano — the exact key under which Engine.Store sealed this run's transcript turns; the only thing that joins a proposal.Set back to its transcripts/ objects
 	SignalRef        string            `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`       // the originating signal.Detection's Fingerprint — an open Set sharing this value suppresses a new one (dedup)
 	SAOSnapshot      *SAO              `json:"saoSnapshot,omitempty" yaml:"saoSnapshot,omitempty"`   // the SAO the reason loop actually reasoned over, frozen at emit time — Version > 0 or the audit trail is dangling
 	FailureClass     FailureClass      `json:"failureClass,omitempty" yaml:"failureClass,omitempty"` // the model's leading hypothesis — never a rules-table lookup
@@ -77,6 +78,17 @@ func (s Set) ConfidenceCeilingBoundFor(candidateID string) bool {
 	return false
 }
 
+// TermsFor returns the ConfidenceTerms of the Proposals whose ID matches
+// candidateID or the zero value if none matches.
+func (s Set) TermsFor(candidateID string) ConfidenceTerms {
+	for _, p := range s.Proposals {
+		if p.ID == candidateID {
+			return p.Terms
+		}
+	}
+	return ConfidenceTerms{}
+}
+
 // RankingRationale records why the ranker ordered Proposals the way it did —
 // the deterministic, auditable half of ranking, kept separate from the
 // model's own hypothesis reasoning.
@@ -135,6 +147,18 @@ type EvidenceRef struct {
 	Subject string `json:"subject,omitempty" yaml:"subject,omitempty"` // the topology node this evidence's query concerns, e.g. "argocd" — the gate requires it to name the affected service or appear in the SAO's Topology before this ref can ground a proposal alone, and an empty Subject fails that closed: an unclaimed ref still corroborates a hypothesis something in-topology already grounds, but a Live ref the SAO can't place cannot drive a classification by itself
 }
 
+// ConfidenceTerms is the inputs scoreConfidence multiplied to reach
+// ComputedConfidence — Grounding is the weight the Corroborated count
+// resolved to, not the count itself, so a term that flipped tiers is
+// visible without recomputing it from Corroborated and a weights file.
+type ConfidenceTerms struct {
+	SignalConfidence float64 `json:"signalConfidence,omitempty" yaml:"signalConfidence,omitempty"`
+	Corroborated     int     `json:"corroborated,omitempty" yaml:"corroborated,omitempty"`
+	Grounding        float64 `json:"grounding,omitempty" yaml:"grounding,omitempty"`
+	AlignmentOK      bool    `json:"alignmentOK,omitempty" yaml:"alignmentOK,omitempty"`
+	LikelihoodOK     bool    `json:"likelihoodOK,omitempty" yaml:"likelihoodOK,omitempty"`
+}
+
 // Candidate is one catalogued action the reason loop proposed, with its own
 // hypothesis confidence and governance band — a graded request, never a
 // verdict; hiss decides whether it may proceed.
@@ -149,13 +173,17 @@ type Candidate struct {
 	ComputedConfidence float64 `json:"computedConfidence,omitempty" yaml:"computedConfidence,omitempty"`
 	// ConfidenceCeilingBound reports that the model claimed less than the run
 	// grounded, so Confidence is the self-report and not the computation.
-	ConfidenceCeilingBound bool             `json:"confidenceCeilingBound,omitempty" yaml:"confidenceCeilingBound,omitempty"`
-	PredictedImpact        *PredictedImpact `json:"predictedImpact,omitempty" yaml:"predictedImpact,omitempty"`
-	BlastTier              BlastTier        `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`             // authored; copied from the ActionContract at enrichment — hiss's shaper reads this for risk, never the effectiveness forecast in PredictedImpact
-	ReversalPath           *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence
-	GovernanceLevel        *GovernanceLevel `json:"governanceLevel,omitempty" yaml:"governanceLevel,omitempty"` // nil is read as the lowest band (BandObserve), never as elevated privilege
-	Rank                   int              `json:"rank,omitempty" yaml:"rank,omitempty"`                       // 1-indexed position after ranking; rank 1 is what Set.Recommended names
-	Citations              []string         `json:"citations,omitempty" yaml:"citations,omitempty"`             // EvidenceRef.Key values backing this Candidate - what the gate grounds and the confidence function corroborates.
+	ConfidenceCeilingBound bool `json:"confidenceCeilingBound,omitempty" yaml:"confidenceCeilingBound,omitempty"`
+	// Terms is the decomposition behind ComputedConfidence — grading a live
+	// run no longer requires a transcript decrypt to see which factor moved
+	// the number.
+	Terms           ConfidenceTerms  `json:"terms,omitempty" yaml:"terms,omitempty"`
+	PredictedImpact *PredictedImpact `json:"predictedImpact,omitempty" yaml:"predictedImpact,omitempty"`
+	BlastTier       BlastTier        `json:"blastTier,omitempty" yaml:"blastTier,omitempty"`             // authored; copied from the ActionContract at enrichment — hiss's shaper reads this for risk, never the effectiveness forecast in PredictedImpact
+	ReversalPath    *ReversalPath    `json:"reversalPath,omitempty" yaml:"reversalPath,omitempty"`       // nil means the catalog's ActionContract has no reversal — hiss's irreversibility veto (ReasonIrreversible) reads exactly this absence
+	GovernanceLevel *GovernanceLevel `json:"governanceLevel,omitempty" yaml:"governanceLevel,omitempty"` // nil is read as the lowest band (BandObserve), never as elevated privilege
+	Rank            int              `json:"rank,omitempty" yaml:"rank,omitempty"`                       // 1-indexed position after ranking; rank 1 is what Set.Recommended names
+	Citations       []string         `json:"citations,omitempty" yaml:"citations,omitempty"`             // EvidenceRef.Key values backing this Candidate - what the gate grounds and the confidence function corroborates.
 }
 
 // PredictedImpact is a forecast of what this Candidate would do to the

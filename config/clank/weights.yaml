@@ -3,12 +3,15 @@ topological: 0.3333333333333333
 historical: 0.3333333333333333
 historicalHalfLife: 720h   # 30 days
 # groundingNone/One/Many, causal: measured against the graded RCA suite
-# (internal/clank/rca_test.go, baseline 5/8) and left unchanged. Every propose row's
-# computed confidence lands exactly at groundingOne (0.70) and isn't ceiling-bound, so
-# the weight is genuinely measurable — but no row's verdict depends on where it sits,
-# and every row clears its confidence floor with headroom. groundingMany and causal
-# never fire in this harness at all (no row corroborates on two backends; the change
-# source is a noop) — unmeasurable here, not confirmed correct.
+# (internal/rca, baseline 5/8) and left unchanged. Most propose rows land exactly at
+# groundingOne (0.70) with no causal contribution — but "a real OSD pod-failure holds
+# the rebalance" (internal/rca/table.go) carries topology/change data and reliably
+# drives likelihoodOK true (causal fires on every run, since it's structural, not a
+# model choice); on some runs the model also cites both metrics and loki on the same
+# subject, reaching groundingMany — corroboration count is the model's own citation
+# choice, so that tier is reachable but not guaranteed every run. Both terms are now
+# confirmed to move confidence in the right direction; still no row's pass/fail verdict
+# depends on where either one lands.
 groundingNone: 0.3
 groundingOne: 0.7
 groundingMany: 1.0

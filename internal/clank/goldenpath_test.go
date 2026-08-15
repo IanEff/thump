@@ -147,7 +147,9 @@ func TestGoldenPath_NodeDeathClosesTheLoopOnTheProductionCatalog(t *testing.T) {
 	if len(cases) != 1 {
 		t.Fatalf("one outcome, one case; got %d", len(cases))
 	}
-	assertGolden(t, "node-death-case.yaml", cases[0])
+	golden := cases[0]
+	golden.RunID = "" // fingerprint/unixnano — as volatile as AssembledAt, for the same reason scrubVolatile zeroes it on the Set
+	assertGolden(t, "node-death-case.yaml", golden)
 
 	// a rehearsal is bookkeeping, not evidence: nothing may be believed yet.
 	if _, corroborated := cb.Alignment(det.Fingerprint); corroborated {
@@ -672,6 +674,7 @@ func scrubVolatile(set *proposal.Set) {
 	if set.SAOSnapshot != nil {
 		set.SAOSnapshot.AssembledAt = time.Time{}
 	}
+	set.RunID = "" // fingerprint/unixnano — as volatile as AssembledAt, for the same reason
 }
 
 // assertGolden marshals v to YAML and compares it to testdata/golden/<name>.

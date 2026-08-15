@@ -355,7 +355,7 @@ func TestEval_ReasonerAgainstProductionCatalog(t *testing.T) {
 				shippedCatalog(),
 				shippedClasses(),
 				NewDirStore(transcripts),
-				time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits())
+				time.Hour, noop.Tracer{}, nil, nil, DefaultScoringWeights(), DefaultLimits(), nil)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()

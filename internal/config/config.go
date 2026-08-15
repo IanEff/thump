@@ -302,6 +302,44 @@ func LoadCorpus() (Corpus, error) {
 	return c, l.err()
 }
 
+// Probe is calipers probe's environment — the read-only subset of Clank's
+// wiring a one-shot reasoning run needs, with none of Clank's inbox/outbox
+// or BrokerStore fields: a probe run never delivers anywhere, so it has
+// nothing to be a broker or offline path for.
+type Probe struct {
+	AnthropicAPIKey  string // ANTHROPIC_API_KEY — required
+	ActionCatalog    string // ACTION_CATALOG - required; the authored action catalog YAML
+	FailureClasses   string // FAILURE_CLASSES - required; the authored failure-class definitions YAML
+	Weights          string // CLANK_WEIGHTS -- required; path to mounted weights.yaml
+	Limits           string // CLANK_LIMITS -- required; path to mounted limits.yaml
+	PromURL          string // PROM_URL — optional; empty disables the metrics tool
+	EvidenceQueries  string // EVIDENCE_QUERIES — optional; only meaningful with PromURL set
+	LokiURL          string // LOKI_URL — optional; empty disables the loki tool
+	WhirCatalog      string // WHIR_CATALOG — optional; pairs with WhirStateQueries
+	WhirStateQueries string // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
+}
+
+// LoadProbe reads calipers probe's environment once — the same var names
+// Clank reads, so an operator pointing PROM_URL/LOKI_URL/EVIDENCE_QUERIES at
+// a port-forwarded rig for `calipers probe` needs no separate convention
+// from running clank itself.
+func LoadProbe() (Probe, error) {
+	l := &loader{}
+	p := Probe{
+		AnthropicAPIKey:  l.Require("ANTHROPIC_API_KEY"),
+		ActionCatalog:    l.Require("ACTION_CATALOG"),
+		FailureClasses:   l.Require("FAILURE_CLASSES"),
+		Weights:          l.Require("CLANK_WEIGHTS"),
+		Limits:           l.Require("CLANK_LIMITS"),
+		PromURL:          l.Optional("PROM_URL"),
+		EvidenceQueries:  l.Optional("EVIDENCE_QUERIES"),
+		LokiURL:          l.Optional("LOKI_URL"),
+		WhirCatalog:      l.Optional("WHIR_CATALOG"),
+		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
+	}
+	return p, l.err()
+}
+
 // loader accumulates every missing-required var instead of stopping at the
 // first — each Require/Optional call reads its var once; err joins whatever
 // Require calls came back empty into a single error.

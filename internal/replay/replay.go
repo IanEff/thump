@@ -90,7 +90,7 @@ func Propose(ctx context.Context, tr Transcript, w clank.ScoringWeights) (propos
 
 	cases := clank.NewCaseBase()
 	eng := &clank.Engine{
-		Intake:         clank.NewIntake(replayTopology{tr.Set}, replayChange{}),
+		Intake:         clank.NewIntake(replayTopology{tr.Set}, replayChange{tr.Set}),
 		Model:          NewModel(tr.Completions),
 		Tools:          BuildTools(tr.Set),
 		Catalog:        cat,
@@ -125,10 +125,19 @@ func (r replayTopology) Topology(context.Context, signal.Detection) (proposal.To
 	return r.set.SAOSnapshot.Topology, nil
 }
 
-type replayChange struct{}
+// replayChange hands back the change events the recorded run reasoned
+// over — the causal scorer's Likelihood otherwise recomputes at zero on
+// every replay, since InTopology can never be true against events the run
+// never saw.
+type replayChange struct {
+	set proposal.Set
+}
 
-func (replayChange) Changes(context.Context, signal.Detection) (proposal.ChangeSnapshot, error) {
-	return proposal.ChangeSnapshot{}, nil
+func (r replayChange) Changes(context.Context, signal.Detection) (proposal.ChangeSnapshot, error) {
+	if r.set.SAOSnapshot == nil {
+		return proposal.ChangeSnapshot{}, nil
+	}
+	return r.set.SAOSnapshot.Change, nil
 }
 
 // detectionFrom rebuilds the Detection the run started from. The SAO

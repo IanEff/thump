@@ -6,4 +6,5 @@ mode: dry_run
 observedAt: "2026-07-05T12:00:00Z"
 outcomeRef: out:slo_burn:ceph-cluster:1783252800
 result: rendered
+runID: ""
 signalRef: slo_burn:ceph-cluster

@@ -3,7 +3,7 @@
   "signalRef": "slo_burn:ceph-cluster",
   "saoSnapshot": {
     "version": 1,
-    "assembledAt": "2026-08-10T07:58:51.312629-04:00",
+    "assembledAt": "2026-08-14T15:20:03.662017-04:00",
     "signal": {
       "confidence": 1,
       "severity": {
@@ -20,26 +20,48 @@
     "topology": {
       "upstream": [
         {
-          "name": "cephcluster",
-          "state": "degraded"
-        },
-        {
-          "name": "rook-operator",
-          "state": "healthy"
+          "name": "ceph-osd",
+          "state": "degraded",
+          "trafficShare": 0.4
         }
       ]
     },
-    "change": {}
+    "change": {
+      "events": [
+        {
+          "id": "osd-pod-restart",
+          "type": "deploy",
+          "target": "ceph-osd",
+          "age": 360000000000
+        }
+      ]
+    }
   },
   "failureClass": "redundancy_degraded",
+  "causalScores": [
+    {
+      "eventID": "osd-pod-restart",
+      "inTopology": true,
+      "temporal": 0.8705505632961241,
+      "topological": 0.4,
+      "historical": 0.9,
+      "liveCorroborated": true,
+      "likelihood": 0.7235168544320414,
+      "rationale": [
+        "temporal: 6m0s old -\u003e 0.87",
+        "topological: in-path=true -\u003e 0.40",
+        "historical: case-base prior, staleness 0s -\u003e 0.90"
+      ]
+    }
+  ],
   "hypotheses": [
     {
-      "name": "Single OSD transient failure with recovery needed",
-      "weight": 0.7
+      "name": "Transient OSD failure from recent deploy causing degraded placement groups; cluster thrashing due to recovery attempts",
+      "weight": 0.8
     },
     {
-      "name": "Single OSD persistent failure requiring accelerated recovery",
-      "weight": 0.3
+      "name": "OSD needs time to recover after deploy; accelerated recovery would restore redundancy faster",
+      "weight": 0.2
     }
   ],
   "evidence": [
@@ -96,33 +118,52 @@
     {
       "tool": "kube",
       "query": "{\"resource\":\"pods\",\"namespace\":\"rook-ceph\",\"selector\":{\"app\":\"rook-ceph-osd\"}}",
-      "summary": "no pods found",
+      "key": "kube-6",
+      "summary": "rook-ceph-osd-0 (Running)",
+      "ref": "kube://rook-ceph/pods",
+      "live": true,
       "subject": "ceph-osd"
     },
     {
       "tool": "loki",
       "query": "{namespace=\"rook-ceph\", app=\"rook-ceph-osd\"}",
+      "key": "loki-7",
       "summary": "no matching log lines",
       "subject": "ceph-osd"
     },
     {
-      "tool": "kube",
-      "query": "{\"namespace\":\"rook-ceph\",\"resource\":\"pods\",\"selector\":{\"app\":\"rook-ceph-operator\"}}",
-      "summary": "no pods found",
-      "subject": "rook-operator"
+      "tool": "metrics",
+      "query": "recovery_ops_rate",
+      "key": "recovery_ops_rate",
+      "summary": "recovery_ops_rate = 0",
+      "ref": "metrics://recovery_ops_rate",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "pgs_backfilling",
+      "key": "pgs_backfilling",
+      "summary": "pgs_backfilling = 0",
+      "ref": "metrics://pgs_backfilling",
+      "live": true,
+      "subject": "ceph-cluster"
+    },
+    {
+      "tool": "metrics",
+      "query": "osd_write_latency_ms",
+      "key": "osd_write_latency_ms",
+      "summary": "osd_write_latency_ms = 15.8",
+      "ref": "metrics://osd_write_latency_ms",
+      "live": true,
+      "subject": "ceph-osd"
     },
     {
       "tool": "loki",
-      "query": "{namespace=\"rook-ceph\", app=\"rook-ceph-operator\"}",
+      "query": "{namespace=\"rook-ceph\", app=\"rook-ceph-osd\"} |= \"degraded\"",
+      "key": "loki-11",
       "summary": "no matching log lines",
-      "subject": "rook-operator"
-    },
-    {
-      "tool": "kube",
-      "query": "{\"namespace\":\"rook-ceph\",\"resource\":\"pods\"}",
-      "summary": "rook-ceph-mon-a (Running)",
-      "ref": "kube://rook-ceph/pods",
-      "live": true
+      "subject": "ceph-osd"
     }
   ],
   "serviceTier": "tier-1",
@@ -135,8 +176,15 @@
   "proposals": [
     {
       "contractRef": "hold-rebalance",
-      "confidence": 0.7,
-      "computedConfidence": 0.7,
+      "confidence": 0.75,
+      "computedConfidence": 0.9532308990512145,
+      "confidenceCeilingBound": true,
+      "terms": {
+        "signalConfidence": 1,
+        "corroborated": 1,
+        "grounding": 0.7,
+        "likelihoodOK": true
+      },
       "predictedImpact": {
         "severityReductionPct": 0.7
       },
@@ -144,7 +192,8 @@
       "reversalPath": {
         "method": "release-rebalance",
         "watching": "ceph_health",
-        "trigger": "HEALTH_OK"
+        "trigger": "HEALTH_OK",
+        "automatic": true
       },
       "governanceLevel": {
         "band": "act_reversible"
@@ -153,7 +202,8 @@
       "citations": [
         "ceph_health",
         "pgs_degraded",
-        "osds_down"
+        "osds_down",
+        "recovery_ops_rate"
       ]
     }
   ],

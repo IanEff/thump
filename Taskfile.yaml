@@ -194,6 +194,31 @@ tasks:
       - echo "captured internal/clank/testdata/detections/{{.NAME}}.yaml"
       - echo "-> add a row to evalTable() in internal/clank/eval_test.go if it belongs in the eval score"
 
+  probe:
+    desc: "Fire N real, read-only reasoning runs against a captured detection: task probe DETECTION=<path> [RUNS=N] (key-gated, not part of ci)"
+    requires:
+      vars: [DETECTION]
+    vars:
+      RUNS: '{{.RUNS | default "1"}}'
+    cmds:
+      - go run ./cmd/calipers probe -detection {{.DETECTION}} -runs {{.RUNS}}
+
+  transcript:
+    desc: "Export one live run's sealed transcript + proposal.Set into a replay pair: task transcript RUN_ID=<fingerprint/unixnano> OUT=<dir> (needs S3_*/THUMP_SEAL_KEY; rig-free, object-store creds only)"
+    requires:
+      vars: [RUN_ID, OUT]
+    cmds:
+      - go run ./cmd/calipers transcript -run-id {{.RUN_ID}} -out {{.OUT}}
+
+  calibrate:
+    desc: "Chain transcript export -> corpus mine -> tune sweep, so nobody re-derives the sequence: task calibrate OUT=<dir> (needs S3_*/THUMP_SEAL_KEY)"
+    requires:
+      vars: [OUT]
+    cmds:
+      - go run ./cmd/calipers transcript -all -out {{.OUT}}
+      - go run ./cmd/calipers corpus
+      - go run ./cmd/calipers tune -transcripts {{.OUT}}
+
   # .git/hooks/ isn't version-controlled, so a fresh clone has no protection
   # until this runs once. Re-run any time after cloning or after a hook changes.
   hooks:install:

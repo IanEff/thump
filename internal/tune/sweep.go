@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/grade"
 	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/replay"
 )
@@ -24,6 +25,12 @@ type SweepConfig struct {
 	// Cases are the labeled answers keyed to transcripts by
 	// rca.TranscriptName.
 	Cases []rca.Case
+	// Labels are settled verdicts keyed by RunID, read from the operator's
+	// own record (internal/grade) rather than authored by hand. A
+	// transcript whose RunID is here is graded by rca.GradeByLabel; the
+	// Cases stem match stays as the fallback so the checked-in fixtures
+	// grade exactly as they do today.
+	Labels map[string]grade.Label
 }
 
 // TranscriptPaths is one replay fixture: the conversation and the set it
@@ -50,8 +57,10 @@ type Point struct {
 // dropped before the sweep starts, so one broken fixture doesn't abort every
 // grid point. GroundingMany and Causal are not grid axes: a graded row can
 // corroborate on two backends now, so GroundingMany is no longer
-// structurally unreachable, but this grid still doesn't vary it; Causal
-// stays flat because LikelihoodOK is structurally false in this harness.
+// structurally unreachable, and replay now feeds a recorded run's own change
+// events back through the causal scorer, so Causal can fire too — neither is
+// swept here, so a point-to-point difference in Grounded is always the
+// grounding-tier axes moving, never these two.
 func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 	if len(cfg.Transcripts) == 0 {
 		return nil, fmt.Errorf("tune: no transcripts — a sweep with nothing to replay reports its own defaults back")
@@ -92,16 +101,20 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 	for _, c := range cfg.Cases {
 		byStem[rca.TranscriptName(c)] = c
 	}
-	if len(cfg.Cases) > 0 {
+	if len(cfg.Cases) > 0 || len(cfg.Labels) > 0 {
 		matched := false
 		for _, tr := range usable {
+			if _, ok := cfg.Labels[tr.RunID]; ok {
+				matched = true
+				break
+			}
 			if _, ok := byStem[strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")]; ok {
 				matched = true
 				break
 			}
 		}
 		if !matched {
-			return nil, fmt.Errorf("tune: no transcript pairs to a graded case — a sweep with no labels scores an unlabelled mean and calls it a recommendation")
+			return nil, fmt.Errorf("tune: no transcript pairs to a graded case or a label — a sweep with no labels scores an unlabelled mean and calls it a recommendation")
 		}
 	}
 
@@ -134,8 +147,9 @@ func Run(ctx context.Context, cfg SweepConfig) ([]Point, error) {
 					}
 				}
 
-				stem := strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")
-				if c, ok := byStem[stem]; ok {
+				if l, ok := cfg.Labels[tr.RunID]; ok {
+					rows = append(rows, rca.GradeByLabel(l, set))
+				} else if c, ok := byStem[strings.TrimSuffix(filepath.Base(tr.Path), ".jsonl")]; ok {
 					rows = append(rows, rca.Grade(c, set))
 				}
 			}

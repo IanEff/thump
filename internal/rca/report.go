@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/grade"
 )
 
 // Row is one graded scenario's result. Computed and Emitted are kept apart
@@ -109,6 +110,24 @@ func Grade(c Case, set proposal.Set) Row {
 		row.Miss = "ceiling-bound disagreed with the row"
 	default:
 		row.Pass = true
+	}
+	return row
+}
+
+// GradeByLabel scores an emitted set against a label the record already
+// settled, not a hand-authored expectation — Pass is the label's verdict
+// directly, so a production run can be graded without a Case describing it.
+func GradeByLabel(l grade.Label, set proposal.Set) Row {
+	row := Row{Name: l.RunID, Pass: l.Correct, Class: set.FailureClass}
+	if len(set.Proposals) > 0 {
+		top := set.Proposals[0]
+		row.ContractRef = top.ContractRef
+		row.Computed = top.ComputedConfidence
+		row.Emitted = top.Confidence
+		row.CeilingBound = top.ConfidenceCeilingBound
+	}
+	if !l.Correct {
+		row.Miss = "label settled this run as incorrect: " + string(l.Source)
 	}
 	return row
 }

@@ -115,7 +115,7 @@ func TestEngine_GoldenPath_SignalToDeliveredProposalSet(t *testing.T) {
 		ref: proposal.EvidenceRef{
 			Tool: "metrics", Query: "payments-db-cpu", Key: "payments-db-cpu",
 			Summary: "payments-db CPU pinned at 99%, connection pool exhausted",
-			Ref:     "metrics://payments-db/cpu", Live: true,
+			Ref:     "metrics://payments-db/cpu", Live: true, Subject: "payments-db",
 		},
 	}
 	catalog := contract.NewStaticCatalog([]contract.ActionContract{{

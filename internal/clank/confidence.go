@@ -65,7 +65,7 @@ func scoreConfidences(set *proposal.Set, sao proposal.SAO, prior Prior, fingerpr
 	for i := range set.Proposals {
 		cand := &set.Proposals[i]
 		selfReported := cand.Confidence
-		computed := groundedConfidence(confidenceInputs{
+		in := confidenceInputs{
 			SignalConfidence: sao.Signal.Confidence,
 			Corroborated:     coherentLiveCitations(*cand, set.Evidence, set.SAOSnapshot),
 			Alignment:        alignment,
@@ -73,10 +73,32 @@ func scoreConfidences(set *proposal.Set, sao proposal.SAO, prior Prior, fingerpr
 			Likelihood:       maxLikelihood,
 			LikelihoodOK:     likelihoodOK,
 			SelfReported:     selfReported,
-		}, w)
+		}
+		computed := groundedConfidence(in, w)
 		cand.ComputedConfidence = computed
 		cand.ConfidenceCeilingBound = computed > selfReported
 		cand.Confidence = min(computed, selfReported)
+		cand.Terms = proposal.ConfidenceTerms{
+			SignalConfidence: in.SignalConfidence,
+			Corroborated:     in.Corroborated,
+			Grounding:        groundingWeight(in.Corroborated, w),
+			AlignmentOK:      in.AlignmentOK,
+			LikelihoodOK:     in.LikelihoodOK,
+		}
+	}
+}
+
+// groundingWeight maps a candidate's corroborating-backend count to the
+// weight scoreConfidences applies for it — two or more distinct backends
+// grounds fully, one grounds partially, and zero grounds at the floor.
+func groundingWeight(corroborated int, w ScoringWeights) float64 {
+	switch {
+	case corroborated >= 2:
+		return w.GroundingMany
+	case corroborated == 1:
+		return w.GroundingOne
+	default:
+		return w.GroundingNone
 	}
 }
 
@@ -89,15 +111,7 @@ func scoreConfidences(set *proposal.Set, sao proposal.SAO, prior Prior, fingerpr
 // scored a run holding corroborating change data below the identical run
 // holding none — confidence falling as evidence arrives.
 func groundedConfidence(in confidenceInputs, w ScoringWeights) float64 {
-	grounding := w.GroundingNone
-	switch {
-	case in.Corroborated >= 2:
-		grounding = w.GroundingMany
-	case in.Corroborated == 1:
-		grounding = w.GroundingOne
-	}
-
-	computed := in.SignalConfidence * grounding
+	computed := in.SignalConfidence * groundingWeight(in.Corroborated, w)
 	if in.AlignmentOK {
 		computed *= 0.5 + 0.5*in.Alignment
 	}

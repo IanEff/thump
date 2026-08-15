@@ -93,6 +93,14 @@ func TestNewWALPublisher_RejectsEmptyWALDir(t *testing.T) {
 	}
 }
 
+func TestNewJournalPublisher_RejectsEmptyWALDir(t *testing.T) {
+	t.Parallel()
+	_, _, err := beat.NewJournalPublisher[int]("", "clank", "thump.reasoning", publish.DefaultWALConfig())
+	if err == nil {
+		t.Fatal("an empty WAL_DIR must be rejected, got nil error")
+	}
+}
+
 // TestExitOnError_TreatsALostBrokerAsAFailureNotACleanShutdown separates the
 // two cancelled contexts that otherwise look identical: a SIGTERM exits 0, a
 // broker that went away for good exits 1 so the orchestrator restarts the pod.

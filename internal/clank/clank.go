@@ -108,7 +108,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		}
 	}
 
-	kubeClient, argoClient := inClusterClients()
+	kubeClient, argoClient := InClusterClients()
 	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
 	model := anthropic.NewModel(cfg.AnthropicAPIKey, modelRequestTimeout)
@@ -179,7 +179,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// cfg.Inbox/Outbox/Outcomes are this path's env, not the process's —
 	// config.LoadClank only requires them when broker is false (mirrors
 	// rattle.go/hiss.go/thump.go's NATS_URL-first branch).
-	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages, recorder, weights, limits)
+	l := newLoop(cfg.Inbox, cfg.Outbox, cfg.Outcomes, cfg.Declines, model, tools, intake, cat, classes, store, cfg.DedupeWindow, tracer, stages, recorder, weights, limits, nil)
 	tr := &Transport{Inbox: cfg.Inbox, Engine: l.Engine, MaxProposeAttempts: limits.MaxProposeAttempts}
 	re := l.ReturnEdge
 	de := l.DeclineEdge
@@ -214,12 +214,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	return 0
 }
 
-// inClusterClients returns the typed client the kube evidence tool needs and
+// InClusterClients returns the typed client the kube evidence tool needs and
 // the dynamic client the ArgoCD change source needs, or nil for either when
-// clank isn't running as a pod. Every failure here degrades one capability
-// rather than stopping the beat, so each one says so at WARN and names what
-// is now missing.
-func inClusterClients() (kubernetes.Interface, dynamic.Interface) {
+// the caller isn't running as a pod. Every failure here degrades one
+// capability rather than stopping the caller, so each one says so at WARN
+// and names what is now missing.
+func InClusterClients() (kubernetes.Interface, dynamic.Interface) {
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		slog.Info("not running in-cluster — no kube evidence tool and no change source", "beat", "clank")

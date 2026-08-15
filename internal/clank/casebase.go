@@ -20,6 +20,7 @@ const maxCases = 10000 // CaseBase caps here; Append evicts the oldest case firs
 // outlives any single build, so renaming a Go field must not rename it on
 // disk.
 type Case struct {
+	RunID        string                `json:"runID"` // the transcripts/<runID> key Engine.Store sealed this run under — empty on a case mined before this field existed, never fabricated
 	SignalRef    string                `json:"signalRef"`
 	DecisionRef  string                `json:"decisionRef"`
 	OutcomeRef   string                `json:"outcomeRef"`
