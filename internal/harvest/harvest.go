@@ -20,7 +20,11 @@ import (
 	"github.com/ianeff/thump/internal/tlsx"
 )
 
-const restoreTimeout = 2 * time.Minute
+const (
+	restoreTimeout      = 2 * time.Minute
+	defaultRefusalGrace = 3 * time.Minute
+	defaultCooldown     = 10 * time.Minute
+)
 
 // Runner executes one shell-level step of a harvest: applying or deleting
 // a fault manifest, exec'ing a chaos script, or running a raw precondition
@@ -72,13 +76,19 @@ func verifyKubeContext(ctx context.Context, want string, check kubeContextChecke
 }
 
 type Harvest struct {
-	watcher Watcher
-	runner  Runner
-	sets    SetWatcher
+	legs         Legs
+	runner       Runner
+	refusalGrace time.Duration
 }
 
-func NewHarvest(w Watcher, r Runner, sw SetWatcher) *Harvest {
-	return &Harvest{watcher: w, runner: r, sets: sw}
+// NewHarvest builds a Harvest. refusalGrace of zero uses defaultRefusalGrace
+// — the window Settle waits after a detection for a proposal.Set to appear
+// on legs.Sets before calling the row refused.
+func NewHarvest(legs Legs, r Runner, refusalGrace time.Duration) *Harvest {
+	if refusalGrace <= 0 {
+		refusalGrace = defaultRefusalGrace
+	}
+	return &Harvest{legs: legs, runner: r, refusalGrace: refusalGrace}
 }
 
 // Run fires one scenario end to end: preflight -> preconditions -> fault
@@ -92,6 +102,7 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) 
 		ExpectedClass:    sc.Expects.FailureClass,
 		ExpectedContract: sc.Expects.ContractRef,
 		ExpectedVerdict:  sc.Expects.Verdict,
+		StartedAt:        time.Now(),
 	}
 
 	// The defer is registered before the preconditions loop runs, not
@@ -100,57 +111,69 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) 
 	// (sets a known-good value) so running one for a step that never
 	// applied is harmless.
 	defer func() {
+		res.EndedAt = time.Now()
 		rerr := h.restore(ctx, sc)
 		if rerr == nil {
 			return
 		}
-		if res.Err != nil {
-			res.Err = fmt.Errorf("%w (restore also failed: %w)", res.Err, rerr)
+		if err != nil {
+			err = fmt.Errorf("%w (restore also failed: %w)", err, rerr)
 		} else {
-			res.Err = fmt.Errorf("restore failed: %w", rerr)
+			err = fmt.Errorf("restore failed: %w", rerr)
 		}
-		err = res.Err
+		res.Err = err.Error()
 	}()
 
 	// Preconditions run in declared order; restore always runs, even on
 	// failure.
 	for _, p := range sc.Preconditions {
-		if err := h.runAction(ctx, p.Set); err != nil {
-			res.Err = fmt.Errorf("precondition %s: %w", p.Name, err)
-			return res, res.Err
+		if perr := h.runAction(ctx, p.Set); perr != nil {
+			walkErr := fmt.Errorf("precondition %s: %w", p.Name, perr)
+			res.Err = walkErr.Error()
+			return res, walkErr
 		}
 	}
 
-	if err := h.applyAction(ctx, sc.Fault); err != nil {
-		res.Err = fmt.Errorf("fault: %w", err)
-		return res, res.Err
+	if ferr := h.applyAction(ctx, sc.Fault); ferr != nil {
+		walkErr := fmt.Errorf("fault: %w", ferr)
+		res.Err = walkErr.Error()
+		return res, walkErr
 	}
 
-	o, err := Settle(ctx, h.watcher, sc.SignalRef, sc.SettleWindow)
-	if err != nil {
-		res.Err = err
+	term, serr := Settle(ctx, h.legs, sc.SignalRef, sc.SettleWindow, h.refusalGrace)
+	if serr != nil {
+		res.Err = serr.Error()
 		res.ActualResult = outcome.ResultUnknown
-		return res, res.Err
+		return res, serr
+	}
+	res.ActualVerdict = term.Verdict
+	res.ActualContract = term.ContractRef
+	res.ActualResult = term.Result
+
+	// A refused row published no Set by definition — the lookup below would
+	// only burn the rest of the settle window waiting for one that can never
+	// arrive.
+	if term.Verdict != "refused" {
+		// firstSetFor gets its own bounded context, the same shape Settle
+		// builds for itself — by the time the terminal above landed, the Set
+		// that led to it was published seconds ago, but confidence
+		// enrichment and the RunID join are a nice-to-have on Result, not a
+		// reason a whole harvest run should hang forever if this particular
+		// lookup never resolves.
+		setCtx, setCancel := context.WithTimeout(ctx, sc.SettleWindow)
+		if s, ok := firstSetFor(setCtx, h.legs.Sets, sc.SignalRef); ok {
+			res.RunID = s.RunID
+			if len(s.Proposals) > 0 {
+				top := s.Proposals[0]
+				res.EmittedConfidence = top.Confidence
+				res.ComputedConfidence = top.ComputedConfidence
+				res.CeilingBound = top.ConfidenceCeilingBound
+			}
+		}
+		setCancel()
 	}
 
-	// firstSetFor gets its own bounded context, the same shape Settle
-	// builds for itself — by the time the outcome above has settled, the
-	// Set that led to it was published seconds ago, but confidence
-	// enrichment is a nice-to-have on Result, not a reason a whole harvest
-	// run should hang forever if this particular lookup never resolves.
-	setCtx, setCancel := context.WithTimeout(ctx, sc.SettleWindow)
-	if s, ok := firstSetFor(setCtx, h.sets, sc.SignalRef); ok && len(s.Proposals) > 0 {
-		top := s.Proposals[0]
-		res.EmittedConfidence = top.Confidence
-		res.ComputedConfidence = top.ComputedConfidence
-		res.CeilingBound = top.ConfidenceCeilingBound
-	}
-	setCancel()
-
-	res.ActualResult = o.Result
-	if o.ObservedSeverity != nil {
-		res.EmittedConfidence = *o.ObservedSeverity
-	}
+	res.ObservedSeverity = term.ObservedSeverity
 
 	return res, nil
 }
@@ -200,12 +223,24 @@ type Result struct {
 	ScenarioName       string                `json:"scenarioName" yaml:"scenarioName"`
 	ExpectedClass      proposal.FailureClass `json:"expectedClass" yaml:"expectedClass"`
 	ExpectedContract   string                `json:"expectedContract" yaml:"expectedContract"`
-	ExpectedVerdict    string                `json:"expectedVerdict" yaml:"expectedVerdict"` // approved, held, or declined
+	ExpectedVerdict    string                `json:"expectedVerdict" yaml:"expectedVerdict"` // approved, held, declined, or refused
+	ActualVerdict      string                `json:"actualVerdict" yaml:"actualVerdict"`     // Terminal.Verdict — empty only when Err is set
+	ActualContract     string                `json:"actualContract" yaml:"actualContract"`
 	ActualResult       outcome.Result        `json:"actualResult" yaml:"actualResult"`
 	EmittedConfidence  float64               `json:"emittedConfidence" yaml:"emittedConfidence"`
 	ComputedConfidence float64               `json:"computedConfidence"`
 	CeilingBound       bool                  `json:"ceilingBound" yaml:"ceilingBound"`
-	Err                error                 `json:"err" yaml:"err"`
+	ObservedSeverity   *float64              `json:"observedSeverity,omitempty" yaml:"observedSeverity,omitempty"` // the convergence watcher's measured end state — never a proxy for EmittedConfidence
+	RunID              string                `json:"runID,omitempty" yaml:"runID,omitempty"`                       // joins to `task dev:transcript RUN=<id>`; empty on a refused row — nothing was ever proposed
+	RunIndex           int                   `json:"runIndex" yaml:"runIndex"`                                     // which repeat pass produced this row
+	StartedAt          time.Time             `json:"startedAt" yaml:"startedAt"`
+	EndedAt            time.Time             `json:"endedAt" yaml:"endedAt"`
+	// Err is the rendered error text, not the error interface itself:
+	// encoding/json refuses to unmarshal any non-null value into an
+	// interface-typed field other than interface{}, so a bare `error` field
+	// here would let harvest --json write a Result that harvest --json can
+	// never read back — exactly the read scorecard exists to do.
+	Err string `json:"err,omitempty" yaml:"err,omitempty"`
 }
 
 // Main runs every row of --scenarios (optionally narrowed by --row) against
@@ -228,11 +263,18 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	only := fs.String("row", "", "run only the scenario whose name contains this substring")
 	asJSON := fs.Bool("json", false, "print each Result as JSON instead of a human line")
 	kubeContext := fs.String("kube-context", "", "expected kubectl context — refuses to fire any scenario unless the active context matches; strongly recommended, omit only to fire without the check")
+	repeat := fs.Int("repeat", 1, "number of passes over the filtered table, round-robin across rows")
+	cooldown := fs.Duration("cooldown", defaultCooldown, "sleep after each row's restore, before the next fires — must outlive rattle's trailing burn window and clank's dedupe window")
+	refusalGrace := fs.Duration("refusal-grace", defaultRefusalGrace, "once a detection for a row's signalRef is seen, how long to wait for a proposal.Set before calling the row refused")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *scenariosPath == "" || *natsURL == "" {
-		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path --server-name name] [--row substring] [--json] [--kube-context name]")
+		_, _ = fmt.Fprintln(stderr, "usage: harvest --scenarios <path> --nats-url <url> [--tls-cert path --tls-key path --tls-ca path --server-name name] [--row substring] [--json] [--kube-context name] [--repeat N] [--cooldown duration] [--refusal-grace duration]")
+		return 2
+	}
+	if *repeat < 1 {
+		_, _ = fmt.Fprintln(stderr, "harvest: --repeat must be at least 1")
 		return 2
 	}
 
@@ -265,35 +307,68 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	defer closer()
 
-	h := NewHarvest(NewNATSWatcher(js), CommandRunner{}, NewNATSSetWatcher(js))
-	return run(ctx, h, table, *only, *asJSON, stdout, stderr)
+	legs := Legs{
+		Outcomes:   NewNATSWatcher(js),
+		Declines:   NewNATSDeclineWatcher(js),
+		Held:       NewNATSHeldWatcher(js),
+		Detections: NewNATSDetectionWatcher(js),
+		Sets:       NewNATSSetWatcher(js),
+	}
+	h := NewHarvest(legs, CommandRunner{}, *refusalGrace)
+	return run(ctx, h, table, *only, *asJSON, *repeat, *cooldown, stdout, stderr)
 }
 
 // run fires every scenario in table whose name contains only (all of them if
-// only is empty) against h, printing one Result per run — split out from
-// Main so a cancelled ctx's effect on restore is assertable without a live
-// NATS connection or an actual SIGTERM. Returns 1 if any scenario's own
-// execution failed, 0 otherwise.
-func run(ctx context.Context, h *Harvest, table Table, only string, asJSON bool, stdout, stderr io.Writer) int {
-	failed := false
+// only is empty) against h, repeat times round-robin across rows, printing
+// one Result per run — split out from Main so a cancelled ctx's effect on
+// restore is assertable without a live NATS connection or an actual SIGTERM.
+// Returns 1 if any scenario's own execution failed, 0 otherwise.
+func run(ctx context.Context, h *Harvest, table Table, only string, asJSON bool, repeat int, cooldown time.Duration, stdout, stderr io.Writer) int {
+	rows := make([]Scenario, 0, len(table.Scenarios))
 	for _, sc := range table.Scenarios {
-		if only != "" && !strings.Contains(sc.Name, only) {
-			continue
+		if only == "" || strings.Contains(sc.Name, only) {
+			rows = append(rows, sc)
 		}
-		res, runErr := h.Run(ctx, sc)
-		if runErr != nil {
-			failed = true
-		}
-		if asJSON {
-			if err := json.NewEncoder(stdout).Encode(res); err != nil {
-				_, _ = fmt.Fprintln(stderr, "harvest:", err)
-				return 1
-			}
-			continue
-		}
-		printResult(stdout, res)
 	}
 
+	failed := false
+	total := repeat * len(rows)
+	n := 0
+	for i := 0; i < repeat; i++ {
+		for _, sc := range rows {
+			if ctx.Err() != nil {
+				return exitCode(failed)
+			}
+			res, runErr := h.Run(ctx, sc)
+			res.RunIndex = i
+			n++
+			if runErr != nil {
+				failed = true
+			}
+			if asJSON {
+				if err := json.NewEncoder(stdout).Encode(res); err != nil {
+					_, _ = fmt.Fprintln(stderr, "harvest:", err)
+					return 1
+				}
+			} else {
+				printResult(stdout, res)
+			}
+
+			if n >= total {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return exitCode(failed)
+			case <-time.After(cooldown):
+			}
+		}
+	}
+
+	return exitCode(failed)
+}
+
+func exitCode(failed bool) int {
 	if failed {
 		return 1
 	}
@@ -302,13 +377,14 @@ func run(ctx context.Context, h *Harvest, table Table, only string, asJSON bool,
 
 func printResult(w io.Writer, res Result) {
 	status := "OK"
-	if res.Err != nil {
+	if res.Err != "" {
 		status = "ERR"
 	}
-	_, _ = fmt.Fprintf(w, "%-4s %-30s expected=%s/%s/%s actual=%s confidence=%.3f computed=%.3f ceiling=%t",
-		status, res.ScenarioName, res.ExpectedClass, res.ExpectedContract, res.ExpectedVerdict,
-		res.ActualResult, res.EmittedConfidence, res.ComputedConfidence, res.CeilingBound)
-	if res.Err != nil {
+	_, _ = fmt.Fprintf(w, "%-4s %-30s run=%-2d expected=%s/%s/%s actual=%s/%s/%s runID=%s confidence=%.3f computed=%.3f ceiling=%t",
+		status, res.ScenarioName, res.RunIndex, res.ExpectedClass, res.ExpectedContract, res.ExpectedVerdict,
+		res.ActualContract, res.ActualVerdict, res.ActualResult, res.RunID,
+		res.EmittedConfidence, res.ComputedConfidence, res.CeilingBound)
+	if res.Err != "" {
 		_, _ = fmt.Fprintf(w, " err=%q", res.Err)
 	}
 	_, _ = fmt.Fprintln(w)

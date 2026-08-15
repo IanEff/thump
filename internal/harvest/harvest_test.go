@@ -93,7 +93,8 @@ func TestHarvest_RestoresEveryPreconditionWhenTheRunIsCancelledMidFlight(t *test
 	}
 
 	runner := &recordingRunner{}
-	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
+	h := harvest.NewHarvest(legs, runner, 0)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -160,13 +161,14 @@ func TestRun_RestoresThePreconditionsWhenTheHarvestIsCancelledMidFlight(t *testi
 	}
 
 	runner := &recordingRunner{}
-	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
+	h := harvest.NewHarvest(legs, runner, 0)
 	table := harvest.Table{Scenarios: []harvest.Scenario{sc}}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() {
-		harvest.RunForTest(ctx, h, table, "", false, io.Discard, io.Discard)
+		harvest.RunForTest(ctx, h, table, "", false, 1, 0, io.Discard, io.Discard)
 		close(done)
 	}()
 
@@ -258,7 +260,8 @@ func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t 
 	}
 
 	runner := &failingRunner{failOn: "argocd"}
-	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
+	h := harvest.NewHarvest(legs, runner, 0)
 
 	if _, err := h.Run(t.Context(), sc); err == nil {
 		t.Fatal("Run succeeded despite a failing precondition")
@@ -295,15 +298,20 @@ func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
 			{ContractRef: "restart-pod", Confidence: 0.7, ComputedConfidence: 0.65, ConfidenceCeilingBound: true},
 		},
 	}
-	h := harvest.NewHarvest(feedWatcher{outcome.ResultSuccess}, &recordingRunner{}, feedSetWatcher{set})
+	legs := harvest.Legs{Outcomes: feedWatcher{outcome.ResultSuccess}, Sets: feedSetWatcher{set}}
+	h := harvest.NewHarvest(legs, &recordingRunner{}, 0)
 
 	res, err := h.Run(t.Context(), sc)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// StartedAt/EndedAt are wall-clock timestamps Run stamps itself — not
+	// part of the confidence-enrichment claim this test pins.
+	res.StartedAt, res.EndedAt = time.Time{}, time.Time{}
 
 	want := harvest.Result{
 		ScenarioName:       sc.Name,
+		ActualVerdict:      "approved",
 		ActualResult:       outcome.ResultSuccess,
 		EmittedConfidence:  0.7,
 		ComputedConfidence: 0.65,

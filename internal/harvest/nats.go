@@ -7,8 +7,10 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/wire"
 )
@@ -47,6 +49,47 @@ func NewNATSSetWatcher(js jetstream.JetStream) *NATSSetWatcher { return &NATSSet
 // SignalRef filter keeps a full replay correct even when it isn't cheap.
 func (w *NATSSetWatcher) Sets(ctx context.Context) (<-chan proposal.Set, error) {
 	return watchSubject[proposal.Set](ctx, w.js, "thump.proposals", jetstream.DeliverAllPolicy)
+}
+
+// NATSDeclineWatcher satisfies DeclineWatcher against a live cluster,
+// staying off any durable consumer for the same reason NATSWatcher does.
+type NATSDeclineWatcher struct{ js jetstream.JetStream }
+
+// NewNATSDeclineWatcher builds a DeclineWatcher over an already-connected js.
+func NewNATSDeclineWatcher(js jetstream.JetStream) *NATSDeclineWatcher {
+	return &NATSDeclineWatcher{js: js}
+}
+
+// Declines starts from "now", matching Outcomes: a harvest scenario watches
+// for the decline its own fault produces, never a backlog.
+func (w *NATSDeclineWatcher) Declines(ctx context.Context) (<-chan decision.Decision, error) {
+	return watchSubject[decision.Decision](ctx, w.js, "thump.declines", jetstream.DeliverNewPolicy)
+}
+
+// NATSHeldWatcher satisfies HeldWatcher against a live cluster.
+type NATSHeldWatcher struct{ js jetstream.JetStream }
+
+// NewNATSHeldWatcher builds a HeldWatcher over an already-connected js.
+func NewNATSHeldWatcher(js jetstream.JetStream) *NATSHeldWatcher {
+	return &NATSHeldWatcher{js: js}
+}
+
+// Held starts from "now", matching Outcomes.
+func (w *NATSHeldWatcher) Held(ctx context.Context) (<-chan decision.Governed, error) {
+	return watchSubject[decision.Governed](ctx, w.js, "thump.held", jetstream.DeliverNewPolicy)
+}
+
+// NATSDetectionWatcher satisfies DetectionWatcher against a live cluster.
+type NATSDetectionWatcher struct{ js jetstream.JetStream }
+
+// NewNATSDetectionWatcher builds a DetectionWatcher over an already-connected js.
+func NewNATSDetectionWatcher(js jetstream.JetStream) *NATSDetectionWatcher {
+	return &NATSDetectionWatcher{js: js}
+}
+
+// Detections starts from "now", matching Outcomes.
+func (w *NATSDetectionWatcher) Detections(ctx context.Context) (<-chan signal.Detection, error) {
+	return watchSubject[signal.Detection](ctx, w.js, "thump.detections", jetstream.DeliverNewPolicy)
 }
 
 // watchSubject opens an ordered consumer scoped to ctx and streams every

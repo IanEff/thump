@@ -3,8 +3,10 @@ package harvest_test
 import (
 	"context"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/api/v1/signal"
 )
 
 // feedWatcher replays a fixed sequence of Results on one fingerprint,
@@ -37,6 +39,41 @@ func (f feedSetWatcher) Sets(context.Context) (<-chan proposal.Set, error) {
 	ch := make(chan proposal.Set, len(f))
 	for _, s := range f {
 		ch <- s
+	}
+	close(ch)
+	return ch, nil
+}
+
+// feedDeclineWatcher, feedHeldWatcher, and feedDetectionWatcher mirror
+// feedWatcher for Settle's other three legs — a fixed sequence, then closed.
+type feedDeclineWatcher []decision.Decision
+
+func (f feedDeclineWatcher) Declines(context.Context) (<-chan decision.Decision, error) {
+	ch := make(chan decision.Decision, len(f))
+	for _, d := range f {
+		ch <- d
+	}
+	close(ch)
+	return ch, nil
+}
+
+type feedHeldWatcher []decision.Governed
+
+func (f feedHeldWatcher) Held(context.Context) (<-chan decision.Governed, error) {
+	ch := make(chan decision.Governed, len(f))
+	for _, g := range f {
+		ch <- g
+	}
+	close(ch)
+	return ch, nil
+}
+
+type feedDetectionWatcher []signal.Detection
+
+func (f feedDetectionWatcher) Detections(context.Context) (<-chan signal.Detection, error) {
+	ch := make(chan signal.Detection, len(f))
+	for _, d := range f {
+		ch <- d
 	}
 	close(ch)
 	return ch, nil
