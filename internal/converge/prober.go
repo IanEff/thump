@@ -11,6 +11,7 @@ package converge
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -76,6 +77,9 @@ func (p *Prober) query(ctx context.Context, query string) (float64, bool) {
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return 0, false
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false // a metric that isn't a number isn't a reading; unmeasured, not zero
 	}
 	return f, true
 }
