@@ -103,7 +103,7 @@ scenarios:
       apply: exec
       args: [inject]
     expects:
-      failureClass: dependency_saturation
+      failureClass: service_failure
       contractRef: acme-shed-load
       verdict: approved
     settleWindow: 15m
