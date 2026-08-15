@@ -286,12 +286,22 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev evidence.Config, ku
 		}
 	}
 
+	if cfg.TempoURL == "" {
+		slog.Warn("no TEMPO_URL - clank will run without traces evidence")
+	} else {
+		tools["traces"] = &evidence.TracesTool{
+			BaseURL:  cfg.TempoURL,
+			Client:   httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
+			Subjects: ev.Index,
+		}
+	}
+
 	if kube != nil {
 		tools["kube"] = &evidence.KubeTool{Client: kube, Subjects: ev.Index}
 	}
 
-	if len(ev.Index) == 0 && (tools["loki"] != nil || tools["kube"] != nil) {
-		slog.Warn("no subject rules configured — loki and kube evidence can corroborate but never ground",
+	if len(ev.Index) == 0 && (tools["loki"] != nil || tools["kube"] != nil || tools["traces"] != nil) {
+		slog.Warn("no subject rules configured — loki, kube and traces evidence can corroborate but never ground",
 			"beat", "clank", "fix", "add a subjects: block to EVIDENCE_QUERIES")
 	}
 

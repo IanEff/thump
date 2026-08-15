@@ -105,6 +105,14 @@ func TestSubjectIndex_For(t *testing.T) {
 			coords: subjects.Coordinates{Namespace: "rook-ceph", Kind: "CephFilesystem", Name: "myfs"},
 			want:   "",
 		},
+		"For resolves through loki rule alone when index carries both traces and loki rules": {
+			index: subjects.SubjectIndex{
+				{Subject: "cart", Plane: "traces", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"resource.service.name": "cart"}}},
+				{Subject: "cart", Plane: "loki", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"service_name": "cart"}}},
+			},
+			coords: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"service_name": "cart"}},
+			want:   "cart",
+		},
 	}
 
 	for name, tc := range tests {
@@ -142,6 +150,13 @@ func TestSubjectIndex_Selectors(t *testing.T) {
 			},
 			plane: "kube",
 			want:  nil,
+		},
+		"Selectors renders trace rules when plane is traces": {
+			index: subjects.SubjectIndex{
+				{Subject: "cart", Plane: "traces", Coordinates: subjects.Coordinates{Namespace: "otel-demo", Labels: map[string]string{"resource.service.name": "cart"}}},
+			},
+			plane: "traces",
+			want:  []string{"cart: namespace=otel-demo, resource.service.name=cart"},
 		},
 		"Selectors includes an untagged rule on every plane": {
 			index: subjects.SubjectIndex{

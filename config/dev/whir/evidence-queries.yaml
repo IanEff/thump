@@ -153,6 +153,33 @@ subjects:
     labels:
       app.kubernetes.io/name: flagd
 
+  # Distributed traces in Tempo.
+  - subject: cart
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: cart
+  - subject: checkout
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: checkout
+  - subject: frontend
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: frontend
+  - subject: product-catalog
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: product-catalog
+  - subject: flagd
+    namespace: otel-demo
+    plane: traces
+    labels:
+      resource.service.name: flagd
+
   # The demo names each service's Deployment after the service itself, which
   # is also the catalog entity name.
   - subject: cart
@@ -191,3 +218,5 @@ subjects:
     namespace: acme
     kind: Deployment
     name: acme-api
+
+  # acme-api is absent from Tempo's service list (observed 2026-08-15); no traces rule authored.

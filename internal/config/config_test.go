@@ -27,6 +27,7 @@ func setClankEnv(t *testing.T) {
 		"PROM_URL":           "http://prom:9090",
 		"EVIDENCE_QUERIES":   "/etc/evidence-queries.yaml",
 		"LOKI_URL":           "http://loki:3100",
+		"TEMPO_URL":          "http://tempo:3100",
 		"WHIR_CATALOG":       "/etc/catalog-info.yaml",
 		"WHIR_STATE_QUERIES": "/etc/state-queries.yaml",
 		"CLANK_TRANSCRIPTS":  "/var/run/transcripts",
@@ -73,6 +74,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 		PromURL:          "http://prom:9090",
 		EvidenceQueries:  "/etc/evidence-queries.yaml",
 		LokiURL:          "http://loki:3100",
+		TempoURL:         "http://tempo:3100",
 		WhirCatalog:      "/etc/catalog-info.yaml",
 		WhirStateQueries: "/etc/state-queries.yaml",
 		Transcripts:      "/var/run/transcripts",
@@ -100,7 +102,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
 	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
 	t.Setenv("CLANK_DECLINES", "/var/run/declines")
-	for _, name := range []string{"PROM_URL", "EVIDENCE_QUERIES", "LOKI_URL", "WHIR_CATALOG", "WHIR_STATE_QUERIES", "CLANK_TRANSCRIPTS"} {
+	for _, name := range []string{"PROM_URL", "EVIDENCE_QUERIES", "LOKI_URL", "TEMPO_URL", "WHIR_CATALOG", "WHIR_STATE_QUERIES", "CLANK_TRANSCRIPTS"} {
 		t.Setenv(name, "")
 	}
 

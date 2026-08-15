@@ -28,6 +28,11 @@ prometheus:
 loki:
   url: http://loki.logging.svc.cluster.local:3100
 
+# Tempo search/query URL for distributed traces (read-only search on port 3100).
+# VERIFY against the lab: `kubectl -n tracing get svc` before committing.
+tempo:
+  url: http://tempo.tracing.svc.cluster.local:3100
+
 # internal/notify/slack.Webhook POSTs a one-line digest of every held/
 # escalated decision here (buildNotifier warns and runs with no notifier
 # when this is empty). Nothing about the wire format is Slack-specific —
