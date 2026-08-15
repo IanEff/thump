@@ -164,6 +164,20 @@ func TestReadCorpus_RecoversTheFingerprintAPreTagArtifactLost(t *testing.T) {
 	}
 }
 
+func TestReadCorpus_LeavesRunIDEmptyOnAnArtifactThatPredatesTheField(t *testing.T) {
+	t.Parallel()
+	// v2 never had RunID at all — decoding it must leave the field at its
+	// zero value, not fabricate one the way migrateLegacy recovers SignalRef
+	// for the pre-tag layout.
+	got, err := corpus.ReadCorpusForTest("testdata/corpus-v2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff("", got.Cases[0].RunID); diff != "" {
+		t.Error("a pre-RunID artifact should decode with RunID empty, not guessed", diff)
+	}
+}
+
 func TestReadCorpus_RefusesAnArtifactNewerThanThisBuildWrites(t *testing.T) {
 	t.Parallel()
 	// A best-effort decode of an unknown layout is what produced six cases

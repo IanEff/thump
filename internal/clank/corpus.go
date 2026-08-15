@@ -10,8 +10,10 @@ import (
 
 // CorpusVersion is the artifact layout this build writes — readCorpus
 // migrates anything older and refuses anything newer, since a best-effort
-// decode of an unknown layout is how a field goes silently empty.
-const CorpusVersion = 2
+// decode of an unknown layout is how a field goes silently empty. v3 adds
+// Case.RunID; an artifact written before it decodes with RunID left empty,
+// never reconstructed.
+const CorpusVersion = 3
 
 // Corpus is the calibration record: every closed loop the engine has
 // emitted, joined from a shaped WAL rather than computed.
