@@ -44,8 +44,10 @@ data:
                 self.send_response(200)
                 self.end_headers()
 
-        def log_message(self, *args):
-            pass
+        def log_message(self, format, *args):
+            if "/metrics" in (args[0] if args else ""):
+                return
+            super().log_message(format, *args)
 
     def driver():
         while True:

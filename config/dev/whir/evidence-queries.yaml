@@ -176,9 +176,12 @@ subjects:
     kind: Deployment
     name: flagd
 
-  # acme-api emits zero log lines (confirmed live: absent from Loki's
-  # service_name values) — no loki plane rule; a loki selector here would be
-  # as inert as leaving the subject unadvertised.
+  # acme-api emits access and error logs to stdout/stderr.
+  - subject: acme-api
+    namespace: acme
+    plane: loki
+    labels:
+      service_name: acme-api
   - subject: acme-api
     namespace: acme
     plane: kube
