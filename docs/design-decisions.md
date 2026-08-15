@@ -514,14 +514,17 @@ A track that measures and declines to turn the knob counts as closed.
 
 ## D-20 · Weights are authored, not learned, until the corpus holds N real settled cases — **Ratified** (2026-08-07)
 
-Today, N = 1.
+For a reasonable trust curve, N needs to be something closer to 20–30. For now,
+authoring keeps expectations sane. `rca`/`replay`/`tune` don't stop existing — they
+stop being tuners and become the thing that measures N and guards against regression.
+N = 20–30 is the re-entry criterion: the number that has to be true before calibration
+reopens on evidence instead of on vibes.
 
-For a reasonable trust curve, that number needs to be something closer to
-20–30. For now, authoring keeps expectations sane. `rca`/`replay`/`tune`
-don't stop existing — they stop being tuners and become the thing that
-measures N and guards against regression. N = 20–30 is the re-entry
-criterion: the number that has to be true before calibration reopens on
-evidence instead of on vibes.
+That count is no longer read off by inspection. `calipers corpus` (`internal/corpus/mine.go`)
+reports the current N as its labelled-case bucket, and `internal/tune/tune.go`'s
+`minLabelledCases = 20` const enforces the bar mechanically: a sweep short of it returns
+`NotYet` naming the shortfall (`"N labelled cases (M short of 20) — not enough to sweep
+confidently"`) instead of running.
 
 ## D-21 · A cancelled context is not a context — **Ratified** (2026-08-07)
 
@@ -666,6 +669,27 @@ the gate check at the real call site and the guard test catches it. No repo-wide
 enforces the boundary itself yet, the way `TestNotifierSDKNeverReachesCoreBeats` enforces
 its own; a grep-shaped guard for "no `.Publish` call site ever names `thump.reasoning`"
 is the natural next hardening, left for later.
+
+## D-29 · The gate's false negatives are unlabelled by construction — **Parked** (2026-08-15)
+
+An executed action gets a terminal verdict for free — the convergence watcher settles it
+(`internal/thump/converger.go`) or `reversal.go` undoes it. An escalated or held candidate
+gets one too — an operator resolves hiss's `ApprovalRequest`. A declined candidate gets
+neither. `grade.FromRecord` (`internal/grade/grade.go:51-53`) falls through to its
+`default` case and returns `Label{}, false` — nothing in the record ever settles whether
+the decline was right. `corpus.mine` counts the population rather than guessing at it: the
+`unlabelled (declined; no verdict exists)` bucket in its report (`internal/corpus/mine.go:262`)
+is a population to argue with, never a row the tuner infers a label for.
+
+**Why not infer one?** An executed or escalated run gets its verdict from something that
+already had to happen anyway — convergence, or an operator's approval. A decline has no
+such forcing function: rattle's own signal either clears on its own or the incident
+recurs and re-triggers, and nothing today watches that burn series back to the run that
+declined. That watcher is real, scoped work — wiring a signal's post-decline history to
+its RunID — and fabricating a label here would plant a guess at the root of every future
+weight sweep, the exact failure mode D-19 exists to prevent. The one candidate future
+source is that burn series — did the signal clear on its own, and how fast — recorded
+here as the named next step, not built.
 
 ## Departures from other source material
 

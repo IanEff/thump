@@ -60,7 +60,7 @@ refusals, and reversing one is a charter change.
 | The model never invents an action | It selects from an authored catalog, or it is refused. It also cannot invent a magnitude the action's author didn't authorize, nor convert its own request into permission — that verb is hiss's alone | `ErrOutsideCatalog`, `internal/contract/contract.go:20` |
 | `InsecureSkipVerify` is never a declared exception | A plaintext leg can be authored with its reason on record. An unauthenticated TLS session dressed as a secure one cannot | `internal/httpx/tripwire_test.go:210`, categorical — `declaredPlaintext` exempts `WithInsecure` only |
 | The operator CLI never ships as a container image | Cluster-mutating startup work belongs to a one-shot Job (`cmd/bootstrap`), so the operator surface doesn't need to run in-cluster to be useful | `Taskfile.yaml`'s `CALIPERS`, held out of `IMAGE_BEATS` |
-| Confidence weights are authored, never fitted to a corpus this small | The re-entry criterion is written down so it stops being re-litigated each time someone notices the numbers are hand-set. Today the case base holds one settled incident | `docs/design-decisions.md` D-20 |
+| Confidence weights are authored, never fitted to a corpus this small | The re-entry criterion is written down so it stops being re-litigated each time someone notices the numbers are hand-set: N labelled cases, as counted by `calipers corpus`, not a judgement made by eye | `docs/design-decisions.md` D-20 |
 | Coverage is never the goal | One lab, two unrelated domains, chosen so a fault in one can never be matched by an action authored for the other | `chaos/scenarios.yaml` — the two rows share no failure class |
 
 **Not a CRD control plane** is the one that needs more than a row. Detections, proposals,
