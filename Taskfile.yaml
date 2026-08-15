@@ -500,6 +500,22 @@ tasks:
     cmds:
       - go run ./cmd/calipers approve {{.FP}} --nats-url tls://localhost:4222 --tls-cert bin/certs/tls.crt --tls-key bin/certs/tls.key --tls-ca bin/certs/ca.crt --server-name nats.thump.svc
 
+  harvest:dev:
+    desc: "Run a harvest scenario against dev: task harvest:dev ROW=cart-failure [REPEAT=1] (requires task dev:certs, Tilt's 4222 forward up)"
+    requires:
+      vars: [ROW]
+    cmds:
+      - mkdir -p bin/harvest
+      - |
+        go run ./cmd/calipers harvest \
+          --scenarios chaos/scenarios-dev.yaml \
+          --kube-context k3d-thump-dev \
+          --nats-url tls://localhost:4222 \
+          --tls-cert bin/certs/tls.crt --tls-key bin/certs/tls.key --tls-ca bin/certs/ca.crt \
+          --server-name nats.thump.svc \
+          --row "{{.ROW}}" --repeat "{{.REPEAT | default 1}}" \
+          --json | tee bin/harvest/$(date +%s).jsonl
+
   # dev's S3 is in-cluster s3mock, unreachable from the laptop at the
   # endpoint its own secret advertises — port-forward and override. Local
   # 9091, not 9090: Tilt already forwards Prometheus there.
