@@ -10,6 +10,7 @@ import (
 	"github.com/ianeff/thump/internal/reason"
 	"github.com/ianeff/thump/internal/schema"
 	"github.com/ianeff/thump/internal/subjects"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
@@ -89,7 +90,7 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 		}
 		var statuses []string
 		for _, p := range list.Items {
-			statuses = append(statuses, fmt.Sprintf("%s (%s)", p.Name, p.Status.Phase))
+			statuses = append(statuses, podDigest(p))
 		}
 		summary = strings.Join(statuses, ", ")
 	default:
@@ -110,4 +111,44 @@ func (k *KubeTool) Run(ctx context.Context, args json.RawMessage) (proposal.Evid
 		Live:    true,
 		Subject: subject,
 	}, nil
+}
+
+// podDigest renders one pod as the shortest line that can still distinguish a
+// healthy pod from a failing one. A pod whose containers are all healthy is
+// rendered as "name (Phase)" so the common healthy case stays byte-stable.
+func podDigest(p corev1.Pod) string {
+	var (
+		restarts      int32
+		lastReason    string
+		waitingReason string
+		hasNotReady   bool
+	)
+	for _, cs := range p.Status.ContainerStatuses {
+		restarts += cs.RestartCount
+		if lastReason == "" && cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.Reason != "" {
+			lastReason = cs.LastTerminationState.Terminated.Reason
+		}
+		if waitingReason == "" && cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			waitingReason = cs.State.Waiting.Reason
+		}
+		if !cs.Ready {
+			hasNotReady = true
+		}
+	}
+
+	clauses := []string{string(p.Status.Phase)}
+	if restarts > 0 {
+		clauses = append(clauses, fmt.Sprintf("restarts=%d", restarts))
+	}
+	if lastReason != "" {
+		clauses = append(clauses, fmt.Sprintf("last: %s", lastReason))
+	}
+	if waitingReason != "" {
+		clauses = append(clauses, fmt.Sprintf("waiting: %s", waitingReason))
+	}
+	if hasNotReady && p.Status.Phase == corev1.PodRunning && waitingReason == "" {
+		clauses = append(clauses, "notReady")
+	}
+
+	return fmt.Sprintf("%s (%s)", p.Name, strings.Join(clauses, ", "))
 }
