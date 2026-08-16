@@ -212,3 +212,87 @@ func TestKubeTool_SpecAdvertisesEveryAuthoredPodSelectorRatherThanOneWorkedExamp
 		t.Error("kube Spec description advertised a loki-only selector", desc)
 	}
 }
+
+// TestKubeTool_Run_DigestsWhyAPodIsUnhealthyNotJustItsPhase pins that abnormal
+// container states are appended to the pod summary — phase alone is not health,
+// and a crash-looping container inside a Running pod cannot be reported as healthy.
+func TestKubeTool_Run_DigestsWhyAPodIsUnhealthyNotJustItsPhase(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		pod  *corev1.Pod
+		want string
+	}{
+		"Run given a healthy pod renders exactly the phase and nothing else": {
+			pod:  pod("cart-0", corev1.PodRunning, containerStatus{ready: true}),
+			want: "cart-0 (Running)",
+		},
+		"Run given a pod whose container is crash-looping names the restarts and both reasons": {
+			pod: pod("cart-0", corev1.PodRunning, containerStatus{
+				restarts: 6, lastTerminated: "OOMKilled", waiting: "CrashLoopBackOff",
+			}),
+			want: "cart-0 (Running, restarts=6, last: OOMKilled, waiting: CrashLoopBackOff)",
+		},
+		"Run given a Running pod with an unready container says so": {
+			pod:  pod("cart-0", corev1.PodRunning, containerStatus{restarts: 2, lastTerminated: "Error"}),
+			want: "cart-0 (Running, restarts=2, last: Error, notReady)",
+		},
+		"Run given a Pending pod omits notReady because a pending pod is trivially not ready": {
+			pod:  pod("cart-0", corev1.PodPending, containerStatus{waiting: "ImagePullBackOff"}),
+			want: "cart-0 (Pending, waiting: ImagePullBackOff)",
+		},
+		"Run given a multi-container pod sums restarts and reports the first reason once": {
+			pod: pod("cart-0", corev1.PodRunning,
+				containerStatus{restarts: 2, waiting: "CrashLoopBackOff"},
+				containerStatus{restarts: 3, waiting: "CrashLoopBackOff"}),
+			want: "cart-0 (Running, restarts=5, waiting: CrashLoopBackOff)",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			tool := &evidence.KubeTool{Client: fake.NewSimpleClientset(tc.pod)}
+			got, err := tool.Run(t.Context(), json.RawMessage(`{"resource":"pods","namespace":"otel-demo"}`))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if diff := cmp.Diff(tc.want, got.Summary); diff != "" {
+				t.Error("wrong pod digest (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
+type containerStatus struct {
+	ready          bool
+	restarts       int32
+	lastTerminated string
+	waiting        string
+}
+
+func pod(name string, phase corev1.PodPhase, statuses ...containerStatus) *corev1.Pod {
+	var cStatuses []corev1.ContainerStatus
+	for _, s := range statuses {
+		cs := corev1.ContainerStatus{
+			Ready:        s.ready,
+			RestartCount: s.restarts,
+		}
+		if s.lastTerminated != "" {
+			cs.LastTerminationState = corev1.ContainerState{
+				Terminated: &corev1.ContainerStateTerminated{Reason: s.lastTerminated},
+			}
+		}
+		if s.waiting != "" {
+			cs.State = corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{Reason: s.waiting},
+			}
+		}
+		cStatuses = append(cStatuses, cs)
+	}
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "otel-demo"},
+		Status: corev1.PodStatus{
+			Phase:             phase,
+			ContainerStatuses: cStatuses,
+		},
+	}
+}

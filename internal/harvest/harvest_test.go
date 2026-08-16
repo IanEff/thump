@@ -93,7 +93,8 @@ func TestHarvest_RestoresEveryPreconditionWhenTheRunIsCancelledMidFlight(t *test
 	}
 
 	runner := &recordingRunner{}
-	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
+	h := harvest.NewHarvest(legs, runner, 0, nil)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -160,13 +161,14 @@ func TestRun_RestoresThePreconditionsWhenTheHarvestIsCancelledMidFlight(t *testi
 	}
 
 	runner := &recordingRunner{}
-	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
+	h := harvest.NewHarvest(legs, runner, 0, nil)
 	table := harvest.Table{Scenarios: []harvest.Scenario{sc}}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() {
-		harvest.RunForTest(ctx, h, table, "", false, io.Discard, io.Discard)
+		harvest.RunForTest(ctx, h, table, "", false, 1, 0, io.Discard, io.Discard)
 		close(done)
 	}()
 
@@ -188,6 +190,33 @@ func TestRun_RestoresThePreconditionsWhenTheHarvestIsCancelledMidFlight(t *testi
 		if !containsCall(calls, want) {
 			t.Errorf("restore did not run %q; calls were %v", want, calls)
 		}
+	}
+}
+
+// TestHarvest_RunFailsLoudlyOnADeadBrokerBeforeTheFaultEverFires pins that a
+// liveness failure produces ErrBrokerUnreachable rather than the
+// settle-timeout shape a dead tunnel used to produce, and never applies the
+// fault — a dead broker means the watch leg was always doomed, so injecting
+// the fault would only strand the rig.
+func TestHarvest_RunFailsLoudlyOnADeadBrokerBeforeTheFaultEverFires(t *testing.T) {
+	t.Parallel()
+	sc := harvest.Scenario{
+		Name:         "dead-tunnel",
+		Fault:        harvest.Action{Path: "chaos/x.yaml", Apply: "kubectl"},
+		Restore:      harvest.Action{Path: "chaos/x.yaml", Apply: "kubectl-delete"},
+		SettleWindow: time.Minute,
+	}
+
+	runner := &recordingRunner{}
+	live := func(context.Context) error { return errors.New("dial timeout") }
+	h := harvest.NewHarvest(harvest.Legs{}, runner, 0, live)
+
+	_, err := h.Run(t.Context(), sc)
+	if !errors.Is(err, harvest.ErrBrokerUnreachable) {
+		t.Error("want ErrBrokerUnreachable", err)
+	}
+	if containsCall(runner.snapshot(), "kubectl apply -f chaos/x.yaml") {
+		t.Error("Run applied the fault despite a failed liveness check")
 	}
 }
 
@@ -227,10 +256,9 @@ func (r *failingRunner) snapshot() []string {
 }
 
 // TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails
-// pins a bug found live 2026-08-06: the restore defer used to be registered
-// after the preconditions loop, so a precondition failing partway through
-// returned before the defer ever ran, leaving every precondition applied
-// before it permanently unrestored on a real rig.
+// pins that a precondition failing partway through Run doesn't strand the
+// rig: every precondition that already applied has its restore command run,
+// in reverse order, and the fault itself is never applied.
 func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t *testing.T) {
 	t.Parallel()
 	sc := harvest.Scenario{
@@ -245,9 +273,8 @@ func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t 
 				Restore: "ceph config set global mon_osd_down_out_interval 600",
 			},
 			{
-				Name:    "argocd-selfheal-off",
-				Set:     "kubectl -n argocd patch application rook-operator --type merge -p bad-json",
-				Restore: "kubectl -n argocd patch application rook-operator --type merge -p good-json",
+				Name: "argocd-disable",
+				Set:  "argocd app set --sync-policy manual", Restore: "argocd app set --sync-policy automated",
 			},
 		},
 		Expects:      harvest.Expects{Verdict: "held"},
@@ -258,7 +285,8 @@ func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t 
 	}
 
 	runner := &failingRunner{failOn: "argocd"}
-	h := harvest.NewHarvest(blockingWatcher{}, runner, feedSetWatcher(nil))
+	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
+	h := harvest.NewHarvest(legs, runner, 0, nil)
 
 	if _, err := h.Run(t.Context(), sc); err == nil {
 		t.Fatal("Run succeeded despite a failing precondition")
@@ -271,12 +299,9 @@ func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t 
 	}
 }
 
-// TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet pins the win
-// path NewHarvest's missing third argument used to crash: h.sets was never
-// wired, so firstSetFor's call on a nil SetWatcher panicked the instant a
-// scenario actually settled rather than timing out. This is the only test
-// in the package that lets Settle succeed, which is exactly why the bug
-// went uncaught.
+// TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet pins that a
+// settled row's confidence fields come from the Set Settle itself observed
+// for the row's own signalRef, not a fabricated or stale value.
 func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
 	t.Parallel()
 	const fp = "slo_burn:ceph-cluster"
@@ -295,15 +320,22 @@ func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
 			{ContractRef: "restart-pod", Confidence: 0.7, ComputedConfidence: 0.65, ConfidenceCeilingBound: true},
 		},
 	}
-	h := harvest.NewHarvest(feedWatcher{outcome.ResultSuccess}, &recordingRunner{}, feedSetWatcher{set})
+	fixture := newOrderedSetThenTerminal(set)
+	fixture.outcomes = []outcome.Outcome{{SignalRef: fp, Result: outcome.ResultSuccess}}
+	legs := harvest.Legs{Outcomes: fixture, Sets: fixture}
+	h := harvest.NewHarvest(legs, &recordingRunner{}, 0, nil)
 
 	res, err := h.Run(t.Context(), sc)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// StartedAt/EndedAt are wall-clock timestamps Run stamps itself — not
+	// part of the confidence-enrichment claim this test pins.
+	res.StartedAt, res.EndedAt = time.Time{}, time.Time{}
 
 	want := harvest.Result{
 		ScenarioName:       sc.Name,
+		ActualVerdict:      "approved",
 		ActualResult:       outcome.ResultSuccess,
 		EmittedConfidence:  0.7,
 		ComputedConfidence: 0.65,

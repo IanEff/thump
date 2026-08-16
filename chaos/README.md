@@ -97,7 +97,10 @@ action — `osd-pod-failure-autonomous.yaml` (480s/300s) exercises `hold-rebalan
 otel-demo's flag ConfigMap. `pg-num-starve.sh`, `rgw-ratelimit-starve.sh`, and
 `rgw-user-suspend.sh` route Ceph-side faults through `kubectl exec -n rook-ceph
 deploy/rook-ceph-tools -- ceph …` — there is no `ceph` binary on the runner's PATH, and a
-bare `ceph` call in a precondition exits 127.
+bare `ceph` call in a precondition exits 127. `crashloop.sh inject|restore` patches a
+Deployment's container memory limit below what the process needs, producing a real
+kernel-enforced `OOMKilled`/`CrashLoopBackOff` — generalist by design, namespace/deployment
+picked by env var (defaults to `otel-demo`/`product-catalog`), no app knowledge baked in.
 
 ## Two things that cost real time
 

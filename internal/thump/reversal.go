@@ -34,14 +34,17 @@ type ReversalWatcher struct {
 type Settlement struct {
 	Converged bool     // the terminal outcome's input — success vs partial_non_converging
 	Fire      bool     // whether Undo runs at all; true on non-convergence, or on a win the contract authored a restore for
+	Held      bool     // a loss that o.Reversal.HoldOnMiss deliberately suppressed the undo for — distinct from a met window, where nothing needed holding
 	Undo      Order    // the reversal Order, zero when Fire is false
 	Severity  *float64 // nil stays nil — unmeasured never becomes a fabricated 0.0
 }
 
 // Watch blocks for o's success Window, then reports what one post-window
-// probe read decided. Fire is true on a loss whatever o.Reversal declares,
-// and on a win only when o.Reversal.RestoreOnSuccess is authored true — a
-// cancelled ctx fires nothing.
+// probe read decided. Fire is true on a loss unless o.Reversal.HoldOnMiss is
+// authored true — the forward action is itself the remediation, so undoing
+// it would re-break what it just fixed — and on a win only when
+// o.Reversal.RestoreOnSuccess is authored true. A cancelled ctx fires
+// nothing.
 func (w ReversalWatcher) Watch(ctx context.Context, o Order) Settlement {
 	select {
 	case <-ctx.Done():
@@ -49,9 +52,10 @@ func (w ReversalWatcher) Watch(ctx context.Context, o Order) Settlement {
 	case <-time.After(o.Success.Window):
 	}
 	converged, severity := w.Probe.Settle(ctx, o)
-	fire := !converged || o.Reversal.RestoreOnSuccess
+	held := !converged && o.Reversal.HoldOnMiss
+	fire := (!converged && !o.Reversal.HoldOnMiss) || o.Reversal.RestoreOnSuccess
 	if !fire {
-		return Settlement{Converged: converged, Severity: severity}
+		return Settlement{Converged: converged, Held: held, Severity: severity}
 	}
 	return Settlement{Converged: converged, Fire: true, Undo: reversalOf(o, w.now()), Severity: severity}
 }

@@ -47,7 +47,7 @@ type Precondition struct {
 }
 
 // Expects is what the settled outcome is graded against.  Verdict is one
-// of "approved", "held", "declined".
+// of "approved", "held", "declined", "refused".
 type Expects struct {
 	FailureClass proposal.FailureClass
 	ContractRef  string
@@ -64,6 +64,7 @@ var validVerdict = map[string]bool{
 	"approved": true,
 	"held":     true,
 	"declined": true,
+	"refused":  true,
 }
 
 // --- staging shape: mirrors chaos/scenarios.yaml's keys one-for-one ---
@@ -101,9 +102,11 @@ func (s scenarioStage) validate() (Scenario, error) {
 		return Scenario{}, errors.New("no restore - a harvest that cannot restore is a rig teardown")
 	}
 	if !validVerdict[s.Expects.Verdict] {
-		return Scenario{}, fmt.Errorf("expects.verdict %q not none of approved, held, declined", s.Expects.Verdict)
+		return Scenario{}, fmt.Errorf("expects.verdict %q not one of approved, held, declined, refused", s.Expects.Verdict)
 	}
-	if s.Expects.ContractRef == "" {
+	// A refused row names no contract by construction — the point of a
+	// decoy fault is that no catalogued action applies to it.
+	if s.Expects.Verdict != "refused" && s.Expects.ContractRef == "" {
 		return Scenario{}, errors.New("expects.contractRef is empty")
 	}
 	if s.SignalRef == "" {

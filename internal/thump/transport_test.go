@@ -137,6 +137,42 @@ func TestHandle_FiresAnAutomaticReversalAfterALiveForwardOrderFailsToConverge(t 
 	})
 }
 
+func TestHandle_HoldOnMissPublishesTheConvergenceOutcomeButNoReversalOrder(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		inbox, outbox := t.TempDir(), t.TempDir()
+		writeGovernedYAML(t, inbox, "gov-001.yaml", approvedGoverned())
+
+		runner := &fakeRunner{}
+		tr := newTestTransport(inbox, outbox)
+		tr.Catalog = holdOnMissCatalog(t)
+		tr.Exec = thump.Live{Runner: runner}
+		tr.Reversal = &thump.ReversalWatcher{
+			Probe: thump.PrometheusConverger{Probe: &fakeProbe{answer: false}}, // never converges
+			Now:   frozenNow,
+		}
+
+		if err := tr.Tick(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		time.Sleep(goldenOrder().Success.Window)
+		synctest.Wait()
+
+		if runner.gotReverse {
+			t.Error("a holdOnMiss contract must not run its reversal method after a missed window")
+		}
+		got := readOneOutcome(t, outbox)
+		if got.Result != outcome.ResultPartialNonConverging {
+			t.Errorf("a missed window is still a miss even when held: result = %q, want %q", got.Result, outcome.ResultPartialNonConverging)
+		}
+		// the last order published for this SignalRef must still be the
+		// forward order — a reversal order publish would have overwritten it
+		if diff := cmp.Diff(thump.OrderForward, readOneOrder(t, outbox).Kind); diff != "" {
+			t.Error("wrong order kind left in the outbox after a held miss", diff)
+		}
+	})
+}
+
 func TestTick_HoldsAndNotifiesButKeepsTheLock(t *testing.T) {
 	t.Parallel()
 	inbox, outbox := t.TempDir(), t.TempDir()

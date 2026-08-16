@@ -1,0 +1,87 @@
+# The dev environment's harvest table — chaos/scenarios.yaml's counterpart
+# for k3d-thump-dev. No preconditions on any row: dev runs no ArgoCD and no
+# Ceph (chaos/preflight.sh already branches on this), so there is nothing to
+# pause and nothing to undo before the fault itself.
+version: 1
+rig: dev
+scenarios:
+  - name: cart-failure
+    domain: otel-demo
+    signalRef: slo_burn:cart
+    fault:
+      path: chaos/flagd-cart-failure.sh
+      apply: exec
+      args: [inject]
+    expects:
+      failureClass: service_failure
+      contractRef: disable-cart-failure
+      verdict: approved       # act_reversible; auto-approves under dev's maxBand/autoBand
+    settleWindow: 20m
+    restore:
+      path: chaos/flagd-cart-failure.sh
+      apply: exec
+      args: [restore]
+
+  - name: product-catalog-failure
+    domain: otel-demo
+    signalRef: slo_burn:product-catalog
+    fault:
+      path: chaos/flagd-flag.sh
+      apply: exec
+      args: [productCatalogFailure, inject]
+    expects:
+      failureClass: service_failure
+      contractRef: disable-product-catalog-failure
+      verdict: approved
+    settleWindow: 20m
+    restore:
+      path: chaos/flagd-flag.sh
+      apply: exec
+      args: [productCatalogFailure, restore]
+
+  - name: acme-api-fault
+    domain: acme
+    signalRef: slo_burn:acme-api
+    fault:
+      path: chaos/acme-fault.sh
+      apply: exec
+      args: [inject]
+    expects:
+      # dependency_saturation, not service_failure — dev's acme-shed-load is
+      # scoped away from service_failure so the two otel-demo/acme domains on
+      # this profile never share a failure class (config/dev/actions/
+      # catalog.yaml:243-254). The thump-test table's acme-api-fault row
+      # expects service_failure because that rig's own catalog scopes
+      # acme-shed-load there instead — the two tables authoring different
+      # classes for the same action name is correct, not drift, because each
+      # is checked against its own rig's catalog.
+      failureClass: dependency_saturation
+      contractRef: acme-shed-load
+      verdict: approved
+    settleWindow: 20m
+    restore:
+      path: chaos/acme-fault.sh
+      apply: exec
+      args: [restore]
+
+  - name: crashloop-decoy
+    domain: otel-demo
+    # Same fingerprint as product-catalog-failure above: both break the same
+    # SLO. The decoy is the fault, not the signal — an OOMKill burns the
+    # availability SLO same as a flagd fault does, but no catalogued action
+    # clears a memory-limit crashloop; disable-product-catalog-failure only
+    # flips a flag. The correct engine behaviour is to refuse, never approve
+    # an action that cannot fix this.
+    signalRef: slo_burn:product-catalog
+    fault:
+      path: chaos/crashloop.sh
+      apply: exec
+      args: [inject]
+    expects:
+      failureClass: service_failure
+      verdict: refused        # no contractRef — nothing in the catalog applies
+    settleWindow: 20m
+    restore:
+      path: chaos/crashloop.sh
+      apply: exec
+      args: [restore]

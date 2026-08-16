@@ -93,6 +93,7 @@ func (w *WAL) shipOne(ctx context.Context, sink SegmentSink, path string) error 
 // clank/broker.go's two-subscriber composition.
 func RunShipper(ctx context.Context, wal *WAL, sink SegmentSink, shipInterval time.Duration) {
 	poll.Loop(ctx, poll.Config{Interval: shipInterval, Timeout: 4 * shipInterval}, func(ctx context.Context) error {
-		return wal.Ship(ctx, sink)
+		sealErr := wal.SealIfStale()
+		return errors.Join(sealErr, wal.Ship(ctx, sink))
 	})
 }

@@ -14,6 +14,41 @@ import (
 	"github.com/ianeff/thump/internal/evidence"
 )
 
+// repoRootFrom walks up from dir to the enclosing go.mod — the same climb
+// profilePath does, factored out so a caller outside config/<profile>/actions/
+// (e.g. config/<profile>/whir/) can reuse it.
+func repoRootFrom(t *testing.T, dir string) string {
+	t.Helper()
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod above %s: cannot locate repo root", dir)
+		}
+		dir = parent
+	}
+}
+
+// EvidenceQueriesForProfile loads the authored PromQL a profile's metrics
+// tool exposes — the same file MetricsTool reads in production, so a test
+// checking a catalog's SuccessCriteria against real query text can't drift
+// from what clank and thump actually query.
+func EvidenceQueriesForProfile(t *testing.T, profile string) evidence.Config {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("resolve working directory: %v", err)
+	}
+	root := repoRootFrom(t, wd)
+	cfg, err := evidence.LoadEvidenceConfig(filepath.Join(root, "config", profile, "whir", "evidence-queries.yaml"))
+	if err != nil {
+		t.Fatalf("load evidence queries for profile %s: %v", profile, err)
+	}
+	return cfg
+}
+
 // CatalogAt loads an authored catalog from an arbitrary path — the seam a
 // fixture domain's own catalog.yaml comes through, so a synthetic domain is
 // loaded exactly as the shipped one is.

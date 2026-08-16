@@ -53,4 +53,5 @@ type ReversalPlan struct {
 	proposal.ReversalPath
 	Fallback         string `json:"fallback,omitempty" yaml:"fallback,omitempty"`                 // contract.Reversal.Fallback — the authored fallback if the reversal method itself fails
 	RestoreOnSuccess bool   `json:"restoreOnSuccess,omitempty" yaml:"restoreOnSuccess,omitempty"` // contract.Reversal.RestoreOnSuccess — the catalog's declaration, never derived from the Candidate
+	HoldOnMiss       bool   `json:"holdOnMiss,omitempty" yaml:"holdOnMiss,omitempty"`             // contract.Reversal.HoldOnMiss — the catalog's declaration, never derived from the Candidate
 }

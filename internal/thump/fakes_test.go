@@ -169,6 +169,19 @@ func restoringCatalog(t *testing.T) *contract.StaticCatalog {
 	return contract.NewStaticCatalog([]contract.ActionContract{ct})
 }
 
+// holdOnMissCatalog is richCatalog with HoldOnMiss authored true on the
+// throttle contract — the fixture for the guarantee that a missed window
+// suppresses the undo when the forward action is itself the remediation.
+func holdOnMissCatalog(t *testing.T) *contract.StaticCatalog {
+	t.Helper()
+	ct, ok := richCatalog().ByName("throttle-non-critical-paths")
+	if !ok {
+		t.Fatal("richCatalog missing throttle-non-critical-paths")
+	}
+	ct.Reversal.HoldOnMiss = true
+	return contract.NewStaticCatalog([]contract.ActionContract{ct})
+}
+
 func goldenOrder() thump.Order {
 	return thump.Order{
 		ID:          "ord:slo_burn:ceph-rgw:1000",

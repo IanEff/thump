@@ -7,8 +7,10 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
 	"github.com/ianeff/thump/internal/wire"
 )
@@ -38,15 +40,70 @@ type NATSSetWatcher struct{ js jetstream.JetStream }
 func NewNATSSetWatcher(js jetstream.JetStream) *NATSSetWatcher { return &NATSSetWatcher{js: js} }
 
 // Sets starts from the beginning of the stream's retention, unlike
-// Outcomes: by the time anything calls firstSetFor, the Set it's looking
-// for was very likely published seconds ago, well before this watcher
-// subscribes — thump.proposals carries every fingerprint on one subject,
-// so there is no per-key "last message" to jump to (DeliverLastPolicy
-// would return the most recent Set for *any* fingerprint, not signalRef's),
-// and DeliverNewPolicy would silently miss it every time. firstSetFor's own
-// SignalRef filter keeps a full replay correct even when it isn't cheap.
+// Outcomes: by the time Settle subscribes, the Set it's looking for may
+// already have been published — thump.proposals carries every fingerprint
+// on one subject, so there is no per-key "last message" to jump to
+// (DeliverLastPolicy would return the most recent Set for *any*
+// fingerprint, not signalRef's), and DeliverNewPolicy would silently miss
+// it every time. Settle's own SignalRef filter keeps a full replay correct
+// even when it isn't cheap.
 func (w *NATSSetWatcher) Sets(ctx context.Context) (<-chan proposal.Set, error) {
 	return watchSubject[proposal.Set](ctx, w.js, "thump.proposals", jetstream.DeliverAllPolicy)
+}
+
+// NATSDeclineWatcher satisfies DeclineWatcher against a live cluster,
+// staying off any durable consumer for the same reason NATSWatcher does.
+type NATSDeclineWatcher struct{ js jetstream.JetStream }
+
+// NewNATSDeclineWatcher builds a DeclineWatcher over an already-connected js.
+func NewNATSDeclineWatcher(js jetstream.JetStream) *NATSDeclineWatcher {
+	return &NATSDeclineWatcher{js: js}
+}
+
+// Declines starts from "now", matching Outcomes: a harvest scenario watches
+// for the decline its own fault produces, never a backlog.
+func (w *NATSDeclineWatcher) Declines(ctx context.Context) (<-chan decision.Decision, error) {
+	return watchSubject[decision.Decision](ctx, w.js, "thump.declines", jetstream.DeliverNewPolicy)
+}
+
+// NATSHeldWatcher satisfies HeldWatcher against a live cluster.
+type NATSHeldWatcher struct{ js jetstream.JetStream }
+
+// NewNATSHeldWatcher builds a HeldWatcher over an already-connected js.
+func NewNATSHeldWatcher(js jetstream.JetStream) *NATSHeldWatcher {
+	return &NATSHeldWatcher{js: js}
+}
+
+// Held starts from "now", matching Outcomes.
+func (w *NATSHeldWatcher) Held(ctx context.Context) (<-chan decision.Governed, error) {
+	return watchSubject[decision.Governed](ctx, w.js, "thump.held", jetstream.DeliverNewPolicy)
+}
+
+// NATSDetectionWatcher satisfies DetectionWatcher against a live cluster.
+type NATSDetectionWatcher struct{ js jetstream.JetStream }
+
+// NewNATSDetectionWatcher builds a DetectionWatcher over an already-connected js.
+func NewNATSDetectionWatcher(js jetstream.JetStream) *NATSDetectionWatcher {
+	return &NATSDetectionWatcher{js: js}
+}
+
+// Detections starts from "now", matching Outcomes.
+func (w *NATSDetectionWatcher) Detections(ctx context.Context) (<-chan signal.Detection, error) {
+	return watchSubject[signal.Detection](ctx, w.js, "thump.detections", jetstream.DeliverNewPolicy)
+}
+
+// NewNATSLivenessCheck builds a LivenessCheck over an already-connected js.
+// js.AccountInfo is a real request/reply round trip to the server, so a
+// stale local connection with a dead port-forward underneath it fails here
+// instead of surfacing three watch legs later as a settle timeout
+// indistinguishable from a real miss.
+func NewNATSLivenessCheck(js jetstream.JetStream) LivenessCheck {
+	return func(ctx context.Context) error {
+		if _, err := js.AccountInfo(ctx); err != nil {
+			return err
+		}
+		return nil
+	}
 }
 
 // watchSubject opens an ordered consumer scoped to ctx and streams every
@@ -55,9 +112,9 @@ func (w *NATSSetWatcher) Sets(ctx context.Context) (<-chan proposal.Set, error) 
 // broker.JetSubscriber's durable, ack-tracked consumers, which a read-only
 // observer like this must never bind (see NATSWatcher).
 //
-// The returned channel is deliberately never closed. Every reader (Settle,
-// firstSetFor) already selects on ctx.Done() alongside the channel receive,
-// and closing here would race the callback goroutine below: a send still
+// The returned channel is deliberately never closed. Every reader (Settle)
+// already selects on ctx.Done() alongside the channel receive, and closing
+// here would race the callback goroutine below: a send still
 // mid-select when ctx fires could be handed a channel that closed out from
 // under it and panic. Leaving it open costs nothing — ctx bounds the
 // producer goroutine's life either way, and an unread channel with no

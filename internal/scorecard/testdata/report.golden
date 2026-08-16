@@ -1,0 +1,31 @@
+runs=10 hits=3 rate=30.0% harnessExcluded=1
+
+by scenario:
+  acme-api-fault                 hits=0 n=2 rate=0.0%
+  cart-failure                   hits=2 n=4 rate=50.0%
+  crashloop-decoy                hits=1 n=1 rate=100.0%
+  product-catalog-failure        hits=0 n=3 rate=0.0%
+
+by run index:
+  0    hits=2 n=7 rate=28.6%
+  1    hits=1 n=3 rate=33.3%
+
+failure reasons:
+  harness error            1
+  harness fault: NATS unreachable before fault injection 1
+  no detection / settle timeout 1
+  non-converging           1
+  refused at wrong beat    1
+  restore failure          1
+  wrong contract           1
+  wrong verdict            1
+
+misses:
+  product-catalog-failure        run=0  runID=run:3                reason=wrong verdict
+  acme-api-fault                 run=0  runID=run:4                reason=wrong contract
+  cart-failure                   run=0  runID=run:5                reason=non-converging
+  product-catalog-failure        run=0  runID=-                    reason=refused at wrong beat
+  acme-api-fault                 run=0  runID=-                    reason=restore failure
+  cart-failure                   run=1  runID=-                    reason=no detection / settle timeout
+  product-catalog-failure        run=1  runID=-                    reason=harness error
+  cart-failure                   run=2  runID=-                    reason=harness fault: NATS unreachable before fault injection

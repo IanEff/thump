@@ -61,6 +61,14 @@ func TestProber_ConvergedComparesLiveValueAgainstTarget(t *testing.T) {
 			name: "an empty result vector fails closed", metricVal: "",
 			metric: "latency_p99", target: "p99 < 250ms", wantConverged: false,
 		},
+		{
+			name: "a NaN reading fails closed", metricVal: "NaN",
+			metric: "latency_p99", target: "p99 < 250ms", wantConverged: false,
+		},
+		{
+			name: "a +Inf reading fails closed", metricVal: "+Inf",
+			metric: "latency_p99", target: "p99 < 250ms", wantConverged: false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,6 +87,27 @@ func TestProber_ConvergedComparesLiveValueAgainstTarget(t *testing.T) {
 			if got != tc.wantConverged {
 				t.Errorf("Converged(%q, %q) with live value %q = %v, want %v",
 					tc.metric, tc.target, tc.metricVal, got, tc.wantConverged)
+			}
+		})
+	}
+}
+
+func TestProber_SeverityReportsUnmeasuredOnANonFiniteReading(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"Severity given a NaN reading reports unmeasured, not a fabricated zero":  "NaN",
+		"Severity given a +Inf reading reports unmeasured, not a fabricated zero": "+Inf",
+	}
+	for name, metricVal := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			srv := fakePrometheus(t, metricVal)
+			p := &converge.Prober{BaseURL: srv.URL, Queries: map[string]string{"severity_rgw": "severity_rgw_query"}}
+
+			_, ok := p.Severity(context.Background(), "severity_rgw")
+
+			if ok {
+				t.Errorf("Severity with live value %q must report ok=false, not a measured reading", metricVal)
 			}
 		})
 	}

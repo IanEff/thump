@@ -103,7 +103,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	if found {
 		_, _ = fmt.Fprintln(stdout, ", plus the run's proposal.Set")
 	} else {
-		_, _ = fmt.Fprintln(stdout, "; no proposal.Set found for this run-id (no published or journaled record)")
+		_, _ = fmt.Fprintln(stdout, "; no proposal.Set found for this run-id — its WAL segment can lag its turns by up to MaxAge + ShipInterval (~11 minutes with today's config) before it ships, so retry after that before concluding the record doesn't exist")
 	}
 	return 0
 }
@@ -242,7 +242,7 @@ func WriteAll(ctx context.Context, client *s3.Client, key sealbox.Key, bucket, o
 			return nil, nil, err
 		}
 		if !found {
-			skipped[runID] = "no proposal.Set found"
+			skipped[runID] = "no proposal.Set found (can lag turns by up to MaxAge + ShipInterval before shipping; retry after ~11 minutes)"
 			continue
 		}
 		if _, err := WritePair(filepath.Join(outDir, runID), turns, set, true); err != nil {

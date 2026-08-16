@@ -160,6 +160,11 @@ type Reversal struct {
 	Method           string `json:"method,omitempty" yaml:"method,omitempty"`                     // operator-facing name for the undo; reaches the audit trail as Order.Reversal.Method and the Candidate's ReversalPath
 	Fallback         string `json:"fallback,omitempty" yaml:"fallback,omitempty"`                 // what to do when the undo itself fails — hiss escalates rather than retrying
 	RestoreOnSuccess bool   `json:"restoreOnSuccess,omitempty" yaml:"restoreOnSuccess,omitempty"` // the forward mutation is temporary — a met success window still runs Execution.Reverse, false leaves a win applied
+	// HoldOnMiss is true when the forward action is itself the remediation, so
+	// its undo would re-break the system it just fixed — a missed window
+	// escalates via Fallback instead of running Execution.Reverse. False (the
+	// default) keeps the missed-window undo that every other action authors.
+	HoldOnMiss bool `json:"holdOnMiss,omitempty" yaml:"holdOnMiss,omitempty"`
 }
 
 type SuccessCriteria struct {
