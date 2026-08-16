@@ -551,12 +551,14 @@ tasks:
   dev:probe:
     desc: >-
       Fire N real clank reasoning runs against a captured detection, straight
-      from a laptop: task dev:probe DETECTION=<path> [RUNS=5] [FLOOR=0.75].
-      Read-only against the dev cluster by construction — clank.ProbeEngine
-      never wires a Pub or a Journal, so nothing here reaches thump.proposals
-      or the corpus. Requires Tilt's prometheus-ui and loki-port-forward
-      resources up (PROM_URL/LOKI_URL below dial their local ports) and
-      ANTHROPIC_API_KEY set in the shell.
+      from a laptop: task dev:probe DETECTION=<path> [RUNS=5] [FLOOR=0.75]
+      [MODEL=haiku|sonnet|gemini-low]. Read-only against the dev cluster by
+      construction — clank.ProbeEngine never wires a Pub or a Journal, so
+      nothing here reaches thump.proposals or the corpus. Requires Tilt's
+      prometheus-ui and loki-port-forward resources up (PROM_URL/LOKI_URL
+      below dial their local ports), and ANTHROPIC_API_KEY (haiku/sonnet) or
+      GEMINI_API_KEY (gemini-low) set in the shell for whichever MODEL is
+      selected.
     requires:
       vars: [DETECTION]
     cmds:
@@ -570,7 +572,7 @@ tasks:
         FAILURE_CLASSES=config/dev/actions/failure-classes.yaml \
         CLANK_WEIGHTS=config/clank/weights.yaml \
         CLANK_LIMITS=config/clank/limits.yaml \
-        go run ./cmd/calipers probe -detection {{.DETECTION}} -runs {{.RUNS | default 1}} -floor {{.FLOOR | default 0.75}}
+        go run ./cmd/calipers probe -detection {{.DETECTION}} -runs {{.RUNS | default 1}} -floor {{.FLOOR | default 0.75}} -model {{.MODEL | default "haiku"}}
 
   harvest:dev:
     desc: "Run a harvest scenario against dev: task harvest:dev ROW=cart-failure [REPEAT=1] (requires task dev:certs, Tilt's 4222 forward up)"

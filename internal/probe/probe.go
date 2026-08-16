@@ -16,6 +16,7 @@ import (
 	"os"
 	"time"
 
+	"google.golang.org/genai"
 	"sigs.k8s.io/yaml"
 
 	"github.com/ianeff/thump/api/v1/proposal"
@@ -25,6 +26,8 @@ import (
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/evidence"
+	"github.com/ianeff/thump/internal/gemini"
+	"github.com/ianeff/thump/internal/reason"
 )
 
 const modelRequestTimeout = 120 * time.Second
@@ -86,9 +89,9 @@ func Run(ctx context.Context, eng *clank.Engine, det signal.Detection, n int) ([
 }
 
 // Main grades N live runs against one captured detection and prints one row
-// per run. A missing ANTHROPIC_API_KEY is a clean skip returning 0, matching
-// rca.Main's convention — never a hard failure on an operator machine with
-// no key configured.
+// per run. A missing API key for the selected -model is a clean skip
+// returning 0, matching rca.Main's convention — never a hard failure on an
+// operator machine with no key configured.
 func Main(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -96,17 +99,22 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	runs := fs.Int("runs", 1, "number of independent reasoning runs to fire")
 	asJSON := fs.Bool("json", false, "print one JSON row per run instead of a table")
 	floor := fs.Float64("floor", 0.75, "confidence floor a run must clear to count as underFloor=0; purely a grading label printed in the summary line, never enforced")
+	modelName := fs.String("model", "haiku", "reasoning backend to measure: haiku (production default), sonnet, or gemini-low")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *detection == "" || *runs < 1 {
-		_, _ = fmt.Fprintln(stderr, "usage: probe -detection <path> [-runs N] [-json]")
+		_, _ = fmt.Fprintln(stderr, "usage: probe -detection <path> [-runs N] [-json] [-model haiku|sonnet|gemini-low]")
 		return 2
 	}
 
-	key := os.Getenv("ANTHROPIC_API_KEY")
-	if key == "" {
-		_, _ = fmt.Fprintln(stderr, "ANTHROPIC_API_KEY unset - probe needs a real model; skipping")
+	model, skip, err := modelFor(context.Background(), *modelName)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "probe:", err)
+		return 1
+	}
+	if skip != "" {
+		_, _ = fmt.Fprintln(stderr, skip+" unset - probe needs a real model; skipping")
 		return 0
 	}
 
@@ -157,7 +165,6 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	// Unlike the beats, probe runs on a laptop, not as a pod — it reaches the
 	// cluster through the operator's own kubeconfig, not a ServiceAccount.
 	kube, argo := clank.KubeconfigClients()
-	model := anthropic.NewModel(key, modelRequestTimeout)
 
 	var backendTLS *tls.Config
 	clankCfg := clankConfig(cfg)
@@ -195,6 +202,40 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintf(stdout, "\n%d probe run(s) against %s — read-only, nothing published or journaled\n", len(rows), *detection)
 	RenderSummary(stdout, Summarize(rows, *floor))
 	return 0
+}
+
+// modelFor builds the reason.Model a probe run measures, selected by name —
+// "haiku" (production's own choice), "sonnet", or "gemini-low". A non-empty
+// skip names the environment variable a required key was missing from,
+// signaling Main's clean-skip path rather than an error the caller should
+// report and exit non-zero for.
+func modelFor(ctx context.Context, name string) (model reason.Model, skip string, err error) {
+	switch name {
+	case "haiku":
+		key := os.Getenv("ANTHROPIC_API_KEY")
+		if key == "" {
+			return nil, "ANTHROPIC_API_KEY", nil
+		}
+		return anthropic.NewModel(key, anthropic.ModelClaudeHaiku4_5, modelRequestTimeout), "", nil
+	case "sonnet":
+		key := os.Getenv("ANTHROPIC_API_KEY")
+		if key == "" {
+			return nil, "ANTHROPIC_API_KEY", nil
+		}
+		return anthropic.NewModel(key, anthropic.ModelClaudeSonnet5, modelRequestTimeout), "", nil
+	case "gemini-low":
+		key := os.Getenv("GEMINI_API_KEY")
+		if key == "" {
+			return nil, "GEMINI_API_KEY", nil
+		}
+		m, err := gemini.NewModel(ctx, key, gemini.ModelGemini3_5FlashLite, genai.ThinkingLevelLow)
+		if err != nil {
+			return nil, "", fmt.Errorf("build gemini model: %w", err)
+		}
+		return m, "", nil
+	default:
+		return nil, "", fmt.Errorf("unknown -model %q: want haiku, sonnet, or gemini-low", name)
+	}
 }
 
 // clankConfig lifts the fields ProbeEngine's buildTools/buildIntake read out
