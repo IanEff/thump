@@ -259,6 +259,13 @@ nats:
     tag: "2.14.2-alpine"
   storageClass: "standard"
   storage: 2Gi
+  service:
+    # ClusterIP everywhere except dev, which sets NodePort so k3d's own
+    # serverlb (deploy/dev/k3d.yaml) can map a stable host port onto it —
+    # every other profile reaches NATS through a `kubectl port-forward`
+    # instead, or not at all from outside the cluster.
+    type: ClusterIP
+    nodePort: null
   jetstream:
     maxMemory: 256Mi
     maxFile: 2Gi

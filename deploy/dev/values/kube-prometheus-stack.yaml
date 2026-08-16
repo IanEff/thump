@@ -10,6 +10,14 @@ crds:
   enabled: false
 
 prometheus:
+  service:
+    # NodePort so deploy/dev/k3d.yaml's serverlb port mapping (9090:30090)
+    # has something to forward to — phase AS 0A.5, replacing a `kubectl
+    # port-forward` that a laptop sleep silently killed. 30090 is the
+    # chart's own suggested default for this field, not a made-up number.
+    type: NodePort
+    nodePort: 30090
+
   prometheusSpec:
     retention: "7d"
     scrapeInterval: 30s
