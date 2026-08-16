@@ -119,7 +119,18 @@ components:
   #
   # null (NOT []) is required: Helm coalesce silently ignores an empty list
   # override but honors null as "remove key".
+  #
+  # resources.limits.cpu: flagd shipped with no CPU limit at all (only the
+  # chart's default memory request/limit). Rapid-fire ConfigMap churn against
+  # flagd-config (chaos inject/restore racing thump's own live loop patching
+  # the same fault) hit a bad path in flagd's fsnotify reload and it ran away
+  # to 6.4-6.7 cores on the single-node k3d rig — starved the node, evicted
+  # 51+ pods in this namespace, took kafka down. 500m is generous headroom
+  # over flagd's normal footprint while bounding a runaway.
   flagd:
+    resources:
+      limits:
+        cpu: 500m
     mountedConfigMaps:
       - name: config-ro
         mountPath: /etc/flagd
