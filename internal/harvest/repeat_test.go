@@ -35,7 +35,7 @@ func TestRun_RepeatsRoundRobinAcrossRows(t *testing.T) {
 	t.Parallel()
 	table := tworowTable()
 	legs := harvest.Legs{Outcomes: feedWatcher{outcome.ResultSuccess}, Sets: feedSetWatcher(nil)}
-	h := harvest.NewHarvest(legs, &recordingRunner{}, 0)
+	h := harvest.NewHarvest(legs, &recordingRunner{}, 0, nil)
 
 	var stdout, stderr bytes.Buffer
 	code := harvest.RunForTest(t.Context(), h, table, "", true, 3, 0, &stdout, &stderr)
@@ -85,7 +85,7 @@ func TestRun_ACancelledCtxStopsDuringCooldownWithoutStartingTheNextRow(t *testin
 		table := tworowTable()
 		legs := harvest.Legs{Outcomes: feedWatcher{outcome.ResultSuccess}, Sets: feedSetWatcher(nil)}
 		runner := &recordingRunner{}
-		h := harvest.NewHarvest(legs, runner, 0)
+		h := harvest.NewHarvest(legs, runner, 0, nil)
 
 		ctx, cancel := context.WithCancel(t.Context())
 		var stdout, stderr bytes.Buffer

@@ -92,6 +92,20 @@ func (w *NATSDetectionWatcher) Detections(ctx context.Context) (<-chan signal.De
 	return watchSubject[signal.Detection](ctx, w.js, "thump.detections", jetstream.DeliverNewPolicy)
 }
 
+// NewNATSLivenessCheck builds a LivenessCheck over an already-connected js.
+// js.AccountInfo is a real request/reply round trip to the server, so a
+// stale local connection with a dead port-forward underneath it fails here
+// instead of surfacing three watch legs later as a settle timeout
+// indistinguishable from a real miss.
+func NewNATSLivenessCheck(js jetstream.JetStream) LivenessCheck {
+	return func(ctx context.Context) error {
+		if _, err := js.AccountInfo(ctx); err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
 // watchSubject opens an ordered consumer scoped to ctx and streams every
 // decoded message of type T onto the returned channel. Ordered consumers
 // are per-caller and ephemeral — the deliberate alternative to

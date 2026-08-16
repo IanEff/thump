@@ -24,7 +24,20 @@ const (
 	restoreTimeout      = 2 * time.Minute
 	defaultRefusalGrace = 3 * time.Minute
 	defaultCooldown     = 10 * time.Minute
+	livenessTimeout     = 5 * time.Second
 )
+
+// ErrBrokerUnreachable means the liveness probe failed immediately before a
+// fault was about to fire — distinct from ErrSettleTimeout, which means the
+// fault fired and nothing ever answered. A dead kubectl port-forward or a
+// dead NATS tunnel produces this error instead of a settle timeout shaped
+// exactly like a real miss.
+var ErrBrokerUnreachable = errors.New("harvest: NATS broker unreachable before fault injection")
+
+// LivenessCheck reports whether the broker a harvest run depends on is
+// still reachable. nil skips the check — every Harvest built without a
+// live NATS connection (every unit test in this package) leaves it unset.
+type LivenessCheck func(ctx context.Context) error
 
 // Runner executes one shell-level step of a harvest: applying or deleting
 // a fault manifest, exec'ing a chaos script, or running a raw precondition
@@ -79,16 +92,18 @@ type Harvest struct {
 	legs         Legs
 	runner       Runner
 	refusalGrace time.Duration
+	live         LivenessCheck
 }
 
 // NewHarvest builds a Harvest. refusalGrace of zero uses defaultRefusalGrace
 // — the window Settle waits after a detection for a proposal.Set to appear
-// on legs.Sets before calling the row refused.
-func NewHarvest(legs Legs, r Runner, refusalGrace time.Duration) *Harvest {
+// on legs.Sets before calling the row refused. live may be nil to skip the
+// broker liveness check Run otherwise runs immediately before every fault.
+func NewHarvest(legs Legs, r Runner, refusalGrace time.Duration, live LivenessCheck) *Harvest {
 	if refusalGrace <= 0 {
 		refusalGrace = defaultRefusalGrace
 	}
-	return &Harvest{legs: legs, runner: r, refusalGrace: refusalGrace}
+	return &Harvest{legs: legs, runner: r, refusalGrace: refusalGrace, live: live}
 }
 
 // Run fires one scenario end to end: preflight -> preconditions -> fault
@@ -129,6 +144,17 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) 
 	for _, p := range sc.Preconditions {
 		if perr := h.runAction(ctx, p.Set); perr != nil {
 			walkErr := fmt.Errorf("precondition %s: %w", p.Name, perr)
+			res.Err = walkErr.Error()
+			return res, walkErr
+		}
+	}
+
+	if h.live != nil {
+		lctx, lcancel := context.WithTimeout(ctx, livenessTimeout)
+		lerr := h.live(lctx)
+		lcancel()
+		if lerr != nil {
+			walkErr := fmt.Errorf("preflight: scenario %s: %w: %w", sc.Name, ErrBrokerUnreachable, lerr)
 			res.Err = walkErr.Error()
 			return res, walkErr
 		}
@@ -294,7 +320,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		Detections: NewNATSDetectionWatcher(js),
 		Sets:       NewNATSSetWatcher(js),
 	}
-	h := NewHarvest(legs, CommandRunner{}, *refusalGrace)
+	h := NewHarvest(legs, CommandRunner{}, *refusalGrace, NewNATSLivenessCheck(js))
 	return run(ctx, h, table, *only, *asJSON, *repeat, *cooldown, stdout, stderr)
 }
 

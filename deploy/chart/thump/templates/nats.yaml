@@ -157,6 +157,14 @@ data:
             publish: {
               allow: [
                 "thump.approvals", "thump.decisions",
+                # internal/harvest/nats.go's preflight liveness check
+                # (js.AccountInfo, added for the dead-tunnel-vs-fake-timeout
+                # fix) is a real request/reply round trip to $JS.API.INFO —
+                # found live: every harvest row failed instantly with a
+                # permissions violation on this bare subject, masked as
+                # ErrBrokerUnreachable since that's the same error the check
+                # is designed to raise on an actually-dead tunnel.
+                "$JS.API.INFO",
                 # calipers harvest watches thump.outcomes/thump.proposals
                 # through its own ordered, ephemeral consumers
                 # (internal/harvest/nats.go's watchSubject) rather than

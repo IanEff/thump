@@ -94,7 +94,7 @@ func TestHarvest_RestoresEveryPreconditionWhenTheRunIsCancelledMidFlight(t *test
 
 	runner := &recordingRunner{}
 	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
-	h := harvest.NewHarvest(legs, runner, 0)
+	h := harvest.NewHarvest(legs, runner, 0, nil)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -162,7 +162,7 @@ func TestRun_RestoresThePreconditionsWhenTheHarvestIsCancelledMidFlight(t *testi
 
 	runner := &recordingRunner{}
 	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
-	h := harvest.NewHarvest(legs, runner, 0)
+	h := harvest.NewHarvest(legs, runner, 0, nil)
 	table := harvest.Table{Scenarios: []harvest.Scenario{sc}}
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -190,6 +190,33 @@ func TestRun_RestoresThePreconditionsWhenTheHarvestIsCancelledMidFlight(t *testi
 		if !containsCall(calls, want) {
 			t.Errorf("restore did not run %q; calls were %v", want, calls)
 		}
+	}
+}
+
+// TestHarvest_RunFailsLoudlyOnADeadBrokerBeforeTheFaultEverFires pins that a
+// liveness failure produces ErrBrokerUnreachable rather than the
+// settle-timeout shape a dead tunnel used to produce, and never applies the
+// fault — a dead broker means the watch leg was always doomed, so injecting
+// the fault would only strand the rig.
+func TestHarvest_RunFailsLoudlyOnADeadBrokerBeforeTheFaultEverFires(t *testing.T) {
+	t.Parallel()
+	sc := harvest.Scenario{
+		Name:         "dead-tunnel",
+		Fault:        harvest.Action{Path: "chaos/x.yaml", Apply: "kubectl"},
+		Restore:      harvest.Action{Path: "chaos/x.yaml", Apply: "kubectl-delete"},
+		SettleWindow: time.Minute,
+	}
+
+	runner := &recordingRunner{}
+	live := func(context.Context) error { return errors.New("dial timeout") }
+	h := harvest.NewHarvest(harvest.Legs{}, runner, 0, live)
+
+	_, err := h.Run(t.Context(), sc)
+	if !errors.Is(err, harvest.ErrBrokerUnreachable) {
+		t.Error("want ErrBrokerUnreachable", err)
+	}
+	if containsCall(runner.snapshot(), "kubectl apply -f chaos/x.yaml") {
+		t.Error("Run applied the fault despite a failed liveness check")
 	}
 }
 
@@ -259,7 +286,7 @@ func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t 
 
 	runner := &failingRunner{failOn: "argocd"}
 	legs := harvest.Legs{Outcomes: blockingWatcher{}, Sets: feedSetWatcher(nil)}
-	h := harvest.NewHarvest(legs, runner, 0)
+	h := harvest.NewHarvest(legs, runner, 0, nil)
 
 	if _, err := h.Run(t.Context(), sc); err == nil {
 		t.Fatal("Run succeeded despite a failing precondition")
@@ -296,7 +323,7 @@ func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
 	fixture := newOrderedSetThenTerminal(set)
 	fixture.outcomes = []outcome.Outcome{{SignalRef: fp, Result: outcome.ResultSuccess}}
 	legs := harvest.Legs{Outcomes: fixture, Sets: fixture}
-	h := harvest.NewHarvest(legs, &recordingRunner{}, 0)
+	h := harvest.NewHarvest(legs, &recordingRunner{}, 0, nil)
 
 	res, err := h.Run(t.Context(), sc)
 	if err != nil {
