@@ -58,7 +58,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	// AnthropicModel is the only Model production selects; GeminiModel has
 	// no caller yet, so grading against it would score a model the shipped
 	// engine never runs.
-	model := anthropic.NewModel(key, modelRequestTimeout)
+	model := anthropic.NewModel(key, anthropic.ModelClaudeHaiku4_5, modelRequestTimeout)
 
 	// config/clank/weights.yaml, not DefaultScoringWeights: the graded suite
 	// should score the value production actually loads, not a copy of it.

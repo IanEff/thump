@@ -14,7 +14,7 @@ import (
 // costs no API call and needs no key. The key is a dummy — irrelevant to the
 // behavior under test.
 func TestAnthropicModel_ReturnsErrorOnCancelledContext(t *testing.T) {
-	model := anthropic.NewModel("dummy key", 120*time.Second)
+	model := anthropic.NewModel("dummy key", anthropic.ModelClaudeHaiku4_5, 120*time.Second)
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -15,31 +15,43 @@ import (
 	"github.com/ianeff/thump/internal/reason"
 )
 
-// Model is the production reason.Model: Claude Haiku behind the Messages
-// API, the cheapest model on record for this loop. It's the adaptor Main
-// wires in — internal/gemini exists as a second reason.Model implementation
-// but Main doesn't select it yet.
+// Model is the production reason.Model: Claude behind the Messages API. It's
+// the adaptor Main wires in — internal/gemini exists as a second reason.Model
+// implementation but Main doesn't select it yet.
 type Model struct {
 	client anthropic.Client
+	model  anthropic.Model
 }
 
-// NewModel builds a Model authenticated with apiKey. timeout bounds every
-// call to the SDK — clank.go provisions it against the broker's AckWait, so
-// it stays the caller's to set rather than a constant this package would
-// otherwise have no way to justify.
-func NewModel(apiKey string, timeout time.Duration) *Model {
+// ModelClaudeHaiku4_5 re-exports the SDK's Haiku constant so a caller outside
+// this package (clank.go, calipers probe) never needs its own import of
+// anthropic-sdk-go just to name a model.
+const ModelClaudeHaiku4_5 = anthropic.ModelClaudeHaiku4_5_20251001
+
+// ModelClaudeSonnet5 is a raw model-ID literal, not an SDK constant: the
+// vendored anthropic-sdk-go v1.53.0 predates the Sonnet 5 release and has no
+// ModelClaudeSonnet5 of its own. anthropic.Model is a plain string type, so
+// the literal round-trips through the API the same as a named constant would.
+const ModelClaudeSonnet5 anthropic.Model = "claude-sonnet-5"
+
+// NewModel builds a Model authenticated with apiKey, sending model on every
+// call. timeout bounds every call to the SDK — clank.go provisions it
+// against the broker's AckWait, so it stays the caller's to set rather than
+// a constant this package would otherwise have no way to justify.
+func NewModel(apiKey string, model anthropic.Model, timeout time.Duration) *Model {
 	return &Model{
 		client: anthropic.NewClient(option.WithAPIKey(apiKey), option.WithRequestTimeout(timeout)),
+		model:  model,
 	}
 }
 
-// Complete sends msgs and tools to Claude Haiku and folds the response into
-// a reason.Completion via fromAnthropicMessage. A tool the model wasn't offered in
-// tools can never come back here — the SDK only echoes tool calls for tools
-// it was given a spec for.
+// Complete sends msgs and tools to m's configured model and folds the
+// response into a reason.Completion via fromAnthropicMessage. A tool the
+// model wasn't offered in tools can never come back here — the SDK only
+// echoes tool calls for tools it was given a spec for.
 func (m *Model) Complete(ctx context.Context, msgs []reason.Message, tools []reason.ToolSpec) (reason.Completion, error) {
 	resp, err := m.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeHaiku4_5_20251001, // cheapest model on record
+		Model:     m.model,
 		MaxTokens: 4096,
 		Messages:  toAnthropicMessageParams(msgs),
 		Tools:     toAnthropicToolParams(tools),

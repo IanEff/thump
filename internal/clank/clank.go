@@ -114,7 +114,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	kubeClient, argoClient := InClusterClients()
 	tools := buildTools(cfg, backendTLS, ev, kubeClient)
 
-	model := anthropic.NewModel(cfg.AnthropicAPIKey, modelRequestTimeout)
+	model := anthropic.NewModel(cfg.AnthropicAPIKey, anthropic.ModelClaudeHaiku4_5, modelRequestTimeout) // cheapest model on record
 	intake, err := buildIntake(cfg, backendTLS, kubeClient, argoClient, ev.Index, limits.ChangeLookback)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
