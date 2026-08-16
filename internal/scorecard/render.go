@@ -12,7 +12,7 @@ import (
 // RunID — walks from "is the number good" to "which run do I go read" in
 // the order an operator actually asks those questions.
 func Render(w io.Writer, rpt Report) {
-	_, _ = fmt.Fprintf(w, "runs=%d hits=%d rate=%s\n", rpt.N, rpt.Hits, rate(rpt.Hits, rpt.N))
+	_, _ = fmt.Fprintf(w, "runs=%d hits=%d rate=%s harnessExcluded=%d\n", rpt.N, rpt.Hits, rate(rpt.Hits, rpt.N), rpt.HarnessExcluded)
 
 	_, _ = fmt.Fprintln(w, "\nby scenario:")
 	for _, name := range sortedKeys(rpt.ByScenario) {

@@ -56,6 +56,10 @@ const (
 	nonConverging  reason = "non-converging"
 	restoreFailure reason = "restore failure"
 	harnessError   reason = "harness error"
+	// harnessLivenessFailure is the one reason Grade excludes from N: the
+	// broker was unreachable before the fault ever fired, so the row was
+	// never a trial the engine had a chance to pass or fail.
+	harnessLivenessFailure reason = "harness fault: NATS unreachable before fault injection"
 )
 
 // grade assigns a reason to one row, grading strictly against that row's
@@ -96,6 +100,8 @@ func failedReason(msg string) reason {
 	switch {
 	case strings.Contains(msg, "restore"):
 		return restoreFailure
+	case strings.Contains(msg, "broker unreachable"):
+		return harnessLivenessFailure
 	case strings.Contains(msg, "settle window elapsed"):
 		return noDetection
 	default:
@@ -115,6 +121,11 @@ type Report struct {
 	ByRunIndex map[int]Tally
 	Reasons    map[reason]int
 	Misses     []Miss
+	// HarnessExcluded counts rows graded harnessLivenessFailure — never
+	// folded into N, unlike every other reason. A dead broker before the
+	// fault ever fires is a harness fault, not a trial the engine had a
+	// chance to pass or fail.
+	HarnessExcluded int
 }
 
 // Tally is n-of-m, kept as counts rather than a pre-divided rate so a
@@ -157,9 +168,20 @@ func Grade(r io.Reader) (Report, error) {
 			return Report{}, fmt.Errorf("scorecard: decode result: %w", err)
 		}
 
-		rpt.N++
 		g := grade(rw)
+		if g == harnessLivenessFailure {
+			rpt.HarnessExcluded++
+			rpt.Reasons[g]++
+			rpt.Misses = append(rpt.Misses, Miss{
+				ScenarioName: rw.ScenarioName,
+				RunIndex:     rw.RunIndex,
+				RunID:        rw.RunID,
+				Reason:       string(g),
+			})
+			continue
+		}
 
+		rpt.N++
 		st := rpt.ByScenario[rw.ScenarioName]
 		st.N++
 		ri := rpt.ByRunIndex[rw.RunIndex]
