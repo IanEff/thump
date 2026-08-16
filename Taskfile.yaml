@@ -38,7 +38,7 @@ tasks:
       - task: ci
 
   ci:
-    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, race, build
+    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, promql, race, build
     cmds:
       - task: otelc:check-gomod
       - task: fmt-check
@@ -46,6 +46,7 @@ tasks:
       - task: lint
       - task: vulncheck
       - task: chart-lint
+      - task: test:promql
       - task: race
       - task: integration
       - task: build
@@ -140,6 +141,15 @@ tasks:
           | go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 -strict -summary -ignore-missing-schemas \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
+
+  test:promql:
+    desc: promtool unit tests against the SLO recording rules (offline — needs promtool and yq on PATH)
+    cmds:
+      - mkdir -p bin
+      # slo-rules.yaml is a PrometheusRule CRD manifest; promtool only
+      # understands the plain `groups:` shape underneath the CRD envelope.
+      - yq eval '.spec' deploy/dev/manifests/slo-rules.yaml > bin/slo-rules.rules.yaml
+      - promtool test rules deploy/dev/manifests/slo-rules_test.yaml
 
   test:
     desc: go test -shuffle=on ./...
