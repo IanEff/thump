@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // modelRequestTimeout bounds one call to the model. Longer than
@@ -225,6 +226,23 @@ func InClusterClients() (kubernetes.Interface, dynamic.Interface) {
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		slog.Info("not running in-cluster — no kube evidence tool and no change source", "beat", "clank")
+		return nil, nil
+	}
+	return clientsFor(restConfig)
+}
+
+// KubeconfigClients builds the same pair InClusterClients does, but from
+// the operator's own kubeconfig (KUBECONFIG env, falling back to
+// ~/.kube/config and the current context) instead of a ServiceAccount — the
+// path a laptop-run process like calipers probe needs, since it never runs
+// as a pod. InClusterClients keeps its exact current behavior for every
+// beat that does.
+func KubeconfigClients() (kubernetes.Interface, dynamic.Interface) {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules, &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		slog.Info("no kubeconfig — no kube evidence tool and no change source", "beat", "probe")
 		return nil, nil
 	}
 	return clientsFor(restConfig)
