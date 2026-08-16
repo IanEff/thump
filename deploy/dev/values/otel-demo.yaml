@@ -75,6 +75,18 @@ components:
         value: "150"
       - name: LOCUST_SPAWN_RATE
         value: "10"
+      # Found live, phase AS fixture-capture session: the chart's own
+      # LOCUST_BROWSER_TRAFFIC_ENABLED default (true) spins up a real
+      # headless-Chrome session per simulated user. At 150 users that
+      # OOMKilled even after doubling the memory limit to 3000Mi, inside 30
+      # seconds of the ramp. None of the SLO paths this profile measures
+      # (cart/product-catalog/acme error ratios) are driven by browser
+      # traffic — disabled outright rather than chasing the limit upward.
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
+    resources:
+      limits:
+        memory: 3000Mi
   # checkout/product-catalog: the chart's own stock default is 20Mi
   # (resources.limits.memory) for every component — fine for the demo's
   # showcase-traffic assumption, too tight once load-generator (this values

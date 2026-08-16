@@ -31,16 +31,16 @@ spec:
     - name: sloth-slo-sli-recordings-product-catalog-availability
       rules:
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30s])) or vector(0))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[60s])) or vector(0))
             /
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[30s])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[60s])))
           labels:
             domain: otel-demo
             lab: dev
             sloth_id: product-catalog-availability
             sloth_service: product-catalog
             sloth_slo: availability
-            sloth_window: 30s
+            sloth_window: 60s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30m])) or vector(0))

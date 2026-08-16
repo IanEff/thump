@@ -93,9 +93,10 @@ data:
                 self.end_headers()
 
         def log_message(self, format, *args):
-            if "/metrics" in (args[0] if args else ""):
-                return
-            super().log_message(format, *args)
+            # driver() self-polls / or /fail every second; nothing here
+            # feeds otel — metrics are served from state at /metrics and
+            # scraped independently — so this is pure Tilt log noise.
+            return
 
     def driver():
         while True:
