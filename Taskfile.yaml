@@ -510,6 +510,44 @@ tasks:
     cmds:
       - go run ./cmd/calipers approve {{.FP}} --nats-url tls://localhost:4222 --tls-cert bin/certs/tls.crt --tls-key bin/certs/tls.key --tls-ca bin/certs/ca.crt --server-name nats.thump.svc
 
+  dev:govern:
+    desc: >-
+      Run one proposal.Set through hiss (locally, offline) then thump (a
+      one-shot in-cluster Job, real RBAC) and print the verdict + outcome:
+      task dev:govern SET=<path to a proposal.Set yaml>. Never touches
+      thump.proposals/thump.decisions/thump.outcomes or any WAL — hiss's leg
+      runs against scratch local dirs, thump's leg runs in its own scratch
+      emptyDirs inside the cluster. Only for the dev cluster's offline
+      dir-poll beats; never point this at a broker-mode deployment.
+    requires:
+      vars: [SET]
+    vars:
+      RUN_ID:
+        sh: date +%s
+    cmds:
+      - mkdir -p bin/govern/{{.RUN_ID}}/hiss-inbox bin/govern/{{.RUN_ID}}/hiss-outbox
+      - cp {{.SET}} bin/govern/{{.RUN_ID}}/hiss-inbox/set.yaml
+      - HISS_POLICY=config/dev/hiss/policy.yaml
+        HISS_INBOX=bin/govern/{{.RUN_ID}}/hiss-inbox
+        HISS_OUTBOX=bin/govern/{{.RUN_ID}}/hiss-outbox
+        go run ./cmd/hiss --once
+      - echo "--- hiss verdict ---"
+      - cat bin/govern/{{.RUN_ID}}/hiss-outbox/*.yaml
+      - |
+        GOVERNED=$(ls bin/govern/{{.RUN_ID}}/hiss-outbox/*.yaml | head -1)
+        kubectl --context k3d-thump-dev -n thump create configmap dev-govern-input-{{.RUN_ID}} --from-file=governed.yaml="$GOVERNED"
+      - |
+        THUMP_IMAGE=$(kubectl --context k3d-thump-dev -n thump get deployment thump -o jsonpath='{.spec.template.spec.containers[0].image}')
+        PROM_URL=$(kubectl --context k3d-thump-dev -n thump get deployment thump -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PROM_URL")].value}')
+        RUN_ID={{.RUN_ID}} THUMP_IMAGE="$THUMP_IMAGE" THUMP_EXECUTOR="{{.THUMP_EXECUTOR | default "live"}}" PROM_URL="$PROM_URL" \
+          INPUT_CONFIGMAP=dev-govern-input-{{.RUN_ID}} \
+          envsubst < deploy/dev/manifests/dev-govern-job.yaml | kubectl --context k3d-thump-dev apply -f -
+      - kubectl --context k3d-thump-dev -n thump wait --for=condition=complete --for=condition=failed --timeout=180s job/dev-govern-{{.RUN_ID}}
+      - echo "--- thump outcome ---"
+      - kubectl --context k3d-thump-dev -n thump logs job/dev-govern-{{.RUN_ID}}
+      - kubectl --context k3d-thump-dev -n thump delete job dev-govern-{{.RUN_ID}} configmap dev-govern-input-{{.RUN_ID}} --ignore-not-found
+      - rm -rf bin/govern/{{.RUN_ID}}
+
   harvest:dev:
     desc: "Run a harvest scenario against dev: task harvest:dev ROW=cart-failure [REPEAT=1] (requires task dev:certs, Tilt's 4222 forward up)"
     requires:
