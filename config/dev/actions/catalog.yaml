@@ -252,6 +252,15 @@
 # dependency_saturation instead — acme-db/acme-cache saturation, not
 # acme-api's own request path — so a fault in one domain can never be
 # matched by an action authored for the other.
+#
+# The remedy is scale-UP, not scale-down (phase AS Part 2). acme-db's
+# fault-mode leak is a fixed total budget divided across live replicas
+# (deploy/dev/manifests/acme.yaml), so scaling to more replicas genuinely
+# spreads it thinner per pod; scaling to fewer only concentrates it. The
+# success criterion moved off acme_api_error_ratio for the same reason the
+# old mechanism could never converge — /fail hits acme-api's own request
+# path and error ratio is replica-invariant — onto the saturation metric the
+# action actually moves.
 - name: acme-shed-load
   applicableFailureClasses:
     - dependency_saturation
@@ -259,25 +268,26 @@
     - tier-1
   action:
     description: >-
-      Shed load by scaling acme-api down to its minimum serving replicas,
-      trading throughput for stability while the fault clears; reversible.
+      Relieve shared connection-pool saturation on acme-db by scaling
+      acme-api up, spreading the fault-mode leak across more replicas;
+      reversible.
     scopeParameters:
       serving_replicas:
         min: 1
         max: 10
-        default: 1
+        default: 4
   blastTier: low
   reversal:
     method: restore-acme-capacity
     fallback: page-oncall
   execution:
     forward:
-      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 1}
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 4}
     reverse:
       - {verb: scale, namespace: acme, deployment: acme-api, replicas: 2}
   successCriteria:
-    metric: acme_api_error_ratio
-    target: "acme_api_error_ratio < 0.01"
+    metric: acme_db_connections_saturation
+    target: "acme_db_connections_saturation < 0.5"
     window: 90000000000 # 90 * time.Second, in nanoseconds — strictly longer than the query's own rate(...[30s])
     severityQuery: severity_acme_api_availability
     severityReductionPct: 0.1

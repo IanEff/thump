@@ -78,7 +78,12 @@ queries:
     query: sum(rate(acme_api_requests_total{status="500"}[30s])) / sum(rate(acme_api_requests_total[30s]))
     subject: acme-api
   - name: acme_db_connections_saturation
-    query: max(acme_db_connections_active) / max(acme_db_connections_max)
+    # sum, not max: acme-db (phase AS Part 2) models a fixed-capacity shared
+    # pool whose fault-mode leak is divided across live replicas, so the
+    # replica count only shows up in the aggregate — max(active)/max(max) is
+    # replica-invariant (every pod reports the same per-pod share) and can
+    # never move when acme-shed-load scales the Deployment.
+    query: sum(acme_db_connections_active) / sum(acme_db_connections_max)
     subject: acme-db
   - name: slo_burn_acme_api
     query: slo:current_burn_rate:ratio{sloth_id="acme-api-availability"}
