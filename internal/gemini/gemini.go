@@ -25,6 +25,17 @@ type Model struct {
 	client        *genai.Client
 	model         string
 	thinkingLevel genai.ThinkingLevel
+
+	// thoughtSigs caches each function call's ThoughtSignature by
+	// reason.ToolCall.ID. Gemini 3's thinking models reject a later turn
+	// that replays a function call without echoing back the exact
+	// signature the model issued it with (400: "missing a
+	// thought_signature") — reason.ToolCall has no field for it (a
+	// Gemini-only concept), so it's kept here instead, keyed by the ID
+	// that's already threaded through every turn. Safe unkeyed by run:
+	// callers build one Model per sequential reasoning loop, never share
+	// one across concurrent loops.
+	thoughtSigs map[string][]byte
 }
 
 // NewModel builds a Model authenticated with apiKey against the Gemini API
@@ -40,7 +51,7 @@ func NewModel(ctx context.Context, apiKey, model string, thinkingLevel genai.Thi
 		return nil, fmt.Errorf("gemini client: %w", err)
 	}
 
-	return &Model{client: client, model: model, thinkingLevel: thinkingLevel}, nil
+	return &Model{client: client, model: model, thinkingLevel: thinkingLevel, thoughtSigs: make(map[string][]byte)}, nil
 }
 
 // Complete sends msgs and tools to m's configured model and folds the
@@ -56,7 +67,7 @@ func (m *Model) Complete(ctx context.Context, msgs []reason.Message, tools []rea
 	if m.thinkingLevel != "" {
 		cfg.ThinkingConfig = &genai.ThinkingConfig{ThinkingLevel: m.thinkingLevel}
 	}
-	resp, err := m.client.Models.GenerateContent(ctx, m.model, toGeminiContents(msgs), cfg)
+	resp, err := m.client.Models.GenerateContent(ctx, m.model, m.toGeminiContents(msgs), cfg)
 	if err != nil {
 		return reason.Completion{}, fmt.Errorf("gemini complete: %w", err)
 	}
@@ -64,17 +75,29 @@ func (m *Model) Complete(ctx context.Context, msgs []reason.Message, tools []rea
 	var comp reason.Completion
 	comp.Message.Role = "assistant"
 	comp.Message.Content = resp.Text()
-	for _, fc := range resp.FunctionCalls() {
-		args, err := json.Marshal(fc.Args)
-		if err != nil {
-			return reason.Completion{}, fmt.Errorf("gemini marshal tool args: %w", err)
+	for _, cand := range resp.Candidates {
+		if cand.Content == nil {
+			continue
 		}
-		comp.ToolCalls = append(comp.ToolCalls, reason.ToolCall{ID: fc.ID, Name: fc.Name, Args: args})
+		for _, part := range cand.Content.Parts {
+			if part.FunctionCall == nil {
+				continue
+			}
+			fc := part.FunctionCall
+			args, err := json.Marshal(fc.Args)
+			if err != nil {
+				return reason.Completion{}, fmt.Errorf("gemini marshal tool args: %w", err)
+			}
+			if len(part.ThoughtSignature) > 0 {
+				m.thoughtSigs[fc.ID] = part.ThoughtSignature
+			}
+			comp.ToolCalls = append(comp.ToolCalls, reason.ToolCall{ID: fc.ID, Name: fc.Name, Args: args})
+		}
 	}
 	return comp, nil
 }
 
-func toGeminiContents(msgs []reason.Message) []*genai.Content {
+func (m *Model) toGeminiContents(msgs []reason.Message) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(msgs))
 	for _, msg := range msgs {
 		var parts []*genai.Part
@@ -86,9 +109,10 @@ func toGeminiContents(msgs []reason.Message) []*genai.Content {
 			if err := json.Unmarshal(c.Args, &args); err != nil {
 				args = map[string]any{}
 			}
-			parts = append(parts, &genai.Part{FunctionCall: &genai.FunctionCall{
-				ID: c.ID, Name: c.Name, Args: args,
-			}})
+			parts = append(parts, &genai.Part{
+				FunctionCall:     &genai.FunctionCall{ID: c.ID, Name: c.Name, Args: args},
+				ThoughtSignature: m.thoughtSigs[c.ID],
+			})
 		}
 		for _, r := range msg.ToolResults {
 			parts = append(parts, &genai.Part{FunctionResponse: &genai.FunctionResponse{
