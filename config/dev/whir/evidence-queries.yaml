@@ -53,23 +53,26 @@ queries:
   # a real cartFailure detection citing "cart_error_ratio returned no data"
   # while the fault was actively injected) — raising the load fixed the rate
   # problem but not the burst-cadence problem, which is what forced [60s]
-  # rather than [30s]. `or vector(0)` on the numerator keeps a
-  # healthy-but-idle window reading 0, not absent — verified live on the rig
-  # this was ported from (baseline 0/0 -> NaN is possible when the
-  # loadgenerator isn't hitting the target path); the denominator carries the
-  # same guard for the same reason, since an empty denominator makes the
-  # whole ratio absent regardless of the numerator.
+  # rather than [30s]. Even at [60s] the window can still land on a
+  # genuinely idle tick, giving errors=0 AND total=0 — 0/0 is NaN, not
+  # absent, so the numerator's `or vector(0)` guard alone never catches it;
+  # confirmed live, 2026-08-16, this NaN reached rattle's own burn-rate
+  # computation (slo-rules.yaml's slo:current_burn_rate:ratio, a plain
+  # division with no guard of its own) and crashed its WAL publish ("json:
+  # unsupported value: NaN") — a real production outage. `clamp_min` on the
+  # denominator reads a genuinely idle window as a healthy 0 instead of NaN,
+  # with negligible effect at any real traffic level this rig runs.
   - name: product_catalog_error_ratio
     query: >-
       (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[60s])) or vector(0))
       /
-      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[60s])) or vector(0))
+      clamp_min(sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[60s])) or vector(0), 1e-9)
     subject: product-catalog
   - name: cart_error_ratio
     query: >-
       (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[60s])) or vector(0))
       /
-      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[60s])) or vector(0))
+      clamp_min(sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[60s])) or vector(0), 1e-9)
     subject: cart
   # demo_pods_not_running spans the whole otel-demo namespace, not one
   # component — left untagged rather than pinned to a single subject that

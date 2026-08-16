@@ -18,10 +18,20 @@
 # a [30s] window lands on more ticks than not with zero samples inside it
 # and reads NaN even with real >=1 req/s throughput and a fault actively
 # injected — confirmed live, 2026-08-16. [60s] is the shortest range that
-# reliably spans at least one Locust tick. The record name and sloth_window
-# label carry the gap deliberately: the name is what slo:current_burn_rate:ratio
-# and internal/rattle read by, so it stays put even though the range it now
-# selects is longer than its own name implies.
+# reliably spans at least one Locust tick, but even at [60s] the window
+# still occasionally lands on a genuinely idle tick, giving errors=0 AND
+# total=0 — 0/0, which is NaN, not absent, so the numerator's `or vector(0)`
+# guard never triggers. Confirmed live, 2026-08-16: this NaN flowed straight
+# through slo:current_burn_rate:ratio (a plain division below, no guard of
+# its own) into rattle's Divergence.Observed and crashed its WAL publish
+# ("json: unsupported value: NaN") — a real production outage, not a
+# theoretical edge case. `clamp_min(denominator, 1e-9)` reads a genuinely
+# idle window as a healthy 0 instead of NaN, with no effect at any real
+# traffic level this rig runs (an epsilon eight orders of magnitude below
+# the smallest req/s ever observed here). The record name and sloth_window
+# label carry the window gap deliberately: the name is what
+# slo:current_burn_rate:ratio and internal/rattle read by, so it stays put
+# even though the range it now selects is longer than its own name implies.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -37,7 +47,7 @@ spec:
         - expr: |
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[60s])) or vector(0))
             /
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[60s])))
+            clamp_min(sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[60s])) or vector(0), 1e-9)
           labels:
             domain: otel-demo
             lab: dev
@@ -203,7 +213,7 @@ spec:
         - expr: |
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[60s])) or vector(0))
             /
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[60s])))
+            clamp_min(sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[60s])) or vector(0), 1e-9)
           labels:
             domain: otel-demo
             lab: dev
