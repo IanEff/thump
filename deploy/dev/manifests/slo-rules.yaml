@@ -12,12 +12,16 @@
 # internal/rattle/source.go:59 queries by sloth_id. Without this rule
 # object, rattle has nothing to detect against, full stop.
 #
-# Each SLO's rate5m sli recording queries a [30s] range, not [5m], since
+# Each SLO's rate5m sli recording queries a [60s] range, not [5m], since
 # 2026-08-16 — dev's loadgenerator carries LOCUST_USERS=150 (deploy/dev/
-# values/otel-demo.yaml), dense enough for a 30s window to read cleanly. The
-# record name and sloth_window: 30s label carry the gap deliberately: the
-# name is what slo:current_burn_rate:ratio and internal/rattle read by, so it
-# stays put even though the range it now selects is shorter.
+# values/otel-demo.yaml), but Locust drives its task loop on a ~60s cadence:
+# a [30s] window lands on more ticks than not with zero samples inside it
+# and reads NaN even with real >=1 req/s throughput and a fault actively
+# injected — confirmed live, 2026-08-16. [60s] is the shortest range that
+# reliably spans at least one Locust tick. The record name and sloth_window
+# label carry the gap deliberately: the name is what slo:current_burn_rate:ratio
+# and internal/rattle read by, so it stays put even though the range it now
+# selects is longer than its own name implies.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -197,16 +201,16 @@ spec:
     - name: sloth-slo-sli-recordings-cart-availability
       rules:
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30s])) or vector(0))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[60s])) or vector(0))
             /
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[30s])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[60s])))
           labels:
             domain: otel-demo
             lab: dev
             sloth_id: cart-availability
             sloth_service: cart
             sloth_slo: availability
-            sloth_window: 30s
+            sloth_window: 60s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30m])) or vector(0))

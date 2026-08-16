@@ -42,15 +42,18 @@ queries:
   # Raw 0..1 error ratios — the same numerator/denominator AND window as each
   # SLO's own Sloth SLI (deploy/dev/manifests/slo-rules.yaml's rate5m rule),
   # for the model to cite directly and for disable-*-failure's
-  # SuccessCriteria.Metric/Target to check against. A [30s] window, since
+  # SuccessCriteria.Metric/Target to check against. A [60s] window, since
   # 2026-08-16: dev's loadgenerator carries LOCUST_USERS=150
   # (deploy/dev/values/otel-demo.yaml), pushing checkout->cart RPC to >=1
-  # req/s — dense enough that [30s] reads cleanly. Before that change,
-  # checkout->cart ran ~0.07 req/s, and even a 2m window starved (confirmed
-  # live, 2026-08-13: the model declined a real cartFailure detection citing
-  # "cart_error_ratio returned no data" while the fault was actively
-  # injected) — the window only shrank once the traffic underneath it did
-  # not require the wider net. `or vector(0)` on the numerator keeps a
+  # req/s, but Locust drives its task loop on a ~60s cadence — a [30s] window
+  # lands on more ticks than not with zero samples inside it and reads NaN
+  # even with real throughput and a fault actively injected (confirmed live,
+  # 2026-08-16). Before LOCUST_USERS=150, checkout->cart ran ~0.07 req/s, and
+  # even a 2m window starved (confirmed live, 2026-08-13: the model declined
+  # a real cartFailure detection citing "cart_error_ratio returned no data"
+  # while the fault was actively injected) — raising the load fixed the rate
+  # problem but not the burst-cadence problem, which is what forced [60s]
+  # rather than [30s]. `or vector(0)` on the numerator keeps a
   # healthy-but-idle window reading 0, not absent — verified live on the rig
   # this was ported from (baseline 0/0 -> NaN is possible when the
   # loadgenerator isn't hitting the target path); the denominator carries the
@@ -58,15 +61,15 @@ queries:
   # whole ratio absent regardless of the numerator.
   - name: product_catalog_error_ratio
     query: >-
-      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30s])) or vector(0))
+      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[60s])) or vector(0))
       /
-      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[30s])) or vector(0))
+      (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[60s])) or vector(0))
     subject: product-catalog
   - name: cart_error_ratio
     query: >-
-      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30s])) or vector(0))
+      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[60s])) or vector(0))
       /
-      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[30s])) or vector(0))
+      (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[60s])) or vector(0))
     subject: cart
   # demo_pods_not_running spans the whole otel-demo namespace, not one
   # component — left untagged rather than pinned to a single subject that
