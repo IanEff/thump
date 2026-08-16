@@ -2,6 +2,7 @@ package harvest_test
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -152,6 +153,76 @@ func TestSettle_RefusesWhenADetectionArrivesWithNoProposalInsideTheGrace(t *test
 			t.Error("wrong verdict when a detection's grace elapses with no proposal", diff)
 		}
 	})
+}
+
+// TestSettle_ADeclineReportsTheRunIDFromItsOwnCausingSetNotAStaleOne pins
+// the fix for a bug found live: a decline's RunID must come from the Set
+// Settle itself observed for this signalRef, never a later re-query that
+// can latch onto an unrelated Set from a different run.
+func TestSettle_ADeclineReportsTheRunIDFromItsOwnCausingSetNotAStaleOne(t *testing.T) {
+	t.Parallel()
+	set := proposal.Set{SignalRef: testSignalRef, RunID: "run-correct"}
+	fixture := newOrderedSetThenTerminal(set)
+	fixture.declines = []decision.Decision{{ID: "dec:1", SignalRef: testSignalRef}}
+	legs := harvest.Legs{Declines: fixture, Sets: fixture}
+
+	got, err := harvest.Settle(t.Context(), legs, testSignalRef, time.Minute, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff("run-correct", got.RunID); diff != "" {
+		t.Error("wrong RunID on a decline", diff)
+	}
+}
+
+// TestSettle_ADeclineWithNoPrecedingSetReportsAnEmptyRunID pins that the
+// RunID field is gated on actually having observed a Set — not populated by
+// coincidence when Terminal's zero value happens to be an empty string.
+func TestSettle_ADeclineWithNoPrecedingSetReportsAnEmptyRunID(t *testing.T) {
+	t.Parallel()
+	legs := harvest.Legs{
+		Declines: feedDeclineWatcher{{ID: "dec:1", SignalRef: testSignalRef}},
+		Sets:     feedSetWatcher(nil),
+	}
+	got, err := harvest.Settle(t.Context(), legs, testSignalRef, time.Minute, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff("", got.RunID); diff != "" {
+		t.Error("wrong RunID with no preceding Set", diff)
+	}
+}
+
+// TestSettle_SkipsAReplayedSetOlderThanThisRunAndWaitsForAFreshOne pins the
+// fix for a bug found live 2026-08-16: the sets leg replays from the start
+// of the stream's retention (DeliverAllPolicy, to beat the race where clank
+// publishes a Set before this watcher subscribes), so a harvest re-run
+// against a signalRef it has already exercised saw the earliest matching Set
+// first and latched onto it — every repeat pass silently reported the
+// original run's RunID and confidence, hours stale, instead of its own.
+func TestSettle_SkipsAReplayedSetOlderThanThisRunAndWaitsForAFreshOne(t *testing.T) {
+	t.Parallel()
+	stale := proposal.Set{
+		SignalRef: testSignalRef,
+		RunID:     testSignalRef + "/" + strconv.FormatInt(time.Now().Add(-10*time.Minute).UnixNano(), 10),
+	}
+	fresh := proposal.Set{
+		SignalRef: testSignalRef,
+		RunID:     testSignalRef + "/" + strconv.FormatInt(time.Now().Add(10*time.Minute).UnixNano(), 10),
+	}
+	fixture := newOrderedSetsThenOutcome(
+		[]proposal.Set{stale, fresh},
+		[]outcome.Outcome{{SignalRef: testSignalRef, Result: outcome.ResultSuccess}},
+	)
+	legs := harvest.Legs{Outcomes: fixture, Sets: fixture}
+
+	got, err := harvest.Settle(t.Context(), legs, testSignalRef, time.Minute, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(fresh.RunID, got.RunID); diff != "" {
+		t.Error("wrong RunID: settled on a replayed Set from an earlier run", diff)
+	}
 }
 
 func TestSettle_ASetArrivingInsideTheGraceCancelsTheRefusalAndTheNormalWaitResumes(t *testing.T) {

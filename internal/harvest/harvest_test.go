@@ -229,10 +229,9 @@ func (r *failingRunner) snapshot() []string {
 }
 
 // TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails
-// pins a bug found live 2026-08-06: the restore defer used to be registered
-// after the preconditions loop, so a precondition failing partway through
-// returned before the defer ever ran, leaving every precondition applied
-// before it permanently unrestored on a real rig.
+// pins that a precondition failing partway through Run doesn't strand the
+// rig: every precondition that already applied has its restore command run,
+// in reverse order, and the fault itself is never applied.
 func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t *testing.T) {
 	t.Parallel()
 	sc := harvest.Scenario{
@@ -247,9 +246,8 @@ func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t 
 				Restore: "ceph config set global mon_osd_down_out_interval 600",
 			},
 			{
-				Name:    "argocd-selfheal-off",
-				Set:     "kubectl -n argocd patch application rook-operator --type merge -p bad-json",
-				Restore: "kubectl -n argocd patch application rook-operator --type merge -p good-json",
+				Name: "argocd-disable",
+				Set:  "argocd app set --sync-policy manual", Restore: "argocd app set --sync-policy automated",
 			},
 		},
 		Expects:      harvest.Expects{Verdict: "held"},
@@ -274,12 +272,9 @@ func TestHarvest_RestoresAlreadyAppliedPreconditionsWhenALaterOnePartwayFails(t 
 	}
 }
 
-// TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet pins the win
-// path NewHarvest's missing third argument used to crash: h.sets was never
-// wired, so firstSetFor's call on a nil SetWatcher panicked the instant a
-// scenario actually settled rather than timing out. This is the only test
-// in the package that lets Settle succeed, which is exactly why the bug
-// went uncaught.
+// TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet pins that a
+// settled row's confidence fields come from the Set Settle itself observed
+// for the row's own signalRef, not a fabricated or stale value.
 func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
 	t.Parallel()
 	const fp = "slo_burn:ceph-cluster"
@@ -298,7 +293,9 @@ func TestHarvest_PopulatesConfidenceFromTheMatchingProposalSet(t *testing.T) {
 			{ContractRef: "restart-pod", Confidence: 0.7, ComputedConfidence: 0.65, ConfidenceCeilingBound: true},
 		},
 	}
-	legs := harvest.Legs{Outcomes: feedWatcher{outcome.ResultSuccess}, Sets: feedSetWatcher{set}}
+	fixture := newOrderedSetThenTerminal(set)
+	fixture.outcomes = []outcome.Outcome{{SignalRef: fp, Result: outcome.ResultSuccess}}
+	legs := harvest.Legs{Outcomes: fixture, Sets: fixture}
 	h := harvest.NewHarvest(legs, &recordingRunner{}, 0)
 
 	res, err := h.Run(t.Context(), sc)

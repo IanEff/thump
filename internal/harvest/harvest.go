@@ -149,30 +149,10 @@ func (h *Harvest) Run(ctx context.Context, sc Scenario) (res Result, err error) 
 	res.ActualVerdict = term.Verdict
 	res.ActualContract = term.ContractRef
 	res.ActualResult = term.Result
-
-	// A refused row published no Set by definition — the lookup below would
-	// only burn the rest of the settle window waiting for one that can never
-	// arrive.
-	if term.Verdict != "refused" {
-		// firstSetFor gets its own bounded context, the same shape Settle
-		// builds for itself — by the time the terminal above landed, the Set
-		// that led to it was published seconds ago, but confidence
-		// enrichment and the RunID join are a nice-to-have on Result, not a
-		// reason a whole harvest run should hang forever if this particular
-		// lookup never resolves.
-		setCtx, setCancel := context.WithTimeout(ctx, sc.SettleWindow)
-		if s, ok := firstSetFor(setCtx, h.legs.Sets, sc.SignalRef); ok {
-			res.RunID = s.RunID
-			if len(s.Proposals) > 0 {
-				top := s.Proposals[0]
-				res.EmittedConfidence = top.Confidence
-				res.ComputedConfidence = top.ComputedConfidence
-				res.CeilingBound = top.ConfidenceCeilingBound
-			}
-		}
-		setCancel()
-	}
-
+	res.RunID = term.RunID
+	res.EmittedConfidence = term.EmittedConfidence
+	res.ComputedConfidence = term.ComputedConfidence
+	res.CeilingBound = term.CeilingBound
 	res.ObservedSeverity = term.ObservedSeverity
 
 	return res, nil

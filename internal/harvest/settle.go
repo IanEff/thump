@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ianeff/thump/api/v1/decision"
@@ -47,6 +49,12 @@ type DetectionWatcher interface {
 	Detections(ctx context.Context) (<-chan signal.Detection, error)
 }
 
+// SetWatcher is how a harvest learns what the engine concluded, vs
+// Watcher's what happened.
+type SetWatcher interface {
+	Sets(ctx context.Context) (<-chan proposal.Set, error)
+}
+
 // Legs bundles every broker leg Settle selects across. A nil field means
 // that leg never fires and Settle skips it — a test exercising only the
 // outcome leg doesn't have to fake subjects it doesn't care about.
@@ -70,6 +78,33 @@ type Terminal struct {
 	ContractRef      string
 	DecisionRef      string
 	ObservedSeverity *float64 // set only when Verdict is approved — the convergence watcher's measured end state
+
+	// RunID, EmittedConfidence, ComputedConfidence, and CeilingBound come
+	// from the first Set Settle's own sets leg observed for signalRef —
+	// never a second, independent watch reopened after the fact, which can
+	// only ever race a live stream. All four are zero on a refused row:
+	// nothing was ever proposed.
+	RunID              string
+	EmittedConfidence  float64
+	ComputedConfidence float64
+	CeilingBound       bool
+}
+
+// enrichFromSet copies RunID and confidence data from the first Set Settle
+// observed onto t — a no-op when no Set matched signalRef before t's
+// terminal leg fired.
+func enrichFromSet(t Terminal, matchedSet proposal.Set, haveSet bool) Terminal {
+	if !haveSet {
+		return t
+	}
+	t.RunID = matchedSet.RunID
+	if len(matchedSet.Proposals) > 0 {
+		top := matchedSet.Proposals[0]
+		t.EmittedConfidence = top.Confidence
+		t.ComputedConfidence = top.ComputedConfidence
+		t.CeilingBound = top.ConfidenceCeilingBound
+	}
+	return t
 }
 
 // isTerminal names the settled results explicitly rather than excluding
@@ -94,6 +129,7 @@ func isTerminal(r outcome.Result) bool {
 // outcome, a decline, a hold, or (once a detection arrives with no proposal
 // inside refusalGrace) a clank refusal — or window elapses.
 func Settle(ctx context.Context, legs Legs, signalRef string, window, refusalGrace time.Duration) (Terminal, error) {
+	startedAt := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, window)
 	defer cancel()
 
@@ -121,6 +157,8 @@ func Settle(ctx context.Context, legs Legs, signalRef string, window, refusalGra
 	var refusalTimer *time.Timer
 	var refusalC <-chan time.Time
 	detected := false
+	var matchedSet proposal.Set
+	haveSet := false
 
 	for {
 		select {
@@ -136,13 +174,13 @@ func Settle(ctx context.Context, legs Legs, signalRef string, window, refusalGra
 			if o.SignalRef != signalRef || !isTerminal(o.Result) {
 				continue
 			}
-			return Terminal{
+			return enrichFromSet(Terminal{
 				Verdict:          "approved",
 				Result:           o.Result,
 				ContractRef:      o.ContractRef,
 				DecisionRef:      o.DecisionRef,
 				ObservedSeverity: o.ObservedSeverity,
-			}, nil
+			}, matchedSet, haveSet), nil
 		case d, ok := <-declines:
 			if !ok {
 				declines = nil
@@ -151,7 +189,7 @@ func Settle(ctx context.Context, legs Legs, signalRef string, window, refusalGra
 			if d.SignalRef != signalRef {
 				continue
 			}
-			return Terminal{Verdict: "declined", DecisionRef: d.ID}, nil
+			return enrichFromSet(Terminal{Verdict: "declined", DecisionRef: d.ID}, matchedSet, haveSet), nil
 		case g, ok := <-held:
 			if !ok {
 				held = nil
@@ -160,11 +198,11 @@ func Settle(ctx context.Context, legs Legs, signalRef string, window, refusalGra
 			if g.Decision.SignalRef != signalRef {
 				continue
 			}
-			return Terminal{
+			return enrichFromSet(Terminal{
 				Verdict:     "held",
 				ContractRef: g.Set.ContractRefFor(g.Decision.CandidateRef),
 				DecisionRef: g.Decision.ID,
-			}, nil
+			}, matchedSet, haveSet), nil
 		case det, ok := <-detections:
 			if !ok {
 				detections = nil
@@ -184,6 +222,21 @@ func Settle(ctx context.Context, legs Legs, signalRef string, window, refusalGra
 			if s.SignalRef != signalRef {
 				continue
 			}
+			// The sets leg replays from the start of the stream's retention
+			// (NATSSetWatcher.Sets uses DeliverAllPolicy, to beat the race
+			// where clank publishes before this watcher subscribes), so a
+			// re-run against a signalRef harvest has already exercised will
+			// see that older Set first. Found live, 2026-08-16: every
+			// cart-failure harvest run since the row's original detection
+			// carried that first run's RunID and confidence, silently —
+			// "first Set seen" quietly became "oldest Set ever," and every
+			// repeat pass was reading a run from 13+ hours earlier instead
+			// of its own. Skip anything whose own RunID predates this
+			// Settle call; it belongs to an earlier run on this signalRef,
+			// not this one.
+			if !runIDFresh(s.RunID, startedAt) {
+				continue
+			}
 			// A Set arrived for this fingerprint — clank did not refuse it.
 			// Cancel any pending refusal timer and keep waiting for whichever
 			// terminal leg fires next.
@@ -191,8 +244,35 @@ func Settle(ctx context.Context, legs Legs, signalRef string, window, refusalGra
 				refusalTimer.Stop()
 			}
 			refusalC = nil
+			if !haveSet {
+				haveSet = true
+				matchedSet = s
+			}
 		}
 	}
+}
+
+// runIDGrace covers the gap between a scenario's fault firing and Settle's
+// own clock starting (harvest.go applies the fault, then calls Settle) —
+// a Set published in that gap is still this run's, not a stale replay.
+const runIDGrace = 5 * time.Second
+
+// runIDFresh reports whether runID's own embedded fingerprint/unixnano
+// timestamp is at or after since, minus runIDGrace. An unparseable runID
+// (empty, or missing the "/unixnano" suffix — never emitted by clank, but
+// cheap to guard) is treated as fresh rather than silently dropped, so a
+// format Settle doesn't recognize fails toward keeping the Set rather than
+// toward the exact staleness bug this check exists to catch.
+func runIDFresh(runID string, since time.Time) bool {
+	i := strings.LastIndex(runID, "/")
+	if i < 0 {
+		return true
+	}
+	ns, err := strconv.ParseInt(runID[i+1:], 10, 64)
+	if err != nil {
+		return true
+	}
+	return !time.Unix(0, ns).Before(since.Add(-runIDGrace))
 }
 
 func openOutcomes(ctx context.Context, w Watcher) (<-chan outcome.Outcome, error) {
