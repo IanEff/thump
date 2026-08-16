@@ -548,6 +548,30 @@ tasks:
       - kubectl --context k3d-thump-dev -n thump delete job dev-govern-{{.RUN_ID}} configmap dev-govern-input-{{.RUN_ID}} --ignore-not-found
       - rm -rf bin/govern/{{.RUN_ID}}
 
+  dev:probe:
+    desc: >-
+      Fire N real clank reasoning runs against a captured detection, straight
+      from a laptop: task dev:probe DETECTION=<path> [RUNS=5] [FLOOR=0.75].
+      Read-only against the dev cluster by construction — clank.ProbeEngine
+      never wires a Pub or a Journal, so nothing here reaches thump.proposals
+      or the corpus. Requires Tilt's prometheus-ui and loki-port-forward
+      resources up (PROM_URL/LOKI_URL below dial their local ports) and
+      ANTHROPIC_API_KEY set in the shell.
+    requires:
+      vars: [DETECTION]
+    cmds:
+      - |
+        PROM_URL=http://localhost:9090 \
+        LOKI_URL=http://localhost:3100 \
+        EVIDENCE_QUERIES=config/dev/whir/evidence-queries.yaml \
+        WHIR_CATALOG=config/dev/whir/catalog-info.yaml \
+        WHIR_STATE_QUERIES=config/dev/whir/state-queries.yaml \
+        ACTION_CATALOG=config/dev/actions/catalog.yaml \
+        FAILURE_CLASSES=config/dev/actions/failure-classes.yaml \
+        CLANK_WEIGHTS=config/clank/weights.yaml \
+        CLANK_LIMITS=config/clank/limits.yaml \
+        go run ./cmd/calipers probe -detection {{.DETECTION}} -runs {{.RUNS | default 1}} -floor {{.FLOOR | default 0.75}}
+
   harvest:dev:
     desc: "Run a harvest scenario against dev: task harvest:dev ROW=cart-failure [REPEAT=1] (requires task dev:certs, Tilt's 4222 forward up)"
     requires:

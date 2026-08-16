@@ -95,6 +95,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	detection := fs.String("detection", "", "path to a signal.Detection fixture, e.g. from task capture-detection (required)")
 	runs := fs.Int("runs", 1, "number of independent reasoning runs to fire")
 	asJSON := fs.Bool("json", false, "print one JSON row per run instead of a table")
+	floor := fs.Float64("floor", 0.75, "confidence floor a run must clear to count as underFloor=0; purely a grading label printed in the summary line, never enforced")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -153,7 +154,9 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	// A probe run is always the offline (non-broker) posture: no TLS material
 	// of its own, so backendTLS stays nil and PROM_URL/LOKI_URL are dialed in
 	// the clear, same declared exception clank.Main's own offline path takes.
-	kube, argo := clank.InClusterClients()
+	// Unlike the beats, probe runs on a laptop, not as a pod — it reaches the
+	// cluster through the operator's own kubeconfig, not a ServiceAccount.
+	kube, argo := clank.KubeconfigClients()
 	model := anthropic.NewModel(key, modelRequestTimeout)
 
 	var backendTLS *tls.Config
@@ -190,6 +193,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 			r.Run, r.Phase, r.ContractRef, r.Confidence, r.Computed, ceiling, r.Terms.Grounding, r.Terms.Corroborated, r.Reason)
 	}
 	_, _ = fmt.Fprintf(stdout, "\n%d probe run(s) against %s — read-only, nothing published or journaled\n", len(rows), *detection)
+	RenderSummary(stdout, Summarize(rows, *floor))
 	return 0
 }
 
