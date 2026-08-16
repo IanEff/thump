@@ -145,6 +145,22 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	if f != nil {
 		tr.Acceptance = &AcceptanceWatcher{Probe: f}
 	}
+	if lc.Once {
+		// A reload failure leaves sw disarmed (FileSwitch's own fail-safe) —
+		// logged, not fatal, the same posture poll.Loop(sw.Reload) has in
+		// every other run mode. A missing killswitch file should block a
+		// live Order, not the whole diagnostic pass.
+		if sw != nil {
+			if err := sw.Reload(ctx); err != nil {
+				slog.Warn("kill switch reload failed, staying disarmed", "err", err)
+			}
+		}
+		if err := tr.Tick(ctx); err != nil {
+			_, _ = fmt.Fprintf(stderr, "tick: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	if sw != nil {
 		go poll.Loop(ctx, poll.DefaultConfig, sw.Reload)
 	}

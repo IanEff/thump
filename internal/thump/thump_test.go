@@ -2,6 +2,7 @@ package thump_test
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -41,6 +42,26 @@ func TestMain_MissingOutboxReturnsOne(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "THUMP_OUTBOX") {
 		t.Error("stderr should name the missing var:", errb.String())
+	}
+}
+
+func TestMain_OnceRunsASingleTickAndReturnsZeroInsteadOfLoopingForever(t *testing.T) {
+	// A real shipped catalog, not a fixture — an empty inbox never resolves
+	// a ContractRef against it, so any well-formed catalog file proves the
+	// same thing: --once reaches a real Tick and returns, rather than
+	// blocking in poll.Loop forever the way the flag's absence would.
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("THUMP_INBOX", t.TempDir())
+	t.Setenv("THUMP_OUTBOX", t.TempDir())
+	t.Setenv("ACTION_CATALOG", filepath.Join(repoRoot, "config", "dev", "actions", "catalog.yaml"))
+
+	var out, errb bytes.Buffer
+	code := thump.Main([]string{"-once"}, &out, &errb, "dev", "none", "unknown", nil, nil)
+	if code != 0 {
+		t.Fatalf("want exit 0 for a single successful pass over an empty inbox, got %d, stderr: %s", code, errb.String())
 	}
 }
 

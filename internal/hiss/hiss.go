@@ -109,6 +109,13 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		Tracer: tracer,
 		Stages: stages,
 	}
+	if lc.Once {
+		if err := tr.Tick(ctx); err != nil {
+			_, _ = fmt.Fprintf(stderr, "tick: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	poll.Loop(ctx, poll.DefaultConfig, tr.Tick)
 	return 0
 }
