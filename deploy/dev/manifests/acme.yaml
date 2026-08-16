@@ -182,7 +182,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: 15s
+      interval: 10s
       relabelings:
         - targetLabel: job
           replacement: acme-api
@@ -201,7 +201,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: 15s
+      interval: 10s
       relabelings:
         - targetLabel: job
           replacement: acme-db
@@ -220,7 +220,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: 15s
+      interval: 10s
       relabelings:
         - targetLabel: job
           replacement: acme-cache

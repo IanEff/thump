@@ -22,7 +22,12 @@ prometheus:
     retention: "7d"
     scrapeInterval: 30s
     scrapeTimeout: 10s
-    evaluationInterval: 30s
+    # 15s, not the global scrapeInterval's 30s — evaluationInterval governs
+    # how often recording/alerting rules re-run, not how often targets are
+    # scraped; halving it (phase AS 0A.2) buys detection latency for the
+    # cost of one extra rule pass every 30s, cheap next to a full scrape
+    # cycle.
+    evaluationInterval: 15s
 
     storageSpec:
       volumeClaimTemplate:

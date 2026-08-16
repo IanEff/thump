@@ -59,6 +59,22 @@ components:
     enabled: false
   llm:
     enabled: false
+  # Chart default is LOCUST_USERS=10, LOCUST_SPAWN_RATE=1 — ~4 req/min on
+  # the cart/product-catalog SLO paths (measured live, phase AS), sparse
+  # enough that even a [5m] rate() window intermittently starved. Raised to
+  # push the cart path to >=1 req/s, dense enough for a [30s] window
+  # (deploy/dev/manifests/slo-rules.yaml, config/dev/whir/
+  # evidence-queries.yaml) to read cleanly. checkout/product-catalog's
+  # memory limits above were already raised once for OOMKilled under the
+  # old load — re-check `kubectl top pods -n otel-demo` after this change
+  # goes live; a further bump here trades cart-path density for node
+  # headroom, per phase AS's own live gate on this number.
+  load-generator:
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "150"
+      - name: LOCUST_SPAWN_RATE
+        value: "10"
   # checkout/product-catalog: the chart's own stock default is 20Mi
   # (resources.limits.memory) for every component — fine for the demo's
   # showcase-traffic assumption, too tight once load-generator (this values

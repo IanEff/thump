@@ -59,4 +59,10 @@ ports:
 serviceMonitor:
   enabled: true
   metricsEndpoints:
+    # 10s, not the global scrapeInterval's 30s — this is where otel-demo's
+    # app metrics (app_frontend_requests_total, rpc_client_duration_
+    # milliseconds_count) actually land after the OTel SDK exports them
+    # here over OTLP; phase AS 0A.2 needs 3+ samples inside a [30s] rate()
+    # window, which a 30s scrape can't give.
     - port: prometheus
+      interval: 10s

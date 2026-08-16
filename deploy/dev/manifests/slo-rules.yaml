@@ -11,6 +11,13 @@
 # slo:current_burn_rate:ratio{sloth_id=...} — the exact series
 # internal/rattle/source.go:59 queries by sloth_id. Without this rule
 # object, rattle has nothing to detect against, full stop.
+#
+# Each SLO's rate5m sli recording queries a [30s] range, not [5m], since
+# 2026-08-16 — dev's loadgenerator carries LOCUST_USERS=150 (deploy/dev/
+# values/otel-demo.yaml), dense enough for a 30s window to read cleanly. The
+# record name and sloth_window: 30s label carry the gap deliberately: the
+# name is what slo:current_burn_rate:ratio and internal/rattle read by, so it
+# stays put even though the range it now selects is shorter.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -24,16 +31,16 @@ spec:
     - name: sloth-slo-sli-recordings-product-catalog-availability
       rules:
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])) or vector(0))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30s])) or vector(0))
             /
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[5m])))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[30s])))
           labels:
             domain: otel-demo
             lab: dev
             sloth_id: product-catalog-availability
             sloth_service: product-catalog
             sloth_slo: availability
-            sloth_window: 5m
+            sloth_window: 30s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30m])) or vector(0))
@@ -190,16 +197,16 @@ spec:
     - name: sloth-slo-sli-recordings-cart-availability
       rules:
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30s])) or vector(0))
             /
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m])))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[30s])))
           labels:
             domain: otel-demo
             lab: dev
             sloth_id: cart-availability
             sloth_service: cart
             sloth_slo: availability
-            sloth_window: 5m
+            sloth_window: 30s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30m])) or vector(0))
@@ -436,16 +443,16 @@ spec:
     - name: sloth-slo-sli-recordings-acme-api-availability
       rules:
         - expr: |
-            (sum(rate(acme_api_requests_total{status="500"}[5m])))
+            (sum(rate(acme_api_requests_total{status="500"}[30s])))
             /
-            (sum(rate(acme_api_requests_total[5m])))
+            (sum(rate(acme_api_requests_total[30s])))
           labels:
             domain: acme
             lab: dev
             sloth_id: acme-api-availability
             sloth_service: acme-api
             sloth_slo: availability
-            sloth_window: 5m
+            sloth_window: 30s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(acme_api_requests_total{status="500"}[30m])))
