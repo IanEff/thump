@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/IanEff/thump/blob/main/SECURITY.md
+    about: Please report security vulnerabilities privately according to SECURITY.md rather than opening a public issue.
+  - name: Discussions & Questions
+    url: https://github.com/IanEff/thump/discussions
+    about: Ask general questions about architecture, running the local rig, or domain onboarding.

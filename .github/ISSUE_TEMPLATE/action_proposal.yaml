@@ -1,0 +1,91 @@
+name: Action Catalog Proposal
+description: Propose adding or updating an action in `config/<profile>/actions/catalog.yaml`
+title: "[Action]: "
+labels:
+  - area/catalog
+  - type/proposal
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An action contract defines the autonomy boundary. Merging an action allows the engine to execute it unattended if governance approves.
+  - type: input
+    id: action_name
+    attributes:
+      label: Action Name
+      description: Kebab-case identifier for the action.
+      placeholder: acme-shed-load
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Target Profile
+      options:
+        - dev
+        - thump-test
+        - new domain
+    validations:
+      required: true
+  - type: dropdown
+    id: failure_class
+    attributes:
+      label: Applicable Failure Class
+      description: Must be one of the six canonical failure classes.
+      options:
+        - service_failure
+        - dependency_saturation
+        - resource_exhaustion
+        - redundancy_degraded
+        - traffic_shift
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: blast_tier
+    attributes:
+      label: Blast Tier
+      description: High-tier actions are held for human approval; low/med can fire unattended if reversible.
+      options:
+        - low
+        - med
+        - high
+    validations:
+      required: true
+  - type: textarea
+    id: execution
+    attributes:
+      label: Execution Block (Forward & Reverse)
+      description: Specify forward and reverse mechanisms using compiled verbs (`scale`, `restart`, `flagVariant`, `exec`).
+      placeholder: |
+        forward:
+          - verb: scale
+            namespace: acme
+            deployment: acme-api
+            replicas: 2
+        reverse:
+          - verb: scale
+            namespace: acme
+            deployment: acme-api
+            replicas: 10
+    validations:
+      required: true
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success Criteria
+      description: Metric query, target predicate, and convergence window.
+      placeholder: |
+        metric: acme_api_error_ratio
+        target: "acme_api_error_ratio < 0.01"
+        window: 300000000000 # 5m in ns
+        severityReductionPct: 0.8
+    validations:
+      required: true
+  - type: textarea
+    id: safety_argument
+    attributes:
+      label: Safety & Reversibility Rationale
+      description: Why is this action safe? Does it leave infrastructure in a recoverable state on timeout or failure?
+    validations:
+      required: true
