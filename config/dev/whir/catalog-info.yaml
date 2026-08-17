@@ -23,6 +23,7 @@ spec:
     - component:default/product-catalog
     - component:default/cart
     - component:default/checkout
+    - component:default/flagd
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -45,6 +46,8 @@ spec:
   type: service
   lifecycle: experimental
   owner: otel-demo
+  dependsOn:
+    - component:default/flagd
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -55,6 +58,8 @@ spec:
   type: service
   lifecycle: experimental
   owner: otel-demo
+  dependsOn:
+    - component:default/flagd
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
