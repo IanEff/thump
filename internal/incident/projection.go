@@ -17,20 +17,20 @@ import (
 // under a zero-value key.
 var ErrNoFingerprint = errors.New("incident: object carries no fingerprint")
 
-// Projection is the map of fingerprints to Incidents, safe for concurrent
-// Apply and Get/Snapshot — Tick's poll loop writes while an "incidents"
-// invocation reads.
+// Projection is the map of fingerprints to Incidents and Records, safe for
+// concurrent Apply and Get/Snapshot/GetRecord — Tick's poll loop writes while
+// an "incidents" invocation reads.
 type Projection struct {
-	mu        sync.RWMutex
-	incidents map[string]Incident
+	mu      sync.RWMutex
+	records map[string]Record
 }
 
 // NewProjection returns an empty Projection, ready for Apply.
 func NewProjection() *Projection {
-	return &Projection{incidents: make(map[string]Incident)}
+	return &Projection{records: make(map[string]Record)}
 }
 
-// Apply folds obj into the Incident at its fingerprint via Fold, or returns
+// Apply folds obj into the Record at its fingerprint via FoldRecord, or returns
 // ErrNoFingerprint if obj is none of the four boundary-object types Fold
 // recognizes.
 func (p *Projection) Apply(obj any) error {
@@ -40,7 +40,7 @@ func (p *Projection) Apply(obj any) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.incidents[fp] = Fold(p.incidents[fp], obj)
+	p.records[fp] = FoldRecord(p.records[fp], obj)
 	return nil
 }
 
@@ -49,20 +49,33 @@ func (p *Projection) Apply(obj any) error {
 func (p *Projection) Get(fingerprint string) (Incident, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	incident, ok := p.incidents[fingerprint]
+	rec, ok := p.records[fingerprint]
 	if !ok {
 		return Incident{}, false
 	}
-	return incident, true
+	return rec.Incident, true
+}
+
+// GetRecord returns the Record at fingerprint, or false if Apply has never
+// seen that fingerprint — carries the raw boundary objects alongside the
+// Incident status line.
+func (p *Projection) GetRecord(fingerprint string) (Record, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	rec, ok := p.records[fingerprint]
+	if !ok {
+		return Record{}, false
+	}
+	return rec, true
 }
 
 // Snapshot returns every Incident currently held, in no particular order.
 func (p *Projection) Snapshot() []Incident {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	incidents := make([]Incident, 0, len(p.incidents))
-	for _, incident := range p.incidents {
-		incidents = append(incidents, incident)
+	incidents := make([]Incident, 0, len(p.records))
+	for _, rec := range p.records {
+		incidents = append(incidents, rec.Incident)
 	}
 	return incidents
 }
