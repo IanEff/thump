@@ -1,0 +1,441 @@
+{
+ "name": "cart-burn-accel",
+ "runID": "slo_burn:cart/1786969860387330045",
+ "signalRef": "slo_burn:cart",
+ "saoSnapshot": {
+  "version": 1,
+  "assembledAt": "2026-08-17T12:31:00.944001892Z",
+  "signal": {
+   "confidence": 1,
+   "severity": {
+    "DegradationPct": 0.49763033175355453,
+    "Trajectory": "accelerating"
+   },
+   "blastRadius": {
+    "AffectedPct": 0.12393011549293288,
+    "Velocity": "stable",
+    "DownstreamConsumers": 0
+   },
+   "originService": "cart"
+  },
+  "topology": {
+   "upstream": [
+    {
+     "name": "flagd",
+     "state": "healthy",
+     "trafficShare": 0.03133826496301278
+    },
+    {
+     "name": "redis",
+     "state": "healthy",
+     "trafficShare": 0.8876933422999327
+    },
+    {
+     "name": "unknown",
+     "state": "degraded",
+     "trafficShare": 0.08096839273705447
+    }
+   ],
+   "downstream": [
+    {
+     "name": "checkout",
+     "state": "degraded",
+     "trafficShare": 0.1970879742590936
+    },
+    {
+     "name": "frontend",
+     "state": "healthy",
+     "trafficShare": 0.8029120257409065
+    }
+   ]
+  },
+  "change": {
+   "events": [
+    {
+     "id": "deploy/acme/acme-api/1",
+     "type": "deploy",
+     "target": "acme-api",
+     "age": 548392211635,
+     "historicalStaleness": 548392211635
+    },
+    {
+     "id": "config/acme/acme-fault-flag/3397",
+     "type": "config",
+     "target": "acme-db",
+     "age": 561392211635,
+     "historicalStaleness": 561392211635
+    },
+    {
+     "id": "deploy/otel-demo/cart/1",
+     "type": "deploy",
+     "target": "cart",
+     "age": 593392211635,
+     "historicalStaleness": 593392211635
+    },
+    {
+     "id": "deploy/otel-demo/checkout/1",
+     "type": "deploy",
+     "target": "checkout",
+     "age": 580392211635,
+     "historicalStaleness": 580392211635
+    },
+    {
+     "id": "deploy/otel-demo/flagd/1",
+     "type": "deploy",
+     "target": "flagd",
+     "age": 603392211635,
+     "historicalStaleness": 603392211635
+    },
+    {
+     "id": "deploy/otel-demo/frontend/1",
+     "type": "deploy",
+     "target": "frontend",
+     "age": 591392211635,
+     "historicalStaleness": 591392211635
+    },
+    {
+     "id": "deploy/otel-demo/product-catalog/1",
+     "type": "deploy",
+     "target": "product-catalog",
+     "age": 622392211635,
+     "historicalStaleness": 622392211635
+    },
+    {
+     "id": "config/otel-demo/flagd-config/4283",
+     "type": "config",
+     "target": "flagd",
+     "age": 289392211635,
+     "historicalStaleness": 289392211635
+    }
+   ]
+  }
+ },
+ "failureClass": "service_failure",
+ "causalScores": [
+  {
+   "eventID": "deploy/acme/acme-api/1",
+   "temporal": 0.8096316872271677,
+   "historical": 0.8998680247761542,
+   "likelihood": 0.5,
+   "rationale": [
+    "temporal: 9m8.392211635s old -\u003e 0.81",
+    "topological: in-path=false -\u003e 0.00",
+    "historical: case-base prior, staleness 9m8.392211635s -\u003e 0.90",
+    "defence 1: uncorroborated -\u003e capped at 0.50",
+    "target \"acme-api\" is not in this signal's topology -\u003e scored for audit, excluded from confidence"
+   ]
+  },
+  {
+   "eventID": "config/acme/acme-fault-flag/3397",
+   "temporal": 0.8055887480650675,
+   "historical": 0.8998648964510383,
+   "likelihood": 0.5,
+   "rationale": [
+    "temporal: 9m21.392211635s old -\u003e 0.81",
+    "topological: in-path=false -\u003e 0.00",
+    "historical: case-base prior, staleness 9m21.392211635s -\u003e 0.90",
+    "defence 1: uncorroborated -\u003e capped at 0.50",
+    "target \"acme-db\" is not in this signal's topology -\u003e scored for audit, excluded from confidence"
+   ]
+  },
+  {
+   "eventID": "deploy/otel-demo/cart/1",
+   "temporal": 0.7957226994418065,
+   "historical": 0.899857196004778,
+   "likelihood": 0.5,
+   "rationale": [
+    "temporal: 9m53.392211635s old -\u003e 0.80",
+    "topological: in-path=false -\u003e 0.00",
+    "historical: case-base prior, staleness 9m53.392211635s -\u003e 0.90",
+    "defence 1: uncorroborated -\u003e capped at 0.50",
+    "target \"cart\" is not in this signal's topology -\u003e scored for audit, excluded from confidence"
+   ]
+  },
+  {
+   "eventID": "deploy/otel-demo/checkout/1",
+   "inTopology": true,
+   "temporal": 0.7997161247117999,
+   "topological": 0.1970879742590936,
+   "historical": 0.8998603243031239,
+   "liveCorroborated": true,
+   "likelihood": 0.6322214744246724,
+   "rationale": [
+    "temporal: 9m40.392211635s old -\u003e 0.80",
+    "topological: in-path=true -\u003e 0.20",
+    "historical: case-base prior, staleness 9m40.392211635s -\u003e 0.90"
+   ]
+  },
+  {
+   "eventID": "deploy/otel-demo/flagd/1",
+   "inTopology": true,
+   "temporal": 0.7926644086498934,
+   "historical": 0.8998547896288354,
+   "likelihood": 0.5,
+   "rationale": [
+    "temporal: 10m3.392211635s old -\u003e 0.79",
+    "topological: in-path=true -\u003e 0.00",
+    "historical: case-base prior, staleness 10m3.392211635s -\u003e 0.90",
+    "defence 1: uncorroborated -\u003e capped at 0.50"
+   ]
+  },
+  {
+   "eventID": "deploy/otel-demo/frontend/1",
+   "inTopology": true,
+   "temporal": 0.7963357721008563,
+   "historical": 0.8998576772807387,
+   "likelihood": 0.5,
+   "rationale": [
+    "temporal: 9m51.392211635s old -\u003e 0.80",
+    "topological: in-path=true -\u003e 0.00",
+    "historical: case-base prior, staleness 9m51.392211635s -\u003e 0.90",
+    "defence 1: uncorroborated -\u003e capped at 0.50"
+   ]
+  },
+  {
+   "eventID": "deploy/otel-demo/product-catalog/1",
+   "temporal": 0.7868860018278987,
+   "historical": 0.8998502175322729,
+   "likelihood": 0.5,
+   "rationale": [
+    "temporal: 10m22.392211635s old -\u003e 0.79",
+    "topological: in-path=false -\u003e 0.00",
+    "historical: case-base prior, staleness 10m22.392211635s -\u003e 0.90",
+    "defence 1: uncorroborated -\u003e capped at 0.50",
+    "target \"product-catalog\" is not in this signal's topology -\u003e scored for audit, excluded from confidence"
+   ]
+  },
+  {
+   "eventID": "config/otel-demo/flagd-config/4283",
+   "inTopology": true,
+   "temporal": 0.8945453628797804,
+   "historical": 0.8999303529048536,
+   "likelihood": 0.5,
+   "rationale": [
+    "temporal: 4m49.392211635s old -\u003e 0.89",
+    "topological: in-path=true -\u003e 0.00",
+    "historical: case-base prior, staleness 4m49.392211635s -\u003e 0.90",
+    "defence 1: uncorroborated -\u003e capped at 0.50"
+   ]
+  }
+ ],
+ "hypotheses": [
+  {
+   "name": "cartFailure flag injected via recent flagd config change",
+   "weight": 0.85
+  },
+  {
+   "name": "Cart pod crash loop or transient restart issue",
+   "weight": 0.1
+  },
+  {
+   "name": "Redis connectivity degradation affecting cart state operations",
+   "weight": 0.05
+  }
+ ],
+ "evidence": [
+  {
+   "tool": "metrics",
+   "query": "cart_error_ratio",
+   "key": "cart_error_ratio",
+   "summary": "cart_error_ratio = 0.4976303317535544",
+   "ref": "metrics://cart_error_ratio",
+   "live": true,
+   "subject": "cart"
+  },
+  {
+   "tool": "metrics",
+   "query": "severity_cart_availability",
+   "key": "severity_cart_availability",
+   "summary": "severity_cart_availability = 0.4976303317535544",
+   "ref": "metrics://severity_cart_availability",
+   "live": true,
+   "subject": "cart"
+  },
+  {
+   "tool": "kube",
+   "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\",\"selector\":{\"app.kubernetes.io/name\":\"cart\"}}",
+   "key": "kube-2",
+   "summary": "cart-79bf56b7f9-r5ngh (Running)",
+   "ref": "kube://otel-demo/pods",
+   "live": true,
+   "subject": "cart"
+  },
+  {
+   "tool": "traces",
+   "query": "{resource.service.name=\"cart\" \u0026\u0026 status=error}",
+   "key": "traces-3",
+   "summary": "10 trace(s); last root: \u003croot span not yet received\u003e/",
+   "ref": "tempo://otel-demo/resource.service.name=cart",
+   "live": true,
+   "subject": "cart"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"cart\"}",
+   "key": "loki-4",
+   "summary": "50 log line(s); last: info: cart.cartstore.ValkeyCartStore[0]",
+   "ref": "loki://otel-demo/service_name=cart",
+   "live": true,
+   "subject": "cart"
+  },
+  {
+   "tool": "traces",
+   "query": "{resource.service.name=\"cart\" \u0026\u0026 status=error}",
+   "key": "traces-5",
+   "summary": "20 trace(s); last root: \u003croot span not yet received\u003e/",
+   "ref": "tempo://otel-demo/resource.service.name=cart",
+   "live": true,
+   "subject": "cart"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"cart\"} |= \"error\"",
+   "key": "loki-6",
+   "summary": "no matching log lines",
+   "subject": "cart"
+  },
+  {
+   "tool": "kube",
+   "query": "{\"namespace\":\"otel-demo\",\"resource\":\"pods\",\"selector\":{\"app.kubernetes.io/name\":\"checkout\"}}",
+   "key": "kube-7",
+   "summary": "checkout-897db79dc-6775p (Running)",
+   "ref": "kube://otel-demo/pods",
+   "live": true,
+   "subject": "checkout"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"checkout\"} |= \"error\"",
+   "key": "loki-8",
+   "summary": "no matching log lines",
+   "subject": "checkout"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"cart\"} |= \"exception\"",
+   "key": "loki-9",
+   "summary": "no matching log lines",
+   "subject": "cart"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"cart\"} |= \"RPC\"",
+   "key": "loki-10",
+   "summary": "no matching log lines",
+   "subject": "cart"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"cart\"} |= \"fault\"",
+   "key": "loki-11",
+   "summary": "no matching log lines",
+   "subject": "cart"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"cart\"}",
+   "key": "loki-12",
+   "summary": "80 log line(s); last: info: cart.cartstore.ValkeyCartStore[0]",
+   "ref": "loki://otel-demo/service_name=cart",
+   "live": true,
+   "subject": "cart"
+  },
+  {
+   "tool": "kube",
+   "query": "{\"namespace\":\"otel-demo\",\"resource\":\"pods\",\"selector\":{\"app.kubernetes.io/name\":\"flagd\"}}",
+   "key": "kube-13",
+   "summary": "flagd-6879f4d7b4-g5h7k (Running, restarts=2, last: Error)",
+   "ref": "kube://otel-demo/pods",
+   "live": true,
+   "subject": "flagd"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"flagd\"}",
+   "key": "loki-14",
+   "summary": "52 log line(s); last: 2026-08-17T12:20:46.935Z\tinfo\tcmd/start.go:143\tflagd version: v0.12.9 (1ee636aa039ad862f055831bd2ab42216fe30865), built at: 2025-07-28\t{\"component\": \"start\"}",
+   "ref": "loki://otel-demo/service_name=flagd",
+   "live": true,
+   "subject": "flagd"
+  },
+  {
+   "tool": "traces",
+   "query": "{resource.service.name=\"flagd\" \u0026\u0026 status=error}",
+   "key": "traces-15",
+   "summary": "no matching traces",
+   "ref": "tempo://otel-demo/resource.service.name=flagd",
+   "subject": "flagd"
+  },
+  {
+   "tool": "traces",
+   "query": "{resource.service.name=\"checkout\" \u0026\u0026 status=error}",
+   "key": "traces-16",
+   "summary": "20 trace(s); last root: load-generator/user_checkout_multi",
+   "ref": "tempo://otel-demo/resource.service.name=checkout",
+   "live": true,
+   "subject": "checkout"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"flagd\"} |= \"cartFailure\"",
+   "key": "loki-17",
+   "summary": "no matching log lines",
+   "subject": "flagd"
+  },
+  {
+   "tool": "loki",
+   "query": "{namespace=\"otel-demo\", service_name=\"flagd\"} |= \"flag\"",
+   "key": "loki-18",
+   "summary": "18 log line(s); last: 2026-08-17T12:20:46.935Z\tinfo\tcmd/start.go:143\tflagd version: v0.12.9 (1ee636aa039ad862f055831bd2ab42216fe30865), built at: 2025-07-28\t{\"component\": \"start\"}",
+   "ref": "loki://otel-demo/service_name=flagd",
+   "live": true,
+   "subject": "flagd"
+  }
+ ],
+ "serviceTier": "tier-1",
+ "gate": {
+  "budgetOK": true,
+  "dedupeOK": true,
+  "evidenceOK": true,
+  "passed": true
+ },
+ "proposals": [
+  {
+   "contractRef": "disable-cart-failure",
+   "confidence": 0.85,
+   "computedConfidence": 1,
+   "confidenceCeilingBound": true,
+   "terms": {
+    "signalConfidence": 1,
+    "corroborated": 3,
+    "grounding": 1,
+    "likelihoodOK": true
+   },
+   "predictedImpact": {
+    "severityReductionPct": 0.9
+   },
+   "blastTier": "low",
+   "reversalPath": {
+    "method": "enable-cart-failure",
+    "watching": "cart_error_ratio",
+    "trigger": "cart_error_ratio \u003c 0.02",
+    "automatic": true
+   },
+   "governanceLevel": {
+    "band": "act_reversible"
+   },
+   "rank": 1,
+   "citations": [
+    "cart_error_ratio",
+    "severity_cart_availability",
+    "kube-13",
+    "traces-16"
+   ]
+  }
+ ],
+ "rankingRationale": {},
+ "status": {
+  "phase": "proposed",
+  "observedAt": "0001-01-01T00:00:00Z"
+ }
+}
