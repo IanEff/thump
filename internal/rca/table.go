@@ -8,7 +8,13 @@ package rca
 import (
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/ianeff/thump/api/v1/proposal"
+	"github.com/ianeff/thump/internal/whir"
 )
 
 // Case is one graded root-cause scenario: a fixture whose evidence carries
@@ -66,13 +72,14 @@ type Case struct {
 	// Checked only when WantConfidenceAtLeast > 0.
 	WantCeilingBound bool
 
-	// Topology and Change feed the harness's Intake directly, the same
-	// snapshot shape SAOSnapshot carries on an emitted Set. The zero value
-	// of both leaves a row exactly as before: no node resolves in-topology,
-	// so the causal scorer's Likelihood can never move a candidate's
-	// confidence.
-	Topology proposal.TopologySnapshot
-	Change   proposal.ChangeSnapshot
+	// FaultObjects seeds the harness's kube fake with the objects this row's
+	// fault actually patches — resolved through the shipped subject rules in
+	// config/<rig>/whir/evidence-queries.yaml rather than fabricated.
+	FaultObjects []runtime.Object
+
+	// States maps dependency names to health states (e.g. whir.StateDegraded)
+	// when a case overrides them — unlisted dependencies default to whir.StateHealthy.
+	States map[string]string
 }
 
 // Table is the graded suite. Every row's comment is its provenance — why this
@@ -217,7 +224,7 @@ func Table() []Case {
 		},
 
 		// A real OSD pod-failure signal, now carrying the topology and
-		// change data the harness's Intake actually reads (PR 5): ceph-osd
+		// change data the harness's Intake actually reads: ceph-osd
 		// resolves in-topology and degraded, and the OSD pod restart that
 		// preceded the failure is a change event targeting it — the causal
 		// scorer's LiveCorroborated case. Kept single-backend on purpose
@@ -239,11 +246,26 @@ func Table() []Case {
 			MustCite:              []string{"pgs_degraded"},
 			WantConfidenceAtLeast: 0.65,
 			WantCeilingBound:      true,
-			Topology: proposal.TopologySnapshot{
-				Upstream: []proposal.NodeState{{Name: "ceph-osd", State: "degraded", TrafficShare: 0.4}},
+			States: map[string]string{
+				"ceph-osd": whir.StateDegraded,
 			},
-			Change: proposal.ChangeSnapshot{
-				Events: []proposal.ChangeEvent{{ID: "osd-pod-restart", Type: "deploy", Target: "ceph-osd", Age: 6 * time.Minute}},
+			FaultObjects: []runtime.Object{
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace:  "rook-ceph",
+						Name:       "rook-ceph-operator",
+						Generation: 1,
+					},
+					Status: appsv1.DeploymentStatus{
+						Conditions: []appsv1.DeploymentCondition{
+							{
+								Type:           appsv1.DeploymentProgressing,
+								Status:         corev1.ConditionTrue,
+								LastUpdateTime: metav1.Time{Time: time.Date(2026, 8, 2, 11, 29, 7, 0, time.UTC)},
+							},
+						},
+					},
+				},
 			},
 			Evidence: map[string]string{
 				"ceph_health":           "1",
@@ -319,6 +341,21 @@ func Table() []Case {
 			MustCite:              []string{"cart_error_ratio"},
 			WantConfidenceAtLeast: 0.65,
 			WantCeilingBound:      true,
+			FaultObjects: []runtime.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace:       "otel-demo",
+						Name:            "flagd-config",
+						ResourceVersion: "100",
+						ManagedFields: []metav1.ManagedFieldsEntry{
+							{
+								Manager: "kubectl-edit",
+								Time:    &metav1.Time{Time: time.Date(2026, 8, 2, 11, 40, 6, 0, time.UTC)},
+							},
+						},
+					},
+				},
+			},
 			Evidence: map[string]string{
 				"slo_burn_cart":              "50",
 				"severity_cart_availability": "0.5",
@@ -382,6 +419,21 @@ func Table() []Case {
 			MustCite:              []string{"acme_db_connections_saturation"},
 			WantConfidenceAtLeast: 0.65,
 			WantCeilingBound:      true,
+			FaultObjects: []runtime.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace:       "acme",
+						Name:            "acme-fault-flag",
+						ResourceVersion: "200",
+						ManagedFields: []metav1.ManagedFieldsEntry{
+							{
+								Manager: "kubectl-edit",
+								Time:    &metav1.Time{Time: time.Date(2026, 8, 16, 21, 57, 7, 0, time.UTC)},
+							},
+						},
+					},
+				},
+			},
 			Evidence: map[string]string{
 				"acme_api_error_ratio":           "0.504",
 				"acme_db_connections_saturation": "0.667",

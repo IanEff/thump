@@ -5,11 +5,15 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
+
+	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/subjects"
+	"github.com/ianeff/thump/internal/whir"
 )
 
 // TestTable_GradesOnlyQueriesTheShippedEvidenceConfigDefines runs with no API
@@ -85,5 +89,58 @@ func TestTable_GradesEveryRowAgainstTheRigWhoseCatalogActuallyDeclaresItsAction(
 		if _, ok := cats[c.Rig].ByName(c.WantContractRef); !ok {
 			t.Errorf("row %q wants contract %q, which %s's catalog does not declare", c.Name, c.WantContractRef, c.Rig)
 		}
+	}
+}
+
+// TestTable_EveryProposeRowCarriesTheCausalInputsItsRigActuallyProduces
+// asserts that every propose row with FaultObjects produces change events
+// targeting nodes within its origin service's upstream topology edges.
+func TestTable_EveryProposeRowCarriesTheCausalInputsItsRigActuallyProduces(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range rca.Table() {
+		if c.WantDisposition != "propose" || len(c.FaultObjects) == 0 {
+			continue
+		}
+		t.Run("row "+c.Name+" produces in-topology change events from its fault objects", func(t *testing.T) {
+			t.Parallel()
+
+			ev, err := evidence.LoadEvidenceConfig(
+				filepath.Join("..", "..", "config", c.Rig, "whir", "evidence-queries.yaml"))
+			if err != nil {
+				t.Fatalf("load evidence queries: %v", err)
+			}
+			whirCat, err := whir.LoadCatalogFile(
+				filepath.Join("..", "..", "config", c.Rig, "whir", "catalog-info.yaml"))
+			if err != nil {
+				t.Fatalf("load catalog-info: %v", err)
+			}
+			det, err := rca.LoadDetectionForTest(c.Fixture)
+			if err != nil {
+				t.Fatalf("load detection: %v", err)
+			}
+
+			src := evidence.KubeChangeSource{
+				Client:   kubefake.NewSimpleClientset(c.FaultObjects...),
+				Subjects: ev.Index,
+				Now:      func() time.Time { return det.DetectedAt },
+			}
+
+			snap, err := src.Changes(t.Context(), det)
+			if err != nil {
+				t.Fatalf("resolve changes: %v", err)
+			}
+			if len(snap.Events) == 0 {
+				t.Fatalf("row %q has FaultObjects but KubeChangeSource produced 0 change events", c.Name)
+			}
+
+			edges := whirCat.Edges(det.OriginService)
+			for _, e := range snap.Events {
+				if !slices.Contains(edges, e.Target) {
+					t.Errorf("change event target %q is not in upstream topology edges %v of origin service %q",
+						e.Target, edges, det.OriginService)
+				}
+			}
+		})
 	}
 }
