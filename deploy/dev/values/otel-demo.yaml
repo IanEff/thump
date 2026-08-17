@@ -139,6 +139,9 @@ components:
   # default management port (8014) at /healthz and /readyz. Adding probes
   # lets Kubernetes auto-restart the container if the fsnotify file watcher
   # dies under rapid ConfigMap churn, preventing stale flag state.
+  # timeoutSeconds (5s) and failureThreshold (6) are widened over the chart's
+  # 1s/3-failure defaults so transient CPU pressure under LOCUST_USERS=150
+  # against the 500m CPU limit does not trigger CrashLoopBackOff.
   flagd:
     ports:
       - name: rpc
@@ -153,12 +156,16 @@ components:
         port: 8014
       initialDelaySeconds: 5
       periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
     readinessProbe:
       httpGet:
         path: /readyz
         port: 8014
       initialDelaySeconds: 5
       periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
     resources:
       limits:
         cpu: 500m
