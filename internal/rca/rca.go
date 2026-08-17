@@ -9,16 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/clank"
+	"github.com/ianeff/thump/internal/modelsel"
+	"github.com/ianeff/thump/internal/probe"
 )
 
-const modelRequestTimeout = 120 * time.Second
-
-// Main grades the suite and prints one line per row. A missing
-// ANTHROPIC_API_KEY is a clean skip returning 0, never a failure, so `task
+// Main grades the suite and prints one line per row. A missing key for the
+// selected -model is a clean skip returning 0, never a failure, so `task
 // rca` is safe to run anywhere without a key configured.
 func Main(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("rca", flag.ContinueOnError)
@@ -26,19 +24,31 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	transcripts := fs.String("transcripts", "", "directory to write reason-loop transcripts to")
 	only := fs.String("row", "", "grade only the row whose name contains this substring")
-	rig := fs.String("rig", "", "config/<rig>/whir profile to grade evidence queries against (required)")
+	rig := fs.String("rig", "", "config/<rig> to grade catalog, failure classes, evidence queries, and kube objects against (required)")
+	modelName := fs.String("model", "haiku", "reasoning backend to grade: haiku (production default), sonnet, or gemini-low")
+	runs := fs.Int("runs", 1, "independent draws per row; > 1 prints a confidence/corroboration spread alongside the pass/fail table")
+	floor := fs.Float64("floor", 0.75, "confidence floor a run must clear to count as underFloor=0 in the -runs summary; purely a grading label printed there, never enforced")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	if *rig == "" {
-		_, _ = fmt.Fprintln(stderr, "usage: rca -rig <name> [-json] [-transcripts dir] [-row substring]")
+		_, _ = fmt.Fprintln(stderr, "usage: rca -rig <name> [-json] [-transcripts dir] [-row substring] [-model haiku|sonnet|gemini-low] [-runs N] [-floor F]")
 		return 2
 	}
 
-	key := os.Getenv("ANTHROPIC_API_KEY")
-	if key == "" {
-		_, _ = fmt.Fprintln(stderr, "ANTHROPIC_API_KEY unset - the RCA harness needs a real model; skipping")
+	ctx := context.Background()
+
+	// -model measures a comparison offline, on scripted evidence held
+	// byte-identical across every draw — it makes no claim about what
+	// production selects, which is AnthropicModel/haiku alone.
+	model, skip, err := modelsel.For(ctx, *modelName)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "rca:", err)
+		return 1
+	}
+	if skip != "" {
+		_, _ = fmt.Fprintln(stderr, skip+" unset - the RCA harness needs a real model; skipping")
 		return 0
 	}
 
@@ -55,11 +65,6 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintln(stderr, "transcripts (read a row's own directory when it misses):", dir)
 
-	// AnthropicModel is the only Model production selects; GeminiModel has
-	// no caller yet, so grading against it would score a model the shipped
-	// engine never runs.
-	model := anthropic.NewModel(key, anthropic.ModelClaudeHaiku4_5, modelRequestTimeout)
-
 	// config/clank/weights.yaml, not DefaultScoringWeights: the graded suite
 	// should score the value production actually loads, not a copy of it.
 	// TestDefaultScoringWeights_MatchesTheShippedConfig (internal/clank)
@@ -71,8 +76,6 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	ctx := context.Background()
-
 	kubeObjects, err := loadKubeObjects(configPath(*rig, "rca", "kube-objects.yaml"))
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "rca:", err)
@@ -81,15 +84,26 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	var rows []Row
 	for _, c := range Table() {
+		if c.Rig != *rig {
+			continue
+		}
 		if *only != "" && !strings.Contains(c.Name, *only) {
 			continue
 		}
-		row, err := RunCase(ctx, c, model, weights, dir, *rig, kubeObjects...)
-		if err != nil {
-			_, _ = fmt.Fprintln(stderr, "rca:", err)
-			return 1
+		var samples []probe.Sample
+		for i := 0; i < *runs; i++ {
+			row, err := RunCase(ctx, c, model, weights, dir, *rig, kubeObjects...)
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, "rca:", err)
+				return 1
+			}
+			rows = append(rows, row)
+			samples = append(samples, row.sample())
 		}
-		rows = append(rows, row)
+		if *runs > 1 {
+			_, _ = fmt.Fprintln(stdout, c.Name+":")
+			probe.RenderSummary(stdout, probe.Summarize(samples, *floor))
+		}
 	}
 
 	rep := NewReport(rows)

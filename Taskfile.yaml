@@ -186,9 +186,14 @@ tasks:
       - go test -tags eval ./internal/clank -run TestEval_ReasonerAgainstProductionCatalog -v
 
   rca:
-    desc: Run the graded RCA suite against `thump-test` — did the reasoner cite the right evidence, not just reach the right verdict? (key-gated, not part of ci)
+    desc: "Run the graded RCA suite — did the reasoner cite the right evidence, not just reach the right verdict? task rca [RIG=thump-test] [RUNS=1] [FLOOR=0.75] [MODEL=haiku|sonnet|gemini-low] [ROW=substring] (key-gated, not part of ci)"
+    vars:
+      RIG: '{{.RIG | default "thump-test"}}'
+      RUNS: '{{.RUNS | default "1"}}'
+      FLOOR: '{{.FLOOR | default "0.75"}}'
+      MODEL: '{{.MODEL | default "haiku"}}'
     cmds:
-      - go run ./cmd/calipers rca -rig thump-test
+      - go run ./cmd/calipers rca -rig {{.RIG}} -runs {{.RUNS}} -floor {{.FLOOR}} -model {{.MODEL}} {{if .ROW}}-row "{{.ROW}}"{{end}}
 
   corpus:
     desc: Mine the sealed WAL into testdata/corpus/ — every (Confidence, FailureClass, Result) triple this engine has produced (needs S3_*/THUMP_SEAL_KEY; rig-free, object-store creds only)

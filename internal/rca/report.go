@@ -5,6 +5,7 @@ import (
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/internal/grade"
+	"github.com/ianeff/thump/internal/probe"
 )
 
 // Row is one graded scenario's result. Computed and Emitted are kept apart
@@ -20,6 +21,7 @@ type Row struct {
 	Computed     float64
 	Emitted      float64
 	CeilingBound bool
+	Corroborated int // top candidate's ConfidenceTerms.Corroborated count
 }
 
 // Report is one run of the graded suite — the audit unit, not the top line.
@@ -63,6 +65,18 @@ func Floor() int {
 // Met reports whether the run cleared its floor.
 func (r Report) Met() bool { return r.Scored >= r.Floor }
 
+// sample converts a graded row into probe's fold input — a row with no
+// recommended candidate (ContractRef == "") carries no self-report to fold.
+func (r Row) sample() probe.Sample {
+	return probe.Sample{
+		Proposed:     r.ContractRef != "",
+		Confidence:   r.Emitted,
+		Computed:     r.Computed,
+		Ceiling:      r.CeilingBound,
+		Corroborated: r.Corroborated,
+	}
+}
+
 // Grade scores one emitted set against the row that asked for it — the single
 // definition of what the labels mean, so a replayed sweep and a live suite run
 // can never disagree about whether a row passed. Citation discipline is graded
@@ -94,6 +108,7 @@ func Grade(c Case, set proposal.Set) Row {
 	row.Computed = top.ComputedConfidence
 	row.Emitted = top.Confidence
 	row.CeilingBound = top.ConfidenceCeilingBound
+	row.Corroborated = top.Terms.Corroborated
 
 	switch {
 	case set.FailureClass != c.WantClass:
@@ -125,6 +140,7 @@ func GradeByLabel(l grade.Label, set proposal.Set) Row {
 		row.Computed = top.ComputedConfidence
 		row.Emitted = top.Confidence
 		row.CeilingBound = top.ConfidenceCeilingBound
+		row.Corroborated = top.Terms.Corroborated
 	}
 	if !l.Correct {
 		row.Miss = "label settled this run as incorrect: " + string(l.Source)
