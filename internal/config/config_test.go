@@ -77,6 +77,7 @@ func TestLoadClank_Valid_PopulatesStruct(t *testing.T) {
 		TempoURL:         "http://tempo:3100",
 		WhirCatalog:      "/etc/catalog-info.yaml",
 		WhirStateQueries: "/etc/state-queries.yaml",
+		WhirGraphWindow:  5 * time.Minute,
 		Transcripts:      "/var/run/transcripts",
 		Weights:          "/etc/clank/weights.yaml",
 		Limits:           "/etc/clank/limits.yaml",
@@ -102,7 +103,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 	t.Setenv("CLANK_OUTBOX", "/var/run/outbox")
 	t.Setenv("CLANK_OUTCOMES", "/var/run/outcomes")
 	t.Setenv("CLANK_DECLINES", "/var/run/declines")
-	for _, name := range []string{"PROM_URL", "EVIDENCE_QUERIES", "LOKI_URL", "TEMPO_URL", "WHIR_CATALOG", "WHIR_STATE_QUERIES", "CLANK_TRANSCRIPTS"} {
+	for _, name := range []string{"PROM_URL", "EVIDENCE_QUERIES", "LOKI_URL", "TEMPO_URL", "WHIR_CATALOG", "WHIR_STATE_QUERIES", "WHIR_GRAPH_QUERIES", "CLANK_TRANSCRIPTS"} {
 		t.Setenv(name, "")
 	}
 
@@ -115,6 +116,7 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 		ActionCatalog:   "/etc/actions/catalog.yaml",
 		FailureClasses:  "/etc/actions/failure-classes.yaml",
 		DedupeWindow:    time.Hour,
+		WhirGraphWindow: 5 * time.Minute,
 		Weights:         "/etc/clank/weights.yaml",
 		Limits:          "/etc/clank/limits.yaml",
 		Inbox:           "/var/run/inbox",
@@ -122,9 +124,9 @@ func TestLoadClank_OptionalDefaults(t *testing.T) {
 		Outcomes:        "/var/run/outcomes",
 		Declines:        "/var/run/declines",
 		// PromURL, EvidenceQueries, LokiURL, WhirCatalog, WhirStateQueries,
-		// Transcripts all default to "" — genuinely optional, documented by
+		// WhirGraphQueries, Transcripts all default to "" — genuinely optional, documented by
 		// their zero value rather than a scattered `if x == ""` at call sites.
-		// DedupeWindow's default isn't "", so it's asserted explicitly above
+		// DedupeWindow and WhirGraphWindow defaults aren't "", so they're asserted explicitly above
 		// rather than by omission like the string fields.
 	}
 	if diff := cmp.Diff(want, got); diff != "" {

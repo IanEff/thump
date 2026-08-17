@@ -367,9 +367,26 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, kube kubernetes.Inter
 		if err != nil {
 			return nil, fmt.Errorf("load whir state queries: %w", err)
 		}
-		topo = WhirTopology{
+		whirTopo := WhirTopology{
 			Catalog:  cat,
 			Resolver: &whir.Resolver{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries},
+		}
+		if cfg.WhirGraphQueries != "" {
+			gq, err := whir.LoadGraphQueries(cfg.WhirGraphQueries)
+			if err != nil {
+				return nil, fmt.Errorf("load whir graph queries: %w", err)
+			}
+			topo = ObservedTopology{
+				Graph: &whir.GraphSource{
+					BaseURL: cfg.PromURL,
+					Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
+					Window:  cfg.WhirGraphWindow,
+					Queries: gq,
+				},
+				Fallback: whirTopo,
+			}
+		} else {
+			topo = whirTopo
 		}
 	}
 
