@@ -107,6 +107,13 @@ components:
     resources:
       limits:
         memory: 64Mi
+  # frontend: carries the product-catalog SLI and handles locust traffic
+  # (LOCUST_USERS: 150). Bump from the chart's stock 20Mi default to 64Mi,
+  # matching checkout and product-catalog.
+  frontend:
+    resources:
+      limits:
+        memory: 64Mi
   # flagd: read the flagd-config ConfigMap DIRECTLY instead of the chart's
   # default "init container copies ConfigMap into a config-rw emptyDir,
   # flagd reads the emptyDir" pattern. chaos/flagd-cart-failure.sh and the
@@ -127,7 +134,31 @@ components:
   # to 6.4-6.7 cores on the single-node k3d rig — starved the node, evicted
   # 51+ pods in this namespace, took kafka down. 500m is generous headroom
   # over flagd's normal footprint while bounding a runaway.
+  #
+  # livenessProbe / readinessProbe: flagd serves health endpoints on the
+  # default management port (8014) at /healthz and /readyz. Adding probes
+  # lets Kubernetes auto-restart the container if the fsnotify file watcher
+  # dies under rapid ConfigMap churn, preventing stale flag state.
   flagd:
+    ports:
+      - name: rpc
+        value: 8013
+      - name: ofrep
+        value: 8016
+      - name: metrics
+        value: 8014
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8014
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8014
+      initialDelaySeconds: 5
+      periodSeconds: 10
     resources:
       limits:
         cpu: 500m
