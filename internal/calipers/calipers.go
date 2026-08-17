@@ -141,6 +141,7 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("incidents", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "print incidents as JSON")
+	render := fs.String("render", "", "render full incident audit record for fingerprint")
 	inbox := fs.String("inbox", ".", "directory calipers polls for boundary objects")
 	natsURL := fs.String("nats-url", "", "read the live queue over NATS instead of --inbox")
 	certFile := fs.String("tls-cert", "", "client cert, required with --nats-url")
@@ -157,6 +158,20 @@ func runIncidents(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer closer()
+
+	targetRenderFP := *render
+	if targetRenderFP != "" {
+		rec, ok := proj.GetRecord(targetRenderFP)
+		if !ok {
+			_, _ = fmt.Fprintf(stderr, "calipers: no incident at fingerprint %s\n", targetRenderFP)
+			return 1
+		}
+		if err := incident.Render(stdout, rec); err != nil {
+			_, _ = fmt.Fprintln(stderr, "calipers:", err)
+			return 1
+		}
+		return 0
+	}
 
 	if fp != "" {
 		inc, ok := proj.Get(fp)
