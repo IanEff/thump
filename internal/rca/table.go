@@ -368,18 +368,24 @@ func Table() []Case {
 		// dependency-saturation signal specifically, since a run citing only
 		// the request error ratio would be as plausible a case for
 		// service_failure, and this row grades that it lands on the class
-		// the fault actually is.
+		// the fault actually is. The row's "acme-api" Evidence key seeds a
+		// loki line from a clean live run, so this row corroborates across
+		// metrics and loki (corroborated >= 2, computed 1.0, ceilingBound true);
+		// WantConfidenceAtLeast ensures it clears the floor with ceilingBound true.
 		{
-			Name:            "a real acme-api connection-pool leak proposes shedding load, not a bare request-error reading",
-			Rig:             "dev",
-			Fixture:         "acme-api-failure.yaml",
-			WantDisposition: "propose",
-			WantContractRef: "acme-shed-load",
-			WantClass:       proposal.ClassDependencySaturation,
-			MustCite:        []string{"acme_db_connections_saturation"},
+			Name:                  "a real acme-api connection-pool leak proposes shedding load, not a bare request-error reading",
+			Rig:                   "dev",
+			Fixture:               "acme-api-failure.yaml",
+			WantDisposition:       "propose",
+			WantContractRef:       "acme-shed-load",
+			WantClass:             proposal.ClassDependencySaturation,
+			MustCite:              []string{"acme_db_connections_saturation"},
+			WantConfidenceAtLeast: 0.65,
+			WantCeilingBound:      true,
 			Evidence: map[string]string{
 				"acme_api_error_ratio":           "0.504",
 				"acme_db_connections_saturation": "0.667",
+				"acme-api":                       `127.0.0.1 - - [15/Aug/2026 21:54:59] "GET /fail HTTP/1.1" 500 -`,
 			},
 		},
 
