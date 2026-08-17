@@ -1,0 +1,10 @@
+# Service-graph PromQL queries for whir's GraphSource (internal/whir).
+# Evaluates traces_service_graph_request_total and failed metrics emitted by
+# the OTel Collector servicegraph connector.
+version: v1
+queries:
+  requests: 'sum by (client, server) (rate(traces_service_graph_request_total{client="%s"}[%s]))'
+  failed: 'sum by (client, server) (rate(traces_service_graph_request_failed_total{client="%s"}[%s]))'
+  inboundRequests: 'sum by (client, server) (rate(traces_service_graph_request_total{server="%s"}[%s]))'
+  inboundFailed: 'sum by (client, server) (rate(traces_service_graph_request_failed_total{server="%s"}[%s]))'
+  failedThreshold: 0.05

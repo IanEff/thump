@@ -111,6 +111,8 @@ spec:
               value: /etc/thump/whir/catalog-info.yaml
             - name: WHIR_STATE_QUERIES
               value: /etc/thump/whir/state-queries.yaml
+            - name: WHIR_GRAPH_QUERIES
+              value: /etc/thump/whir/graph-queries.yaml
             - name: EVIDENCE_QUERIES
               value: /etc/thump/whir/evidence-queries.yaml
             - name: ARGOCD_ENABLED

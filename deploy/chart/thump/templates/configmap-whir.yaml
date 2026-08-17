@@ -15,5 +15,7 @@ data:
 {{ .Files.Get (printf "config/%s/whir/catalog-info.yaml" .Values.configProfile) | indent 4 }}
   state-queries.yaml: |
 {{ .Files.Get (printf "config/%s/whir/state-queries.yaml" .Values.configProfile) | indent 4 }}
+  graph-queries.yaml: |
+{{ .Files.Get (printf "config/%s/whir/graph-queries.yaml" .Values.configProfile) | indent 4 }}
   evidence-queries.yaml: |
 {{ .Files.Get (printf "config/%s/whir/evidence-queries.yaml" .Values.configProfile) | indent 4 }}
