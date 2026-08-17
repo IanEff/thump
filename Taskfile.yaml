@@ -43,7 +43,7 @@ tasks:
       - bash scripts/doctor.sh
 
   ci:
-    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, promql, race, build
+    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, promql, validate:config, race, build
     cmds:
       - task: otelc:check-gomod
       - task: fmt-check
@@ -52,9 +52,15 @@ tasks:
       - task: vulncheck
       - task: chart-lint
       - task: test:promql
+      - task: validate:config
       - task: race
       - task: integration
       - task: build
+
+  validate:config:
+    desc: "Validate profile configs (actions, policy, whir, rattle): task validate:config [PROFILE=dev|thump-test|acme|all]"
+    cmds:
+      - go run ./cmd/calipers validate --profile={{.PROFILE | default "all"}}
 
   fmt:
     desc: gofmt the tree
