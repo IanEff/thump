@@ -37,6 +37,11 @@ tasks:
     cmds:
       - task: ci
 
+  doctor:
+    desc: Check local development prerequisites, CLI tools, and runtime allocations
+    cmds:
+      - bash scripts/doctor.sh
+
   ci:
     desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, promql, race, build
     cmds:
