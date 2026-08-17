@@ -1,6 +1,7 @@
 package evidence_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -241,6 +242,50 @@ func TestKubeChangeSource_Changes(t *testing.T) {
 			}
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Error("wrong change snapshot (-want +got)\n", diff)
+			}
+		})
+	}
+}
+
+// TestKubeChangeSource_EveryArmedChaosFaultResolvesToASubjectRule pins the
+// break phase AU found: the acme fault patches acme/acme-fault-flag, and
+// KubeChangeSource drops any ConfigMap whose coordinates resolve to no subject
+// (internal/evidence/kube_change.go:109-112), so that fault's change event
+// never existed and the causal term — the only one in groundedConfidence that
+// can raise a score (internal/clank/confidence.go:118-120) — could never fire
+// on the acme row.
+func TestKubeChangeSource_EveryArmedChaosFaultResolvesToASubjectRule(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := evidence.LoadEvidenceConfig(filepath.Join("..", "..", "config", "dev", "whir", "evidence-queries.yaml"))
+	if err != nil {
+		t.Fatalf("load dev evidence queries: %v", err)
+	}
+
+	// Dev chaos scenarios whose faults target ConfigMaps:
+	// - cart-failure (chaos/flagd-cart-failure.sh -> flagd-flag.sh): otel-demo / flagd-config
+	// - product-catalog-failure (chaos/flagd-flag.sh): otel-demo / flagd-config
+	// - acme-api-fault (chaos/acme-fault.sh): acme / acme-fault-flag
+	tests := map[string]struct {
+		coords subjects.Coordinates
+		want   string
+	}{
+		"cart fault ConfigMap resolves to flagd subject": {
+			coords: subjects.Coordinates{Namespace: "otel-demo", Kind: "ConfigMap", Name: "flagd-config"},
+			want:   "flagd",
+		},
+		"acme fault ConfigMap resolves to acme-db subject": {
+			coords: subjects.Coordinates{Namespace: "acme", Kind: "ConfigMap", Name: "acme-fault-flag"},
+			want:   "acme-db",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := cfg.Index.For(tc.coords)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("subject mismatch for %v (-want +got):\n%s", tc.coords, diff)
 			}
 		})
 	}

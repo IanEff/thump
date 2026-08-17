@@ -238,5 +238,9 @@ subjects:
     namespace: acme
     kind: Deployment
     name: acme-api
+  - subject: acme-db
+    namespace: acme
+    kind: ConfigMap
+    name: acme-fault-flag
 
   # acme-api is absent from Tempo's service list (observed 2026-08-15); no traces rule authored.
