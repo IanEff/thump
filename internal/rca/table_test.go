@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/rca"
 	"github.com/ianeff/thump/internal/subjects"
@@ -53,5 +54,36 @@ func TestTable_GradesOnlyQueriesTheShippedEvidenceConfigDefines(t *testing.T) {
 				t.Error("row names a detection fixture that is not on disk", err)
 			}
 		})
+	}
+}
+
+// TestTable_GradesEveryRowAgainstTheRigWhoseCatalogActuallyDeclaresItsAction
+// pins the split phase AT introduced: dev's catalog still ships three Ceph
+// contracts whose success metrics exist in no dev evidence query, so a Ceph
+// row graded under -rig dev resolves a contract it can never verify and
+// scores a pass on a metric the profile cannot answer.
+func TestTable_GradesEveryRowAgainstTheRigWhoseCatalogActuallyDeclaresItsAction(t *testing.T) {
+	t.Parallel()
+
+	cats := make(map[string]*contract.StaticCatalog)
+	for _, c := range rca.Table() {
+		if c.Rig == "" {
+			t.Errorf("row %q names no Rig — it would be silently skipped under every -rig flag", c.Name)
+			continue
+		}
+		if _, ok := cats[c.Rig]; !ok {
+			cat, err := contract.LoadCatalogFile(
+				filepath.Join("..", "..", "config", c.Rig, "actions", "catalog.yaml"), contract.Preconditions)
+			if err != nil {
+				t.Fatalf("row %q names rig %q whose catalog does not load: %v", c.Name, c.Rig, err)
+			}
+			cats[c.Rig] = cat
+		}
+		if c.WantContractRef == "" {
+			continue
+		}
+		if _, ok := cats[c.Rig].ByName(c.WantContractRef); !ok {
+			t.Errorf("row %q wants contract %q, which %s's catalog does not declare", c.Name, c.WantContractRef, c.Rig)
+		}
 	}
 }

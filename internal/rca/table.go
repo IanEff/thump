@@ -20,7 +20,11 @@ import (
 // decoy got there by luck, and MustNotCite catches it even when WantClass
 // still matches.
 type Case struct {
-	Name    string // the graded claim, read as a sentence in the report
+	Name string // the graded claim, read as a sentence in the report
+	// Rig is the config/<rig> directory this row's catalog, failure classes,
+	// and kube objects must be loaded from — a row graded against the wrong
+	// rig's catalog resolves a contract that catalog never declares.
+	Rig     string
 	Fixture string // filename under internal/clank/testdata/detections/
 	// Evidence is real signal + planted decoy for this row, keyed by either
 	// an evidence-queries.yaml query name (fakePrometheus's lookup) or a
@@ -81,6 +85,7 @@ func Table() []Case {
 		// measuring the fixture, not the reasoner.
 		{
 			Name:            "argocd sync burn does not get explained away by a coincidentally-broken acme-api",
+			Rig:             "thump-test",
 			Fixture:         "argocd-sync-burn.yaml",
 			WantDisposition: "insufficient",
 			MustNotCite:     []string{"acme_api_error_ratio", "severity_acme_api_availability"},
@@ -120,6 +125,7 @@ func Table() []Case {
 		// not the choice between them.
 		{
 			Name:            "a node death reads as redundancy_degraded, not a coincidental RGW request-rate reading",
+			Rig:             "thump-test",
 			Fixture:         "node-death.yaml",
 			WantDisposition: "propose",
 			WantClass:       proposal.ClassRedundancyDegraded,
@@ -151,6 +157,7 @@ func Table() []Case {
 		// catches.
 		{
 			Name:            "a PG-merge latency spike does not get explained away by ordinary RGW load",
+			Rig:             "thump-test",
 			Fixture:         "ceph-osd-latency.yaml",
 			WantDisposition: "insufficient",
 			MustNotCite:     []string{"rgw_request_rate"},
@@ -180,6 +187,7 @@ func Table() []Case {
 		// the model lands on either side of between runs.
 		{
 			Name:            "an RGW-availability burn does not get explained away by an unrelated recovery-ops reading",
+			Rig:             "thump-test",
 			Fixture:         "rgw-degradation.yaml",
 			WantDisposition: "insufficient",
 			MustNotCite:     []string{"recovery_ops_rate", "rook_pods_not_running"},
@@ -218,6 +226,7 @@ func Table() []Case {
 		// this row now measures the causal term, not the corroboration one.
 		{
 			Name:                  "a real OSD pod-failure holds the rebalance rather than escalating past it",
+			Rig:                   "thump-test",
 			Fixture:               "hold-rebalance-osd-down.yaml",
 			WantDisposition:       "propose",
 			WantContractRef:       "hold-rebalance",
@@ -260,6 +269,7 @@ func Table() []Case {
 		// same class.
 		{
 			Name:                  "a real OSD pod-failure proposes the high-blast recovery accelerant, held for a human",
+			Rig:                   "thump-test",
 			Fixture:               "accelerate-recovery-cephblockpool.yaml",
 			WantDisposition:       "propose",
 			WantContractRef:       "accelerate-recovery",
@@ -295,6 +305,7 @@ func Table() []Case {
 		// below GroundingOne's 0.7 floor accordingly.
 		{
 			Name:                  "a real cartFailure flag flip proposes the flag fix, not the pod restart",
+			Rig:                   "dev",
 			Fixture:               "disable-cart-failure.yaml",
 			WantDisposition:       "propose",
 			WantContractRef:       "disable-cart-failure",
@@ -319,6 +330,7 @@ func Table() []Case {
 		// documented baseline to tolerate.
 		{
 			Name:            "an RGW CPU-saturation burn declines rather than mislabeling traffic_shift as dependency_saturation",
+			Rig:             "thump-test",
 			Fixture:         "ceph-rgw-saturation.yaml",
 			WantDisposition: "insufficient",
 			Evidence: map[string]string{
@@ -339,6 +351,29 @@ func Table() []Case {
 				"slo_burn_rgw_saturation": "60",
 				"nodes_not_ready":         "0",
 				"rook_pods_not_running":   "0",
+			},
+		},
+
+		// acme-api-failure.yaml's own header documents the source: queried
+		// against the live rig's own Prometheus at the detection's frozen
+		// timestamp (21:58:07.473933Z), not estimated. The connection-pool
+		// leak moves both acme-api's request error ratio and acme-db's
+		// connection saturation together — MustCite pins the row to the
+		// dependency-saturation signal specifically, since a run citing only
+		// the request error ratio would be as plausible a case for
+		// service_failure, and this row grades that it lands on the class
+		// the fault actually is.
+		{
+			Name:            "a real acme-api connection-pool leak proposes shedding load, not a bare request-error reading",
+			Rig:             "dev",
+			Fixture:         "acme-api-failure.yaml",
+			WantDisposition: "propose",
+			WantContractRef: "acme-shed-load",
+			WantClass:       proposal.ClassDependencySaturation,
+			MustCite:        []string{"acme_db_connections_saturation"},
+			Evidence: map[string]string{
+				"acme_api_error_ratio":           "0.504",
+				"acme_db_connections_saturation": "0.667",
 			},
 		},
 
