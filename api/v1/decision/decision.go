@@ -25,6 +25,7 @@ type Decision struct {
 	ID            string    `json:"id,omitempty" yaml:"id,omitempty"`
 	ProposalRef   string    `json:"proposalRef,omitempty" yaml:"proposalRef,omitempty"`   // the judged proposal.Set's Name
 	SignalRef     string    `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`       // threaded through from the Set, unchanged — the same fingerprint since rattle
+	SLORef        string    `json:"sloRef,omitempty" yaml:"sloRef,omitempty"`             // threaded through from the Set, unchanged — the fired SLO's identity
 	CandidateRef  string    `json:"candidateRef,omitempty" yaml:"candidateRef,omitempty"` // the Set's Recommended Candidate ID this verdict was evaluated against
 	Verdict       Verdict   `json:"verdict,omitempty" yaml:"verdict,omitempty"`
 	Reasons       []string  `json:"reasons,omitempty" yaml:"reasons,omitempty"`             // one entry per veto that fired (Reason* constants below); empty only when Verdict is approved

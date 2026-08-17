@@ -46,6 +46,11 @@ func (s SLO) Kind() string {
 	return "slo_burn"
 }
 
+// SLOID satisfies Envelope.
+func (s SLO) SLOID() string {
+	return s.ID
+}
+
 // Source fetches the burn-rate window a detector scores — the one query
 // every detector shares, regardless of which one ends up firing.
 type Source interface {

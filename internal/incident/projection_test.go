@@ -34,11 +34,44 @@ func TestProjection_ApplyThenGetReturnsTheFoldedIncident(t *testing.T) {
 	}
 }
 
+func TestProjection_ApplyThenGetRecordReturnsTheFullRecord(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	det := signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: t0}
+
+	p := incident.NewProjection()
+	if err := p.Apply(det); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := p.GetRecord("fp-1")
+	if !ok {
+		t.Fatal("want a record for fp-1, got none")
+	}
+	want := incident.Record{
+		Incident: incident.Incident{Fingerprint: "fp-1", Stage: incident.StageDetected, Service: "checkout-api", UpdatedAt: t0},
+		Detected: &det,
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Error("wrong record after Apply", diff)
+	}
+}
+
 func TestProjection_GetReturnsFalseForAnUnseenFingerprint(t *testing.T) {
 	t.Parallel()
 	p := incident.NewProjection()
 
 	_, ok := p.Get("never-applied")
+	if ok {
+		t.Error("want ok=false for a fingerprint the projection has never seen, got true")
+	}
+}
+
+func TestProjection_GetRecordReturnsFalseForAnUnseenFingerprint(t *testing.T) {
+	t.Parallel()
+	p := incident.NewProjection()
+
+	_, ok := p.GetRecord("never-applied")
 	if ok {
 		t.Error("want ok=false for a fingerprint the projection has never seen, got true")
 	}

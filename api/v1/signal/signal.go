@@ -25,6 +25,7 @@ type Detection struct {
 	Traffic       TrafficContext
 	Impact        Impact
 	ContractRef   string    // the ActionContract the SLO's author associated with this signal at declaration time — informational; the engine validates each Candidate's own ContractRef against the catalog, not this one
+	SLORef        string    // the SLO that fired (e.g. "cart-availability") — threaded through proposal.Set → decision.Decision → thump.Order so post-action convergence is judged on the fired SLO rather than an author-chosen severity query
 	DetectedAt    time.Time // when rattle observed the divergence — clank's freshness math runs off ChangeEvent.HistoricalStaleness, not this field
 }
 

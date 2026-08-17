@@ -104,6 +104,34 @@ func TestMain_IncidentsWithAFingerprintRendersTheDetailView(t *testing.T) {
 	}
 }
 
+// TestMain_IncidentsRenderPrintsFullRecordArtifact pins that
+// `calipers incidents --render <fingerprint>` renders the full Record audit
+// artifact containing all sections rather than the short detail view.
+func TestMain_IncidentsRenderPrintsFullRecordArtifact(t *testing.T) {
+	t.Parallel()
+	inbox := t.TempDir()
+	writeYAML(t, filepath.Join(inbox, "detections"), "det-1.yaml",
+		signal.Detection{Fingerprint: "fp-1", OriginService: "checkout-api", DetectedAt: time.Now()})
+	writeYAML(t, filepath.Join(inbox, "decisions"), "dec-1.yaml", decisiontest.Held("fp-1"))
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.Main([]string{"incidents", "--render", "fp-1", "--inbox", inbox}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "INCIDENT AUDIT RECORD: fp-1") {
+		t.Errorf("want artifact header, got:\n%s", got)
+	}
+	if !strings.Contains(got, "1. WHAT FIRED") {
+		t.Errorf("want section 1 'WHAT FIRED', got:\n%s", got)
+	}
+	if !strings.Contains(got, "4. WHAT GOVERNANCE RULED") {
+		t.Errorf("want section 4 'WHAT GOVERNANCE RULED', got:\n%s", got)
+	}
+}
+
 // TestMain_IncidentsWithAnUnknownFingerprintFails pins the not-found path: a
 // fingerprint absent from the projection is an error, not a silent empty
 // detail view.

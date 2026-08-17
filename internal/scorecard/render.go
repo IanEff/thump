@@ -7,23 +7,24 @@ import (
 )
 
 // Render writes a Report as the human-readable table `calipers scorecard`
-// prints by default. Section order — headline rate, then by-scenario, then
-// by-run-index, then the failure-reason histogram, then every miss's
-// RunID — walks from "is the number good" to "which run do I go read" in
-// the order an operator actually asks those questions.
+// prints by default. Section order — total runs and hits, then by-scenario,
+// then by-run-index, then the failure-reason histogram, then every miss's
+// RunID — walks from summary tallies to "which run do I go read" in
+// the order an operator actually asks those questions. It carries no
+// percentage rate: one incident's record is the deliverable.
 func Render(w io.Writer, rpt Report) {
-	_, _ = fmt.Fprintf(w, "runs=%d hits=%d rate=%s harnessExcluded=%d\n", rpt.N, rpt.Hits, rate(rpt.Hits, rpt.N), rpt.HarnessExcluded)
+	_, _ = fmt.Fprintf(w, "runs=%d hits=%d harnessExcluded=%d\n", rpt.N, rpt.Hits, rpt.HarnessExcluded)
 
 	_, _ = fmt.Fprintln(w, "\nby scenario:")
 	for _, name := range sortedKeys(rpt.ByScenario) {
 		t := rpt.ByScenario[name]
-		_, _ = fmt.Fprintf(w, "  %-30s hits=%d n=%d rate=%s\n", name, t.Hits, t.N, rate(t.Hits, t.N))
+		_, _ = fmt.Fprintf(w, "  %-30s hits=%d n=%d\n", name, t.Hits, t.N)
 	}
 
 	_, _ = fmt.Fprintln(w, "\nby run index:")
 	for _, idx := range sortedIntKeys(rpt.ByRunIndex) {
 		t := rpt.ByRunIndex[idx]
-		_, _ = fmt.Fprintf(w, "  %-4d hits=%d n=%d rate=%s\n", idx, t.Hits, t.N, rate(t.Hits, t.N))
+		_, _ = fmt.Fprintf(w, "  %-4d hits=%d n=%d\n", idx, t.Hits, t.N)
 	}
 
 	_, _ = fmt.Fprintln(w, "\nfailure reasons:")
@@ -48,13 +49,6 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
-}
-
-func rate(hits, n int) string {
-	if n == 0 {
-		return "n/a"
-	}
-	return fmt.Sprintf("%.1f%%", 100*float64(hits)/float64(n))
 }
 
 func sortedKeys(m map[string]Tally) []string {

@@ -72,6 +72,7 @@ func (Actuator) Render(g decision.Governed, cat *contract.StaticCatalog, now tim
 		ID:          fmt.Sprintf("ord:%s:%d", dec.SignalRef, now.Unix()),
 		DecisionRef: dec.ID,
 		SignalRef:   dec.SignalRef,
+		SLORef:      dec.SLORef,
 		ContractRef: cand.ContractRef,
 		GrantedBand: dec.GrantedBand,
 		Description: ct.Action.Description,

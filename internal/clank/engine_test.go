@@ -1531,3 +1531,26 @@ func TestSeedPrompt_TellsTheModelWhatItsConfidenceCostsInBothDirections(t *testi
 		})
 	}
 }
+
+func TestPropose_CarriesTheFiredSLOIdentityFromDetection(t *testing.T) {
+	t.Parallel()
+
+	model := &fakeModel{script: []reason.Completion{
+		{ToolCalls: []reason.ToolCall{{
+			Name: "insufficient",
+			Args: json.RawMessage(`{"reason":"no live corroboration"}`),
+		}}},
+	}}
+	eng, _ := newTestEngine(model)
+	sig := sigBurnAccel()
+	sig.SLORef = "cart-availability"
+
+	got, err := eng.Propose(context.Background(), sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff("cart-availability", got.SLORef); diff != "" {
+		t.Errorf("Engine.Propose SLORef mismatch (-want +got):\n%s", diff)
+	}
+}

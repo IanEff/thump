@@ -144,7 +144,7 @@ func (r replayChange) Changes(context.Context, signal.Detection) (proposal.Chang
 // snapshot froze it on the emitted set precisely so the audit trail could be
 // replayed against what the loop actually saw.
 func detectionFrom(set proposal.Set) signal.Detection {
-	d := signal.Detection{Fingerprint: set.SignalRef, ServiceTier: set.ServiceTier}
+	d := signal.Detection{Fingerprint: set.SignalRef, ServiceTier: set.ServiceTier, SLORef: set.SLORef}
 	if set.SAOSnapshot != nil {
 		d.OriginService = set.SAOSnapshot.Signal.OriginService
 		d.Divergence.Confidence = set.SAOSnapshot.Signal.Confidence

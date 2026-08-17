@@ -44,6 +44,7 @@ type Watched interface {
 	DeclaredTier() string
 	Contract() string
 	Kind() string // fingerprint prefix
+	SLOID() string
 }
 
 var _ Watched = SLO{}

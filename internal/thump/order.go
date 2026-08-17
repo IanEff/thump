@@ -18,6 +18,7 @@ type Order struct {
 	Kind        OrderKind                `json:"kind,omitempty" yaml:"kind,omitempty"` // forward (zero value) or reversal — the one bit a kill-switch reads to exempt cleanup; Render leaves it unset, only ReversalWatcher stamps a reversal
 	DecisionRef string                   `json:"decisionRef,omitempty" yaml:"decisionRef,omitempty"`
 	SignalRef   string                   `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`
+	SLORef      string                   `json:"sloRef,omitempty" yaml:"sloRef,omitempty"` // threaded through from Decision/Set — the fired SLO's identity
 	ContractRef string                   `json:"contractRef,omitempty" yaml:"contractRef,omitempty"`
 	GrantedBand decision.Band            `json:"grantedBand,omitempty" yaml:"grantedBand,omitempty"` // carried for a future live executor to enforce band <= grant; read by nothing in v1
 	Description string                   `json:"description,omitempty" yaml:"description,omitempty"` // contract.Action.Description, verbatim

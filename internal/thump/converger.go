@@ -16,12 +16,16 @@ type PrometheusConverger struct {
 }
 
 // Settle reads o's convergence once: the reversal verdict from its success
-// metric, and — when o authored a SeverityQuery — the normalized post-action
-// severity.
+// metric, and — preferring the fired SLO over an authored SeverityQuery — the
+// normalized post-action severity.
 func (p PrometheusConverger) Settle(ctx context.Context, o Order) (converged bool, severity *float64) {
 	converged = p.Probe.Converged(ctx, o.Success.Metric, o.Success.Target)
-	if o.Success.SeverityQuery != "" {
-		if v, ok := p.Probe.Severity(ctx, o.Success.SeverityQuery); ok {
+	query := o.SLORef
+	if query == "" {
+		query = o.Success.SeverityQuery
+	}
+	if query != "" {
+		if v, ok := p.Probe.Severity(ctx, query); ok {
 			severity = &v
 		}
 	}

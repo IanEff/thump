@@ -21,6 +21,7 @@ func TestSignalFor_StampsTheKindObjectFingerprintAndSeamFields(t *testing.T) {
 		OriginService: "ceph-rgw",
 		ServiceTier:   "tier-1",
 		DetectorType:  "burn_rate_acceleration",
+		SLORef:        "ceph-rgw-availability",
 		DetectedAt:    time.Unix(1000, 0),
 	}
 
@@ -50,5 +51,21 @@ func TestSignalFor_StillStampsTheSameFingerprintThroughEnvelope(t *testing.T) {
 
 	if got.Fingerprint != "slo_burn:ceph-rgw" {
 		t.Error("fingerprint changed shape across the Envlope refactor", cmp.Diff("slo_burn:ceph-rgw", got.Fingerprint))
+	}
+}
+
+func TestSignalFor_CarriesTheFiredSLOIdentity(t *testing.T) {
+	t.Parallel()
+	slo := rattle.SLO{
+		ID:          "cart-availability",
+		Object:      "cart",
+		Tier:        "tier-1",
+		ContractRef: "cart-availability:v1",
+	}
+	now := time.Unix(1000, 0)
+	d := rattle.SignalFor(slo, "burn_rate_acceleration", 1.5, "accelerating", now, nil)
+
+	if diff := cmp.Diff("cart-availability", d.SLORef); diff != "" {
+		t.Errorf("SignalFor SLORef mismatch (-want +got):\n%s", diff)
 	}
 }

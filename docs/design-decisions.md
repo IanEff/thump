@@ -697,15 +697,15 @@ hiss previously governed on a single collapsed number: `Candidate.Confidence = m
 On well-grounded actions where clank proved `computedConfidence == 1.00` across multiple independent backends,
 a model self-reporting 0.65 against the 0.75 floor vetoed autonomous execution — even though `RiskBand` (`internal/hiss/risk.go:8-13`)
 explicitly forbids model output from shaping risk, and thump's watched success window (`Transport.watchAndSettle`, `internal/thump/transport.go:170-208`)
-actively measures outcome convergence and fires an automated undo if the fix fails. Autonomy was bound to `P(Haiku types ≥ 0.75)`.
+actively measures outcome convergence. Autonomy was bound to `P(Haiku types ≥ 0.75)`.
 
 **We do:** `confidenceGate: split` separates governance into two independent checks (`internal/hiss/authority.go:69-76`):
 1. `rec.ComputedConfidence < floor` always escalates with `ReasonGroundingFloor` — the ≥2-source grounding standard is an invariant.
-2. `rec.Confidence < floor` escalates with `ReasonConfidenceFloor` only when `selfReportBinds(rec)` evaluates true — i.e., when the action is irreversible, requires a human-landed undo, or carries a high blast tier (`BandActHigh`).
+2. `rec.Confidence < floor` escalates with `ReasonConfidenceFloor` only when `selfReportBinds(rec)` evaluates true — i.e., when the action is irreversible, requires a human-landed undo, or carries a high blast tier (`proposal.BlastHigh`, which `RiskBand` maps to `decision.BandActDisruptive`; `internal/hiss/risk.go:20-21`).
 
-On reversible, low-blast, automatically self-undoing actions (`BandActReversible`), the model's self-report no longer carries an absolute veto over multi-backend evidence.
+On reversible, low- or med-blast, automatically self-undoing actions (`BandActReversible`), the model's self-report no longer carries an absolute veto over multi-backend evidence.
 
-**Why not preserve the model's veto everywhere?** The counter-argument is that a hedging model might perceive subtle hazards uncaptured by structured evidence queries. But on a bounded, self-reverting action with an active convergence watcher, measuring reality beats predicting it: thump applies the candidate, watches the SLO recovery window directly, and rolls the mutation back if metrics fail to settle. Where thump cannot land its own undo or where the blast radius is wide, model caution remains the last defense and retains its veto.
+**Why not preserve the model's veto everywhere?** The counter-argument is that a hedging model might perceive subtle hazards uncaptured by structured evidence queries. But on a bounded, self-reverting action with an active convergence watcher, measuring reality beats predicting it: thump applies the candidate, watches the SLO recovery window directly, and resolves the outcome (actions authored with `reversal.holdOnMiss: true`, like both flagd actions in `config/dev/actions/catalog.yaml:133, :162`, hold the undo for an operator via `ReversalWatcher` rather than firing blind; `internal/thump/reversal.go:55-58`). Where thump cannot land its own undo or where the blast radius is wide, model caution remains the last defense and retains its veto.
 
 ## Departures from other source material
 

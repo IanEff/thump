@@ -3,6 +3,7 @@ package scorecard_test
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/ianeff/thump/internal/scorecard"
@@ -56,5 +57,27 @@ func TestMain_FailsWhenTheResultsFileDoesNotExist(t *testing.T) {
 
 	if code != 1 {
 		t.Errorf("want exit 1 for a missing results file, got %d", code)
+	}
+}
+
+// TestRender_TheScorecardCarriesNoRateLine pins Phase AW's subtraction: the
+// headline and breakdown rates are dropped from the human scorecard so
+// operators judge incidents by their individual audit records and misses
+// list rather than negotiating with an aggregate percentage over fixtures.
+func TestRender_TheScorecardCarriesNoRateLine(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := scorecard.Main([]string{"--results", "testdata/results.jsonl"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d (stderr: %s)", code, stderr.String())
+	}
+
+	got := stdout.String()
+	banned := []string{"rate=", "%"}
+	for _, phrase := range banned {
+		if strings.Contains(got, phrase) {
+			t.Errorf("rendered scorecard carries banned phrase %q:\n%s", phrase, got)
+		}
 	}
 }

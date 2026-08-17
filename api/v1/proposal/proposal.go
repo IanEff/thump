@@ -18,6 +18,7 @@ type Set struct {
 	Name             string            `json:"name,omitempty" yaml:"name,omitempty"`
 	RunID            string            `json:"runID,omitempty" yaml:"runID,omitempty"`               // fingerprint/unixnano — the exact key under which Engine.Store sealed this run's transcript turns; the only thing that joins a proposal.Set back to its transcripts/ objects
 	SignalRef        string            `json:"signalRef,omitempty" yaml:"signalRef,omitempty"`       // the originating signal.Detection's Fingerprint — an open Set sharing this value suppresses a new one (dedup)
+	SLORef           string            `json:"sloRef,omitempty" yaml:"sloRef,omitempty"`             // the originating signal.Detection's SLORef — threaded through to decision.Decision so thump judges convergence on the fired SLO
 	SAOSnapshot      *SAO              `json:"saoSnapshot,omitempty" yaml:"saoSnapshot,omitempty"`   // the SAO the reason loop actually reasoned over, frozen at emit time — Version > 0 or the audit trail is dangling
 	FailureClass     FailureClass      `json:"failureClass,omitempty" yaml:"failureClass,omitempty"` // the model's leading hypothesis — never a rules-table lookup
 	CausalScores     []CausalScore     `json:"causalScores,omitempty" yaml:"causalScores,omitempty"`
