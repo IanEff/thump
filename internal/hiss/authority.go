@@ -51,6 +51,7 @@ func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.D
 		ID:            fmt.Sprintf("dec:%s:%d", ps.SignalRef, now.Unix()),
 		ProposalRef:   ps.Name,
 		SignalRef:     ps.SignalRef,
+		SLORef:        ps.SLORef,
 		CandidateRef:  ps.Recommended,
 		PolicyVersion: pol.Version,
 		EvaluatedAt:   now,

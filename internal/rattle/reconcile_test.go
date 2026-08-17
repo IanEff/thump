@@ -226,6 +226,7 @@ func goldenDetection() signal.Detection {
 		ServiceTier:   "tier-1",                   // SLO.Tier
 		DetectorType:  "burn_rate_acceleration",   // the acceleration branch fired
 		ContractRef:   "ceph-rgw-availability:v1", // SLO.ContractRef
+		SLORef:        "ceph-rgw-availability",    // SLO.ID
 		Divergence: signal.Divergence{
 			Observed:   1.5,            // Detect(window(1,2,4,8)): mean(2nd diffs) = mean([1,2])
 			Confidence: 1.0,            // Contract.Attenuated(1.0, now): no exclusion window, floor 0.1

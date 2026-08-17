@@ -35,6 +35,11 @@ func TestAuthority_AWellGroundedReversibleCandidateIsNotVetoedByACautiousModel(t
 			reversal: &proposal.ReversalPath{Automatic: true}, blast: proposal.BlastLow,
 			want: decision.VerdictApproved,
 		},
+		"grounded evidence on a self-undoing med-blast action approves despite the model hedging below the floor": {
+			computed: 1.00, selfReported: 0.65,
+			reversal: &proposal.ReversalPath{Automatic: true}, blast: proposal.BlastMed,
+			want: decision.VerdictApproved,
+		},
 		"the same hedge still escalates when only a human can land the undo": {
 			computed: 1.00, selfReported: 0.65,
 			reversal: &proposal.ReversalPath{Automatic: false}, blast: proposal.BlastLow,

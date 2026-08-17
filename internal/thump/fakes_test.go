@@ -71,6 +71,7 @@ func approvedGoverned() decision.Governed {
 	set := proposal.Set{
 		Name:         "ps-ceph-rgw-001",   // → Decision.ProposalRef (Claim 6 breaks this)
 		SignalRef:    "slo_burn:ceph-rgw", // rattle's fingerprint → Decision.SignalRef → Order → Outcome
+		SLORef:       "ceph-rgw-availability",
 		FailureClass: proposal.ClassDependencySaturation,
 		ServiceTier:  "tier-1",
 		Evidence: []proposal.EvidenceRef{{
@@ -104,12 +105,13 @@ func approvedGoverned() decision.Governed {
 			ID:            "dec:slo_burn:ceph-rgw:1000", // "dec:" + SignalRef + ":" + frozenNow().Unix() — hiss's stamp
 			ProposalRef:   "ps-ceph-rgw-001",            // set.Name
 			SignalRef:     "slo_burn:ceph-rgw",          // set.SignalRef, untouched
-			CandidateRef:  "p1",                         // set.Recommended — I-7, hiss never re-ranked
-			Verdict:       decision.VerdictApproved,     // every rule stayed quiet
-			Reasons:       nil,                          // approval needs no excuse
-			RequestedBand: decision.BandActReversible,   // p1's GovernanceLevel (the D-3 upgrade)
-			GrantedBand:   decision.BandActReversible,   // == RequestedBand on approval
-			FloorApplied:  0.75,                         // the policy floor hiss checked and recorded
+			SLORef:        "ceph-rgw-availability",
+			CandidateRef:  "p1",                       // set.Recommended — I-7, hiss never re-ranked
+			Verdict:       decision.VerdictApproved,   // every rule stayed quiet
+			Reasons:       nil,                        // approval needs no excuse
+			RequestedBand: decision.BandActReversible, // p1's GovernanceLevel (the D-3 upgrade)
+			GrantedBand:   decision.BandActReversible, // == RequestedBand on approval
+			FloorApplied:  0.75,                       // the policy floor hiss checked and recorded
 			PolicyVersion: "v1",
 			EvaluatedAt:   frozenNow(),
 		},
@@ -187,6 +189,7 @@ func goldenOrder() thump.Order {
 		ID:          "ord:slo_burn:ceph-rgw:1000",
 		DecisionRef: "dec:slo_burn:ceph-rgw:1000",
 		SignalRef:   "slo_burn:ceph-rgw",
+		SLORef:      "ceph-rgw-availability",
 		ContractRef: "throttle-non-critical-paths", // p1's, never p2's — I-7 inherited
 		GrantedBand: decision.BandActReversible,
 		Description: "Throttle non-critical request paths at the RGW ingress",

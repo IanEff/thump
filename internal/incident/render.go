@@ -213,7 +213,9 @@ func renderOutcomes(b *strings.Builder, settled []outcome.Outcome, d *signal.Det
 	}
 
 	metricName := "unrecorded"
-	if d != nil && d.Divergence.Metric != "" {
+	if d != nil && d.SLORef != "" {
+		metricName = d.SLORef
+	} else if d != nil && d.Divergence.Metric != "" {
 		metricName = d.Divergence.Metric
 	}
 

@@ -21,6 +21,7 @@ func SignalFor(env Watched, detectorType string, accel float64, traj string, now
 		ServiceTier:   env.DeclaredTier(),
 		DetectorType:  detectorType,
 		ContractRef:   env.Contract(),
+		SLORef:        env.SLOID(),
 		DetectedAt:    now,
 		Divergence: signal.Divergence{
 			Observed:   accel,

@@ -1,14 +1,14 @@
-runs=10 hits=3 rate=30.0% harnessExcluded=1
+runs=10 hits=3 harnessExcluded=1
 
 by scenario:
-  acme-api-fault                 hits=0 n=2 rate=0.0%
-  cart-failure                   hits=2 n=4 rate=50.0%
-  crashloop-decoy                hits=1 n=1 rate=100.0%
-  product-catalog-failure        hits=0 n=3 rate=0.0%
+  acme-api-fault                 hits=0 n=2
+  cart-failure                   hits=2 n=4
+  crashloop-decoy                hits=1 n=1
+  product-catalog-failure        hits=0 n=3
 
 by run index:
-  0    hits=2 n=7 rate=28.6%
-  1    hits=1 n=3 rate=33.3%
+  0    hits=2 n=7
+  1    hits=1 n=3
 
 failure reasons:
   harness error            1

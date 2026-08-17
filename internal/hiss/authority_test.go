@@ -395,3 +395,16 @@ func TestAuthority_ApprovesTheSameCandidateWhenTheEngineCanFinishTheUndo(t *test
 		t.Error("wrong verdict for an action whose undo the engine completes itself", diff)
 	}
 }
+
+func TestAuthority_CarriesTheFiredSLOIdentityFromProposalSet(t *testing.T) {
+	t.Parallel()
+
+	ps := governedSet()
+	ps.SLORef = "cart-availability"
+
+	got := decide(t, ps, calmPolicy())
+
+	if diff := cmp.Diff("cart-availability", got.SLORef); diff != "" {
+		t.Errorf("Authority.Evaluate SLORef mismatch (-want +got):\n%s", diff)
+	}
+}
