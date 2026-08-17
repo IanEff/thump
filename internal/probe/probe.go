@@ -14,23 +14,17 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
-	"google.golang.org/genai"
 	"sigs.k8s.io/yaml"
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/evidence"
-	"github.com/ianeff/thump/internal/gemini"
-	"github.com/ianeff/thump/internal/reason"
+	"github.com/ianeff/thump/internal/modelsel"
 )
-
-const modelRequestTimeout = 120 * time.Second
 
 // Row is one probe run's result — the confidence terms that produced its
 // number, not just the number, so a probe sample is conclusive without a
@@ -108,7 +102,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	model, skip, err := modelFor(context.Background(), *modelName)
+	model, skip, err := modelsel.For(context.Background(), *modelName)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "probe:", err)
 		return 1
@@ -200,42 +194,24 @@ func Main(args []string, stdout, stderr io.Writer) int {
 			r.Run, r.Phase, r.ContractRef, r.Confidence, r.Computed, ceiling, r.Terms.Grounding, r.Terms.Corroborated, r.Reason)
 	}
 	_, _ = fmt.Fprintf(stdout, "\n%d probe run(s) against %s — read-only, nothing published or journaled\n", len(rows), *detection)
-	RenderSummary(stdout, Summarize(rows, *floor))
+	RenderSummary(stdout, Summarize(samples(rows), *floor))
 	return 0
 }
 
-// modelFor builds the reason.Model a probe run measures, selected by name —
-// "haiku" (production's own choice), "sonnet", or "gemini-low". A non-empty
-// skip names the environment variable a required key was missing from,
-// signaling Main's clean-skip path rather than an error the caller should
-// report and exit non-zero for.
-func modelFor(ctx context.Context, name string) (model reason.Model, skip string, err error) {
-	switch name {
-	case "haiku":
-		key := os.Getenv("ANTHROPIC_API_KEY")
-		if key == "" {
-			return nil, "ANTHROPIC_API_KEY", nil
+// samples converts probe rows into the fold's minimal input — a row with no
+// recommended candidate (ContractRef == "") carries no self-report to fold.
+func samples(rows []Row) []Sample {
+	out := make([]Sample, len(rows))
+	for i, r := range rows {
+		out[i] = Sample{
+			Proposed:     r.ContractRef != "",
+			Confidence:   r.Confidence,
+			Computed:     r.Computed,
+			Ceiling:      r.Ceiling,
+			Corroborated: r.Terms.Corroborated,
 		}
-		return anthropic.NewModel(key, anthropic.ModelClaudeHaiku4_5, modelRequestTimeout), "", nil
-	case "sonnet":
-		key := os.Getenv("ANTHROPIC_API_KEY")
-		if key == "" {
-			return nil, "ANTHROPIC_API_KEY", nil
-		}
-		return anthropic.NewModel(key, anthropic.ModelClaudeSonnet5, modelRequestTimeout), "", nil
-	case "gemini-low":
-		key := os.Getenv("GEMINI_API_KEY")
-		if key == "" {
-			return nil, "GEMINI_API_KEY", nil
-		}
-		m, err := gemini.NewModel(ctx, key, gemini.ModelGemini3_5FlashLite, genai.ThinkingLevelLow)
-		if err != nil {
-			return nil, "", fmt.Errorf("build gemini model: %w", err)
-		}
-		return m, "", nil
-	default:
-		return nil, "", fmt.Errorf("unknown -model %q: want haiku, sonnet, or gemini-low", name)
 	}
+	return out
 }
 
 // clankConfig lifts the fields ProbeEngine's buildTools/buildIntake read out
