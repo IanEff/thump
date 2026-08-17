@@ -442,14 +442,13 @@ func TestRender_AllSixSectionsRenderInAuditOrder(t *testing.T) {
 	}
 }
 
-// TestRender_BankedAVCartRunRendersAllCausalScoresAndConfidenceTerms pins DoD item 2:
-// loading bin/transcripts/slo_burn:cart/1786969860387330045/run.set.json and rendering it
-// verifies that computedConfidence 1.00, emittedConfidence 0.85, the seven CausalScores
+// TestRender_BankedAVCartRunRendersAllCausalScoresAndConfidenceTerms verifies
+// that computedConfidence 1.00, emittedConfidence 0.85, and the seven CausalScores
 // (including out-of-topology acme events and checkout's 0.197 topological score) render accurately.
 func TestRender_BankedAVCartRunRendersAllCausalScoresAndConfidenceTerms(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join("..", "..", "bin", "transcripts", "slo_burn:cart", "1786969860387330045", "run.set.json")
+	path := filepath.Join("testdata", "slo_burn-cart.set.json")
 	data, err := os.ReadFile(path) //nolint:gosec // G304: fixed testdata path, not user input
 	if err != nil {
 		t.Fatalf("failed to read cart transcript set: %v", err)
