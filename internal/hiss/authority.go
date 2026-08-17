@@ -66,8 +66,17 @@ func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.D
 	d.RequestedBand = requestedBand(rec)
 	d.FloorApplied = pol.Floors[ps.ServiceTier][ps.FailureClass]
 
-	if rec.Confidence < d.FloorApplied {
-		d.Reasons = append(d.Reasons, ReasonConfidenceFloor)
+	if pol.ConfidenceGate == "split" {
+		if effectiveComputedConfidence(rec) < d.FloorApplied {
+			d.Reasons = append(d.Reasons, ReasonGroundingFloor)
+		}
+		if selfReportBinds(rec) && rec.Confidence < d.FloorApplied {
+			d.Reasons = append(d.Reasons, ReasonConfidenceFloor)
+		}
+	} else {
+		if rec.Confidence < d.FloorApplied {
+			d.Reasons = append(d.Reasons, ReasonConfidenceFloor)
+		}
 	}
 	if bandRank(d.RequestedBand) > bandRank(pol.MaxBand[ps.ServiceTier]) {
 		d.Reasons = append(d.Reasons, ReasonAuthorityCeiling)
@@ -102,6 +111,25 @@ func (Authority) Evaluate(ps proposal.Set, pol Policy, now time.Time) decision.D
 	return d
 }
 
+// selfReportBinds reports whether the model's own confidence gets a veto on
+// this candidate. It does not where thump can complete the undo itself and the
+// blast is bounded: there the success window measures what the model could only
+// predict (internal/thump/transport.go:170-208). Everywhere else — no undo, a
+// human-landed undo, or a high blast tier — the model's caution is the last
+// signal standing and it keeps its veto.
+func selfReportBinds(c proposal.Candidate) bool {
+	return bandRank(RiskBand(c.ReversalPath != nil,
+		c.ReversalPath != nil && c.ReversalPath.Automatic, c.BlastTier)) >
+		bandRank(decision.BandActReversible)
+}
+
+func effectiveComputedConfidence(c proposal.Candidate) float64 {
+	if c.ComputedConfidence == 0 && c.Confidence > 0 {
+		return c.Confidence
+	}
+	return c.ComputedConfidence
+}
+
 func bandRank(b decision.Band) int {
 	switch b {
 	case decision.BandObserve:
@@ -120,6 +148,7 @@ func bandRank(b decision.Band) int {
 // decision.Reason* constants for what each one means.
 const (
 	ReasonConfidenceFloor  = decision.ReasonConfidenceFloor
+	ReasonGroundingFloor   = decision.ReasonGroundingFloor
 	ReasonAuthorityCeiling = decision.ReasonAuthorityCeiling
 	ReasonIrreversible     = decision.ReasonIrreversible
 	ReasonFreezeWindow     = decision.ReasonFreezeWindow

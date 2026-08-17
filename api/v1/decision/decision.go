@@ -92,6 +92,7 @@ const (
 // Decision.Reasons; any one of them is enough to withhold approval.
 const (
 	ReasonConfidenceFloor  = "confidence_floor"  // the Recommended Candidate's Confidence is below Policy.Floors for this tier/class
+	ReasonGroundingFloor   = "grounding_floor"   // the Recommended Candidate's ComputedConfidence is below Policy.Floors for this tier/class
 	ReasonAuthorityCeiling = "authority_ceiling" // the requested Band outranks Policy.MaxBand for this tier
 	ReasonIrreversible     = "irreversible"      // Policy.RequireReversal is set and the Candidate carries no ReversalPath
 	ReasonFreezeWindow     = "freeze_window"     // ":" + Window.Name is appended — now falls inside a declared freeze window

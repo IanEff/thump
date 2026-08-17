@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/ianeff/thump/api/v1/decision"
 	"github.com/ianeff/thump/internal/actuate"
 	"github.com/ianeff/thump/internal/configtest"
 	"github.com/ianeff/thump/internal/hiss"
@@ -47,5 +48,39 @@ func TestPolicy_FloorsCoverEveryActuatableClass(t *testing.T) {
 
 	if diff := cmp.Diff([]string(nil), missing); diff != "" {
 		t.Error("actuatable classes with no confidence floor (-want +got):\n", diff)
+	}
+}
+
+// TestPolicy_UnrecognisedConfidenceGateFailsClosedToCollapsed pins that any
+// policy whose confidenceGate is absent, empty, or unrecognised evaluates
+// identically to "collapsed" — an unrecognised gate value fails closed to
+// today's single-veto behaviour, never open to split auto-approval.
+func TestPolicy_UnrecognisedConfidenceGateFailsClosedToCollapsed(t *testing.T) {
+	t.Parallel()
+
+	gates := map[string]string{
+		"empty string defaults to collapsed gate":       "",
+		"explicit collapsed string is collapsed gate":   "collapsed",
+		"unrecognised string fails closed to collapsed": "split_custom",
+	}
+
+	for name, gate := range gates {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ps := governedSet()
+			ps.Proposals[0].ComputedConfidence = 1.00
+			ps.Proposals[0].Confidence = 0.65 // below calmPolicy's 0.75 floor
+
+			pol := calmPolicy()
+			pol.ConfidenceGate = gate
+
+			got := decide(t, ps, pol)
+			if diff := cmp.Diff(decision.VerdictEscalate, got.Verdict); diff != "" {
+				t.Errorf("unrecognised gate value %q must escalate (-want +got):\n%s", gate, diff)
+			}
+			if diff := cmp.Diff([]string{hiss.ReasonConfidenceFloor}, got.Reasons); diff != "" {
+				t.Errorf("unrecognised gate value %q must cite ReasonConfidenceFloor (-want +got):\n%s", gate, diff)
+			}
+		})
 	}
 }
