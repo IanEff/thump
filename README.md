@@ -7,27 +7,11 @@
 
 ![Thump](assets/rainbow_thump.png)
 
-thump is a general-purpose agentic SRE engine for Kubernetes — a
-multidimensional thermostat that watches reliability signals, reasons about them
-with an LLM, and executes an authored, catalog-bound action once policy clears.
+A bounded SRE loop for Kubernetes with a reasoning plane bolted into the middle. It watches reliability signals, investigates an evidence snapshot with an LLM, and executes an authored, catalog-bound action once governance clears.
 
-What it can act on is entirely a function of what's in the catalog. Today that's
-seven actions, one per-profile catalog at `config/<profile>/actions/catalog.yaml`
-— three rook/Ceph runbooks, three against the OpenTelemetry demo, and one
-synthetic acme domain action — because those are the rigs I have on hand to
-build and chaos-test against. Grow the catalog and you grow what thump can act
-on; the reasoner and the governor don't change.
-[Onboarding a domain in config alone](#onboard-your-own-domain) is the test of
-that.
+What it can act on is determined by the action catalog. In the shipped profiles at `config/<profile>/actions/catalog.yaml`, that catalog holds seven actions: three Rook/Ceph runbooks (`hold-rebalance`, `accelerate-recovery`, `throttle-non-critical-paths`), three against the OpenTelemetry Astronomy Shop demo (`disable-product-catalog-failure`, `disable-cart-failure`, `restart-cart-pod`), and one synthetic `acme` domain action (`acme-shed-load`). Adding remediation capabilities means adding catalog entries; the reasoner and the governor stay untouched. [Onboarding a domain in config alone](#onboard-your-own-domain) exercises that boundary.
 
-It is also deliberately dumb, anal, and rigid. It cannot invent an action
-outside the catalog. It cannot invent a magnitude the action's author didn't
-authorize. It cannot skip the gate because a hunch feels strong, and it cannot
-execute anything a separate governor hasn't permitted. The rigidity is the safety
-argument, and most of this README is the shape of it: a fixed catalog of
-actions, a governance pass that cannot re-reason, a kill switch that fails
-closed, an undo that fires on success as well as failure, and a habit of
-declining out loud.
+The safety argument rests on deliberate rigidity. The reasoner cannot invent an action outside the catalog, fabricate parameter magnitudes, bypass the readiness gate on a hunch, or execute anything governance has not approved. A fixed catalog bounds blast radius, governance evaluates policy without re-reasoning, the kill switch fails closed, an undo fires on success as well as failure, and the engine declines explicitly when evidence falls short.
 
 ## Try it, without a cluster
 
@@ -36,64 +20,33 @@ git clone https://github.com/IanEff/thump && cd thump
 task ci
 ```
 
-Three and a half minutes on a cold clone with an empty build cache, and it needs
-neither Kubernetes nor an `ANTHROPIC_API_KEY`. That chain runs fmt, vet, lint, a
-vulnerability scan, three Helm chart renders, the whole suite under `-race`, and
-builds six binaries.
+Three and a half minutes on a cold clone with an empty build cache, requiring neither Kubernetes nor an `ANTHROPIC_API_KEY`. The pipeline executes `gofmt` checks, `go vet`, `golangci-lint`, `govulncheck`, five strict `kubeconform` schema passes over the Helm chart and custom resources, `promtool` unit tests against SLO recording rules, the test suite under `-race`, integration tests, and compiles six binaries.
 
-The one worth reading afterwards:
+The test that exercises the full composition:
 
 ```sh
 go test ./test/onboarding -v
 ```
 
-That drives all five beats over a domain authored entirely in config. The
-fixture domain is called `acme` on purpose — the day onboarding needs a
-domain-specific Go discriminator, it shows up there and gets caught.
+That drives all five beats across a domain authored in seven YAML files. The fixture domain is called `acme` so that any accidental requirement for a domain-specific Go discriminator immediately breaks the test.
 
-Full command table under [Building & testing](#building--testing). Standing up a
-real cluster is [further down](#standing-it-up-locally), and nothing above needs
-it.
+The full command list is under [Building & testing](#building--testing). Setting up a local cluster is covered [further down](#standing-it-up-locally).
 
 ## Watch it run
 
-Here's a real incident on the thump-test rig (GCE VMs running k3s, not kind), not a mock-up: a fault goes in,
-`rattle` fingerprints the SLO burn, `clank` gathers evidence and proposes a catalogued
-action, `hiss` rules on it, `thump` executes and then watches for convergence. The rig is
-public — [github.com/IanEff/thump-test](https://github.com/IanEff/thump-test) — and the
-scenario that drives it is a row in [`chaos/scenarios.yaml`](chaos/scenarios.yaml).
+A real incident on the `thump-test` rig (GCE VMs running k3s): a fault is injected, `rattle` fingerprints the SLO burn, `clank` gathers evidence and proposes a catalogued action, `hiss` rules on it, and `thump` executes then watches for convergence. The rig is public — [github.com/IanEff/thump-test](https://github.com/IanEff/thump-test) — driven by scenarios in [`chaos/scenarios.yaml`](chaos/scenarios.yaml).
 
-Two details worth catching, because they're the whole argument. The reversal is stamped onto
-the action from the catalog *before* anything executes, so an undo exists whether or not the
-action works. And a missed success window fires that undo with no human deciding to revert —
-on 2026-07-26 that path ran for real against Ceph, changed two OSD knobs mid-incident,
-settled `success`, and put them back.
+Two load-bearing mechanics govern actuation. The reversal operation is bound from the catalog before execution begins, guaranteeing an undo path exists. A missed success window fires that undo automatically. On 2026-07-26 that path ran against Ceph, adjusted two OSD tunables mid-incident, settled `success`, and restored default configuration.
 
-If you'd rather read than watch, [the same loop is worked line by
-line](#a-golden-path-worked-end-to-end) against a service the engine has never heard of.
+[The same loop is worked step by step](#a-golden-path-worked-end-to-end) against an uncompiled service.
 
 ## Provenance, stated up front
 
-The four-plane architecture, the boundary-object discipline, the
-incident-response loop, and the belief-formation defenses are David Jambor's,
-from *Agentic Reliability Engineering* (O'Reilly). thump exists because the book
-kept circling a shape it never built. It specifies confidence-gated authority
-and a continuous learning loop, then leaves calibrated confidence as a tuning
-detail rather than the load-bearing question the whole design rests on. Those
-two unspecified mechanisms are what this repo actually is.
+The four-plane architecture, boundary-object discipline, incident-response loop, and belief-formation defenses are David Jambor's, from *Agentic Reliability Engineering* (O'Reilly). thump exists because the book left its two central mechanisms unspecified: calibrated confidence and the learning loop were treated as tuning details rather than architectural foundations. Building those two mechanisms is what this repository actually did.
 
-Build method comes from John Arundel's *The Power of Go: Tools* and *The Power
-of Go: Tests*. Delivery and layout conventions come from Joel Holmes's
-*Shipping Go*. You don't need any of the three to read this repo. Where a rule
-traces to one of them, [`docs/invariants.md`](docs/invariants.md) says so and
-says what it constrains in *this* code; where I knowingly departed from Jambor,
-[`docs/design-decisions.md`](docs/design-decisions.md) is the ledger.
+Build methodology comes from John Arundel's *The Power of Go: Tools* and *The Power of Go: Tests* (Bitfield). Delivery and layout conventions come from Joel Holmes's *Shipping Go* (Manning). Where a rule traces to one of them, [`docs/invariants.md`](docs/invariants.md) documents the constraint; where the implementation departs from Jambor, [`docs/design-decisions.md`](docs/design-decisions.md) records the rationale.
 
-**If you're evaluating whether to point this at your own systems**, the two
-sections that matter are [Authority model & guardrails](#authority-model--guardrails)
-and [Onboard your own domain](#onboard-your-own-domain). For the load-bearing
-detail — the beats and their seams, the full invariant list, the departures —
-go to [`docs/`](#documentation).
+Evaluating this engine for your own systems starts in [Authority model & guardrails](#authority-model--guardrails) and [Onboard your own domain](#onboard-your-own-domain). Mechanism-level specifications live in [`docs/`](#documentation).
 
 ---
 
@@ -119,102 +72,33 @@ go to [`docs/`](#documentation).
 
 ## Why this shape
 
-The obvious way to build AI for SRE is a straight line: alert fires, model reads
-it, model runs a command. Every structural decision in this repo exists to avoid
-that line, because it fails three ways at once.
+Connecting alert feeds directly to an unconstrained LLM shell creates three failure modes simultaneously.
 
-Nothing separates observation from interpretation. The alert already says
-"system degraded," so the model reasons about somebody else's conclusion with no
-view of the evidence underneath it.
+Observation collapses into interpretation. When an alert arrives stating "system degraded", the model reasons over an upstream conclusion without inspecting the underlying telemetry.
 
-Nothing bounds what may happen. The action space is whatever a shell can
-express, which makes blast radius a function of the model's judgment —
-precisely the thing you cannot audit ahead of time.
+Blast radius remains unbounded. An action space defined by shell access makes containment depend on model judgment, which cannot be audited ahead of time.
 
-Nothing holds policy. "Not during a freeze window" ends up as an `if` statement
-inside the reasoner, where it's invisible, untestable, and impossible to tighten
-without editing the thing that reasons.
+Policy becomes invisible. Rules such as freeze windows turn into conditional branches inside prompts or reasoner loops, where they cannot be audited, tested, or tightened independently.
 
-thump answers each with a separation rather than a guardrail bolted on
-afterward. Facts come from something that cannot interpret them; interpretation
-from something that cannot act. Permission comes from something that cannot
-re-reason; action from something that cannot decide. The rest of this document
-is what those four seams look like in Go.
+thump enforces structural separation at every boundary. Detection cannot interpret facts. Reasoning cannot mutate infrastructure. Governance evaluates policy without re-reasoning. Execution applies approved contracts without deciding policy.
 
 ---
 
 ## Authority model & guardrails
 
-**The model proposes magnitude; it never invents it.** Every catalogued action
-carries an authored `severityReductionPct`. In today's catalog,
-`throttle-non-critical-paths` sits at 0.7, `accelerate-recovery` at 0.8, and
-`restart-cart-pod` at 0.1 (`config/<profile>/actions/catalog.yaml`).
+Remediation magnitudes are declared in catalog configuration (`config/<profile>/actions/catalog.yaml`). In the shipped catalog, `throttle-non-critical-paths` specifies a `severityReductionPct` of 0.7, `accelerate-recovery` specifies 0.8, and `restart-cart-pod` specifies 0.1. Restarting the cart pod is a valid, low-blast operation that passes readiness, but the 0.1 forecast separates it from `disable-cart-failure` (0.9) because the fault is flagd flag state rather than container state. The LLM selects which action fits the diagnosis; it cannot declare that a throttle will reduce severity by 73%. An unforecasted action carries `nil`, which renders as `unmeasured` so absence stays distinct from zero effect.
 
-That last one is the interesting case. Restarting the cart pod is a real,
-reversible, low-blast action that clears the readiness gate on its own merits,
-and 0.1 is what discriminates it from the action that actually fixes the fault —
-the fault is flagd flag state, not pod state. The LLM picks *which* action and
-how confident it is in the diagnosis. It does not get to decide that this
-incident's throttle will cut severity by 73%. An action authored with no number
-at all forecasts `nil`, not `0`, because an unforecast action must never look
-like a forecast of no effect.
+Hypothesis confidence is computed deterministically. The output score is the product of rattle's signal-strength confidence, a grounding multiplier based on live citations across distinct telemetry backends, a case-base alignment term (active once the case base reaches its two-vote floor), and causal likelihood scores from change events. The model's self-reported confidence acts strictly as a ceiling via `min()`. A high self-score without corroborating evidence is capped; it cannot inflate itself.
 
-**Confidence is computed.** A candidate's emitted confidence is the product of
-what the run actually grounded: rattle's signal-strength number, times a tier
-set by how many live, topologically coherent citations back the candidate, times
-a case-base alignment term (only if the case base cleared its own two-vote
-floor), times the strongest causal likelihood (only if there were change events
-to score). The model's own stated confidence enters as a ceiling and nothing
-else. A confident-sounding guess with nothing behind it can be pulled down. It
-can never talk itself up.
+Blast tiers, a kill switch, and deduplication windows bound runtime risk. Every action carries an authored `blastTier` (`low`/`med`/`high`). `accelerate-recovery` is marked `high` because trading client I/O for recovery concurrency requires explicit human approval. hiss evaluates tier and reversibility against `config/<profile>/hiss/policy.yaml`, placing actions exceeding the auto-fire ceiling into a `hold` state.
 
-**Blast tiers, a kill switch, and a dedupe window bound what can go wrong.**
-Every action carries a human-authored `blastTier` (`low`/`med`/`high`) —
-`accelerate-recovery` is the one `high` in today's catalog, because trading
-client I/O for durability and pausing the storage operator to make it stick is a
-call a human should bless. hiss reads reversibility and tier against that
-profile's `config/<profile>/hiss/policy.yaml` and **holds** anything past the
-auto-fire ceiling for an ack.
+Underneath governance sits a file-based kill switch (`THUMP_KILLSWITCH`, `internal/thump/killswitch.go`) that fails closed on missing, unreadable, or invalid files. A reload failure clears armed state immediately. Disarmed executions record `{mode: live, result: blocked}` to ensure visibility. A `DedupeWindow` (default 1h, configured via `DEDUPE_WINDOW`) prevents recurring alert firings from launching overlapping actions for the same fingerprint.
 
-Underneath that sits one coarse kill switch (`THUMP_KILLSWITCH`,
-`internal/thump/killswitch.go`) that fails closed in every ambiguous case. A
-missing file, an unreadable one, malformed contents — all leave live actuation
-off, and a failed reload *clears* a previously armed state rather than latching
-it. A blocked order records `{mode: live, result: blocked}`, so refusals are
-loud. A `DedupeWindow` (default 1h, `DEDUPE_WINDOW`) stops a still-firing signal
-from stacking a fresh action on top of one already in flight.
+Reversal operations are exempt from the kill switch. Halting an active remediation mid-flight risks stranding infrastructure in a partial state, so an approved undo is allowed to complete.
 
-> One deliberate exemption: a **reversal** order is not blocked by a disarmed
-> switch. Blocking cleanup mid-flight strands infrastructure half-changed, which
-> is worse than letting one bounded, already-approved undo finish. Force
-> overrides governance; nothing overrides the switch in the forward direction.
+Reversals trigger on two distinct conditions. A missed convergence window initiates an undo. Additionally, an action declaring `restoreOnSuccess: true` (such as `accelerate-recovery` or `hold-rebalance`) reverts its temporary tunables once convergence succeeds, settling the outcome as `success`. This prevents temporary tuning adjustments from persisting indefinitely.
 
-**The undo has two triggers.** A missed success window reverses, which is
-ordinary. But an action whose contract declares `restoreOnSuccess: true` also
-restores its authored defaults on a **met** window, and still settles the
-outcome as `success`. That closes the case where a temporary tuning change
-worked and then stayed applied forever with nothing watching it.
-
-Whether an action is temporary is the author's declaration. The watcher doesn't
-get to infer it. `disable-cart-failure` succeeding means *stay disabled* —
-the flag flip is the remediation. `accelerate-recovery` succeeding means *put the
-knobs back and unpause the operator*. Same convergence verdict, opposite correct
-behavior.
-
-**Declining is a first-class outcome.** `no_action` with a cited reason
-(`ProposalSet.Status.Reason`) is a pass condition. It fires when the model can't
-gather enough evidence; when a proposed action doesn't apply to the failure
-class the model itself declared (`errClassMismatch`, so there's no "I don't
-know" escape hatch that quietly maps to *do something anyway*); when a candidate
-cites evidence the run never gathered; and when the readiness gate vetoes on a
-single weak dimension. Silence is the failure mode this project is built not to
-have.
-
-**Zero doesn't mean "we expect zero effect."** `Outcome.ObservedSeverity` is a
-`*float64`. Nil means unmeasured and renders as `unmeasured`, so it never sits
-next to a real `0.60` looking like a clean win. Every honesty-rider field in the
-system follows that rule: absence gets its own state instead of borrowing a
-value that already means something else.
+Declining to act is a first-class result. Emitting `no_action` with a cited reason (`ProposalSet.Status.Reason`) is an expected execution path. It triggers when evidence is insufficient, when a proposed action does not match the diagnosed failure class (`errClassMismatch`), when cited telemetry was never collected, or when the readiness gate vetoes a candidate.
 
 ---
 
@@ -239,26 +123,19 @@ SignalDetection        ProposalSet             Decision                Outcome
 |---|---|---|---|
 | `rattle` | Signal | Detects reliability divergences, emits a fingerprinted `SignalDetection` | Never interprets — facts only |
 | `clank` | Reasoning | Assembles an evidence snapshot (the SAO), investigates with read-only tools, proposes a ranked, confidence-scored `ProposalSet` | Never acts — proposals only |
-| `hiss` | Governance | Evaluates a `ProposalSet` against policy — confidence floors, blast-tier ceilings, freeze windows — emits one `Decision` | Never re-reasons — verdicts only |
+| `hiss` | Governance | Evaluates a `ProposalSet` against policy (confidence floors, blast-tier ceilings, freeze windows), emits one `Decision` | Never re-reasons — verdicts only |
 | `thump` | Execution | Renders (dry-run) or executes (live) an approved `Decision`, watches for convergence, undoes on a missed window or an authored restore | Never decides — contracts only |
-| `click` | Learning | Feeds `Outcome`s back into clank's case base and calibration | Never a module — it's wiring, not a binary |
+| `click` | Learning | Feeds `Outcome` records back into clank's case base and calibration | Never a module — wiring, not a binary |
 
-Three lines clank never crosses, because together they are the safety argument.
-It doesn't detect; rattle's signal is trusted read-only, fingerprint and all. It
-doesn't execute; its entire output is a document. It doesn't authorize; each
-candidate carries a *requested* governance band — a request, never a verdict —
-and hiss is the only thing that converts a request into allow/hold/deny.
+clank observes three strict boundaries: it trusts rattle's signal and fingerprint without re-evaluating divergence, its entire output is a document, and its candidate authority levels are requests that only hiss can convert into permits.
 
-Those five refusals are the contract, stated on their own in
-[`CHARTER.md`](CHARTER.md) along with what this project will never become.
-Mechanism-level detail for each beat is in
-[`docs/architecture.md`](docs/architecture.md).
+These boundaries are formalized in [`CHARTER.md`](CHARTER.md). Detailed component interactions are documented in [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
 ## Repo tour
 
-The beat table above is the concept. This is where it physically lives.
+Implementation entry points and packages for each beat:
 
 | Beat | Entrypoint | Package | Open first |
 |---|---|---|---|
@@ -266,113 +143,49 @@ The beat table above is the concept. This is where it physically lives.
 | clank | `cmd/clank` | `internal/clank` | `doc.go` |
 | hiss | `cmd/hiss` | `internal/hiss` | `hiss.go` |
 | thump | `cmd/thump` | `internal/thump` | `thump.go` |
-| click | none (see table above) | `internal/clank/click.go`, `metrics.go` | `Click.Absorb` and `ReturnEdge` in `click.go` |
+| click | none (wiring) | `internal/clank/click.go`, `metrics.go` | `Click.Absorb` and `ReturnEdge` in `click.go` |
 
-`cmd/` also houses `bootstrap` (in-cluster setup job) and `calipers`, the operator CLI: `incidents`/`approve`/`force` (the hold→ack loop), `unseal` (WAL-segment decryption — it reaches no vault), `corpus` (corpus management), `rca` (graded RCA suite), `tune` (scoring weight sweep), `replay` (transcript replayer), and `harvest` (chaos scenario runner) all live behind one binary now, dispatched by verb — see `internal/calipers/calipers.go`. Investigation tools (`metrics`, `loki`, `kube`, `argocd`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
+Supporting commands in `cmd/` include `bootstrap` (in-cluster setup Job) and `calipers`, the operator CLI. The twelve calipers subcommands — `incidents`, `approve`, `force`, `unseal`, `corpus`, `rca`, `tune`, `replay`, `harvest`, `probe`, `transcript`, `scorecard` — are dispatched by verb in `internal/calipers/calipers.go`. Investigation tools (`metrics`, `loki`, `kube`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
 
-**If you're opening one file, open `internal/clank/doc.go`.** clank is the
-reasoning plane — the seam with no prior art to copy from, and the one
-carrying the belief-formation defenses ([`docs/invariants.md`](docs/invariants.md),
-I-6). rattle and hiss are comparatively conventional: a detector and a policy
-evaluator. clank is where "bounded" had to be engineered rather than assumed.
+`internal/clank/doc.go` is the primary reference for reasoning loop invariants and belief-formation defenses ([`docs/invariants.md`](docs/invariants.md), I-6). rattle and hiss handle signal detection and policy evaluation; clank implements bounded LLM investigation.
 
-Test-support packages sit next to the beat they serve rather than under a
-shared `testutil`: `natstest` (an embedded, restartable NATS server),
-`s3test`, `configtest`, `leaftest` (the import-allowlist check that pins a
-package's dependency leaves — `internal/tlsx/leaf_test.go` uses it to prove
-`tlsx` imports nothing beyond `crypto/tls`, `crypto/x509`, `fmt`, `os`, and
-`sync`), and `tlsxtest`.
+Test utilities sit alongside their respective packages: `natstest` (embedded NATS server), `s3test`, `configtest`, `leaftest` (dependency leaf validation), and `tlsxtest`.
 
-**`internal/tlsx` + `internal/tlsxtest` are worth the detour.** `tlsx.go` is
-the one place a `*tls.Config` gets built, for the same reason
-`internal/httpx` centralizes outbound HTTP clients: a config assembled at the
-call site is a chance to get the root pool, the minimum version, or
-client-cert verification wrong, and every one of those mistakes succeeds at
-runtime instead of failing. `tlsxtest.go` mints a throwaway ECDSA CA and
-leaves from it per test rather than committing a PEM fixture that quietly
-expires, which is what makes the negative cases assertable at all:
-`TestClient_ServerLeafFromDifferentCA_HandshakeRefused`,
-`TestClient_ExpiredServerLeaf_HandshakeRefused`,
-`TestServer_ClientPresentsNoCertificate_HandshakeRefused`,
-`TestServer_RotatedKeypair_PickedUpWithoutRestart`. None of them need a
-cluster or a network. A negative case is the entire value of a TLS config,
-and this is the pair of files that makes negative cases cheap to write.
+`internal/tlsx` and `internal/tlsxtest` centralize TLS configuration. `tlsx.go` is the sole location where `*tls.Config` instances are constructed. `tlsxtest.go` generates ephemeral ECDSA certificate authorities per test, enabling deterministic testing of negative handshake paths (`TestClient_ServerLeafFromDifferentCA_HandshakeRefused`, `TestClient_ExpiredServerLeaf_HandshakeRefused`, `TestServer_ClientPresentsNoCertificate_HandshakeRefused`, `TestServer_RotatedKeypair_PickedUpWithoutRestart`) without expiring static fixtures.
 
 ---
 
 ## A golden path, worked end to end
 
-The engine is general-purpose, so the example below deliberately uses a service
-the engine has never heard of: `acme`, authored entirely in YAML. This isn't
-hypothetical. It's
-`test/onboarding/onboard_test.go`'s `TestOperator_OnboardsANewDomainInConfigAlone`,
-which runs in `task ci` with no API key and no cluster. Read it back with
-`go test ./test/onboarding -v`.
+The engine operates over arbitrary domains configured via YAML. The walkthrough below traces `TestOperator_OnboardsANewDomainInConfigAlone` from `test/onboarding/onboard_test.go`, which runs in `task ci` without credentials or external infrastructure:
 
-1. **rattle detects.** `acme_api_error_ratio` diverges from baseline — observed
-   0.42 against a 0.001 baseline, `severity.DegradationPct: 0.42`, trajectory
-   `accelerating`. rattle fingerprints it `fp-acme-api-availability-001` and
-   hands off a `SignalDetection`. clank never recomputes this; it trusts the
-   fingerprint and the 0.9 signal confidence rattle assigned.
-2. **clank reasons.** It assembles the SAO: the signal snapshot, plus topology
-   resolved from the authored dependency graph (`acme-db` and `acme-cache`, both
-   `healthy` per their authored state queries). It calls the `metrics` tool for
-   `acme_api_error_ratio` and `acme_db_connections_saturation`, cites both, and
-   proposes `acme-shed-load` — `blastTier: low`, a reversal path
-   (`restore-acme-capacity`), and `serving_replicas: 2`, the authored default
-   from the action's own scope range rather than a number the model picked.
-3. **The gate passes.** `budgetOK`, `dedupeOK`, `evidenceOK` all true. Two live,
-   topologically coherent citations clear the forced-live-telemetry defense, so
-   confidence computes to 0.9 (rattle's 0.9 × full corroboration grounding,
-   capped by the model's own self-report). The set was never at risk of getting
-   through on historical alignment alone.
-4. **hiss governs.** The authored policy's `tier-1` floor for `service_failure`
-   is 0.75, and 0.9 clears it. The action is reversible at `blastTier: low`, so
-   the shaper computes `RiskBand: act_reversible` — inside `tier-1`'s `autoBand`
-   ceiling, so it doesn't hold for a human. `Decision.Verdict: approved`,
-   `policyVersion: acme-v1`, `floorApplied: 0.75` stamped onto the audit record.
-5. **thump acts.** In dry-run mode, the default, it renders the order and stops:
-   `Outcome{mode: dry_run, result: rendered}`. In live mode the same `Decision`
-   would scale `acme-api` to its authored floor, watch `acme_api_error_ratio`
-   against the 5-minute success window, and undo through the authored
-   `execution.reverse` if it doesn't converge.
+1. **rattle detects.** `acme_api_error_ratio` diverges from baseline (observed 0.42 against a 0.001 baseline, `severity.DegradationPct: 0.42`, trajectory `accelerating`). rattle assigns fingerprint `fp-acme-api-availability-001` and emits a `SignalDetection` at 0.9 signal confidence.
+2. **clank reasons.** Intake builds the Situational Awareness Object (SAO) with topology from `whir/catalog-info.yaml` and state queries (`acme-db` and `acme-cache` both returning `healthy`). clank executes the `metrics` tool for `acme_api_error_ratio` and the `loki` tool for `namespace: acme`, citing both (`acme_api_error_ratio` and `loki-1`). It proposes `acme-shed-load` (`blastTier: low`, reversal `restore-acme-capacity`, scope parameter `serving_replicas: 2`).
+3. **The gate evaluates.** `budgetOK`, `dedupeOK`, and `evidenceOK` all evaluate to true. Two live citations across distinct backends (Prometheus and Loki) satisfy the grounding requirement, producing a computed confidence of 0.9.
+4. **hiss governs.** The `tier-1` confidence floor for `service_failure` is 0.75; 0.9 clears it. The low blast tier maps to `RiskBand: act_reversible`, which falls within the auto-fire threshold. The decision records `Verdict: approved`, `policyVersion: acme-v1`, and `floorApplied: 0.75`.
+5. **thump acts.** In default dry-run mode, the order is rendered: `Outcome{mode: dry_run, result: rendered}`. In live mode, thump scales `acme-api` to 2 replicas, monitors `acme_api_error_ratio` over the 5-minute window, and executes `restore-acme-capacity` if convergence fails.
 
-Declines are the more common shape, and they get captured too.
-`internal/clank/testdata/detections/ceph-rgw-saturation.yaml` is a raw JetStream
-capture off a live rig where the reasoner read healthy upstream and capacity
-evidence, ruled out the classes that didn't fit, landed on `traffic_shift`, and
-proposed **nothing**, because no catalog action maps there. hiss caught it
-downstream as `ReasonUngatedInput` and thump declined to act. That fixture is
-pinned as a decision boundary, not a regression.
+Declines follow the same audit trail. In `internal/clank/testdata/detections/ceph-rgw-saturation.yaml`, captured JetStream telemetry shows clank identifying a `traffic_shift` class for which no catalog action is registered. clank proposes nothing, hiss classifies the input as `ReasonUngatedInput`, and thump declines execution.
 
-Every step above is one JSON/YAML object with the same `signalRef` threaded
-through it. That thread — `Detection.Fingerprint` → `ProposalSet.SignalRef` →
-`Decision.SignalRef` → `Outcome.SignalRef` — is the entire audit trail. Nothing
-here needs a second source of truth to answer "why did it do that."
+Every step maintains provenance by threading `signalRef` through the pipeline: `Detection.Fingerprint` → `ProposalSet.SignalRef` → `Decision.SignalRef` → `Outcome.SignalRef`.
 
 ---
 
 ## Onboard your own domain
 
-**Onboarding a system to thump takes no Go.** Signals, evidence, topology,
-failure-class meanings, the action catalog, and how each action executes are all
-operator-authored YAML, and there's a test that proves it:
-`test/onboarding/` onboards a synthetic `acme` service from seven files and
-drives it through all five beats in `task ci`. Copy that directory as a starting
-point.
+Onboarding requires no Go modifications. Signals, evidence queries, topology, failure classes, action catalogs, and execution mechanics are authored entirely in YAML. The layout in `test/onboarding/testdata/acme/` provides the reference template:
 
-| File | What it owns |
+| File | Responsibility |
 |---|---|
-| `rattle/watch.yaml` | the SLOs to poll, and the dependencies whose health gates trusting a divergence |
-| `whir/catalog-info.yaml` | the dependency graph (Backstage `catalog-info` shape) |
-| `whir/state-queries.yaml` | per-dependency "is it healthy right now" PromQL |
-| `whir/evidence-queries.yaml` | the read-only PromQL the reasoner may cite, and what each result is *about* |
-| `actions/failure-classes.yaml` | what each failure class means for your domain |
-| `actions/catalog.yaml` | the actions that may be proposed, and how each one executes |
-| `hiss/policy.yaml` | confidence floors, blast-tier ceilings, freeze windows |
+| `rattle/watch.yaml` | Polled SLO metrics and dependency health gates |
+| `whir/catalog-info.yaml` | Backstage-format dependency graph |
+| `whir/state-queries.yaml` | PromQL queries verifying dependency health |
+| `whir/evidence-queries.yaml` | Read-only PromQL queries available to clank |
+| `actions/failure-classes.yaml` | Domain failure class definitions |
+| `actions/catalog.yaml` | Remediation actions, blast tiers, and execution steps |
+| `hiss/policy.yaml` | Confidence floors, blast ceilings, and freeze windows |
 
-An action's `execution` block names a **bounded mechanism** the actuator
-compiles and points it at your resources:
+An action's `execution` block maps to compiled mechanisms in `internal/actuate`:
 
 ```yaml
 - name: acme-shed-load
@@ -385,309 +198,147 @@ compiles and points it at your resources:
     reverse: [{verb: scale, namespace: acme, deployment: acme-api, replicas: 10}]
 ```
 
-The verb set is closed — `scale`, `restart`, `flagVariant`, `exec` — and checked
-at **startup** rather than on first approval. A verb with no compiled mechanism,
-a missing target, or a forward step with no `reverse` refuses to load. Config
-*picks* a mechanism and names its targets; it never *describes* a new one.
+The compiled verb set — `scale`, `restart`, `flagVariant`, `exec`, and `maintenanceRelease` — is validated at process startup. An unmapped verb, missing target parameter, or forward step lacking a reversal fails validation immediately.
 
-**The honest 5%.** A genuinely new kind of cluster mutation needs a new
-mechanism in `internal/actuate` plus a test. That's the autonomy boundary
-earning its keep — the bounded vocabulary is precisely why the catalog can be
-trusted as the blast-radius bound. It's also a welcome contribution.
+> ⚠️ **A catalog PR is an execution-surface PR.** The `exec` verb accepts command arguments directly, allowing anyone who can merge `config/<profile>/actions/catalog.yaml` to execute commands within pods accessible to thump's ServiceAccount. Access is bounded by Kubernetes RBAC (`pods/exec` per namespace), the kill switch, and hiss policy. ServiceAccounts must be scoped tightly; see `CONTRIBUTING.md`.
 
-> ⚠️ **A catalog PR is an execution-surface PR.** The `exec` verb takes argv, so
-> whoever can merge a `config/<profile>/actions/catalog.yaml` can run a command in any pod
-> thump's ServiceAccount can reach. What bounds this is RBAC (`pods/exec`,
-> scoped per namespace), the kill switch, and hiss's policy — *not* the verb
-> list. Scope that ServiceAccount tightly and review catalog changes
-> accordingly; see `CONTRIBUTING.md`.
-
-Full walkthrough, including the environment each beat reads and the guards that
-catch an authoring mistake: [`docs/onboarding.md`](docs/onboarding.md).
+Configuration details and environment variables are documented in [`docs/onboarding.md`](docs/onboarding.md).
 
 ---
 
 ## Install
 
-Tagged releases ship prebuilt archives for linux and darwin, amd64 and arm64,
-bundling five binaries — the four long-running beats (`rattle`, `clank`, `hiss`,
-`thump`) plus `calipers`, the operator CLI. `bootstrap` isn't in the archive: it's
-a one-shot Kubernetes Job, not something you run from a shell, so it ships only
-as a container image:
+Release archives are published for Linux and macOS (amd64 and arm64), bundling the four services (`rattle`, `clank`, `hiss`, `thump`) and `calipers`. `bootstrap` is an in-cluster Job that ships exclusively as a container image:
 
 ```sh
 gh release download v0.1.0 --repo IanEff/thump --pattern '*_linux_x86_64.tar.gz'
 tar xzf thump_0.1.0_linux_x86_64.tar.gz
 ```
 
-Checksums are published alongside. The four long-running beats plus `bootstrap`
-also publish multi-arch container images with SBOM and provenance attestation,
-signed keylessly via Sigstore/cosign; `calipers` never gets a container image,
-built only as the binary above (Taskfile.yaml's `IMAGE_BEATS`/`CALIPERS` split).
-Building from source needs Go and [go-task](https://taskfile.dev): `task build`
-puts all six — the five archived binaries plus `bootstrap` — in `bin/`.
+Multi-arch container images for `rattle`, `clank`, `hiss`, `thump`, and `bootstrap` are published with attached SBOMs and SLSA provenance attestations, signed keylessly via Sigstore/cosign. `calipers` is distributed as a binary only. Building from source via `task build` outputs all six binaries to `bin/`.
 
 ---
 
 ## Standing it up locally
 
-thump runs against two cluster profiles today (`Tiltfile`'s `CLUSTERS` dict):
-`thump-test` and `dev`. Earlier profiles (`ceph-lab`, `rook-gke`,
-`rook-gce-k3s`) are retired.
+The codebase supports two cluster profiles defined in `Tiltfile`: `dev` and `thump-test`.
 
-`thump-test` is a rook/Ceph cluster because that's the rig this repo builds
-and chaos-tests against, not because thump requires one; it needs its own rig
-repo built out-of-band first (`~/projects/ceph/...`). It additionally runs the
-OpenTelemetry Astronomy Shop demo alongside Ceph — a second, orthogonal
-domain on one cluster, sharing no signal, failure class, or catalog action
-with the first — the general-purpose claim under load instead of in a test
-fixture.
+`dev` provisions a self-contained local k3d cluster with Cilium, cert-manager, Prometheus, Alertmanager, Loki, Tempo, S3Mock, the OpenTelemetry demo, and the synthetic `acme` domain. Detailed instructions are in [`docs/dev-environment.md`](docs/dev-environment.md).
 
-`dev` is the one to reach for if you don't already have a rig: a fully local
-k3d cluster with no external repo, no Ceph, and no IAP tunnel — Cilium,
-cert-manager, Prometheus/Loki/Tempo, S3Mock, and the OTel demo all come up
-from inside this repo. See
-[`docs/dev-environment.md`](docs/dev-environment.md).
+`thump-test` runs against GCE VMs hosting k3s with Rook/Ceph and the OpenTelemetry Astronomy Shop demo.
 
 ```sh
-task dev:up                        # dev — no rig repo needed
-tilt up -- --cluster=thump-test    # needs a rig repo first
+task dev:up                        # local k3d dev cluster
+tilt up -- --cluster=thump-test    # remote thump-test rig
 ```
 
-**Dry-run is the default, and you have to opt into anything else.**
-`THUMP_EXECUTOR` is `dry` unless you explicitly set it to `live`
-(`internal/config/config.go`). In dry mode thump renders every approved decision
-in full and touches nothing. Going live additionally requires an armed
-`THUMP_KILLSWITCH` file; a disarmed switch reports `ResultBlocked` rather than
-silently no-op'ing, so a blocked run is loud. `SLACK_WEBHOOK_URL` is optional —
-leave it unset and thump just doesn't page anyone on a hold or a settle.
+Dry-run execution is active by default (`THUMP_EXECUTOR=dry`). Live execution requires setting `THUMP_EXECUTOR=live` alongside an armed `THUMP_KILLSWITCH` file. When the kill switch is disarmed, live attempts emit `ResultBlocked`.
 
-`calipers incidents` folds the stream into a read-only view of what the engine has
-done and what it's holding. `calipers approve <fingerprint>` acks a held action, and
-hiss re-issues the approved decision. The operator surface never writes a
-decision itself.
+The operator surface provides inspection and approval workflows:
 
-There is a second way to release a hold, off by default
-(`approvalRequests.enabled`, `deploy/chart/thump/values.yaml`). With it on, hiss
-opens an `ApprovalRequest` custom resource per held action and a human releases
-it by patching one field:
-
+```sh
+task dev:certs                      # extract NATS client certificates
+task dev:incidents                  # list active and held incidents
+task dev:approve FP=<fingerprint>   # approve a held action
 ```
+
+Held actions can also be released via Kubernetes custom resources (`approvalRequests.enabled: true` in `deploy/chart/thump/values.yaml`). When enabled, hiss creates an `ApprovalRequest` custom resource that an authorized user approves via standard RBAC:
+
+```sh
 kubectl -n thump get approvalrequests
 kubectl -n thump patch approvalrequest ar-8f3c1d2e0a5b7649 \
   --type=merge -p '{"spec":{"decision":"approve"}}'
 ```
 
-What that buys over `calipers approve` is the approver's identity. `--approver` is a
-string an operator types about themselves; under the CR the approver is the
-authenticated Kubernetes subject, a `MutatingAdmissionPolicy` stamps it into
-`thump.dev/approved-by` regardless of what the patch body said, and the API
-server records the request in its own audit log. Every other audit claim this
-engine makes is thump attesting about itself. Grant it with
-`approvalRequests.approvers`, which is empty by default.
+Under custom resource approval, a `MutatingAdmissionPolicy` validates the user identity and records the approver into `thump.dev/approved-by`, producing an independent Kubernetes audit log entry. The controller accepts only `spec.decision: approve`. Bypassing governance is reserved for `calipers force` (D-9).
 
-`spec.decision` accepts `approve` and nothing else. Bypassing hiss's risk gate
-stays with `calipers force` (D-9): a break-glass verb five characters away from an
-ordinary approval, on the same object and under the same RBAC verb, would not be
-break-glass. The controller refuses to publish an ack it cannot attribute, so a
-cluster that never installed the admission policies fails closed rather than
-approving on behalf of nobody. Needs Kubernetes 1.36 —
-`MutatingAdmissionPolicy` went stable there.
-
-Check `internal/config/config.go` for the full environment variable list before
-arming anything for real.
+Environment configuration variables are defined in `internal/config/config.go`.
 
 ---
 
 ## Invariants (read as law)
 
-Numbered so a review can cite one directly ("this violates I-4"). Full text,
-sourcing, and the test that would go red for each:
-[`docs/invariants.md`](docs/invariants.md).
+Architectural rules are numbered for reference in code reviews and design discussions. Full specifications and test mappings are in [`docs/invariants.md`](docs/invariants.md).
 
-1. **Signals describe state, never interpretation.** "p99 412ms vs 38ms
-   baseline" is a signal; "system degraded" is a reasoning output. rattle never
-   editorializes.
-2. **Two confidence numbers, never one field.** Signal-strength confidence — is
-   this input trustworthy? — is rattle's. Hypothesis confidence — how sure is
-   this diagnosis? — is clank's, computed from the first plus corroboration.
-3. **Policy lives only in Governance.** If clank grows an
-   `if confidence < 0.8`, policy has become invisible and unauditable. hiss is
-   the only policy holder.
-4. **The catalog is the autonomy boundary.** Blast radius is bounded by a
-   declared action's scope and reversal, never by the reasoner's judgment. A
-   candidate outside the catalog is a hard error and never a soft ignore.
-5. **Gate ≠ shaper.** The readiness gate is a strict conjunction of minimums —
-   `budget ∧ dedup ∧ evidence` — never a weighted sum. A high score on one axis
-   cannot buy passage on a failed minimum.
-6. **The five belief-formation defenses are not optional.** A ≥2-source
-   corroboration floor, freshness-decay on historical alignment, a
-   predicted-but-absent signal that decrements rather than staying silent, a
-   representable "partially fixed, still diverging" outcome, and a
-   forced-live-citation rule on the gate. Together they defend against a cheap
-   wrong belief compounding through scoring and memory.
-7. **Reasoning selects, Governance permits.** hiss answers exactly one question
-   — allowed, right now? — and never re-ranks or substitutes clank's
-   recommendation.
-8. **Learn is a return edge, not a module.** click is thump's `Outcome` flowing
-   back into clank's case base. Wiring, with no boundary-crossing reach of its
-   own.
-9. **The signal contract owns the `if`.** Freshness bounds, confidence floors,
-   exclusion windows all live in rattle's contract, even when the transport is a
-   poll ticker. Degraded trust attenuates confidence; it never silently drops
-   the signal.
-10. **Nothing executes ungoverned.** Every act is gated by hiss *and* the global
-    kill switch, defaults to dry, and carries an executed reversal path. Highest
-    blast radius gets the most paranoid on-ramp.
-11. **The log is the system of record.** Detections and proposals ride the
-    stream into an S3-offloaded WAL. etcd holds slow, human-authored config only.
-    No CRD-per-noun.
-12. **The Trust Ceiling.** No autonomous write authority until real runtime
-    Governance, action contracts with automatic reversal, signal contracts with
-    declared guarantees, and calibrated confidence are *all four* simultaneously
-    operational. Three of four doesn't count.
-13. **Every wave stays red→green.** No untested seam crosses into the next beat.
-14. **Delivery is at-least-once; identity is the fingerprint.** Every transport
-    may redeliver, so every consumer dedupes on the producer-assigned
-    fingerprint and never on transport metadata like a filename or sequence
-    number.
-15. **The operator surface is read-only or evidence-producing.** A human
-    interface may read emitted state or emit an ack event, and nothing else. It
-    may never write a decision, execute an action, or touch the kill switch. The
-    one declared exception is a break-glass `calipers force`: a human, never the
-    automated surface, disposing in Governance's place — attributed, audited,
-    rendered visibly `forced`, and still kill-switch-gated.
-16. **Every leg is TLS-negotiated by this process, or declared plaintext.**
-    `internal/tlsx` is the only place a `*tls.Config` gets built, and
-    `InsecureSkipVerify` is never a declared exception — it's an
-    unauthenticated session wearing TLS's shape. Two gaps are named rather
-    than silent: the Prometheus/Loki query legs ride node-to-node WireGuard
-    instead of TLS, and the OTLP exporter's `http://` branch is a single
-    declared row.
-17. **Every client this engine dials has an authored retry policy, timeout,
-    and a failure that surfaces.** A silent client is a violation. The one row
-    that turned out to be silently wrong rather than merely unaudited was
-    `client-go`'s actuate timeout, unbounded before the fix. One declared
-    exception stands: the OTLP exporter retries a stale CA silently, forever,
-    per batch, with no log line at the failure point.
+1. **Signals describe state, never interpretation.** "p99 412ms vs 38ms baseline" is a signal; "system degraded" is an interpretation. rattle emits raw measurements.
+2. **Two confidence numbers, never one field.** Signal-strength confidence belongs to rattle (`signal.Divergence.Confidence`). Hypothesis confidence belongs to clank (`proposal.Candidate.Confidence`), computed from evidence corroboration and historical alignment.
+3. **Policy lives only in Governance.** Criticality tiers, error budgets, and confidence thresholds belong exclusively in hiss. clank and rattle contain zero policy rules.
+4. **The catalog is the autonomy boundary.** Blast radius is bounded by declared action contracts, not model judgment. Actions outside the catalog produce immediate errors.
+5. **Gate ≠ shaper.** The readiness gate evaluates a conjunction of minimums (`budget ∧ dedup ∧ evidence`). Risk shaping evaluates execution autonomy separately.
+6. **The five belief-formation defenses are not optional.** Includes a >=2-source corroboration floor, freshness decay on historical alignment, decrements for predicted-but-absent indicators, representable `partial_non_converging` outcomes, and mandatory live telemetry citations.
+7. **Reasoning selects, Governance permits.** clank requests an authority level; hiss grants or denies permission without re-ranking or modifying proposals.
+8. **Learn is a return edge, not a module.** click is the return path delivering `Outcome` records to clank's case base; it is not a standalone service.
+9. **The signal contract owns the `if`.** Freshness constraints and significance thresholds reside in rattle's contract. Degraded trust attenuates confidence without dropping the signal.
+10. **Nothing executes ungoverned.** Execution defaults to dry-run, requires an armed kill switch, and binds an executable reversal path.
+11. **The log is the system of record.** Detections, proposals, decisions, and outcomes are persisted to an S3 write-ahead log. etcd stores only human-authored configuration.
+12. **The Trust Ceiling.** Autonomous write access requires four operational pillars: runtime governance, automatic reversals, declared signal contracts, and calibrated confidence.
+13. **Every wave stays red→green.** Unverified seams do not cross into subsequent components.
+14. **Delivery is at-least-once; identity is the fingerprint.** Consumers are idempotent and deduplicate using producer-assigned fingerprints rather than transport metadata.
+15. **The operator surface never disposes.** User interfaces read state and emit approval events; they do not write decisions. The sole exception is break-glass `calipers force`.
+16. **Every leg is TLS-negotiated by this process, or declared plaintext.** TLS configs are constructed exclusively in `internal/tlsx`. `InsecureSkipVerify` is disallowed. Plaintext exceptions are explicitly cataloged.
+17. **Every client this engine dials has an authored retry policy, timeout, and a failure that surfaces.** Network clients require explicit timeouts and error propagation.
 
 ---
 
 ## Known-open
 
-- **The `hold` → ack loop is built; the surface around it is thin.** `calipers
-  incidents`, `calipers approve`, and the break-glass `calipers force` all work, and
-  hiss re-issues a held decision on an ack. What doesn't exist yet is anything
-  richer: no drill-down from an incident to the evidence that produced it, no
-  live tail, no web view. If you're evaluating the operator experience
-  specifically, that's where it actually stands.
-- **The model-modulates-the-prior multiplier isn't built.** The authored
-  `severityReductionPct` baseline is stamped onto every candidate and measured
-  against the observed reduction. The SAO/topology-aware adjustment *on top of*
-  it is still just the plan — today the number is copied verbatim from the
-  catalog.
-- **Risk shaping is two factors, not a scalar.** `RiskBand` is computed from
-  reversibility and blast tier alone. Every cell of that 2×3 lattice is pinned
-  by a test, and it hasn't yet decided anything wrong, but it is narrower than
-  the composite score the design calls for. See
-  [`docs/design-decisions.md`](docs/design-decisions.md), D-3.
-- **`accelerate-recovery` assumes nothing else is reconciling the operator it
-  pauses.** The action scales `rook-ceph-operator` to zero so its Ceph tunables
-  survive the recovery window. That's proven live now — knobs read back `16`/`16`
-  mid-flight, window settled `success`, reversal clean. It only holds here
-  because our ArgoCD was taught to ignore `spec/replicas` on that Deployment;
-  the first live attempt had self-heal putting the operator back in about a
-  second. Run this under your own reconciler and you get that failure back, and
-  there's no field in `catalog.yaml` that would warn you. See
-  [`docs/design-decisions.md`](docs/design-decisions.md), D-10.
-- **A chaos-mesh v2.8.3 bug blocks one class of live test.** `toda`, the IOChaos
-  fault injector, panics on startup on every OSD we've tried it against. Not a
-  config mistake on our side — confirmed against upstream. Until that's fixed or
-  worked around, one signal class (OSD I/O latency injected at the FUSE layer)
-  can't be chaos-tested end to end.
-- **thump's own `ServiceMonitor` gaps have bitten us before.** A missing scrape
-  target made a fully-working pipeline look broken from the outside more than
-  once. If a live run looks dead, check Prometheus targets before assuming the
-  engine is.
+- **Operator tooling is CLI-focused.** `calipers incidents`, `calipers approve`, and `calipers force` provide core hold and approval workflows, but drill-down telemetry views and web interfaces are not built.
+- **Topology-aware prior adjustment is planned.** Actions carry static baseline `severityReductionPct` values; dynamic adjustment based on situational awareness object topology is not yet implemented.
+- **Risk shaping uses a two-factor lattice.** `RiskBand` is derived from reversibility and blast tier. A continuous composite risk score is deferred ([`docs/design-decisions.md`](docs/design-decisions.md), D-3).
+- **`accelerate-recovery` requires reconciler coordination.** Pausing `rook-ceph-operator` during recovery requires GitOps tools (e.g., ArgoCD) to ignore replica mutations on that deployment ([`docs/design-decisions.md`](docs/design-decisions.md), D-10).
+- **Chaos-mesh v2.8.3 IOChaos limitation.** `toda` injector panics when targeting Ceph OSD FUSE layers, preventing end-to-end chaos testing for that specific fault class.
+- **ServiceMonitor configuration.** Missing scrape configurations can obscure operational metrics; verify Prometheus scrape targets when diagnosing pipeline status.
 
 ---
 
 ## Building & testing
 
-Build tooling is [go-task](https://taskfile.dev) (`Taskfile.yaml`) — run
-`task --list-all` for the full set.
+Build automation uses [go-task](https://taskfile.dev) (`Taskfile.yaml`). Run `task --list-all` for the full target catalog.
 
-| Command | What it does |
+| Command | Description |
 |---|---|
-| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` / `run:calipers` | Run one beat or the operator CLI |
-| `task build` | Build all six binaries to `bin/` |
-| `task ci` | Full local CI: fmt-check → vet → lint → vulncheck → chart-lint → race → build |
-| `task test` / `task race` | Tests, with `-race` |
-| `task coverage` | Coverage profile + total |
-| `task vulncheck` | govulncheck over deps |
-| `task chaos:preflight` | Check preconditions & disable ArgoCD self-healing before live chaos runs |
-| `task eval` | The reasoner eval against the production catalog — key-gated, not part of `task ci` |
-| `go test ./test/onboarding -v` | The whole engine over a domain authored in config alone — no key, no cluster |
-| `go test ./internal/clank -run TestGate -v` | Run a single test |
-| `gotestdox ./...` | Read test names back as a spec — **silently prints nothing on Go 1.26**; use `go test -v` |
+| `task run:clank` / `run:rattle` / `run:hiss` / `run:thump` / `run:calipers` | Run an individual beat or the operator CLI |
+| `task build` | Build all six binaries into `bin/` |
+| `task ci` | Local CI: fmt-check → vet → lint → vulncheck → chart-lint → promql → race → integration → build |
+| `task test` / `task race` | Run unit test suite (with `-race`) |
+| `task coverage` | Generate test coverage profile |
+| `task vulncheck` | Run govulncheck over dependencies |
+| `task chaos:preflight` | Verify preconditions and disable reconciler self-healing before chaos runs |
+| `task eval` | Run reasoner evaluation against production catalog (requires API key) |
+| `task rca` | Run graded RCA benchmark suite |
+| `task corpus` | Mine sealed WAL into `testdata/corpus/` |
+| `go test ./test/onboarding -v` | Execute five-beat domain onboarding test offline |
+| `go test ./internal/clank -run TestGate -v` | Run a specific test |
 
-For the live scenario matrix, fault mechanisms, and preflights across Ceph and otel-demo, see [`chaos/README.md`](chaos/README.md).
-
-`task ci` green is the definition of done. GitHub runs fmt-check, vet, lint,
-vulncheck, chart-lint, and test on every push, but not `-race`, since that
-doubles build time and CI minutes cost money. **Run `task ci` locally before
-opening a PR.** A green `go test` on GitHub is a weaker claim than a green
-`task ci`.
+`task ci` passing is the requirement for completion. Pull requests must pass local `task ci` before submission.
 
 ---
 
 ## Contributing
 
-The "never" column in the beat table is the design. A policy check inside clank,
-a raw payload riding in a conversation message, a recomputed fingerprint, a new
-noun that isn't in the vocabulary — those are the regressions that matter most,
-ahead of any bug in business logic.
+Reviews focus primarily on invariant preservation: verifying that policy does not leak into the reasoner, raw payloads remain outside conversation contexts, fingerprints are preserved without recomputation, and vocabulary constraints are respected.
 
-`CONTRIBUTING.md` has the full guide, including the review rule that isn't
-obvious: a catalog change is an execution-surface change. Go conventions,
-comment style, and testing standards live in `AGENTS.md`; read it before
-touching any `.go` file. Security reports go through `SECURITY.md` rather than a
-PR.
+`CONTRIBUTING.md` provides detailed workflow guidelines. Go conventions, comment formatting, and testing standards are defined in `AGENTS.md`. Security vulnerabilities must be submitted via `SECURITY.md`.
 
 ---
 
 ## Documentation
 
-| Doc | What's in it |
+| Document | Content |
 |---|---|
-| [`CHARTER.md`](CHARTER.md) | The contract: the five refusals, the four-question smell test, and what this project will never become |
-| [`docs/architecture.md`](docs/architecture.md) | The five beats and four planes, the boundary objects, and a mechanism-level walk of one signal end to end |
-| [`docs/invariants.md`](docs/invariants.md) | All seventeen invariants with their sourcing, the violation smell for each, the test that would go red, and the four-question smell test |
-| [`docs/onboarding.md`](docs/onboarding.md) | Authoring a domain in config: the seven files, the verbs, the environment, and the guards that catch a mistake |
-| [`docs/threat-model.md`](docs/threat-model.md) | Who can make this engine act, what a steered model still can't reach past, and what's deliberately undefended |
-| [`docs/design-decisions.md`](docs/design-decisions.md) | Where this project knowingly departs from Jambor, and why — including what was declined and what's parked |
-| [`docs/c4-architecture.md`](docs/c4-architecture.md) | C4 context/container/component diagrams and a golden-path sequence |
-| `AGENTS.md` | Go conventions, comment voice, testing standards |
-| `CONTRIBUTING.md` | How to work here, and what gets reviewed hardest |
+| [`CHARTER.md`](CHARTER.md) | Architectural contract: core refusals, smell tests, and non-goals |
+| [`docs/architecture.md`](docs/architecture.md) | Component architecture, plane separation, boundary objects, and data flow |
+| [`docs/invariants.md`](docs/invariants.md) | Seventeen invariants with sourcing, violation examples, and test assertions |
+| [`docs/onboarding.md`](docs/onboarding.md) | Guide for onboarding new domains in YAML |
+| [`docs/dev-environment.md`](docs/dev-environment.md) | Setup instructions for the local k3d dev environment |
+| [`docs/threat-model.md`](docs/threat-model.md) | Security model, actor capabilities, and boundary enforcement |
+| [`docs/design-decisions.md`](docs/design-decisions.md) | Decision log recording divergences from literature |
+| [`docs/c4-architecture.md`](docs/c4-architecture.md) | C4 architecture diagrams and interaction sequences |
+| `AGENTS.md` | Go coding standards, doc comment voice, and testing rules |
+| `CONTRIBUTING.md` | Development workflow and code review standards |
 
-### Full provenance ledger
+### Provenance citations
 
-- **David Jambor, *Agentic Reliability Engineering*** (O'Reilly) — the
-  four-plane architecture, the boundary-object discipline, the incident-response
-  loop, and the belief-formation defenses. Also the source of the vocabulary:
-  `SignalDetection`, `ProposalSet`, `ActionContract`, the Situational Awareness
-  Object, the Trust Ceiling. [`docs/invariants.md`](docs/invariants.md) tags
-  each invariant that traces to him;
-  [`docs/design-decisions.md`](docs/design-decisions.md) is the ledger of
-  departures, including the `requires_human_approval` field I replaced with
-  `requested_authority_level` because the original leaks the
-  Reasoning/Governance seam.
-- **John Arundel, *The Power of Go: Tools*** and ***The Power of Go: Tests***
-  (Bitfield) — build method, the functional-core/imperative-shell split in the
-  actuator, and the test-naming discipline `gotestdox` reads back.
-- **Joel Holmes, *Shipping Go*** (Manning) — release pipeline, delivery, and
-  repo layout conventions.
-
-The dated design journal — day-by-day investigation notes, live-run
-post-mortems, per-phase build plans — stays private rather than mirrored here.
-Everything load-bearing from it is in `docs/`.
+- **David Jambor, *Agentic Reliability Engineering*** (O'Reilly) — Four-plane architecture, boundary objects, incident-response lifecycle, and belief-formation defenses. Sourced vocabulary: `SignalDetection`, `ProposalSet`, `ActionContract`, Situational Awareness Object, and Trust Ceiling. Divergence rationale is documented in [`docs/design-decisions.md`](docs/design-decisions.md).
+- **John Arundel, *The Power of Go: Tools*** and ***The Power of Go: Tests*** (Bitfield) — Build architecture, functional core/imperative shell separation in actuation, and test naming standards.
+- **Joel Holmes, *Shipping Go*** (Manning) — Release pipeline, binary packaging, and repository layout.
