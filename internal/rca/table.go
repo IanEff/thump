@@ -53,12 +53,17 @@ type Case struct {
 	// on two live backends must out-score one that reaches it on one, or the
 	// grounding tiers are decorative. Zero means ungraded — every
 	// "insufficient" row, since a declined set carries no candidate.
+	//
+	// Setting WantConfidenceAtLeast > 0 also arms the WantCeilingBound check
+	// (report.go:144) — a row with WantConfidenceAtLeast set will fail if its
+	// top candidate's ConfidenceCeilingBound does not match WantCeilingBound.
 	WantConfidenceAtLeast float64
 
 	// WantCeilingBound pins whether the model's self-report was the binding
 	// constraint. A row where the ceiling always binds is one no weight change
 	// can reach — a property of the fixture, not of the tuning, and it belongs
 	// in the report rather than being discovered halfway through a sweep.
+	// Checked only when WantConfidenceAtLeast > 0.
 	WantCeilingBound bool
 
 	// Topology and Change feed the harness's Intake directly, the same
@@ -299,10 +304,11 @@ func Table() []Case {
 		// The cartFailure flag flip breaks cart's EmptyCart RPC. Two
 		// actions are catalogued for it — restart-pod and
 		// disable-cart-failure — and only the flag flip actually clears it,
-		// so this row grades the choice as well as the class. This
-		// harness's kube fake carries no cart pod data, so the row can only
-		// ever corroborate through "metrics"; WantConfidenceAtLeast is set
-		// below GroundingOne's 0.7 floor accordingly.
+		// so this row grades the choice as well as the class. The row's
+		// "cart" Evidence key seeds a loki line, so this row corroborates
+		// across metrics and loki (corroborated >= 2, computed 1.0,
+		// ceilingBound true); WantConfidenceAtLeast ensures it clears the
+		// floor with ceilingBound true.
 		{
 			Name:                  "a real cartFailure flag flip proposes the flag fix, not the pod restart",
 			Rig:                   "dev",
@@ -312,7 +318,7 @@ func Table() []Case {
 			WantClass:             proposal.ClassServiceFailure,
 			MustCite:              []string{"cart_error_ratio"},
 			WantConfidenceAtLeast: 0.65,
-			WantCeilingBound:      false,
+			WantCeilingBound:      true,
 			Evidence: map[string]string{
 				"slo_burn_cart":              "50",
 				"severity_cart_availability": "0.5",
