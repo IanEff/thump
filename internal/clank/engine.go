@@ -574,7 +574,7 @@ func seedPrompt(sig signal.Detection, sao proposal.SAO, classes []contract.Failu
 	b.WriteString("- to propose an action, cite at least one LIVE telemetry result about the affected service, or a node in its declared topology.\n")
 	b.WriteString("- a citation is the exact key shown as [cite: <key>] in a tool result, repeated verbatim — never a description of the value.\n")
 	b.WriteString("- grounding counts DISTINCT tools, not citations: one live backend cited twice grounds no better than once. Corroborate across a second tool before proposing — a metric plus logs, or a metric plus cluster state.\n")
-	b.WriteString("- state a confidence on every candidate. it is a ceiling, not the answer: the emitted number is computed from your citations' grounding, and yours can only lower it.\n")
+	b.WriteString("- state a confidence on every candidate. Confidence is two-sided: over-confidence risks an unsafe action, but under-confidence below the governance floor escalates to a human operator. The emitted number is computed from your citations' grounding; yours acts as a ceiling.\n")
 
 	if len(classes) > 0 {
 		b.WriteString("failure classes — pick the one the EVIDENCE supports, not the one that has a matching action:\n")

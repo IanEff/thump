@@ -33,7 +33,8 @@ func (e *StatusError) Error() string { return "instant query: status " + e.Statu
 type InstantResult struct {
 	Data struct {
 		Result []struct {
-			Value [2]json.RawMessage `json:"value"`
+			Metric map[string]string  `json:"metric,omitempty"`
+			Value  [2]json.RawMessage `json:"value"`
 		} `json:"result"`
 	} `json:"data"`
 }

@@ -691,6 +691,22 @@ weight sweep, the exact failure mode D-19 exists to prevent. The one candidate f
 source is that burn series — did the signal clear on its own, and how fast — recorded
 here as the named next step, not built.
 
+## D-30 · The confidence floor governs grounding always and self-report only where the undo needs a human — **Ratified** (2026-08-17)
+
+hiss previously governed on a single collapsed number: `Candidate.Confidence = min(computed, selfReported)` (`internal/clank/confidence.go:80`).
+On well-grounded actions where clank proved `computedConfidence == 1.00` across multiple independent backends,
+a model self-reporting 0.65 against the 0.75 floor vetoed autonomous execution — even though `RiskBand` (`internal/hiss/risk.go:8-13`)
+explicitly forbids model output from shaping risk, and thump's watched success window (`Transport.watchAndSettle`, `internal/thump/transport.go:170-208`)
+actively measures outcome convergence and fires an automated undo if the fix fails. Autonomy was bound to `P(Haiku types ≥ 0.75)`.
+
+**We do:** `confidenceGate: split` separates governance into two independent checks (`internal/hiss/authority.go:69-76`):
+1. `rec.ComputedConfidence < floor` always escalates with `ReasonGroundingFloor` — the ≥2-source grounding standard is an invariant.
+2. `rec.Confidence < floor` escalates with `ReasonConfidenceFloor` only when `selfReportBinds(rec)` evaluates true — i.e., when the action is irreversible, requires a human-landed undo, or carries a high blast tier (`BandActHigh`).
+
+On reversible, low-blast, automatically self-undoing actions (`BandActReversible`), the model's self-report no longer carries an absolute veto over multi-backend evidence.
+
+**Why not preserve the model's veto everywhere?** The counter-argument is that a hedging model might perceive subtle hazards uncaptured by structured evidence queries. But on a bounded, self-reverting action with an active convergence watcher, measuring reality beats predicting it: thump applies the candidate, watches the SLO recovery window directly, and rolls the mutation back if metrics fail to settle. Where thump cannot land its own undo or where the blast radius is wide, model caution remains the last defense and retains its veto.
+
 ## Departures from other source material
 
 The D-ledger above is indexed against one book, *Agentic Reliability

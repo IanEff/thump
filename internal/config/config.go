@@ -68,6 +68,8 @@ type Clank struct {
 	TempoURL         string        // TEMPO_URL — optional; empty disables the traces tool
 	WhirCatalog      string        // WHIR_CATALOG — optional; pairs with WhirStateQueries
 	WhirStateQueries string        // WHIR_STATE_QUERIES — optional; pairs with WhirCatalog
+	WhirGraphQueries string        // WHIR_GRAPH_QUERIES — optional; authored PromQL query templates for GraphSource
+	WhirGraphWindow  time.Duration // WHIR_GRAPH_WINDOW — optional; rate lookback duration for GraphSource, defaults to 5m
 	ArgoEnabled      bool          // ARGOCD_ENABLED - optional, default false; wires ArgoChangeSource against clank's in-cluster identity.
 	Transcripts      string        // CLANK_TRANSCRIPTS — optional, offline path only; broker mode always persists to S3 via the WAL's S3_* creds, ignoring this var. Empty keeps turns in memory only.
 	Inbox            string        // CLANK_INBOX — required only in the offline (non-broker) path
@@ -102,6 +104,8 @@ func LoadClank(broker bool) (Clank, error) {
 		TempoURL:         l.Optional("TEMPO_URL"),
 		WhirCatalog:      l.Optional("WHIR_CATALOG"),
 		WhirStateQueries: l.Optional("WHIR_STATE_QUERIES"),
+		WhirGraphQueries: l.Optional("WHIR_GRAPH_QUERIES"),
+		WhirGraphWindow:  l.OptionalDuration("WHIR_GRAPH_WINDOW", 5*time.Minute),
 		ArgoEnabled:      l.OptionalBool("ARGOCD_ENABLED"),
 		Transcripts:      l.Optional("CLANK_TRANSCRIPTS"),
 		Weights:          l.Require("CLANK_WEIGHTS"),
@@ -109,6 +113,9 @@ func LoadClank(broker bool) (Clank, error) {
 	}
 	if c.WhirCatalog != "" && c.WhirStateQueries != "" && c.PromURL == "" {
 		l.errs = append(l.errs, errors.New("PROM_URL is required when WHIR_CATALOG and WHIR_STATE_QUERIES are set"))
+	}
+	if c.WhirGraphQueries != "" && c.PromURL == "" {
+		l.errs = append(l.errs, errors.New("PROM_URL is required when WHIR_GRAPH_QUERIES is set"))
 	}
 	if broker {
 		c.Inbox = l.Optional("CLANK_INBOX")

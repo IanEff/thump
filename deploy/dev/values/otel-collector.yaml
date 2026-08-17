@@ -31,6 +31,12 @@ config:
           endpoint: 0.0.0.0:6831
   processors:
     batch: {}
+  connectors:
+    servicegraph:
+      dimensions: []
+      store:
+        ttl: 2s
+        max_items: 1000
   exporters:
     otlp:
       endpoint: "tempo.tracing.svc.cluster.local:4317"
@@ -45,9 +51,9 @@ config:
       traces:
         receivers: [otlp, jaeger]
         processors: [batch]
-        exporters: [otlp]
+        exporters: [otlp, servicegraph]
       metrics:
-        receivers: [otlp]
+        receivers: [otlp, servicegraph]
         processors: [batch]
         exporters: [prometheus]
 ports:

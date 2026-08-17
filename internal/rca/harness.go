@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,22 +20,31 @@ import (
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/evidence"
 	"github.com/ianeff/thump/internal/reason"
+	"github.com/ianeff/thump/internal/whir"
 )
 
-// caseTopology and caseChange hand the Intake exactly the snapshot the
-// Case's author supplied — a zero-value Case leaves both empty, so no node
-// resolves in-topology and the causal scorer's Likelihood can never move a
-// candidate's confidence, the same as the harness's old unconditional noop.
-type caseTopology struct{ snap proposal.TopologySnapshot }
-
-func (t caseTopology) Topology(context.Context, signal.Detection) (proposal.TopologySnapshot, error) {
-	return t.snap, nil
+// rigTopology resolves a row's topology from the same catalog-info.yaml the
+// rig ships, with each dependency's state supplied by the Case rather than by
+// a live Prometheus — an edit to config/<rig>/whir/catalog-info.yaml
+// changes what the graded suite sees.
+type rigTopology struct {
+	Catalog whir.Catalog
+	States  map[string]string // dependency -> whir.StateHealthy | StateDegraded | StateUnknown
 }
 
-type caseChange struct{ snap proposal.ChangeSnapshot }
-
-func (c caseChange) Changes(context.Context, signal.Detection) (proposal.ChangeSnapshot, error) {
-	return c.snap, nil
+func (t rigTopology) Topology(_ context.Context, sig signal.Detection) (proposal.TopologySnapshot, error) {
+	var snap proposal.TopologySnapshot
+	for _, dep := range t.Catalog.Edges(sig.OriginService) {
+		state := t.States[dep]
+		if state == "" {
+			state = whir.StateHealthy
+		}
+		snap.Upstream = append(snap.Upstream, proposal.NodeState{
+			Name:  dep,
+			State: state,
+		})
+	}
+	return snap, nil
 }
 
 // harness is one built engine plus the teardown for the fake backends behind
@@ -70,9 +80,16 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 	if err != nil {
 		return harness{}, fmt.Errorf("load evidence queries: %w", err)
 	}
+	whirCat, err := whir.LoadCatalogFile(configPath(profile, "whir", "catalog-info.yaml"))
+	if err != nil {
+		return harness{}, fmt.Errorf("load catalog-info: %w", err)
+	}
 
 	prom := fakePrometheus(promQLByName(ev.Queries), c.Evidence)
 	loki := fakeLoki(lokiLines(ev.Index, c.Evidence))
+
+	changeObjects := append(slices.Clone(kubeObjects), c.FaultObjects...)
+	kubeClient := kubefake.NewSimpleClientset(changeObjects...)
 
 	tools := map[string]reason.Tool{
 		// A second live backend is what makes GroundingMany reachable at
@@ -80,17 +97,27 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 		// can never count past one and the top tier is structurally dead.
 		"metrics": &evidence.MetricsTool{BaseURL: prom.URL, Queries: ev.Queries},
 		"kube": &evidence.KubeTool{
-			Client:   kubefake.NewSimpleClientset(kubeObjects...),
+			Client:   kubeClient,
 			Subjects: ev.Index,
 		},
 		"loki": &evidence.LokiTool{BaseURL: loki.URL, Subjects: ev.Index},
+	}
+
+	topoSource := rigTopology{
+		Catalog: whirCat,
+		States:  c.States,
+	}
+	changeSource := evidence.KubeChangeSource{
+		Client:   kubeClient,
+		Subjects: ev.Index,
+		Now:      func() time.Time { return det.DetectedAt },
 	}
 
 	cases := clank.NewCaseBase()
 	limits := clank.DefaultLimits()
 
 	eng := &clank.Engine{
-		Intake:         clank.NewIntake(caseTopology{c.Topology}, caseChange{c.Change}),
+		Intake:         clank.NewIntake(topoSource, changeSource),
 		Model:          model,
 		Tools:          tools,
 		Catalog:        cat,

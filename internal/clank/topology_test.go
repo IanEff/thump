@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 
@@ -165,6 +167,283 @@ func TestCatalogInfo_EveryArmedFaultTargetIsANodeInItsOwnSignalsTopology(t *test
 			edges := cat.Edges(tc.originService)
 			if !slices.Contains(edges, target) {
 				t.Errorf("origin service %q dependencies %v do not contain fault target %q", tc.originService, edges, target)
+			}
+		})
+	}
+}
+
+// TestObservedTopology_FallsBackToTheAuthoredCatalogWhenAServiceEmitsNoTraces pins
+// the fallback contract: services emitting no traces fall back to the authored catalog-info.yaml.
+func TestObservedTopology_FallsBackToTheAuthoredCatalogWhenAServiceEmitsNoTraces(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		originService string
+		wantSnapshot  proposal.TopologySnapshot
+	}{
+		"FallsBackToTheAuthoredCatalog resolves upstream dependencies from catalog when GraphSource returns no traces": {
+			originService: "acme-api",
+			wantSnapshot: proposal.TopologySnapshot{
+				Upstream: []proposal.NodeState{
+					{Name: "acme-db", State: whir.StateHealthy},
+				},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				q := r.URL.Query().Get("query")
+				switch {
+				case strings.Contains(q, "up{job=\"acme-db\"}"):
+					_, _ = w.Write([]byte(`{"data":{"result":[{"value":[0,"1"]}]}}`))
+				default:
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
+				}
+			}))
+			defer srv.Close()
+
+			cat := whir.Catalog{
+				Entities: []whir.Entity{
+					{Name: "acme-api", DependsOn: []string{"acme-db"}},
+				},
+			}
+			resolver := &whir.Resolver{
+				BaseURL: srv.URL,
+				Client:  http.DefaultClient,
+				Queries: map[string]string{
+					"acme-db": "up{job=\"acme-db\"}",
+				},
+			}
+			graph := &whir.GraphSource{
+				BaseURL: srv.URL,
+				Client:  http.DefaultClient,
+				Window:  5 * time.Minute,
+				Queries: whir.GraphQueries{
+					Requests: `sum by (client, server) (rate(traces_service_graph_request_total{client="%s"}[%s]))`,
+					Failed:   `sum by (client, server) (rate(traces_service_graph_request_failed_total{client="%s"}[%s]))`,
+				},
+			}
+
+			topo := clank.ObservedTopology{
+				Graph:    graph,
+				Fallback: clank.WhirTopology{Catalog: cat, Resolver: resolver},
+			}
+
+			sig := sigBurnAccel()
+			sig.OriginService = tc.originService
+
+			got, err := topo.Topology(context.Background(), sig)
+			if err != nil {
+				t.Fatalf("unexpected topology error: %v", err)
+			}
+			if diff := cmp.Diff(tc.wantSnapshot, got); diff != "" {
+				t.Errorf("wrong fallback snapshot (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestObservedTopology_PopulatesDownstreamWhichTheAuthoredCatalogCannot pins the
+// reverse-dependency traversal: Downstream is populated from reverse catalog edges or observed inbound callers.
+func TestObservedTopology_PopulatesDownstreamWhichTheAuthoredCatalogCannot(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		originService string
+		wantSnapshot  proposal.TopologySnapshot
+	}{
+		"PopulatesDownstream resolves calling services into Downstream by inverting catalog edges": {
+			originService: "flagd",
+			wantSnapshot: proposal.TopologySnapshot{
+				Downstream: []proposal.NodeState{
+					{Name: "cart", State: whir.StateHealthy},
+				},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				q := r.URL.Query().Get("query")
+				switch {
+				case strings.Contains(q, "up{job=\"cart\"}"):
+					_, _ = w.Write([]byte(`{"data":{"result":[{"value":[0,"1"]}]}}`))
+				default:
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
+				}
+			}))
+			defer srv.Close()
+
+			cat := whir.Catalog{
+				Entities: []whir.Entity{
+					{Name: "cart", DependsOn: []string{"flagd"}},
+				},
+			}
+			resolver := &whir.Resolver{
+				BaseURL: srv.URL,
+				Client:  http.DefaultClient,
+				Queries: map[string]string{
+					"cart": "up{job=\"cart\"}",
+				},
+			}
+			graph := &whir.GraphSource{
+				BaseURL: srv.URL,
+				Client:  http.DefaultClient,
+				Window:  5 * time.Minute,
+				Queries: whir.GraphQueries{
+					Requests:        `sum by (client, server) (rate(traces_service_graph_request_total{client="%s"}[%s]))`,
+					Failed:          `sum by (client, server) (rate(traces_service_graph_request_failed_total{client="%s"}[%s]))`,
+					InboundRequests: `sum by (client, server) (rate(traces_service_graph_request_total{server="%s"}[%s]))`,
+				},
+			}
+
+			topo := clank.ObservedTopology{
+				Graph:    graph,
+				Fallback: clank.WhirTopology{Catalog: cat, Resolver: resolver},
+			}
+
+			sig := sigBurnAccel()
+			sig.OriginService = tc.originService
+
+			got, err := topo.Topology(context.Background(), sig)
+			if err != nil {
+				t.Fatalf("unexpected topology error: %v", err)
+			}
+			if diff := cmp.Diff(tc.wantSnapshot, got); diff != "" {
+				t.Errorf("wrong downstream snapshot (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestObservedTopology_CarriesEachNodesTrafficShareOntoTheSnapshot pins that
+// observed traffic ratios are mapped onto NodeState.TrafficShare.
+func TestObservedTopology_CarriesEachNodesTrafficShareOntoTheSnapshot(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		originService string
+		wantSnapshot  proposal.TopologySnapshot
+	}{
+		"CarriesEachNodesTrafficShare populates TrafficShare on Upstream node states from service graph queries": {
+			originService: "checkout",
+			wantSnapshot: proposal.TopologySnapshot{
+				Upstream: []proposal.NodeState{
+					{Name: "cart", State: whir.StateHealthy, TrafficShare: 0.75},
+					{Name: "payment", State: whir.StateHealthy, TrafficShare: 0.25},
+				},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				q := r.URL.Query().Get("query")
+				switch {
+				case strings.Contains(q, "request_total"):
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[
+						{"metric":{"client":"checkout","server":"cart"},"value":[1688745600,"75.0"]},
+						{"metric":{"client":"checkout","server":"payment"},"value":[1688745600,"25.0"]}
+					]}}`))
+				default:
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
+				}
+			}))
+			defer srv.Close()
+
+			graph := &whir.GraphSource{
+				BaseURL: srv.URL,
+				Client:  http.DefaultClient,
+				Window:  5 * time.Minute,
+				Queries: whir.GraphQueries{
+					Requests: `sum by (client, server) (rate(traces_service_graph_request_total{client="%s"}[%s]))`,
+					Failed:   `sum by (client, server) (rate(traces_service_graph_request_failed_total{client="%s"}[%s]))`,
+				},
+			}
+
+			topo := clank.ObservedTopology{
+				Graph:    graph,
+				Fallback: clank.WhirTopology{},
+			}
+
+			sig := sigBurnAccel()
+			sig.OriginService = tc.originService
+
+			got, err := topo.Topology(context.Background(), sig)
+			if err != nil {
+				t.Fatalf("unexpected topology error: %v", err)
+			}
+			if diff := cmp.Diff(tc.wantSnapshot, got); diff != "" {
+				t.Errorf("wrong traffic share snapshot (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestWhirTopology_ReportsATrafficShareTheTopologicalTermCanRead pins that
+// topologicalScore reads NodeState.TrafficShare directly when degraded in path.
+func TestWhirTopology_ReportsATrafficShareTheTopologicalTermCanRead(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		eventID   string
+		target    string
+		topo      proposal.TopologySnapshot
+		weights   clank.ScoringWeights
+		wantScore float64
+	}{
+		"ReportsATrafficShare passes the non-zero TrafficShare to the topological score for degraded in-path nodes": {
+			eventID: "deploy:cart-v2",
+			target:  "cart",
+			topo: proposal.TopologySnapshot{
+				Upstream: []proposal.NodeState{
+					{Name: "cart", State: "degraded", TrafficShare: 0.8},
+				},
+			},
+			weights: clank.ScoringWeights{
+				RecencyHalfLife:       30 * time.Minute,
+				HistoricalHalfLife:    30 * time.Minute,
+				HistoricalAloneCap:    0.5,
+				NegativeSignalPenalty: 0.2,
+				Temporal:              0.333,
+				Topological:           0.334,
+				Historical:            0.333,
+				CaseBaseBaseline:      0.9,
+			},
+			wantScore: 0.8,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			scorer := clank.NewCausalScorer()
+			change := proposal.ChangeSnapshot{
+				Events: []proposal.ChangeEvent{
+					{ID: tc.eventID, Target: tc.target, Age: 0},
+				},
+			}
+
+			scores := scorer.Score("slo_burn:checkout", change, tc.topo, tc.weights)
+			if len(scores) != 1 {
+				t.Fatalf("want 1 score, got %d", len(scores))
+			}
+			if diff := cmp.Diff(tc.wantScore, scores[0].Topological); diff != "" {
+				t.Errorf("wrong topological score (-want +got):\n%s", diff)
 			}
 		})
 	}

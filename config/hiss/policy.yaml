@@ -55,6 +55,11 @@ maxBand:
 autoBand:
   tier-1: act_reversible
 requireReversal: true
+# Which number each floor reads. "collapsed" is the pre-AV behaviour: one
+# veto on min(computed, selfReported). "split" applies the grounding floor
+# always and the model's self-report only where thump cannot land its own
+# undo — see design-decisions.md D-30.
+confidenceGate: collapsed   # collapsed | split
 # Any detection evaluated inside a window escalates regardless of confidence
 # or band (authority.go:79-83) — a named change freeze, not a throttle. Left
 # empty at rest; uncomment with real timestamps to prove the escalate path
