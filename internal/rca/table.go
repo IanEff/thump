@@ -53,12 +53,17 @@ type Case struct {
 	// on two live backends must out-score one that reaches it on one, or the
 	// grounding tiers are decorative. Zero means ungraded — every
 	// "insufficient" row, since a declined set carries no candidate.
+	//
+	// Setting WantConfidenceAtLeast > 0 also arms the WantCeilingBound check
+	// (report.go:144) — a row with WantConfidenceAtLeast set will fail if its
+	// top candidate's ConfidenceCeilingBound does not match WantCeilingBound.
 	WantConfidenceAtLeast float64
 
 	// WantCeilingBound pins whether the model's self-report was the binding
 	// constraint. A row where the ceiling always binds is one no weight change
 	// can reach — a property of the fixture, not of the tuning, and it belongs
 	// in the report rather than being discovered halfway through a sweep.
+	// Checked only when WantConfidenceAtLeast > 0.
 	WantCeilingBound bool
 
 	// Topology and Change feed the harness's Intake directly, the same
@@ -299,10 +304,11 @@ func Table() []Case {
 		// The cartFailure flag flip breaks cart's EmptyCart RPC. Two
 		// actions are catalogued for it — restart-pod and
 		// disable-cart-failure — and only the flag flip actually clears it,
-		// so this row grades the choice as well as the class. This
-		// harness's kube fake carries no cart pod data, so the row can only
-		// ever corroborate through "metrics"; WantConfidenceAtLeast is set
-		// below GroundingOne's 0.7 floor accordingly.
+		// so this row grades the choice as well as the class. The row's
+		// "cart" Evidence key seeds a loki line, so this row corroborates
+		// across metrics and loki (corroborated >= 2, computed 1.0,
+		// ceilingBound true); WantConfidenceAtLeast ensures it clears the
+		// floor with ceilingBound true.
 		{
 			Name:                  "a real cartFailure flag flip proposes the flag fix, not the pod restart",
 			Rig:                   "dev",
@@ -312,7 +318,7 @@ func Table() []Case {
 			WantClass:             proposal.ClassServiceFailure,
 			MustCite:              []string{"cart_error_ratio"},
 			WantConfidenceAtLeast: 0.65,
-			WantCeilingBound:      false,
+			WantCeilingBound:      true,
 			Evidence: map[string]string{
 				"slo_burn_cart":              "50",
 				"severity_cart_availability": "0.5",
@@ -362,18 +368,24 @@ func Table() []Case {
 		// dependency-saturation signal specifically, since a run citing only
 		// the request error ratio would be as plausible a case for
 		// service_failure, and this row grades that it lands on the class
-		// the fault actually is.
+		// the fault actually is. The row's "acme-api" Evidence key seeds a
+		// loki line from a clean live run, so this row corroborates across
+		// metrics and loki (corroborated >= 2, computed 1.0, ceilingBound true);
+		// WantConfidenceAtLeast ensures it clears the floor with ceilingBound true.
 		{
-			Name:            "a real acme-api connection-pool leak proposes shedding load, not a bare request-error reading",
-			Rig:             "dev",
-			Fixture:         "acme-api-failure.yaml",
-			WantDisposition: "propose",
-			WantContractRef: "acme-shed-load",
-			WantClass:       proposal.ClassDependencySaturation,
-			MustCite:        []string{"acme_db_connections_saturation"},
+			Name:                  "a real acme-api connection-pool leak proposes shedding load, not a bare request-error reading",
+			Rig:                   "dev",
+			Fixture:               "acme-api-failure.yaml",
+			WantDisposition:       "propose",
+			WantContractRef:       "acme-shed-load",
+			WantClass:             proposal.ClassDependencySaturation,
+			MustCite:              []string{"acme_db_connections_saturation"},
+			WantConfidenceAtLeast: 0.65,
+			WantCeilingBound:      true,
 			Evidence: map[string]string{
 				"acme_api_error_ratio":           "0.504",
 				"acme_db_connections_saturation": "0.667",
+				"acme-api":                       `127.0.0.1 - - [15/Aug/2026 21:54:59] "GET /fail HTTP/1.1" 500 -`,
 			},
 		},
 

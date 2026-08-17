@@ -8,7 +8,19 @@ import (
 	"github.com/ianeff/thump/internal/probe"
 )
 
-// Row is one graded scenario's result. Computed and Emitted are kept apart
+// Bound names which of the two terms in hiss's autonomy test held a draw
+// below the floor. hiss governs on Candidate.Confidence, which is
+// min(computed, selfReported) (internal/clank/confidence.go:80), so a draw
+// misses for one of two unrelated reasons and the fix differs by which.
+type Bound string
+
+const (
+	BoundNone       Bound = "none"        // both terms clear the floor: this draw would auto-approve
+	BoundEvidence   Bound = "evidence"    // the evidence did not ground high enough
+	BoundSelfReport Bound = "self-report" // evidence grounded, the model hedged
+)
+
+// Row is one graded scenario's result. Computed and Confidence are kept apart
 // because a row where CeilingBound is true is one no weight change can reach,
 // which a sweep has to know before it starts rather than discover halfway.
 type Row struct {
@@ -19,9 +31,23 @@ type Row struct {
 	Class        proposal.FailureClass
 	ContractRef  string
 	Computed     float64
-	Emitted      float64
+	Confidence   float64
 	CeilingBound bool
 	Corroborated int // top candidate's ConfidenceTerms.Corroborated count
+}
+
+// BoundBy classifies row against floor. Evidence is checked first: when the
+// computed score is already under the floor, no model number can rescue it,
+// because Confidence is a min and never a max.
+func BoundBy(row Row, floor float64) Bound {
+	switch {
+	case row.Computed < floor:
+		return BoundEvidence
+	case row.Confidence < floor:
+		return BoundSelfReport
+	default:
+		return BoundNone
+	}
 }
 
 // Report is one run of the graded suite — the audit unit, not the top line.
@@ -70,7 +96,7 @@ func (r Report) Met() bool { return r.Scored >= r.Floor }
 func (r Row) sample() probe.Sample {
 	return probe.Sample{
 		Proposed:     r.ContractRef != "",
-		Confidence:   r.Emitted,
+		Confidence:   r.Confidence,
 		Computed:     r.Computed,
 		Ceiling:      r.CeilingBound,
 		Corroborated: r.Corroborated,
@@ -106,7 +132,7 @@ func Grade(c Case, set proposal.Set) Row {
 	top := set.Proposals[0]
 	row.ContractRef = top.ContractRef
 	row.Computed = top.ComputedConfidence
-	row.Emitted = top.Confidence
+	row.Confidence = top.Confidence
 	row.CeilingBound = top.ConfidenceCeilingBound
 	row.Corroborated = top.Terms.Corroborated
 
@@ -138,7 +164,7 @@ func GradeByLabel(l grade.Label, set proposal.Set) Row {
 		top := set.Proposals[0]
 		row.ContractRef = top.ContractRef
 		row.Computed = top.ComputedConfidence
-		row.Emitted = top.Confidence
+		row.Confidence = top.Confidence
 		row.CeilingBound = top.ConfidenceCeilingBound
 		row.Corroborated = top.Terms.Corroborated
 	}

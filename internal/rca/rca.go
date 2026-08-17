@@ -126,7 +126,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 				ceiling = "BOUND"
 			}
 			_, _ = fmt.Fprintf(stdout, "%-5s %-58s class=%-20s computed=%.2f emitted=%.2f ceiling=%s %s\n",
-				status, r.Name, r.Class, r.Computed, r.Emitted, ceiling, r.Miss)
+				status, r.Name, r.Class, r.Computed, r.Confidence, ceiling, r.Miss)
 		}
 		_, _ = fmt.Fprintf(stdout, "\nscored %d/%d, floor %d\n", rep.Scored, len(rep.Rows), rep.Floor)
 	}
