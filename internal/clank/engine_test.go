@@ -1488,3 +1488,46 @@ func TestSeedPrompt_RendersChangeEventsWhenTheSAOHasThem(t *testing.T) {
 			seed)
 	}
 }
+
+// TestSeedPrompt_TellsTheModelWhatItsConfidenceCostsInBothDirections pins that
+// the elicitation is two-sided: the shipped line says the model's number "can
+// only lower it" (engine.go:577), which prices caution at zero and never says
+// that a number under the governance floor sends the incident to a human.
+func TestSeedPrompt_TellsTheModelWhatItsConfidenceCostsInBothDirections(t *testing.T) {
+	t.Parallel()
+
+	model := &fakeModel{}
+	eng, _ := newTestEngine(model)
+	if _, err := eng.Propose(context.Background(), sigBurnAccel()); err != nil {
+		t.Fatal(err)
+	}
+	seed := model.received[0][0].Content
+
+	tests := map[string]struct {
+		fragment string
+		want     bool
+	}{
+		"the seed prompt explains that confidence is two-sided": {
+			fragment: "two-sided", want: true,
+		},
+		"the seed prompt states the cost of under-confidence below the floor": {
+			fragment: "floor", want: true,
+		},
+		"the seed prompt states that hedging sends the incident to a human": {
+			fragment: "human", want: true,
+		},
+		"the seed prompt no longer states the one-sided can only lower it claim": {
+			fragment: "can only lower it", want: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tc.want, strings.Contains(seed, tc.fragment)); diff != "" {
+				t.Error("seed prompt disagrees with two-sided confidence elicitation", diff)
+			}
+		})
+	}
+}
