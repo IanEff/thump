@@ -42,6 +42,13 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v5
 
+      - name: Cache Kubeconform Schemas
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kubeconform-cache
+          key: kubeconform-schemas-${{ runner.os }}
+          restore-keys: kubeconform-schemas-
+
       - name: Chart lint (kubeconform)
         run: task chart-lint
 
