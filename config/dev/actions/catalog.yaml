@@ -275,19 +275,21 @@
       serving_replicas:
         min: 1
         max: 10
-        default: 4
+        default: 5
   blastTier: low
   reversal:
     method: restore-acme-capacity
     fallback: page-oncall
   execution:
     forward:
-      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 4}
+      - {verb: scale, namespace: acme, deployment: acme-api, replicas: 5}
     reverse:
       - {verb: scale, namespace: acme, deployment: acme-api, replicas: 2}
   successCriteria:
     metric: acme_db_connections_saturation
     target: "acme_db_connections_saturation < 0.5"
-    window: 90000000000 # 90 * time.Second, in nanoseconds — strictly longer than the query's own rate(...[30s])
+    window: 90000000000 # 90 * time.Second, in nanoseconds — settle time after the scale
+    # action, not a rate-window comparison: acme_db_connections_saturation is an instant
+    # gauge (sum(active)/sum(max)), not a rate() over any window.
     severityQuery: severity_acme_api_availability
     severityReductionPct: 0.1

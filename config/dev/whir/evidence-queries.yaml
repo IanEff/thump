@@ -81,7 +81,10 @@ queries:
     query: count(kube_pod_status_phase{namespace="otel-demo",phase!="Running"} == 1) or vector(0)
 
   - name: acme_api_error_ratio
-    query: sum(rate(acme_api_requests_total{status="500"}[30s])) / sum(rate(acme_api_requests_total[30s]))
+    query: >-
+      (sum(rate(acme_api_requests_total{status="500"}[60s])) or vector(0))
+      /
+      clamp_min(sum(rate(acme_api_requests_total[60s])) or vector(0), 1e-9)
     subject: acme-api
   - name: acme_db_connections_saturation
     # sum, not max: acme-db (phase AS Part 2) models a fixed-capacity shared

@@ -457,16 +457,16 @@ spec:
     - name: sloth-slo-sli-recordings-acme-api-availability
       rules:
         - expr: |
-            (sum(rate(acme_api_requests_total{status="500"}[30s])))
+            (sum(rate(acme_api_requests_total{status="500"}[60s])) or vector(0))
             /
-            (sum(rate(acme_api_requests_total[30s])))
+            clamp_min(sum(rate(acme_api_requests_total[60s])) or vector(0), 1e-9)
           labels:
             domain: acme
             lab: dev
             sloth_id: acme-api-availability
             sloth_service: acme-api
             sloth_slo: availability
-            sloth_window: 30s
+            sloth_window: 60s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(acme_api_requests_total{status="500"}[30m])))

@@ -7,7 +7,7 @@
 # can no longer regenerate from.
 #
 # Input series step 10s to match the otel-demo/acme ServiceMonitors' scrape
-# interval (0A.2) — stepping at the query's own [30s] window starves it, the
+# interval (0A.2) — stepping at the query's own [60s] window starves it, the
 # same failure this whole phase exists to fix, and was caught live here: an
 # earlier draft of this file stepped at 30s and every exp_samples assertion
 # below silently returned no data instead of failing on a wrong number.
@@ -25,26 +25,32 @@ tests:
         values: "0+0x20 0+3x20"
     promql_expr_test:
       # Healthy window (t=180s, fully inside the flat 0-200s region): the
-      # rate5m sli must read exactly 0, and read it over a [30s] range, not
+      # rate5m sli must read exactly 0, and read it over a [60s] range, not
       # the [5m] the record name still says — the record name intentionally
       # stays put (slo:current_burn_rate:ratio and internal/rattle read it
-      # by name) even though the window underneath it narrowed.
+      # by name) even though the window underneath it narrowed. [60s], not
+      # [30s], since phase AT lane B: matches cart/product-catalog's own
+      # SLI window (same burst-cadence NaN this rig hit for those two
+      # applies identically to acme, see evidence-queries.yaml's comment).
       - expr: slo:sli_error:ratio_rate5m{sloth_id="acme-api-availability"}
         eval_time: 180s
         exp_samples:
-          - labels: 'slo:sli_error:ratio_rate5m{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="30s"}'
+          - labels: 'slo:sli_error:ratio_rate5m{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="60s"}'
             value: 0
       # Faulted window (t=400s, deep inside the 200-400s error ramp): 3
       # errors/10s against 60 successes/10s, prometheus's rate()
-      # extrapolation over a 3-sample [30s] window lands it at ~0.0476, not
-      # the naive 0.05 — the exact value promtool computes, pinned rather
-      # than hand-derived, since extrapolation at the range boundary is the
-      # rule engine's behavior to pin, not this test's to second-guess.
+      # extrapolation over a [60s] window lands it at ~0.0476, not the naive
+      # 0.05 — the exact value promtool computes, pinned rather than
+      # hand-derived, since extrapolation at the range boundary is the rule
+      # engine's behavior to pin, not this test's to second-guess. Steady
+      # state during the ramp makes this value window-invariant (a [30s]
+      # window landed on the same ~0.047619 before this change), since every
+      # sample inside either window sees the same constant per-10s ratio.
       - expr: slo:sli_error:ratio_rate5m{sloth_id="acme-api-availability"}
         eval_time: 400s
         exp_samples:
-          - labels: 'slo:sli_error:ratio_rate5m{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="30s"}'
-            value: 4.761904761904763E-02
+          - labels: 'slo:sli_error:ratio_rate5m{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="60s"}'
+            value: 4.7619047619047616E-02
 
       # slo:current_burn_rate:ratio (the exact series
       # internal/rattle/source.go:59 queries by sloth_id) must still resolve
@@ -56,10 +62,10 @@ tests:
       - expr: slo:current_burn_rate:ratio{sloth_id="acme-api-availability"}
         eval_time: 180s
         exp_samples:
-          - labels: 'slo:current_burn_rate:ratio{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="30s"}'
+          - labels: 'slo:current_burn_rate:ratio{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="60s"}'
             value: 0
       - expr: slo:current_burn_rate:ratio{sloth_id="acme-api-availability"}
         eval_time: 400s
         exp_samples:
-          - labels: 'slo:current_burn_rate:ratio{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="30s"}'
-            value: 4.761904761904759E+00
+          - labels: 'slo:current_burn_rate:ratio{domain="acme",lab="dev",sloth_id="acme-api-availability",sloth_service="acme-api",sloth_slo="availability",sloth_window="60s"}'
+            value: 4.761904761904757E+00
