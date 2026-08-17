@@ -64,10 +64,10 @@ type ProfileResult struct {
 	Errors          []error // all invariant failures discovered
 }
 
-// ValidateProfile audits an authored profile directory (e.g. config/dev or
+// Profile audits an authored profile directory (e.g. config/dev or
 // test/onboarding/testdata/acme), verifying that all contracts, governance
 // floors, evidence queries, and SLOs agree without contradiction or missing links.
-func ValidateProfile(dir string) (ProfileResult, error) {
+func Profile(dir string) (ProfileResult, error) {
 	res := ProfileResult{
 		Profile: filepath.Base(dir),
 	}
@@ -212,9 +212,9 @@ func ValidateProfile(dir string) (ProfileResult, error) {
 	return res, nil
 }
 
-// ValidateAll crawls the standard profile locations under repoRoot (config/dev,
+// All crawls the standard profile locations under repoRoot (config/dev,
 // config/thump-test, and test/onboarding/testdata/acme) and returns all results.
-func ValidateAll(repoRoot string) ([]ProfileResult, error) {
+func All(repoRoot string) ([]ProfileResult, error) {
 	profiles := []string{
 		filepath.Join(repoRoot, "config", "dev"),
 		filepath.Join(repoRoot, "config", "thump-test"),
@@ -226,7 +226,7 @@ func ValidateAll(repoRoot string) ([]ProfileResult, error) {
 
 	for _, p := range profiles {
 		if _, err := os.Stat(p); err == nil {
-			res, err := ValidateProfile(p)
+			res, err := Profile(p)
 			results = append(results, res)
 			if err != nil {
 				totalErrors += len(res.Errors)
@@ -324,18 +324,18 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	var results []ProfileResult
 	if *dir != "" {
-		res, err := ValidateProfile(*dir)
+		res, err := Profile(*dir)
 		results = append(results, res)
 		if err != nil && len(res.Errors) == 0 {
 			_, _ = fmt.Fprintf(stderr, "validate %s: %v\n", *dir, err)
 			return 1
 		}
 	} else if *profile == "all" || *profile == "" {
-		all, _ := ValidateAll(repoRoot)
+		all, _ := All(repoRoot)
 		results = all
 	} else {
 		targetDir := resolveProfileDir(repoRoot, *profile)
-		res, err := ValidateProfile(targetDir)
+		res, err := Profile(targetDir)
 		results = append(results, res)
 		if err != nil && len(res.Errors) == 0 {
 			_, _ = fmt.Fprintf(stderr, "validate %s: %v\n", targetDir, err)

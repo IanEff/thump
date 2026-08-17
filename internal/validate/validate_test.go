@@ -52,7 +52,7 @@ func TestValidateProfile_PassesOnShippedProfiles(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			profileDir := filepath.Join(root, tc.relDir)
-			res, err := validate.ValidateProfile(profileDir)
+			res, err := validate.Profile(profileDir)
 			if err != nil {
 				t.Fatalf("expected profile at %s to validate cleanly, got err: %v (errors: %v)", tc.relDir, err, res.Errors)
 			}
@@ -66,7 +66,7 @@ func TestValidateProfile_PassesOnShippedProfiles(t *testing.T) {
 	}
 }
 
-func TestValidateProfile_CatchesInvalidCatalogAndMissingPolicyFloors(t *testing.T) {
+func TestProfile_CatchesInvalidCatalogAndMissingPolicyFloors(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
@@ -74,7 +74,7 @@ func TestValidateProfile_CatchesInvalidCatalogAndMissingPolicyFloors(t *testing.
 		wantSub  string
 		wantRule string
 	}{
-		"ValidateProfile rejects catalog with unknown failure class": {
+		"Profile rejects catalog with unknown failure class": {
 			setup: func(t *testing.T, dir string) {
 				writeTestFile(t, filepath.Join(dir, "actions", "catalog.yaml"), `
 - name: bad-action
@@ -110,7 +110,7 @@ requireReversal: true
 			},
 			wantSub: "not a FailureClass const",
 		},
-		"ValidateProfile rejects policy missing floor for actuatable class": {
+		"Profile rejects policy missing floor for actuatable class": {
 			setup: func(t *testing.T, dir string) {
 				writeTestFile(t, filepath.Join(dir, "actions", "catalog.yaml"), `
 - name: valid-action
@@ -146,7 +146,7 @@ requireReversal: true
 			},
 			wantSub: "missing confidence floor",
 		},
-		"ValidateProfile rejects action missing reverse execution": {
+		"Profile rejects action missing reverse execution": {
 			setup: func(t *testing.T, dir string) {
 				writeTestFile(t, filepath.Join(dir, "actions", "catalog.yaml"), `
 - name: no-reverse
@@ -190,7 +190,7 @@ requireReversal: true
 			dir := t.TempDir()
 			tc.setup(t, dir)
 
-			res, err := validate.ValidateProfile(dir)
+			res, err := validate.Profile(dir)
 			if err == nil && len(res.Errors) == 0 {
 				t.Fatalf("expected validation failure containing %q, got nil error", tc.wantSub)
 			}
@@ -211,17 +211,17 @@ requireReversal: true
 	}
 }
 
-func TestValidateAll_ValidatesAllShippedProfiles(t *testing.T) {
+func TestAll_ValidatesAllShippedProfiles(t *testing.T) {
 	t.Parallel()
 	root := findRepoRoot(t)
 
-	results, err := validate.ValidateAll(root)
+	results, err := validate.All(root)
 	if err != nil {
-		t.Fatalf("ValidateAll returned unexpected error: %v", err)
+		t.Fatalf("All returned unexpected error: %v", err)
 	}
 
 	if diff := cmp.Diff(3, len(results)); diff != "" {
-		t.Errorf("ValidateAll wrong profile count (-want +got):\n%s", diff)
+		t.Errorf("All wrong profile count (-want +got):\n%s", diff)
 	}
 	for _, res := range results {
 		if len(res.Errors) > 0 {
@@ -232,7 +232,7 @@ func TestValidateAll_ValidatesAllShippedProfiles(t *testing.T) {
 
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatalf("mkdir parent for %s: %v", path, err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

@@ -73,27 +73,30 @@ its own state instead of borrowing a value that already means something else.
 ## Getting set up
 
 Build tooling is [go-task](https://taskfile.dev); `task --list-all` for
-everything.
+everything. Check your environment prerequisites first:
 
 ```sh
-task ci                  # the gate: fmt-check, vet, lint, vulncheck, chart-lint, race, build
+task doctor              # verify CLI tools, runtime versions, and allocations
+task ci                  # the gate: fmt-check, vet, lint, vulncheck, chart-lint, promql, validate:config, race, build
 task test                # go test ./...
 go test ./internal/clank -run TestGate -v
 go test ./test/onboarding -v      # the whole engine, over a domain authored in config
 ```
 
-`task ci` also needs `golangci-lint` and `helm` on PATH; everything else it
-fetches with `go run`.
+`task doctor` checks required CLI tools (`go`, `golangci-lint`, `helm`,
+`promtool`, `yq`) and reports how to install anything missing.
 
 Test names here are written as full sentences on purpose, so the suite reads back
 as a spec. `gotestdox ./...` is the tool for that, but be warned: as of Go 1.26
 it exits 0 and prints **nothing** rather than reporting that it couldn't parse
 `go test -json`. Plain `go test -v` is the reliable way to read names today.
 
-No cluster and no API key are needed for any of that. `task eval` drives a real
-model and is key-gated (`ANTHROPIC_API_KEY`) — it is deliberately *not* part of
-`task ci`, because a real-model assertion is exactly the flakiness the gate
-exists to keep out. A missing key is a clean skip, not a failure.
+No cluster, Docker, or API key is needed for any of that. Hermetic Go and
+configuration contributions run completely offline on bare metal in 3–4 minutes.
+`task eval` drives a real model and is key-gated (`ANTHROPIC_API_KEY`) — it is
+deliberately *not* part of `task ci`, because a real-model assertion is exactly
+the flakiness the gate exists to keep out. A missing key is a clean skip, not a
+failure.
 
 The five beats also run standalone (`task run:clank`, `run:rattle`, `run:hiss`,
 `run:thump`, `run:calipers`) and against a live cluster through Tilt — see
@@ -106,7 +109,13 @@ Adding to the action catalog. Author an action in the profile's
 `config/<profile>/actions/catalog.yaml` — `dev` is the simplest to try
 against, since it authors no `maintenanceRelease` release contract — with an
 `execution` block, make sure that profile's `config/<profile>/hiss/policy.yaml`
-has a confidence floor for its (tier, failure-class) pair, and run `task ci`.
+has a confidence floor for its (tier, failure-class) pair, and run `task validate:config`:
+
+```sh
+task validate:config PROFILE=dev     # instant validation of catalog, policy, and queries
+task ci                              # full gate before opening a PR
+```
+
 No Go edit should be needed — if one is, either you've found a genuinely new
 *kind* of mutation (which needs a new mechanism in `internal/actuate` plus a
 test, and that's a real contribution) or a bug worth reporting. Read the ⚠️ in

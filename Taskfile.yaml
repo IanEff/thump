@@ -13,7 +13,7 @@ vars:
   JOB_BEATS: "bootstrap"
   IMAGE_BEATS: "{{.SERVICE_BEATS}} {{.JOB_BEATS}}"
   # calipers is the operator CLI (incidents/approve/force/unseal/corpus/rca/
-  # tune/replay/harvest) — no internal/beat runtime, no otelc compile-time
+  # tune/replay/harvest/probe/transcript/scorecard/validate) — no internal/beat runtime, no otelc compile-time
   # instrumentation, no Helm Deployment, ships only as a binary
   # (build-calipers/goreleaser), never as a container image. Kept out of
   # BEATS because it isn't otelc-instrumented like the other five.
