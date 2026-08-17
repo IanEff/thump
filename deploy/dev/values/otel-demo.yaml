@@ -108,12 +108,12 @@ components:
       limits:
         memory: 64Mi
   # frontend: carries the product-catalog SLI and handles locust traffic
-  # (LOCUST_USERS: 150). Bump from the chart's stock 20Mi default to 64Mi,
-  # matching checkout and product-catalog.
+  # (LOCUST_USERS: 150). Next.js 16 requires 250Mi (the chart's stock default
+  # for frontend; unlike Go microservices, 64Mi OOMKills on Next.js startup).
   frontend:
     resources:
       limits:
-        memory: 64Mi
+        memory: 250Mi
   # flagd: read the flagd-config ConfigMap DIRECTLY instead of the chart's
   # default "init container copies ConfigMap into a config-rw emptyDir,
   # flagd reads the emptyDir" pattern. chaos/flagd-cart-failure.sh and the
