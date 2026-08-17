@@ -14,20 +14,17 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"sigs.k8s.io/yaml"
 
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
-	"github.com/ianeff/thump/internal/anthropic"
 	"github.com/ianeff/thump/internal/clank"
 	"github.com/ianeff/thump/internal/config"
 	"github.com/ianeff/thump/internal/contract"
 	"github.com/ianeff/thump/internal/evidence"
+	"github.com/ianeff/thump/internal/modelsel"
 )
-
-const modelRequestTimeout = 120 * time.Second
 
 // Row is one probe run's result — the confidence terms that produced its
 // number, not just the number, so a probe sample is conclusive without a
@@ -86,26 +83,32 @@ func Run(ctx context.Context, eng *clank.Engine, det signal.Detection, n int) ([
 }
 
 // Main grades N live runs against one captured detection and prints one row
-// per run. A missing ANTHROPIC_API_KEY is a clean skip returning 0, matching
-// rca.Main's convention — never a hard failure on an operator machine with
-// no key configured.
+// per run. A missing API key for the selected -model is a clean skip
+// returning 0, matching rca.Main's convention — never a hard failure on an
+// operator machine with no key configured.
 func Main(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	detection := fs.String("detection", "", "path to a signal.Detection fixture, e.g. from task capture-detection (required)")
 	runs := fs.Int("runs", 1, "number of independent reasoning runs to fire")
 	asJSON := fs.Bool("json", false, "print one JSON row per run instead of a table")
+	floor := fs.Float64("floor", 0.75, "confidence floor a run must clear to count as underFloor=0; purely a grading label printed in the summary line, never enforced")
+	modelName := fs.String("model", "haiku", "reasoning backend to measure: haiku (production default), sonnet, or gemini-low")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *detection == "" || *runs < 1 {
-		_, _ = fmt.Fprintln(stderr, "usage: probe -detection <path> [-runs N] [-json]")
+		_, _ = fmt.Fprintln(stderr, "usage: probe -detection <path> [-runs N] [-json] [-model haiku|sonnet|gemini-low]")
 		return 2
 	}
 
-	key := os.Getenv("ANTHROPIC_API_KEY")
-	if key == "" {
-		_, _ = fmt.Fprintln(stderr, "ANTHROPIC_API_KEY unset - probe needs a real model; skipping")
+	model, skip, err := modelsel.For(context.Background(), *modelName)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "probe:", err)
+		return 1
+	}
+	if skip != "" {
+		_, _ = fmt.Fprintln(stderr, skip+" unset - probe needs a real model; skipping")
 		return 0
 	}
 
@@ -153,8 +156,9 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	// A probe run is always the offline (non-broker) posture: no TLS material
 	// of its own, so backendTLS stays nil and PROM_URL/LOKI_URL are dialed in
 	// the clear, same declared exception clank.Main's own offline path takes.
-	kube, argo := clank.InClusterClients()
-	model := anthropic.NewModel(key, modelRequestTimeout)
+	// Unlike the beats, probe runs on a laptop, not as a pod — it reaches the
+	// cluster through the operator's own kubeconfig, not a ServiceAccount.
+	kube, argo := clank.KubeconfigClients()
 
 	var backendTLS *tls.Config
 	clankCfg := clankConfig(cfg)
@@ -190,7 +194,24 @@ func Main(args []string, stdout, stderr io.Writer) int {
 			r.Run, r.Phase, r.ContractRef, r.Confidence, r.Computed, ceiling, r.Terms.Grounding, r.Terms.Corroborated, r.Reason)
 	}
 	_, _ = fmt.Fprintf(stdout, "\n%d probe run(s) against %s — read-only, nothing published or journaled\n", len(rows), *detection)
+	RenderSummary(stdout, Summarize(samples(rows), *floor))
 	return 0
+}
+
+// samples converts probe rows into the fold's minimal input — a row with no
+// recommended candidate (ContractRef == "") carries no self-report to fold.
+func samples(rows []Row) []Sample {
+	out := make([]Sample, len(rows))
+	for i, r := range rows {
+		out[i] = Sample{
+			Proposed:     r.ContractRef != "",
+			Confidence:   r.Confidence,
+			Computed:     r.Computed,
+			Ceiling:      r.Ceiling,
+			Corroborated: r.Terms.Corroborated,
+		}
+	}
+	return out
 }
 
 // clankConfig lifts the fields ProbeEngine's buildTools/buildIntake read out

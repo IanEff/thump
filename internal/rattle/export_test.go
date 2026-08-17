@@ -13,14 +13,22 @@ import (
 )
 
 func RunLoopForTest(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection]) {
-	runLoop(ctx, r, log, pub, noop.Tracer{}, nil)
+	runLoop(ctx, r, log, pub, noop.Tracer{}, nil, time.Minute, 45*time.Second)
 }
 
 // NewReconcilerForTest exposes Main's real Reconciler assembly so a test can
 // swap in a fake Source and prove Main's wiring, not just Reconciler's
 // behavior when a test hand-sets a field.
 func NewReconcilerForTest(promURL string, slos []SLO, topo TopologySource, traffic TrafficSource, backendTLS *tls.Config) *Reconciler {
-	return newReconciler(promURL, slos, topo, traffic, backendTLS, QueryConfig{Step: time.Minute, Window: 15 * time.Minute})
+	return newReconciler(promURL, slos, topo, traffic, backendTLS, QueryConfig{
+		Step:                time.Minute,
+		Window:              15 * time.Minute,
+		PollInterval:        time.Minute,
+		ReconcileTimeout:    45 * time.Second,
+		SustainedMinSamples: 5,
+		Debounce:            10 * time.Minute,
+		FreshnessBound:      5 * time.Minute,
+	})
 }
 
 // BuildSourcesForTest exposes buildSources to rattle_test.

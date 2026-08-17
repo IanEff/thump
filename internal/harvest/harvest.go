@@ -23,7 +23,7 @@ import (
 const (
 	restoreTimeout      = 2 * time.Minute
 	defaultRefusalGrace = 3 * time.Minute
-	defaultCooldown     = 10 * time.Minute
+	defaultCooldown     = 1 * time.Minute
 	livenessTimeout     = 5 * time.Second
 )
 

@@ -63,6 +63,14 @@ def setup(cluster):
         platform_flag = ""
 
     for beat in ["rattle", "clank", "hiss", "thump", "bootstrap"]:
+        # Narrowed to what this beat actually imports, not every beat's own
+        # unrelated internal/ subtree — phase AS 0B.2. Before this, editing
+        # rattle's config seam retriggered clank/hiss/thump's custom_build too
+        # (all 5 shared the same deps = ["cmd/" + beat, "internal"]). `go list
+        # -deps` is resolved once per beat at Tiltfile load, same one-time
+        # cost as COMMIT above; it does not re-run mid-session.
+        deps = _beat_deps(beat)
+
         cmd = (
             "mkdir -p bin/dev && "
             + "CGO_ENABLED=0 GOOS=linux GOARCH=" + target_arch + " "
@@ -98,5 +106,23 @@ def setup(cluster):
             # go.mod edit (an actual `go get`) won't auto-rebuild under Tilt
             # anymore; `tilt trigger` after one is the manual escape hatch,
             # worth it to not live-loop the build on every single compile.
-            deps = ["cmd/" + beat, "internal"],
+            deps = deps,
         )
+
+
+def _beat_deps(beat):
+    """Returns cmd/<beat> plus the internal/ packages it actually imports.
+
+    Replaces the blanket ["cmd/" + beat, "internal"] every beat shared before
+    phase AS 0B.2, which retriggered all 5 beats' custom_build on any one
+    beat's internal/ edit. `go list -deps` walks the real import graph, so
+    rattle's build only watches internal/rattle, internal/beat, internal/poll,
+    etc — not internal/hiss or internal/thump.
+    """
+    raw = str(local(
+        "go list -deps ./cmd/" + beat + " | grep '^github.com/ianeff/thump/internal/' || true",
+        quiet = True,
+        echo_off = True,
+    )).strip()
+    pkgs = [p.replace("github.com/ianeff/thump/", "", 1) for p in raw.split("\n") if p]
+    return ["cmd/" + beat] + pkgs

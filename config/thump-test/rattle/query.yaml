@@ -1,2 +1,7 @@
 step: 1m
 window: 15m
+pollInterval: 1m
+reconcileTimeout: 45s
+sustainedMinSamples: 5
+debounce: 10m
+freshnessBound: 5m

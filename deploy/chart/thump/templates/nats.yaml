@@ -211,11 +211,17 @@ metadata:
   namespace: thump
   labels: {{- include "thump.labels" . | nindent 4 }}
 spec:
+  type: {{ .Values.nats.service.type }}
   selector:
     app.kubernetes.io/name: thump
     app.kubernetes.io/component: nats
   ports:
-    - { name: client, port: 4222, targetPort: 4222 }
+    - name: client
+      port: 4222
+      targetPort: 4222
+      {{- if and (eq .Values.nats.service.type "NodePort") .Values.nats.service.nodePort }}
+      nodePort: {{ .Values.nats.service.nodePort }}
+      {{- end }}
     - { name: monitor, port: 8222, targetPort: 8222 }
 ---
 apiVersion: apps/v1

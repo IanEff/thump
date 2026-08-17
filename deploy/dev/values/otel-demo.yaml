@@ -59,6 +59,34 @@ components:
     enabled: false
   llm:
     enabled: false
+  # Chart default is LOCUST_USERS=10, LOCUST_SPAWN_RATE=1 — ~4 req/min on
+  # the cart/product-catalog SLO paths (measured live, phase AS), sparse
+  # enough that even a [5m] rate() window intermittently starved. Raised to
+  # push the cart path to >=1 req/s, dense enough for a [30s] window
+  # (deploy/dev/manifests/slo-rules.yaml, config/dev/whir/
+  # evidence-queries.yaml) to read cleanly. checkout/product-catalog's
+  # memory limits above were already raised once for OOMKilled under the
+  # old load — re-check `kubectl top pods -n otel-demo` after this change
+  # goes live; a further bump here trades cart-path density for node
+  # headroom, per phase AS's own live gate on this number.
+  load-generator:
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "150"
+      - name: LOCUST_SPAWN_RATE
+        value: "10"
+      # Found live, phase AS fixture-capture session: the chart's own
+      # LOCUST_BROWSER_TRAFFIC_ENABLED default (true) spins up a real
+      # headless-Chrome session per simulated user. At 150 users that
+      # OOMKilled even after doubling the memory limit to 3000Mi, inside 30
+      # seconds of the ramp. None of the SLO paths this profile measures
+      # (cart/product-catalog/acme error ratios) are driven by browser
+      # traffic — disabled outright rather than chasing the limit upward.
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
+    resources:
+      limits:
+        memory: 3000Mi
   # checkout/product-catalog: the chart's own stock default is 20Mi
   # (resources.limits.memory) for every component — fine for the demo's
   # showcase-traffic assumption, too tight once load-generator (this values
@@ -91,7 +119,18 @@ components:
   #
   # null (NOT []) is required: Helm coalesce silently ignores an empty list
   # override but honors null as "remove key".
+  #
+  # resources.limits.cpu: flagd shipped with no CPU limit at all (only the
+  # chart's default memory request/limit). Rapid-fire ConfigMap churn against
+  # flagd-config (chaos inject/restore racing thump's own live loop patching
+  # the same fault) hit a bad path in flagd's fsnotify reload and it ran away
+  # to 6.4-6.7 cores on the single-node k3d rig — starved the node, evicted
+  # 51+ pods in this namespace, took kafka down. 500m is generous headroom
+  # over flagd's normal footprint while bounding a runaway.
   flagd:
+    resources:
+      limits:
+        cpu: 500m
     mountedConfigMaps:
       - name: config-ro
         mountPath: /etc/flagd

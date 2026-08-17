@@ -214,26 +214,40 @@ func maxRangeSelector(t *testing.T, query string) time.Duration {
 }
 
 // TestShippedCatalog_SuccessWindowOutlivesItsMetricsRateWindow pins the
-// config relationship no loader checks: a success window no longer than the
-// rate() range its own metric is smoothed over can never observe a clean
-// read, so a genuine recovery still reads as a miss. AP's Run 1 hit this
-// live — window == rate-window with an exact-==0 target, on a metric that
-// only ever decays toward zero without ever landing on it.
+// config relationship no loader checks, for every profile that ships: a
+// success window no longer than the rate() range its own metric is smoothed
+// over can never observe a clean read, so a genuine recovery still reads as
+// a miss. AP's Run 1 hit this live — window == rate-window with an
+// exact-==0 target, on a metric that only ever decays toward zero without
+// ever landing on it. Ran over thump-test alone until phase AS, which left
+// dev's own catalog free to drift out of the relationship its comments
+// describe — and dev is the profile whose windows actually move.
 func TestShippedCatalog_SuccessWindowOutlivesItsMetricsRateWindow(t *testing.T) {
 	t.Parallel()
 
-	queries := configtest.EvidenceQueriesForProfile(t, "thump-test").Queries
-	contracts := configtest.ShippedCatalog(t).Contracts()
-	for _, c := range contracts {
-		t.Run(c.Name, func(t *testing.T) {
-			q, ok := queries[c.SuccessCriteria.Metric]
-			if !ok {
-				t.Fatalf("no evidence query named %q for successCriteria.metric", c.SuccessCriteria.Metric)
-			}
-			maxRange := maxRangeSelector(t, q.Query)
-			if c.SuccessCriteria.Window <= maxRange {
-				t.Errorf("successCriteria.window %s must be strictly longer than %q's own rate window %s",
-					c.SuccessCriteria.Window, c.SuccessCriteria.Metric, maxRange)
+	for _, profile := range []string{"dev", "thump-test"} {
+		t.Run(profile, func(t *testing.T) {
+			t.Parallel()
+			queries := configtest.EvidenceQueriesForProfile(t, profile).Queries
+			for _, c := range configtest.CatalogForProfile(t, profile).Contracts() {
+				t.Run(c.Name, func(t *testing.T) {
+					q, ok := queries[c.SuccessCriteria.Metric]
+					if !ok {
+						// A contract naming a metric absent from this
+						// profile's evidence surface is a dead-knob
+						// question, not a window-ordering one — dev's
+						// catalog.yaml is shared with domains (Ceph) it
+						// doesn't run, and a contract that can never fire
+						// for want of a detector has no rate window to
+						// compare against.
+						t.Skipf("no evidence query named %q for successCriteria.metric in profile %q — not this test's concern", c.SuccessCriteria.Metric, profile)
+					}
+					maxRange := maxRangeSelector(t, q.Query)
+					if c.SuccessCriteria.Window <= maxRange {
+						t.Errorf("successCriteria.window %s must be strictly longer than %q's own rate window %s",
+							c.SuccessCriteria.Window, c.SuccessCriteria.Metric, maxRange)
+					}
+				})
 			}
 		})
 	}

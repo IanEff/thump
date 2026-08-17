@@ -16,8 +16,13 @@ import (
 // regenerated — the fixed point the extraction is measured against.
 func queryConfigBeforeExtraction() rattle.QueryConfig {
 	return rattle.QueryConfig{
-		Step:   time.Minute,
-		Window: 15 * time.Minute,
+		Step:                time.Minute,
+		Window:              15 * time.Minute,
+		PollInterval:        time.Minute,
+		ReconcileTimeout:    45 * time.Second,
+		SustainedMinSamples: 5,
+		Debounce:            10 * time.Minute,
+		FreshnessBound:      5 * time.Minute,
 	}
 }
 

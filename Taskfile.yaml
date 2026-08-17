@@ -38,7 +38,7 @@ tasks:
       - task: ci
 
   ci:
-    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, race, build
+    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, promql, race, build
     cmds:
       - task: otelc:check-gomod
       - task: fmt-check
@@ -46,6 +46,7 @@ tasks:
       - task: lint
       - task: vulncheck
       - task: chart-lint
+      - task: test:promql
       - task: race
       - task: integration
       - task: build
@@ -141,6 +142,15 @@ tasks:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json'
 
+  test:promql:
+    desc: promtool unit tests against the SLO recording rules (offline — needs promtool and yq on PATH)
+    cmds:
+      - mkdir -p bin
+      # slo-rules.yaml is a PrometheusRule CRD manifest; promtool only
+      # understands the plain `groups:` shape underneath the CRD envelope.
+      - yq eval '.spec' deploy/dev/manifests/slo-rules.yaml > bin/slo-rules.rules.yaml
+      - promtool test rules deploy/dev/manifests/slo-rules_test.yaml
+
   test:
     desc: go test -shuffle=on ./...
     cmds:
@@ -176,9 +186,14 @@ tasks:
       - go test -tags eval ./internal/clank -run TestEval_ReasonerAgainstProductionCatalog -v
 
   rca:
-    desc: Run the graded RCA suite against `thump-test` — did the reasoner cite the right evidence, not just reach the right verdict? (key-gated, not part of ci)
+    desc: "Run the graded RCA suite — did the reasoner cite the right evidence, not just reach the right verdict? task rca [RIG=thump-test] [RUNS=1] [FLOOR=0.75] [MODEL=haiku|sonnet|gemini-low] [ROW=substring] (key-gated, not part of ci)"
+    vars:
+      RIG: '{{.RIG | default "thump-test"}}'
+      RUNS: '{{.RUNS | default "1"}}'
+      FLOOR: '{{.FLOOR | default "0.75"}}'
+      MODEL: '{{.MODEL | default "haiku"}}'
     cmds:
-      - go run ./cmd/calipers rca -rig thump-test
+      - go run ./cmd/calipers rca -rig {{.RIG}} -runs {{.RUNS}} -floor {{.FLOOR}} -model {{.MODEL}} {{if .ROW}}-row "{{.ROW}}"{{end}}
 
   corpus:
     desc: Mine the sealed WAL into testdata/corpus/ — every (Confidence, FailureClass, Result) triple this engine has produced (needs S3_*/THUMP_SEAL_KEY; rig-free, object-store creds only)
@@ -499,6 +514,70 @@ tasks:
       vars: [FP]
     cmds:
       - go run ./cmd/calipers approve {{.FP}} --nats-url tls://localhost:4222 --tls-cert bin/certs/tls.crt --tls-key bin/certs/tls.key --tls-ca bin/certs/ca.crt --server-name nats.thump.svc
+
+  dev:govern:
+    desc: >-
+      Run one proposal.Set through hiss (locally, offline) then thump (a
+      one-shot in-cluster Job, real RBAC) and print the verdict + outcome:
+      task dev:govern SET=<path to a proposal.Set yaml>. Never touches
+      thump.proposals/thump.decisions/thump.outcomes or any WAL — hiss's leg
+      runs against scratch local dirs, thump's leg runs in its own scratch
+      emptyDirs inside the cluster. Only for the dev cluster's offline
+      dir-poll beats; never point this at a broker-mode deployment.
+    requires:
+      vars: [SET]
+    vars:
+      RUN_ID:
+        sh: date +%s
+    cmds:
+      - mkdir -p bin/govern/{{.RUN_ID}}/hiss-inbox bin/govern/{{.RUN_ID}}/hiss-outbox
+      - cp {{.SET}} bin/govern/{{.RUN_ID}}/hiss-inbox/set.yaml
+      - HISS_POLICY=config/dev/hiss/policy.yaml
+        HISS_INBOX=bin/govern/{{.RUN_ID}}/hiss-inbox
+        HISS_OUTBOX=bin/govern/{{.RUN_ID}}/hiss-outbox
+        go run ./cmd/hiss --once
+      - echo "--- hiss verdict ---"
+      - cat bin/govern/{{.RUN_ID}}/hiss-outbox/*.yaml
+      - |
+        GOVERNED=$(ls bin/govern/{{.RUN_ID}}/hiss-outbox/*.yaml | head -1)
+        kubectl --context k3d-thump-dev -n thump create configmap dev-govern-input-{{.RUN_ID}} --from-file=governed.yaml="$GOVERNED"
+      - |
+        THUMP_IMAGE=$(kubectl --context k3d-thump-dev -n thump get deployment thump -o jsonpath='{.spec.template.spec.containers[0].image}')
+        PROM_URL=$(kubectl --context k3d-thump-dev -n thump get deployment thump -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PROM_URL")].value}')
+        RUN_ID={{.RUN_ID}} THUMP_IMAGE="$THUMP_IMAGE" THUMP_EXECUTOR="{{.THUMP_EXECUTOR | default "live"}}" PROM_URL="$PROM_URL" \
+          INPUT_CONFIGMAP=dev-govern-input-{{.RUN_ID}} \
+          envsubst < deploy/dev/manifests/dev-govern-job.yaml | kubectl --context k3d-thump-dev apply -f -
+      - kubectl --context k3d-thump-dev -n thump wait --for=condition=complete --for=condition=failed --timeout=180s job/dev-govern-{{.RUN_ID}}
+      - echo "--- thump outcome ---"
+      - kubectl --context k3d-thump-dev -n thump logs job/dev-govern-{{.RUN_ID}}
+      - kubectl --context k3d-thump-dev -n thump delete job dev-govern-{{.RUN_ID}} configmap dev-govern-input-{{.RUN_ID}} --ignore-not-found
+      - rm -rf bin/govern/{{.RUN_ID}}
+
+  dev:probe:
+    desc: >-
+      Fire N real clank reasoning runs against a captured detection, straight
+      from a laptop: task dev:probe DETECTION=<path> [RUNS=5] [FLOOR=0.75]
+      [MODEL=haiku|sonnet|gemini-low]. Read-only against the dev cluster by
+      construction — clank.ProbeEngine never wires a Pub or a Journal, so
+      nothing here reaches thump.proposals or the corpus. Requires Tilt's
+      prometheus-ui and loki-port-forward resources up (PROM_URL/LOKI_URL
+      below dial their local ports), and ANTHROPIC_API_KEY (haiku/sonnet) or
+      GEMINI_API_KEY (gemini-low) set in the shell for whichever MODEL is
+      selected.
+    requires:
+      vars: [DETECTION]
+    cmds:
+      - |
+        PROM_URL=http://localhost:9090 \
+        LOKI_URL=http://localhost:3100 \
+        EVIDENCE_QUERIES=config/dev/whir/evidence-queries.yaml \
+        WHIR_CATALOG=config/dev/whir/catalog-info.yaml \
+        WHIR_STATE_QUERIES=config/dev/whir/state-queries.yaml \
+        ACTION_CATALOG=config/dev/actions/catalog.yaml \
+        FAILURE_CLASSES=config/dev/actions/failure-classes.yaml \
+        CLANK_WEIGHTS=config/clank/weights.yaml \
+        CLANK_LIMITS=config/clank/limits.yaml \
+        go run ./cmd/calipers probe -detection {{.DETECTION}} -runs {{.RUNS | default 1}} -floor {{.FLOOR | default 0.75}} -model {{.MODEL | default "haiku"}}
 
   harvest:dev:
     desc: "Run a harvest scenario against dev: task harvest:dev ROW=cart-failure [REPEAT=1] (requires task dev:certs, Tilt's 4222 forward up)"

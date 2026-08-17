@@ -71,6 +71,12 @@ prometheus:
 
 nats:
   storageClass: local-path
+  # NodePort so deploy/dev/k3d.yaml's serverlb port mapping (4222:30422) has
+  # something to forward to — phase AS 0A.5, replacing a `kubectl
+  # port-forward` that a laptop sleep or a nats-0 restart silently killed.
+  service:
+    type: NodePort
+    nodePort: 30422
 
 # This cluster's kube-prometheus-stack Operator runs with an empty
 # serviceMonitorSelector (deploy/dev/values/kube-prometheus-stack.yaml,

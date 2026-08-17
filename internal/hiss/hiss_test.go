@@ -14,6 +14,7 @@ import (
 	"github.com/ianeff/thump/internal/hiss"
 	"github.com/ianeff/thump/internal/poll"
 	"github.com/ianeff/thump/internal/publish"
+	"sigs.k8s.io/yaml"
 )
 
 func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {
@@ -69,6 +70,33 @@ func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
 	}
 	if stderr.Len() == 0 {
 		t.Error("want error message printed to stderr, got none")
+	}
+}
+
+func TestMain_OnceRunsASingleTickAndReturnsZero(t *testing.T) {
+	inbox, outbox := t.TempDir(), t.TempDir()
+	writeSetYAML(t, inbox, "ps-001.yaml", governedSet())
+
+	policyRaw, err := yaml.Marshal(calmPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(t.TempDir(), "policy.yaml")
+	if err := os.WriteFile(policyPath, policyRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("HISS_POLICY", policyPath)
+	t.Setenv("HISS_INBOX", inbox)
+	t.Setenv("HISS_OUTBOX", outbox)
+
+	var out, errb bytes.Buffer
+	code := hiss.Main([]string{"-once"}, &out, &errb, "dev", "none", "unknown")
+	if code != 0 {
+		t.Fatalf("want exit 0 for a single successful pass, got %d, stderr: %s", code, errb.String())
+	}
+	if _, err := os.Stat(filepath.Join(inbox, "processed", "ps-001.yaml")); err != nil {
+		t.Error("--once must still run exactly one real Tick, not a no-op:", err)
 	}
 }
 

@@ -11,6 +11,27 @@
 # slo:current_burn_rate:ratio{sloth_id=...} — the exact series
 # internal/rattle/source.go:59 queries by sloth_id. Without this rule
 # object, rattle has nothing to detect against, full stop.
+#
+# Each SLO's rate5m sli recording queries a [60s] range, not [5m], since
+# 2026-08-16 — dev's loadgenerator carries LOCUST_USERS=150 (deploy/dev/
+# values/otel-demo.yaml), but Locust drives its task loop on a ~60s cadence:
+# a [30s] window lands on more ticks than not with zero samples inside it
+# and reads NaN even with real >=1 req/s throughput and a fault actively
+# injected — confirmed live, 2026-08-16. [60s] is the shortest range that
+# reliably spans at least one Locust tick, but even at [60s] the window
+# still occasionally lands on a genuinely idle tick, giving errors=0 AND
+# total=0 — 0/0, which is NaN, not absent, so the numerator's `or vector(0)`
+# guard never triggers. Confirmed live, 2026-08-16: this NaN flowed straight
+# through slo:current_burn_rate:ratio (a plain division below, no guard of
+# its own) into rattle's Divergence.Observed and crashed its WAL publish
+# ("json: unsupported value: NaN") — a real production outage, not a
+# theoretical edge case. `clamp_min(denominator, 1e-9)` reads a genuinely
+# idle window as a healthy 0 instead of NaN, with no effect at any real
+# traffic level this rig runs (an epsilon eight orders of magnitude below
+# the smallest req/s ever observed here). The record name and sloth_window
+# label carry the window gap deliberately: the name is what
+# slo:current_burn_rate:ratio and internal/rattle read by, so it stays put
+# even though the range it now selects is longer than its own name implies.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -24,16 +45,16 @@ spec:
     - name: sloth-slo-sli-recordings-product-catalog-availability
       rules:
         - expr: |
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[5m])) or vector(0))
+            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[60s])) or vector(0))
             /
-            (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[5m])))
+            clamp_min(sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z"}[60s])) or vector(0), 1e-9)
           labels:
             domain: otel-demo
             lab: dev
             sloth_id: product-catalog-availability
             sloth_service: product-catalog
             sloth_slo: availability
-            sloth_window: 5m
+            sloth_window: 60s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(app_frontend_requests_total{target="/api/products/OLJCESPC7Z",status="500"}[30m])) or vector(0))
@@ -190,16 +211,16 @@ spec:
     - name: sloth-slo-sli-recordings-cart-availability
       rules:
         - expr: |
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[5m])) or vector(0))
+            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[60s])) or vector(0))
             /
-            (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[5m])))
+            clamp_min(sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService"}[60s])) or vector(0), 1e-9)
           labels:
             domain: otel-demo
             lab: dev
             sloth_id: cart-availability
             sloth_service: cart
             sloth_slo: availability
-            sloth_window: 5m
+            sloth_window: 60s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(rpc_client_duration_milliseconds_count{service_name="checkout",rpc_service="oteldemo.CartService",rpc_grpc_status_code!="0"}[30m])) or vector(0))
@@ -436,16 +457,16 @@ spec:
     - name: sloth-slo-sli-recordings-acme-api-availability
       rules:
         - expr: |
-            (sum(rate(acme_api_requests_total{status="500"}[5m])))
+            (sum(rate(acme_api_requests_total{status="500"}[60s])) or vector(0))
             /
-            (sum(rate(acme_api_requests_total[5m])))
+            clamp_min(sum(rate(acme_api_requests_total[60s])) or vector(0), 1e-9)
           labels:
             domain: acme
             lab: dev
             sloth_id: acme-api-availability
             sloth_service: acme-api
             sloth_slo: availability
-            sloth_window: 5m
+            sloth_window: 60s
           record: slo:sli_error:ratio_rate5m
         - expr: |
             (sum(rate(acme_api_requests_total{status="500"}[30m])))

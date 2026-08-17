@@ -45,6 +45,17 @@ jobs:
       - name: Chart lint (kubeconform)
         run: task chart-lint
 
+      - name: Setup promtool + yq
+        run: |
+          curl -sL https://github.com/prometheus/prometheus/releases/download/v3.13.2/prometheus-3.13.2.linux-amd64.tar.gz \
+            | tar xz -C /tmp
+          sudo install /tmp/prometheus-3.13.2.linux-amd64/promtool /usr/local/bin/promtool
+          sudo curl -sL https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64 -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: promql rule tests
+        run: task test:promql
+
       # Race detector runs locally via `task race`, not here — this gate
       # runs goleak's TestMain() in every package instead, which is cheaper
       # to run on every push and catches goroutine leaks before deployment.

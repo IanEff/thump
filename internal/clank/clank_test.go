@@ -369,6 +369,62 @@ func TestClientsFor_YieldsATrulyNilInterfaceWhenAClientCannotBeBuilt(t *testing.
 	}
 }
 
+// TestKubeconfigClients_BuildsAClientWhenTheOnlyCredentialIsAKubeconfig pins
+// the laptop-side counterpart to InClusterClients: calipers probe never runs
+// as a pod, so it has no ServiceAccount token to load, only whatever
+// KUBECONFIG points at.
+func TestKubeconfigClients_BuildsAClientWhenTheOnlyCredentialIsAKubeconfig(t *testing.T) {
+	kubeconfig := filepath.Join(t.TempDir(), "config")
+	const raw = `apiVersion: v1
+kind: Config
+clusters:
+- name: test
+  cluster:
+    server: https://127.0.0.1:6443
+contexts:
+- name: test
+  context:
+    cluster: test
+    user: test
+current-context: test
+users:
+- name: test
+  user:
+    token: fake-token
+`
+	if err := os.WriteFile(kubeconfig, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", kubeconfig)
+
+	kube, argo := clank.KubeconfigClients()
+
+	if kube == nil {
+		t.Error("want a non-nil kube client when a valid kubeconfig is on KUBECONFIG")
+	}
+	if argo == nil {
+		t.Error("want a non-nil dynamic client when a valid kubeconfig is on KUBECONFIG")
+	}
+}
+
+// TestKubeconfigClients_YieldsNilClientsWithNoKubeconfigAtAll mirrors
+// InClusterClients' own degrade-not-panic posture for the laptop path: no
+// KUBECONFIG and no ~/.kube/config means no cluster identity at all, not an
+// error.
+func TestKubeconfigClients_YieldsNilClientsWithNoKubeconfigAtAll(t *testing.T) {
+	t.Setenv("KUBECONFIG", filepath.Join(t.TempDir(), "no-such-file"))
+	t.Setenv("HOME", t.TempDir()) // hermetic — don't fall back to the real ~/.kube/config
+
+	kube, argo := clank.KubeconfigClients()
+
+	if kube != nil {
+		t.Errorf("want a nil kube client with no reachable kubeconfig, got %T", kube)
+	}
+	if argo != nil {
+		t.Errorf("want a nil dynamic client with no reachable kubeconfig, got %T", argo)
+	}
+}
+
 // TestShippedEvidenceConfigs_NameRealTopologyNodes is the vocabulary guard
 // TestArgoChangeSource_TargetsShareTheTopologyCatalogsVocabulary applies to
 // the change source, applied here to the subject join. EvidenceQuery.Subject,

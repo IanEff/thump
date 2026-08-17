@@ -203,13 +203,13 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			return nil
 		})
 		g.Go(func() error {
-			runLoop(gctx, r, log, pub, tracer, stages)
+			runLoop(gctx, r, log, pub, tracer, stages, query.PollInterval, query.ReconcileTimeout)
 			return nil
 		})
 		return beat.ExitOnError(ctx, g.Wait())
 	}
 
-	runLoop(ctx, r, log, pub, tracer, stages)
+	runLoop(ctx, r, log, pub, tracer, stages, query.PollInterval, query.ReconcileTimeout)
 	return 0
 }
 
@@ -229,31 +229,27 @@ func newReconciler(promURL string, slos []SLO, topo TopologySource, traffic Traf
 		SLOs:           slos,
 		Source:         src,
 		Detector:       AccelerationDetector{Threshold: 0.5},
-		Sustained:      &SustainedBurnDetector{Threshold: 1.0, MinSamples: 5},
-		Debounce:       NewDebouncer(10 * time.Minute),
+		Sustained:      &SustainedBurnDetector{Threshold: 1.0, MinSamples: query.SustainedMinSamples},
+		Debounce:       NewDebouncer(query.Debounce),
 		TopologySource: topo,
 		TrafficSource:  traffic,
 		Contract: &SignalContract{
-			FreshnessBound:  5 * time.Minute, // samples land every 1m; >5m stale = scrape path is broken
-			ConfidenceFloor: 0.5,             // attenuation never drives confidence below "suspect"
+			FreshnessBound:  query.FreshnessBound,
+			ConfidenceFloor: 0.5, // attenuation never drives confidence below "suspect"
 		},
 	}
 }
 
-// reconcileTimeout bounds one tick against its own one-minute cadence: a
-// stalled backend must not outlive the cadence it's supposed to keep up
-// with, or ticks overlap and the beat queues nothing but dead work.
-const reconcileTimeout = 45 * time.Second
-
-// runLoop reconciles once a minute until ctx is cancelled, logging and
+// runLoop reconciles every pollInterval until ctx is cancelled, logging and
 // publishing every detection. A Reconcile error is logged and the tick
 // skipped, never fatal — the next tick tries again rather than exiting the
 // process over one failed scrape. Single-threaded by construction — tick N+1
 // never starts until tick N returns, which is why reconcileTimeout exists:
 // without it, one stalled Prometheus call hangs every SLO's detection until
-// SIGTERM.
-func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection], tracer trace.Tracer, stages *beat.StageRecorder) {
-	ticker := time.NewTicker(time.Minute)
+// SIGTERM. Caller keeps reconcileTimeout under pollInterval or ticks
+// overlap.
+func runLoop(ctx context.Context, r *Reconciler, log *slog.Logger, pub publish.Publisher[signal.Detection], tracer trace.Tracer, stages *beat.StageRecorder, pollInterval, reconcileTimeout time.Duration) {
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {

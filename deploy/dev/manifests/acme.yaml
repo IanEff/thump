@@ -8,6 +8,46 @@
 # under different names (api/db/cache) so up{job="acme-db"}/up{job="acme-cache"}
 # populate for real via Prometheus's own per-target scrape health, matching
 # the dependency shape declared in thump's config/dev/rattle/catalog-info.yaml.
+#
+# acme-db models a fixed-capacity shared connection pool, not a per-pod
+# constant (phase AS Part 2). Under fault, every replica leaks its equal
+# share of a fixed total budget — db_active = total_leak_budget // replicas
+# — so scaling the Deployment up genuinely spreads the leak thinner per pod,
+# and acme-shed-load's "scale up to relieve saturation" story is true rather
+# than decorative. Each pod reads its own Deployment's live replica count
+# from the Kubernetes API (its own SA token, granted `get` below) rather than
+# a hardcoded number, so the metric tracks whatever thump actually did.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: acme-api
+  namespace: acme
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: acme-api-self-read
+  namespace: acme
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get"]
+    resourceNames: ["acme-api"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: acme-api-self-read
+  namespace: acme
+subjects:
+  - kind: ServiceAccount
+    name: acme-api
+    namespace: acme
+roleRef:
+  kind: Role
+  name: acme-api-self-read
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -15,9 +55,17 @@ metadata:
   namespace: acme
 data:
   server.py: |
-    import http.server, threading, time, urllib.request
+    import http.server, json, re, threading, time, urllib.request
 
-    state = {"200": 10000, "500": 50, "db_active": 10}
+    TOTAL_LEAK_BUDGET = 190
+    TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    DEPLOYMENT_URL = (
+        "https://kubernetes.default.svc/apis/apps/v1"
+        "/namespaces/acme/deployments/acme-api"
+    )
+
+    state = {"200": 10000, "500": 50, "db_active": 10, "replicas": 2}
     target = {"path": "/"}
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -35,7 +83,7 @@ data:
                 self.wfile.write(body.encode())
             elif self.path == "/fail":
                 state["500"] += 1
-                state["db_active"] = 95
+                state["db_active"] = min(95, TOTAL_LEAK_BUDGET // max(1, state["replicas"]))
                 self.send_response(500)
                 self.end_headers()
             else:
@@ -45,9 +93,10 @@ data:
                 self.end_headers()
 
         def log_message(self, format, *args):
-            if "/metrics" in (args[0] if args else ""):
-                return
-            super().log_message(format, *args)
+            # driver() self-polls / or /fail every second; nothing here
+            # feeds otel — metrics are served from state at /metrics and
+            # scraped independently — so this is pure Tilt log noise.
+            return
 
     def driver():
         while True:
@@ -68,8 +117,37 @@ data:
                 pass
             time.sleep(2)
 
+    def replica_watcher():
+        # Falls back to the last-known replica count on any error (missing
+        # token, API unreachable, unexpected response shape) so a transient
+        # control-plane hiccup never crashes the handler thread or the leak
+        # calculation — it just goes stale until the next successful poll.
+        try:
+            with open(TOKEN_PATH) as f:
+                token = f.read().strip()
+        except Exception:
+            token = None
+        while True:
+            if token:
+                try:
+                    req = urllib.request.Request(
+                        DEPLOYMENT_URL,
+                        headers={"Authorization": "Bearer " + token},
+                    )
+                    import ssl
+                    ctx = ssl.create_default_context(cafile=CA_PATH)
+                    with urllib.request.urlopen(req, timeout=2, context=ctx) as resp:
+                        doc = json.loads(resp.read())
+                        replicas = doc.get("spec", {}).get("replicas")
+                        if isinstance(replicas, int) and replicas > 0:
+                            state["replicas"] = replicas
+                except Exception:
+                    pass
+            time.sleep(5)
+
     threading.Thread(target=driver, daemon=True).start()
     threading.Thread(target=flag_watcher, daemon=True).start()
+    threading.Thread(target=replica_watcher, daemon=True).start()
     http.server.HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
 ---
 apiVersion: v1
@@ -95,6 +173,7 @@ spec:
       labels:
         app: acme-api
     spec:
+      serviceAccountName: acme-api
       containers:
         - name: acme-api
           # Pinned by digest — every other image in this profile (k3s, the
@@ -182,7 +261,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: 15s
+      interval: 10s
       relabelings:
         - targetLabel: job
           replacement: acme-api
@@ -201,7 +280,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: 15s
+      interval: 10s
       relabelings:
         - targetLabel: job
           replacement: acme-db
@@ -220,7 +299,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: 15s
+      interval: 10s
       relabelings:
         - targetLabel: job
           replacement: acme-cache

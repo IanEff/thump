@@ -38,6 +38,23 @@ registries:
     name: thump-dev-registry
     host: "0.0.0.0"
     hostPort: "5050"
+# Host 4222/9090 map onto NATS's and Prometheus's NodePort Services
+# (deploy/tilt-values-dev.yaml's nats.service, deploy/dev/values/
+# kube-prometheus-stack.yaml's prometheus.service) through k3d's own serverlb
+# container — phase AS 0A.5, replacing the `kubectl port-forward` pair that
+# cost two overnight harvest runs to a dead tunnel (a laptop sleep or a
+# nats-0 restart killed the forward; this socket is owned by serverlb and
+# survives both). `--disable=servicelb` above only removes k3s's own
+# LoadBalancer controller (klipper-lb) — serverlb is a separate k3d-managed
+# container unaffected by it, and NodePort itself is a kube-proxy feature,
+# not klipper-lb's. Verified live with a throwaway cluster before landing:
+# `docker port <cluster>-serverlb` showed 4222 on the host forwarding to
+# container port 30422, matching the NodePort below.
+ports:
+  - port: 4222:30422
+    nodeFilters: [server:0]
+  - port: 9090:30090
+    nodeFilters: [server:0]
 options:
   k3d:
     wait: true

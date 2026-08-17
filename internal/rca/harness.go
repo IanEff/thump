@@ -46,9 +46,9 @@ type harness struct {
 	close     func()
 }
 
-// newHarness builds the graded engine: the shipped catalog and failure
-// classes, a fake Prometheus scripted from the row's evidence, and a kube
-// fake — never the production wiring. profile selects which config/<rig>
+// newHarness builds the graded engine: a fake Prometheus scripted from the
+// row's evidence and a kube fake — never the production wiring. profile
+// selects which config/<rig> catalog, failure classes, and
 // evidence-queries.yaml to grade against, and kubeObjects seeds the kube
 // fake — this package holds no rig- or Ceph-specific knowledge itself, both
 // come from the caller.
@@ -58,11 +58,11 @@ func newHarness(c Case, model reason.Model, w clank.ScoringWeights, transcripts,
 		return harness{}, err
 	}
 
-	cat, err := contract.LoadCatalogFile(configPath("thump-test", "actions", "catalog.yaml"), contract.Preconditions)
+	cat, err := contract.LoadCatalogFile(configPath(profile, "actions", "catalog.yaml"), contract.Preconditions)
 	if err != nil {
 		return harness{}, fmt.Errorf("load catalog: %w", err)
 	}
-	classes, err := contract.LoadFailureClassesFile(configPath("thump-test", "actions", "failure-classes.yaml"))
+	classes, err := contract.LoadFailureClassesFile(configPath(profile, "actions", "failure-classes.yaml"))
 	if err != nil {
 		return harness{}, fmt.Errorf("load failure classes: %w", err)
 	}

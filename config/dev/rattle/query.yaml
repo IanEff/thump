@@ -1,2 +1,13 @@
-step: 30s
-window: 15m
+# Traffic-density-driven, not scorer tuning — dev's loadgenerator was raised
+# to LOCUST_USERS=150 (deploy/dev/values/otel-demo.yaml, 2026-08-16), pushing
+# the cart SLO path to >=1 req/s. That makes a 5m window/10s step a dense,
+# statistically honest read instead of the ~4 req/min baseline that forced a
+# 15m window. step/window mirror slo-rules.yaml's [30s] rate windows and
+# evidence-queries.yaml's matching queries — the three move together.
+step: 10s
+window: 5m
+pollInterval: 10s
+reconcileTimeout: 8s
+sustainedMinSamples: 3
+debounce: 60s
+freshnessBound: 60s

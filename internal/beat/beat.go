@@ -37,23 +37,30 @@ type Shutdown func(context.Context) error
 
 // Lifecycle is what Start hands back for the running (non-exit) path: the
 // shutdown-aware context every beat loops on, the NATS URL that selects broker
-// vs. offline mode ("" ⇒ offline dir-poll), and the Stop that releases the
-// signal handler.
+// vs. offline mode ("" ⇒ offline dir-poll), the Once flag an offline-mode
+// Main may honor to run a single Tick and return instead of poll.Loop-ing
+// forever, and the Stop that releases the signal handler.
 type Lifecycle struct {
 	Ctx     context.Context
 	NATSURL string
+	Once    bool
 	Stop    func()
 }
 
 // Start runs the preamble every beat's Main otherwise repeats: parse the
-// standard --version flag (printing the build stamps and asking Main to exit
-// when set), install the JSON slog default, wire a SIGINT/SIGTERM-cancelled
-// context, and log "starting <name>". When exit is true Main should return
-// code immediately; otherwise it proceeds with lc (and defers lc.Stop).
+// standard --version and --once flags (printing the build stamps and asking
+// Main to exit when --version is set), install the JSON slog default, wire a
+// SIGINT/SIGTERM-cancelled context, and log "starting <name>". When exit is
+// true Main should return code immediately; otherwise it proceeds with lc
+// (and defers lc.Stop). --once is defined here rather than per-Main so every
+// offline-mode beat gets the same flag name and help text; broker-mode Mains
+// are free to ignore lc.Once, since it only ever meant something without a
+// broker to keep a long-lived consumer running against.
 func Start(name string, args []string, stdout, stderr io.Writer, v Version) (lc Lifecycle, code int, exit bool) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	printVersion := fs.Bool("version", false, "print version and exit")
+	once := fs.Bool("once", false, "offline mode only: run a single poll pass and exit, instead of looping forever")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -74,5 +81,5 @@ func Start(name string, args []string, stdout, stderr io.Writer, v Version) (lc 
 
 	slog.Info("starting "+name, "version", v.Version, "commit", v.Commit, "date", v.Date)
 
-	return Lifecycle{Ctx: ctx, NATSURL: os.Getenv("NATS_URL"), Stop: stop}, 0, false
+	return Lifecycle{Ctx: ctx, NATSURL: os.Getenv("NATS_URL"), Once: *once, Stop: stop}, 0, false
 }

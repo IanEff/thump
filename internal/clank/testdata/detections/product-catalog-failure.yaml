@@ -1,0 +1,53 @@
+# Mined live, 2026-08-16: productCatalogFailure flagd flag flipped on via
+# chaos/flagd-flag.sh productCatalogFailure inject (merge-patch on
+# flagd-config's demo.flagd.json). First inject (21:38:19Z) silently failed
+# to propagate — flagd's fsnotify watcher logged a REMOVE event for the
+# ConfigMap-mounted file (Kubernetes ConfigMap remounts swap a symlink
+# atomically; flagd's watcher doesn't reliably recover) and started timing
+# out on gRPC SETTINGS frames to consumers. product_catalog_error_ratio sat
+# at 0 for ~8 minutes with the flag reading "on" in the ConfigMap the whole
+# time — same underlying flagd reload defect the flagd CPU runaway (this
+# session's earlier finding) traces to, surfacing here as silent staleness
+# instead of a resource spike. Restarting the flagd Deployment forced a
+# clean re-read; product_catalog_error_ratio went live within ~15s
+# (confirmed 0.908 at 21:49:12Z via a throwaway curl pod against in-cluster
+# Prometheus), and rattle's burn_rate_acceleration detector fired 15s after
+# that. No manual restore was run between the two inject attempts — this is
+# the same fault, the same flag, propagation just didn't reach consumers
+# until the restart.
+#
+# Evidence queried against the live rig's own Prometheus at the detection's
+# own timestamp (21:49:27Z), same convention as disable-cart-failure.yaml:
+# error rate 1.18/s over total 1.30/s = 0.908 error ratio.
+ContractRef: product-catalog-availability:v1
+DetectedAt: "2026-08-16T21:49:27.473265866Z"
+DetectorType: burn_rate_acceleration
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 90.8
+  Trajectory: accelerating
+Fingerprint: slo_burn:product-catalog
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.908
+    Trajectory: accelerating
+Name: product-catalog-burn-accel
+OriginService: product-catalog
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Name: frontend
+    State: degraded
+  - Name: flagd
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""

@@ -1,0 +1,54 @@
+# Mined live, 2026-08-16: injected via chaos/acme-fault.sh inject (patches
+# acme/acme-fault-flag target -> /fail). Unlike flagd, propagation was clean
+# — no reload-defect stall (see product-catalog-failure.yaml's header for
+# that bug) — error ratio moved within ~40s of injection and rattle's
+# burn_rate_acceleration detector fired at 21:58:07Z, ~48s later.
+#
+# This is the Phase AS Part 2 acme mechanism, not the old one: /fail leaks a
+# fixed connection-pool budget across acme-api's replicas (deploy/dev/
+# manifests/acme.yaml), so both acme-api's own request-path error ratio AND
+# acme-db's connection saturation move together from the same fault — the
+# ambiguity between service_failure and dependency_saturation is the point
+# of this fixture, not a bug in it. clank read it as dependency_saturation
+# live and proposed acme-shed-load at confidence 0.9 (computedConfidence 1,
+# ceilingBound true, gatePassed true), auto-executed, scaled acme-api 2->4
+# replicas within seconds of the reasoned decision. The pre-fix CaseBase
+# alignment=0 learning (see casebase-learned-acme-fails in memory) did not
+# block this cycle — alignmentOK read false but didn't veto gate pass.
+#
+# Evidence queried against the live rig's own Prometheus at the detection's
+# own timestamp (21:58:07.473933Z, derived from the reasoning run_id's
+# nanosecond suffix): request error ratio 0.504, acme-db connection
+# saturation 0.667 — both elevated, matching the dual-signal design above.
+ContractRef: acme-api-availability:v1
+DetectedAt: "2026-08-16T21:58:07.473933000Z"
+DetectorType: burn_rate_acceleration
+Divergence:
+  Baseline: 0
+  Confidence: 1
+  Metric: ""
+  Observed: 50.4
+  Trajectory: accelerating
+Fingerprint: slo_burn:acme-api
+Impact:
+  BlastRadius:
+    AffectedPct: 0
+    DownstreamConsumers: 0
+    Velocity: ""
+  Severity:
+    DegradationPct: 0.504
+    Trajectory: accelerating
+Name: acme-api-burn-accel
+OriginService: acme-api
+ServiceTier: tier-1
+Topology:
+  Downstream: null
+  Upstream:
+  - Name: acme-db
+    State: degraded
+  - Name: acme-cache
+    State: healthy
+Traffic:
+  AffectedPct: 0
+  Baseline: 0
+  BaselineWindow: ""
