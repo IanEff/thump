@@ -61,6 +61,20 @@ if kubectl get ns argocd >/dev/null 2>&1; then
           -p '{"spec":{"syncPolicy":{"automated":{"selfHeal":false}}}}'
       fi
     done
+
+    # 5. Verify selfHeal patch held (guard against app-of-apps parent reverting it)
+    echo "Verifying selfHeal patches held..."
+    sleep 2
+    for app in "${ROOK_APPS[@]}"; do
+      if kubectl get app "$app" -n argocd >/dev/null 2>&1; then
+        HEAL_VAL=$(kubectl get app "$app" -n argocd -o jsonpath='{.spec.syncPolicy.automated.selfHeal}' 2>/dev/null || echo "")
+        if [ "$HEAL_VAL" = "true" ]; then
+          echo "[FAIL] argocd/app/$app selfHeal is still true after patch (app-of-apps parent may be reverting it)" >&2
+          exit 1
+        fi
+        echo "  [OK] Verified selfHeal=false on argocd/app/$app"
+      fi
+    done
 else
     echo "[INFO] No 'argocd' namespace — skipping selfHeal step (this profile runs no ArgoCD)"
 fi
