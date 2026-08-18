@@ -66,3 +66,4 @@ CLAUDE.local.md
 rook-gke-values.yaml
 
 docs/superpowers/
+.worktrees/
