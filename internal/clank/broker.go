@@ -3,7 +3,6 @@ package clank
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 
@@ -42,7 +41,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 		CAFile:   cfg.TLSCAFile,
 	}, beat.BrokerHooks(health, "clank", func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("connect broker", "err", err)
 		return 1
 	}
 	defer closeNC()
@@ -54,13 +53,13 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 
 	walConfig, err := beat.LoadWALConfig(cfg.WALConfig)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+		slog.Error("load wal config", "err", err)
 		return 1
 	}
 
 	proposalPub, _, err := beat.NewWALPublisher[proposal.Set](js, cfg.WALDir, "clank", "thump.proposals", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("proposal wal publisher", "err", err)
 		return 1
 	}
 
@@ -70,13 +69,13 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 	// ungated set.
 	journalPub, _, err := beat.NewJournalPublisher[proposal.Set](cfg.WALDir, "clank", "thump.reasoning", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("reasoning journal publisher", "err", err)
 		return 1
 	}
 
 	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("s3 segment sink", "err", err)
 		return 1
 	}
 	defer func() {
@@ -95,7 +94,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 
 	ledger, err := buildLedger(ctx, js, limits.LedgerRetention, cases)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "rebuild ledger: %v\n", err)
+		slog.Error("rebuild ledger", "err", err)
 		return 1
 	}
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}

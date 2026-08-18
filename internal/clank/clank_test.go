@@ -48,6 +48,19 @@ func TestMain_VersionFlag(t *testing.T) {
 	}
 }
 
+func lastJSONRecord(t *testing.T, stdout string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) == 0 || lines[len(lines)-1] == "" {
+		t.Fatalf("no stdout output, want structured JSON records: %q", stdout)
+	}
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &rec); err != nil {
+		t.Fatalf("last line is not valid JSON: %v\nraw: %s", err, lines[len(lines)-1])
+	}
+	return rec
+}
+
 func TestMain_MissingInboxReturnsOne(t *testing.T) {
 	t.Setenv("CLANK_INBOX", "") // hermetic — don't inherit the shell's
 	t.Setenv("CLANK_OUTBOX", t.TempDir())
@@ -58,8 +71,18 @@ func TestMain_MissingInboxReturnsOne(t *testing.T) {
 	if code != 1 {
 		t.Errorf("missing CLANK_INBOX should exit 1, got %d", code)
 	}
-	if !strings.Contains(errb.String(), "CLANK_INBOX") {
-		t.Error("stderr should name the missing var:", errb.String())
+	rec := lastJSONRecord(t, out.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "clank" {
+		t.Errorf("beat = %v, want clank", rec["beat"])
+	}
+	if rec["msg"] != "load config" {
+		t.Errorf("msg = %v, want 'load config'", rec["msg"])
+	}
+	if errVal, _ := rec["err"].(string); !strings.Contains(errVal, "CLANK_INBOX") {
+		t.Errorf("err attribute should name the missing var, got %q", errVal)
 	}
 }
 
@@ -73,8 +96,18 @@ func TestMain_MissingOutboxReturnsOne(t *testing.T) {
 	if code != 1 {
 		t.Errorf("missing CLANK_OUTBOX should exit 1, got %d", code)
 	}
-	if !strings.Contains(errb.String(), "CLANK_OUTBOX") {
-		t.Error("stderr should name the missing var:", errb.String())
+	rec := lastJSONRecord(t, out.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "clank" {
+		t.Errorf("beat = %v, want clank", rec["beat"])
+	}
+	if rec["msg"] != "load config" {
+		t.Errorf("msg = %v, want 'load config'", rec["msg"])
+	}
+	if errVal, _ := rec["err"].(string); !strings.Contains(errVal, "CLANK_OUTBOX") {
+		t.Errorf("err attribute should name the missing var, got %q", errVal)
 	}
 }
 
@@ -88,8 +121,18 @@ func TestMain_MissingOutcomesReturnsOne(t *testing.T) {
 	if code != 1 {
 		t.Errorf("missing CLANK_OUTCOMES should exit 1, got %d", code)
 	}
-	if !strings.Contains(errb.String(), "CLANK_OUTCOMES") {
-		t.Error("stderr should name the missing var:", errb.String())
+	rec := lastJSONRecord(t, out.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "clank" {
+		t.Errorf("beat = %v, want clank", rec["beat"])
+	}
+	if rec["msg"] != "load config" {
+		t.Errorf("msg = %v, want 'load config'", rec["msg"])
+	}
+	if errVal, _ := rec["err"].(string); !strings.Contains(errVal, "CLANK_OUTCOMES") {
+		t.Errorf("err attribute should name the missing var, got %q", errVal)
 	}
 }
 
@@ -103,8 +146,18 @@ func TestMain_MissingAPIKeyReturnsOne(t *testing.T) {
 	if code != 1 {
 		t.Errorf("missing ANTHROPIC_API_KEY should exit 1, got %d", code)
 	}
-	if !strings.Contains(errb.String(), "ANTHROPIC_API_KEY") {
-		t.Error("stderr should name the missing var:", errb.String())
+	rec := lastJSONRecord(t, out.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "clank" {
+		t.Errorf("beat = %v, want clank", rec["beat"])
+	}
+	if rec["msg"] != "load config" {
+		t.Errorf("msg = %v, want 'load config'", rec["msg"])
+	}
+	if errVal, _ := rec["err"].(string); !strings.Contains(errVal, "ANTHROPIC_API_KEY") {
+		t.Errorf("err attribute should name the missing var, got %q", errVal)
 	}
 }
 
@@ -168,8 +221,15 @@ func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
 	if code != 1 {
 		t.Errorf("want exit code 1 for missing config, got %d", code)
 	}
-	if stderr.Len() == 0 {
-		t.Error("want error message printed to stderr, got none")
+	rec := lastJSONRecord(t, stdout.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "clank" {
+		t.Errorf("beat = %v, want clank", rec["beat"])
+	}
+	if rec["msg"] != "load config" {
+		t.Errorf("msg = %v, want 'load config'", rec["msg"])
 	}
 }
 
