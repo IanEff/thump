@@ -66,7 +66,7 @@ func run(t *testing.T, dir string, args ...string) (stdout, stderr string, exitC
 // test drives the compiled binary as a subprocess, not the package) so it
 // is pinned here too; a change to calipers.go's topUsage without a matching
 // change here fails this test rather than passing silently.
-const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard> [flags]\n"
+const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard|validate> [flags]\n"
 
 func TestMain_ReturnsUsageAndExitCodeTwoForBadInvocations(t *testing.T) {
 	t.Parallel()

@@ -13,7 +13,7 @@ vars:
   JOB_BEATS: "bootstrap"
   IMAGE_BEATS: "{{.SERVICE_BEATS}} {{.JOB_BEATS}}"
   # calipers is the operator CLI (incidents/approve/force/unseal/corpus/rca/
-  # tune/replay/harvest) — no internal/beat runtime, no otelc compile-time
+  # tune/replay/harvest/probe/transcript/scorecard/validate) — no internal/beat runtime, no otelc compile-time
   # instrumentation, no Helm Deployment, ships only as a binary
   # (build-calipers/goreleaser), never as a container image. Kept out of
   # BEATS because it isn't otelc-instrumented like the other five.
@@ -37,8 +37,13 @@ tasks:
     cmds:
       - task: ci
 
+  doctor:
+    desc: Check local development prerequisites, CLI tools, and runtime allocations
+    cmds:
+      - bash scripts/doctor.sh
+
   ci:
-    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, promql, race, build
+    desc: Full local CI — fmt-check, vet, lint, vulncheck, chart-lint, promql, validate:config, race, build
     cmds:
       - task: otelc:check-gomod
       - task: fmt-check
@@ -47,9 +52,15 @@ tasks:
       - task: vulncheck
       - task: chart-lint
       - task: test:promql
+      - task: validate:config
       - task: race
       - task: integration
       - task: build
+
+  validate:config:
+    desc: "Validate profile configs (actions, policy, whir, rattle): task validate:config [PROFILE=dev|thump-test|acme|all]"
+    cmds:
+      - go run ./cmd/calipers validate --profile={{.PROFILE | default "all"}}
 
   fmt:
     desc: gofmt the tree

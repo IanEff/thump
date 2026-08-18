@@ -1,0 +1,82 @@
+name: Bug Report
+description: Report an unexpected failure, divergence, crash, or invariant regression
+title: "[Bug]: "
+labels:
+  - type/bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue. Please verify you are running against a clean build (`task ci`).
+  - type: input
+    id: version
+    attributes:
+      label: Version / Git SHA
+      description: Output of `git describe --tags --always --dirty` or binary version.
+      placeholder: v0.1.0 or e59b007
+    validations:
+      required: true
+  - type: input
+    id: go_version
+    attributes:
+      label: Go Version
+      description: Output of `go version`.
+      placeholder: go version go1.26.0 darwin/arm64
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile / Domain
+      description: Which cluster profile or domain is affected?
+      options:
+        - dev (local k3d)
+        - thump-test (live rig)
+        - acme (synthetic / onboarding test)
+        - Hermetic / None (unit tests, CI gate)
+        - Custom domain
+    validations:
+      required: true
+  - type: checkboxes
+    id: component
+    attributes:
+      label: Affected Component(s)
+      description: Which beat or package is involved?
+      options:
+        - label: rattle (Signal plane / burn-rate detector)
+        - label: clank (Reasoning plane / SAO / LLM loop)
+        - label: hiss (Governance plane / policy evaluation)
+        - label: thump (Execution plane / actuator / convergence watcher)
+        - label: calipers (Operator CLI)
+        - label: deploy / helm / tilt
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what failed.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Exact commands, chaos injection scripts, or test invocations to trigger the bug.
+      placeholder: |
+        1. task dev:up
+        2. task chaos:cart-failure
+        3. Observe rattle log output...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Transcript / Audit Record
+      description: Paste relevant log lines (`slog` JSON), `calipers incidents --json` output, or unsealed transcripts.
+      render: shell
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs Actual Behavior
+      description: What invariant or behavior was violated?
+    validations:
+      required: true

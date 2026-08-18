@@ -25,6 +25,7 @@ import (
 	"github.com/ianeff/thump/internal/transcript"
 	"github.com/ianeff/thump/internal/tune"
 	"github.com/ianeff/thump/internal/unseal"
+	"github.com/ianeff/thump/internal/validate"
 )
 
 // shiftPositional pulls the leading fingerprint argument off args so a
@@ -88,7 +89,7 @@ func operatorProjection(ctx context.Context, natsURL, certFile, keyFile, caFile,
 // below by TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest so the two
 // cannot drift the way trim's own usage string once did (it named only
 // "incidents" while the switch routed four verbs).
-const topUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard> [flags]"
+const topUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard|validate> [flags]"
 
 // Main is calipers's entry point: routing to subcommand, then
 // either the machine (--json) or human (Lip Gloss) path over
@@ -125,6 +126,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return transcript.Main(args[1:], stdout, stderr)
 	case "scorecard":
 		return scorecard.Main(args[1:], stdout, stderr)
+	case "validate":
+		return validate.Main(args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintln(stderr, topUsage)
 		return 2

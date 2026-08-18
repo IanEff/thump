@@ -17,10 +17,11 @@ The safety argument rests on deliberate rigidity. The reasoner cannot invent an 
 
 ```sh
 git clone https://github.com/IanEff/thump && cd thump
+task doctor
 task ci
 ```
 
-Three and a half minutes on a cold clone with an empty build cache, requiring neither Kubernetes nor an `ANTHROPIC_API_KEY`. The pipeline executes `gofmt` checks, `go vet`, `golangci-lint`, `govulncheck`, five strict `kubeconform` schema passes over the Helm chart and custom resources, `promtool` unit tests against SLO recording rules, the test suite under `-race`, integration tests, and compiles six binaries.
+Three and a half minutes on a cold clone with an empty build cache, requiring neither Kubernetes nor an `ANTHROPIC_API_KEY`. `task doctor` checks required CLI tools upfront. The pipeline executes `gofmt` checks, `go vet`, `golangci-lint`, `govulncheck`, five strict `kubeconform` schema passes over the Helm chart and custom resources, `promtool` unit tests against SLO recording rules, profile configuration audits (`task validate:config`), the test suite under `-race`, integration tests, and compiles six binaries.
 
 The test that exercises the full composition:
 
@@ -145,7 +146,7 @@ Implementation entry points and packages for each beat:
 | thump | `cmd/thump` | `internal/thump` | `thump.go` |
 | click | none (wiring) | `internal/clank/click.go`, `metrics.go` | `Click.Absorb` and `ReturnEdge` in `click.go` |
 
-Supporting commands in `cmd/` include `bootstrap` (in-cluster setup Job) and `calipers`, the operator CLI. The twelve calipers subcommands — `incidents`, `approve`, `force`, `unseal`, `corpus`, `rca`, `tune`, `replay`, `harvest`, `probe`, `transcript`, `scorecard` — are dispatched by verb in `internal/calipers/calipers.go`. Investigation tools (`metrics`, `loki`, `kube`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
+Supporting commands in `cmd/` include `bootstrap` (in-cluster setup Job) and `calipers`, the operator CLI. The thirteen calipers subcommands — `incidents`, `approve`, `force`, `unseal`, `corpus`, `rca`, `tune`, `replay`, `harvest`, `probe`, `transcript`, `scorecard`, `validate` — are dispatched by verb in `internal/calipers/calipers.go`. Investigation tools (`metrics`, `loki`, `kube`) live in `internal/evidence`, LLM provider clients in `internal/anthropic` and `internal/gemini`, and coordinate resolution in `internal/subjects`.
 
 `internal/clank/doc.go` is the primary reference for reasoning loop invariants and belief-formation defenses ([`docs/invariants.md`](docs/invariants.md), I-6). rattle and hiss handle signal detection and policy evaluation; clank implements bounded LLM investigation.
 

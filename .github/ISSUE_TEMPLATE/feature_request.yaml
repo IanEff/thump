@@ -1,0 +1,31 @@
+name: Feature Request
+description: Propose a new capability, tool, or architectural improvement
+title: "[Feature]: "
+labels:
+  - type/feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before proposing architectural changes, ensure the proposal respects `CHARTER.md` invariants (five beats, producer-owned boundary objects, no unconstrained LLM shell execution).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What limitation or missing capability are you addressing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the design, affected packages, and new interfaces.
+    validations:
+      required: true
+  - type: textarea
+    id: charter_alignment
+    attributes:
+      label: Charter Alignment
+      description: How does this change preserve never-clauses (e.g. clank selects, hiss permits, thump acts, click learns)?
+    validations:
+      required: true

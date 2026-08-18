@@ -469,7 +469,7 @@ func TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet(t *testing.
 // and TestMain_ReturnsUsageErrorForAnUndocumentedVerbExactly below fail
 // immediately, which is the drift detector — not a second source of truth
 // to keep in sync by hand.
-const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard> [flags]\n"
+const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard|validate> [flags]\n"
 
 // TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest pins the usage string
 // and the switch together. They drifted apart in trim already — the usage
@@ -486,7 +486,7 @@ func TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest(t *testing.T) {
 	t.Setenv("THUMP_SEAL_KEY", "") // corpus checks this before anything network-shaped
 	t.Setenv("ANTHROPIC_API_KEY", "")
 
-	for _, verb := range []string{"incidents", "approve", "force", "unseal", "corpus", "rca", "tune", "replay", "harvest", "probe", "transcript", "scorecard"} {
+	for _, verb := range []string{"incidents", "approve", "force", "unseal", "corpus", "rca", "tune", "replay", "harvest", "probe", "transcript", "scorecard", "validate"} {
 		t.Run(verb, func(t *testing.T) {
 			var out, errOut bytes.Buffer
 			calipers.Main([]string{verb}, &out, &errOut)
