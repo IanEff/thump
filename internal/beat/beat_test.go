@@ -55,6 +55,42 @@ func TestStart_UnparseableFlagExitsNonZero(t *testing.T) {
 	}
 }
 
+func TestStart_EveryBeatLogsStructuredStartupAndScope(t *testing.T) {
+	beats := map[string]struct {
+		beatName string
+	}{
+		"Start logs structured JSON record scoped to clank":  {beatName: "clank"},
+		"Start logs structured JSON record scoped to hiss":   {beatName: "hiss"},
+		"Start logs structured JSON record scoped to rattle": {beatName: "rattle"},
+		"Start logs structured JSON record scoped to thump":  {beatName: "thump"},
+	}
+
+	for name, tc := range beats {
+		t.Run(name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			lc, code, exit := beat.Start(tc.beatName, nil, &stdout, &stderr, beat.Version{Version: "1.0.0"})
+			if exit || code != 0 {
+				t.Fatalf("Start returned exit=%v code=%d, want false/0", exit, code)
+			}
+			lc.Stop()
+
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(stdout.String())), &rec); err != nil {
+				t.Fatalf("stdout is not valid JSON: %v, raw: %q", err, stdout.String())
+			}
+			if rec["level"] != "INFO" {
+				t.Errorf("level = %v, want INFO", rec["level"])
+			}
+			if rec["beat"] != tc.beatName {
+				t.Errorf("beat = %v, want %s", rec["beat"], tc.beatName)
+			}
+			if rec["msg"] != "starting "+tc.beatName {
+				t.Errorf("msg = %v, want 'starting %s'", rec["msg"], tc.beatName)
+			}
+		})
+	}
+}
+
 func TestStart_RunningPathReadsNATSAndCancelsOnStop(t *testing.T) {
 	t.Setenv("NATS_URL", "nats://example:4222")
 	var stdout, stderr bytes.Buffer
