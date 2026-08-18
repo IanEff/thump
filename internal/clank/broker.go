@@ -3,8 +3,6 @@ package clank
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 
 	"github.com/ianeff/thump/api/v1/decision"
@@ -32,7 +30,7 @@ import (
 // sealed segments to object storage in the background. The two-subscriber
 // shape is clank's own; the beat kit supplies the consumer/publisher
 // primitives but leaves this composition here.
-func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, limits Limits, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, limits Limits, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *health.Health) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 
@@ -40,9 +38,9 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
-	}, beat.BrokerHooks(health, "clank", func() { brokerLost(beat.ErrBrokerClosed) }))
+	}, beat.BrokerHooks(health, func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("connect broker", "err", err)
 		return 1
 	}
 	defer closeNC()
@@ -54,13 +52,13 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 
 	walConfig, err := beat.LoadWALConfig(cfg.WALConfig)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+		slog.Error("load wal config", "err", err)
 		return 1
 	}
 
 	proposalPub, _, err := beat.NewWALPublisher[proposal.Set](js, cfg.WALDir, "clank", "thump.proposals", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("proposal wal publisher", "err", err)
 		return 1
 	}
 
@@ -70,13 +68,13 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 	// ungated set.
 	journalPub, _, err := beat.NewJournalPublisher[proposal.Set](cfg.WALDir, "clank", "thump.reasoning", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("reasoning journal publisher", "err", err)
 		return 1
 	}
 
 	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("s3 segment sink", "err", err)
 		return 1
 	}
 	defer func() {
@@ -95,7 +93,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 
 	ledger, err := buildLedger(ctx, js, limits.LedgerRetention, cases)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "rebuild ledger: %v\n", err)
+		slog.Error("rebuild ledger", "err", err)
 		return 1
 	}
 	learn := Click{Ledger: ledger, Cases: cases, Recorder: recorder}

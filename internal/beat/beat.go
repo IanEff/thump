@@ -66,7 +66,7 @@ func Start(name string, args []string, stdout, stderr io.Writer, v Version) (lc 
 		if errors.Is(err, flag.ErrHelp) {
 			return Lifecycle{}, 0, true
 		}
-		_, _ = fmt.Fprintf(stderr, "failed to parse flags: %v\n", err)
+		slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With("beat", name).Error("failed to parse flags", "err", err)
 		return Lifecycle{}, 1, true
 	}
 
@@ -75,7 +75,7 @@ func Start(name string, args []string, stdout, stderr io.Writer, v Version) (lc 
 		return Lifecycle{}, 0, true
 	}
 
-	slog.SetDefault(slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With("beat", name))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 

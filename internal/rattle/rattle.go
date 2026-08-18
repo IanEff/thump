@@ -44,19 +44,19 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 
 	cfg, err := config.LoadRattle(lc.NATSURL != "")
 	if err != nil {
-		log.Error("load config", "error", err)
+		log.Error("load config", "err", err)
 		return 1
 	}
 
 	slos, err := LoadWatch(cfg.WatchPath)
 	if err != nil {
-		log.Error("load watch list", "error", err)
+		log.Error("load watch list", "err", err)
 		return 1
 	}
 
 	query, err := LoadQueryConfig(cfg.QueryConfig)
 	if err != nil {
-		log.Error("load query config", "error", err)
+		log.Error("load query config", "err", err)
 		return 1
 	}
 
@@ -72,41 +72,15 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			CAFile:   cfg.TLSCAFile,
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "backend tls setup: %v\n", err)
+			slog.Error("backend tls setup", "err", err)
 			return 1
 		}
 	}
 
-	// var topo TopologySource
-	// if cfg.WhirCatalog != "" && cfg.WhirStateQueries != "" {
-	// 	queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
-	// 	if err != nil {
-	// 		_, _ = fmt.Fprintf(stderr, "load state queries: %v\n", err)
-	// 		return 1
-	// 	}
-	// 	if _, err := whir.LoadCatalogFile(cfg.WhirCatalog); err != nil {
-	// 		_, _ = fmt.Fprintf(stderr, "load whir catalog: %v\n", err)
-	// 		return 1
-	// 	}
-	// 	topo = &WhirTopologySource{Resolver: &whir.Resolver{
-	// 		BaseURL: cfg.PromURL,
-	// 		Client:  httpx.Client(httpx.DefaultBackendTimeout, backendTLS),
-	// 		Queries: queries,
-	// 	}}
-	// }
-
-	// var traffic TrafficSource
-	// if cfg.Traffic != "" {
-	// 	queries, err := LoadTrafficQueries(cfg.Traffic)
-	// 	if err != nil {
-	// 		_, _ = fmt.Fprintf(stderr, "load traffic queries: %v\n", err)
-	// 		return 1
-	// 	}
-	// 	traffic = &HubbleTrafficSource{BaseURL: cfg.PromURL, Client: httpx.Client(httpx.DefaultBackendTimeout, backendTLS), Queries: queries}
-	// }
 	topo, traffic, err := buildSources(cfg, backendTLS)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "build sources: %v:\n", err)
+		slog.Error("build sources", "err", err)
+		return 1
 	}
 
 	var metricsTLS *tls.Config
@@ -117,7 +91,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			CAFile:   cfg.TLSCAFile,
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			slog.Error("metrics tls setup", "err", err)
 			return 1
 		}
 	}
@@ -136,20 +110,20 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			CertFile: cfg.TLSCertFile,
 			KeyFile:  cfg.TLSKeyFile,
 			CAFile:   cfg.TLSCAFile,
-		}, beat.BrokerHooks(health, "rattle", func() { brokerLost(beat.ErrBrokerClosed) }))
+		}, beat.BrokerHooks(health, func() { brokerLost(beat.ErrBrokerClosed) }))
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "%v\n", err)
+			slog.Error("connect broker", "err", err)
 			return 1
 		}
 		defer closeNC()
 		walConfig, err = beat.LoadWALConfig(cfg.WALConfig)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+			slog.Error("load wal config", "err", err)
 			return 1
 		}
 		p, _, err := beat.NewWALPublisher[signal.Detection](js, cfg.WALDir, "rattle", "thump.detections", walConfig)
 		if err != nil {
-			_, _ = fmt.Fprintln(stderr, err)
+			slog.Error("wal publisher", "err", err)
 			return 1
 		}
 		pub = p
@@ -158,7 +132,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		// offline path: the DirPublisher is now the keyless fake the seam
 		// tests exercise — broker mode above is how this actually runs.
 		if err := os.MkdirAll(cfg.Outbox, 0o750); err != nil { //nolint:gosec // G301: operator-configured directory, not user input
-			_, _ = fmt.Fprintf(stderr, "mkdir outbox: %v\n", err)
+			slog.Error("mkdir outbox", "err", err)
 			return 1
 		}
 		pub = &publish.DirPublisher[signal.Detection]{
@@ -179,7 +153,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 		CAFile:   cfg.TLSCAFile,
 	})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
+		slog.Error("tracer setup", "err", err)
 		return 1
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
@@ -189,12 +163,12 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 	if walPub != nil {
 		sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "%v\n", err)
+			slog.Error("s3 segment sink", "err", err)
 			return 1
 		}
 		defer func() {
 			if err := walPub.WAL.Drain(ctx, sink); err != nil {
-				slog.Error("failed to drain WAL", "error", err)
+				slog.Error("failed to drain WAL", "err", err)
 			}
 		}()
 		g, gctx := errgroup.WithContext(ctx)
@@ -297,7 +271,7 @@ func buildSources(cfg config.Rattle, backendTLS *tls.Config) (TopologySource, Tr
 	var topo TopologySource
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
 		slog.Warn("no topology source configured — reconciling without a blast-radius map",
-			"beat", "rattle", "fix", "set WHIR_CATALOG and WHIR_STATE_QUERIES")
+			"fix", "set WHIR_CATALOG and WHIR_STATE_QUERIES")
 	} else {
 		queries, err := whir.LoadStateQueries(cfg.WhirStateQueries)
 		if err != nil {
@@ -316,7 +290,7 @@ func buildSources(cfg config.Rattle, backendTLS *tls.Config) (TopologySource, Tr
 	var traffic TrafficSource
 	if cfg.Traffic == "" {
 		slog.Warn("no traffic source configured — reconciling without traffic enrichment",
-			"beat", "rattle", "fix", "set RATTLE_TRAFFIC")
+			"fix", "set RATTLE_TRAFFIC")
 	} else {
 		queries, err := LoadTrafficQueries(cfg.Traffic)
 		if err != nil {

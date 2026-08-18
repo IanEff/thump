@@ -3,6 +3,7 @@ package hiss_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,19 @@ import (
 	"github.com/ianeff/thump/internal/publish"
 	"sigs.k8s.io/yaml"
 )
+
+func lastJSONRecord(t *testing.T, stdout string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) == 0 || lines[len(lines)-1] == "" {
+		t.Fatalf("no stdout output, want structured JSON records: %q", stdout)
+	}
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &rec); err != nil {
+		t.Fatalf("last line is not valid JSON: %v\nraw: %s", err, lines[len(lines)-1])
+	}
+	return rec
+}
 
 func TestMain_PrintsVersionAndReturnsZero(t *testing.T) {
 	var out, errb bytes.Buffer
@@ -40,8 +54,18 @@ func TestMain_MissingInboxReturnsOne(t *testing.T) {
 	if code != 1 {
 		t.Errorf("missing HISS_INBOX should exit 1, got %d", code)
 	}
-	if !strings.Contains(errb.String(), "HISS_INBOX") {
-		t.Error("stderr should name the missing var:", errb.String())
+	rec := lastJSONRecord(t, out.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "hiss" {
+		t.Errorf("beat = %v, want hiss", rec["beat"])
+	}
+	if rec["msg"] != "load config" {
+		t.Errorf("msg = %v, want 'load config'", rec["msg"])
+	}
+	if errVal, _ := rec["err"].(string); !strings.Contains(errVal, "HISS_INBOX") {
+		t.Errorf("err attribute should name the missing var, got %q", errVal)
 	}
 }
 
@@ -54,8 +78,18 @@ func TestMain_UnreadablePolicyReturnsOne(t *testing.T) {
 	if code != 1 {
 		t.Errorf("an unreadable policy file should exit 1, got %d", code)
 	}
-	if !strings.Contains(errb.String(), "policy") {
-		t.Error("stderr should say the policy failed to load:", errb.String())
+	rec := lastJSONRecord(t, out.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "hiss" {
+		t.Errorf("beat = %v, want hiss", rec["beat"])
+	}
+	if rec["msg"] != "load policy" {
+		t.Errorf("msg = %v, want 'load policy'", rec["msg"])
+	}
+	if errVal, _ := rec["err"].(string); !strings.Contains(errVal, "no-such-policy.yaml") {
+		t.Errorf("err attribute should name the unreadable file, got %q", errVal)
 	}
 }
 
@@ -68,8 +102,15 @@ func TestMain_ReturnsNonZeroWhenRequiredConfigIsMissing(t *testing.T) {
 	if code != 1 {
 		t.Errorf("want exit code 1 for missing config, got %d", code)
 	}
-	if stderr.Len() == 0 {
-		t.Error("want error message printed to stderr, got none")
+	rec := lastJSONRecord(t, stdout.String())
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["beat"] != "hiss" {
+		t.Errorf("beat = %v, want hiss", rec["beat"])
+	}
+	if rec["msg"] != "load config" {
+		t.Errorf("msg = %v, want 'load config'", rec["msg"])
 	}
 }
 

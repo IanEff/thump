@@ -54,7 +54,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	cfg, err := config.LoadClank(lc.NATSURL != "")
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("load config", "err", err)
 		return 1
 	}
 	if lc.NATSURL == "" && cfg.Transcripts == "" {
@@ -63,25 +63,25 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	cat, err := contract.LoadCatalogFile(cfg.ActionCatalog, contract.Preconditions)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load action catalog: %v\n", err)
+		slog.Error("load action catalog", "err", err)
 		return 1
 	}
 
 	classes, err := contract.LoadFailureClassesFile(cfg.FailureClasses)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load failure classes: %v\n", err)
+		slog.Error("load failure classes", "err", err)
 		return 1
 	}
 
 	weights, err := LoadWeightsFile(cfg.Weights)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load weights: %v\n", err)
+		slog.Error("load weights", "err", err)
 		return 1
 	}
 
 	limits, err := LoadLimitsFile(cfg.Limits)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load limits: %v\n", err)
+		slog.Error("load limits", "err", err)
 		return 1
 	}
 
@@ -97,7 +97,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			CAFile:   cfg.TLSCAFile,
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "backend tls setup: %v\n", err)
+			slog.Error("backend tls setup", "err", err)
 			return 1
 		}
 	}
@@ -106,7 +106,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	if cfg.EvidenceQueries != "" {
 		ev, err = evidence.LoadEvidenceConfig(cfg.EvidenceQueries)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "load evidence queries: %v\n", err)
+			slog.Error("load evidence queries", "err", err)
 			return 1
 		}
 	}
@@ -117,7 +117,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	model := anthropic.NewModel(cfg.AnthropicAPIKey, anthropic.ModelClaudeHaiku4_5, modelRequestTimeout) // cheapest model on record
 	intake, err := buildIntake(cfg, backendTLS, kubeClient, argoClient, ev.Index, limits.ChangeLookback)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "build intake: %v\n", err)
+		slog.Error("build intake", "err", err)
 		return 1
 	}
 
@@ -131,13 +131,13 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	case lc.NATSURL != "":
 		client, err := objectstore.NewS3Client(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "transcripts s3 client: %v\n", err)
+			slog.Error("transcripts s3 client", "err", err)
 			return 1
 		}
 		store = NewS3Store(client, cfg.S3Bucket, sealbox.Key(cfg.SealKey))
 	case cfg.Transcripts != "":
 		if err := os.MkdirAll(cfg.Transcripts, 0o750); err != nil { //nolint:gosec // G301: operator-configured directory, not user input
-			_, _ = fmt.Fprintf(stderr, "mkdir transcripts: %v", err)
+			slog.Error("mkdir transcripts", "err", err)
 			return 1
 		}
 		store = NewDirStore(cfg.Transcripts)
@@ -149,7 +149,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		CAFile:   cfg.TLSCAFile,
 	})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
+		slog.Error("tracer setup", "err", err)
 		return 1
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
@@ -162,7 +162,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			CAFile:   cfg.TLSCAFile,
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			slog.Error("metrics tls setup", "err", err)
 			return 1
 		}
 	}
@@ -172,7 +172,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, weights, limits, tracer, recorder, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, weights, limits, tracer, recorder, stages, health)
 	}
 
 	health.SetReady(true)
@@ -225,7 +225,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 func InClusterClients() (kubernetes.Interface, dynamic.Interface) {
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
-		slog.Info("not running in-cluster — no kube evidence tool and no change source", "beat", "clank")
+		slog.Info("not running in-cluster — no kube evidence tool and no change source")
 		return nil, nil
 	}
 	return clientsFor(restConfig)
@@ -257,16 +257,14 @@ func KubeconfigClients() (kubernetes.Interface, dynamic.Interface) {
 func clientsFor(restConfig *rest.Config) (kubernetes.Interface, dynamic.Interface) {
 	var kube kubernetes.Interface
 	if kubeClient, err := kubernetes.NewForConfig(restConfig); err != nil {
-		slog.Warn("could not build a kube client — clank reasoning without cluster-object evidence",
-			"beat", "clank", "err", err)
+		slog.Warn("could not build a kube client — clank reasoning without cluster-object evidence", "err", err)
 	} else {
 		kube = kubeClient
 	}
 
 	var argo dynamic.Interface
 	if argoClient, err := dynamic.NewForConfig(restConfig); err != nil {
-		slog.Warn("could not build a dynamic client — causal scoring is inert",
-			"beat", "clank", "err", err)
+		slog.Warn("could not build a dynamic client — causal scoring is inert", "err", err)
 	} else {
 		argo = argoClient
 	}
@@ -286,8 +284,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev evidence.Config, ku
 	case cfg.PromURL == "":
 		slog.Warn("no PROM_URL - clank will run without evidence tools; every proposal will gate to no_action")
 	case cfg.EvidenceQueries == "":
-		slog.Warn("no EVIDENCE_QUERIES — clank has a Prometheus but no named queries to ask it",
-			"beat", "clank", "fix", "set EVIDENCE_QUERIES")
+		slog.Warn("no EVIDENCE_QUERIES — clank has a Prometheus but no named queries to ask it", "fix", "set EVIDENCE_QUERIES")
 	default:
 		tools["metrics"] = &evidence.MetricsTool{
 			BaseURL: cfg.PromURL,
@@ -322,7 +319,7 @@ func buildTools(cfg config.Clank, backendTLS *tls.Config, ev evidence.Config, ku
 
 	if len(ev.Index) == 0 && (tools["loki"] != nil || tools["kube"] != nil || tools["traces"] != nil) {
 		slog.Warn("no subject rules configured — loki, kube and traces evidence can corroborate but never ground",
-			"beat", "clank", "fix", "add a subjects: block to EVIDENCE_QUERIES")
+			"fix", "add a subjects: block to EVIDENCE_QUERIES")
 	}
 
 	return tools
@@ -357,7 +354,7 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, kube kubernetes.Inter
 
 	if cfg.WhirCatalog == "" || cfg.WhirStateQueries == "" {
 		slog.Warn("no topology source configured — clank reasoning without a blast-radius map",
-			"beat", "clank", "fix", "set WHIR_CATALOG and WHIR_STATE_QUERIES")
+			"fix", "set WHIR_CATALOG and WHIR_STATE_QUERIES")
 	} else {
 		cat, err := whir.LoadCatalogFile(cfg.WhirCatalog)
 		if err != nil {
@@ -399,17 +396,17 @@ func buildIntake(cfg config.Clank, backendTLS *tls.Config, kube kubernetes.Inter
 	}
 
 	if kube == nil {
-		slog.Warn("no in-cluster kube client — the kubernetes change source is inert", "beat", "clank")
+		slog.Warn("no in-cluster kube client — the kubernetes change source is inert")
 	}
 	if cfg.ArgoEnabled && argo == nil {
-		slog.Warn("ARGOCD_ENABLED is set but clank has no in-cluster identity — causal scoring is inert", "beat", "clank")
+		slog.Warn("ARGOCD_ENABLED is set but clank has no in-cluster identity — causal scoring is inert")
 	}
 	if len(subjects) == 0 {
 		slog.Warn("no subject rules authored — every change event will resolve outside the topology and causal scoring is inert",
-			"beat", "clank", "fix", "author subjects: in the file EVIDENCE_QUERIES names")
+			"fix", "author subjects: in the file EVIDENCE_QUERIES names")
 	}
 	if len(change) == 0 {
-		slog.Warn("no change source configured — causal scoring is inert", "beat", "clank")
+		slog.Warn("no change source configured — causal scoring is inert")
 	}
 
 	return NewIntake(topo, change), nil

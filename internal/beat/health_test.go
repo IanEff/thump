@@ -19,7 +19,7 @@ func TestBrokerHooks_DrivesReadinessThroughADropAndRecovery(t *testing.T) {
 	t.Parallel()
 	h := &health.Health{}
 	h.SetReady(true)
-	hooks := beat.BrokerHooks(h, "dummy beat", nil)
+	hooks := beat.BrokerHooks(h, nil)
 
 	hooks.OnDisconnect(errors.New("dummy drop"))
 	if diff := cmp.Diff(http.StatusServiceUnavailable, readyzStatus(t, h)); diff != "" {
@@ -40,7 +40,7 @@ func TestBrokerHooks_OnClosedRunsTheCallerSExitHook(t *testing.T) {
 	h := &health.Health{}
 	h.SetReady(true)
 	var closed bool
-	hooks := beat.BrokerHooks(h, "dummy beat", func() { closed = true })
+	hooks := beat.BrokerHooks(h, func() { closed = true })
 
 	hooks.OnClosed()
 

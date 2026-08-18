@@ -57,4 +57,10 @@ func TestMain_ReportsStartupFailureAsAStructuredRecordNotBareText(t *testing.T) 
 	if want := "ERROR"; want != rec["level"] {
 		t.Errorf("wrong level on a startup failure: want %q, got %v", want, rec["level"])
 	}
+	if want := "rattle"; want != rec["beat"] {
+		t.Errorf("wrong beat on a startup failure: want %q, got %v", want, rec["beat"])
+	}
+	if want := "load watch list"; want != rec["msg"] {
+		t.Errorf("wrong msg on a startup failure: want %q, got %v", want, rec["msg"])
+	}
 }
