@@ -7,20 +7,30 @@ the package docs under `internal/` and `api/`.
 
 ## Go house rules
 
+- **Go 1.26 across everything**: write Go 1.26 idioms and stdlib features in all
+  production code and test suites — dated pre-1.25/1.26 patterns are forbidden.
+  Use `errors.AsType[T]`, `sync.WaitGroup.Go`, `testing/synctest`,
+  `context.WithoutCancel`, and modern generic slices/maps everywhere.
 - **Errors**: wrap with `%w`; compare sentinels with `errors.Is`. To pull a typed error back
-  out, prefer `errors.AsType[T](err) T` (Go 1.26+) over the `var target T; errors.As(err,
-  &target)` two-step — fall back to `errors.As` only where a call site can't assume 1.26.
-  Combine multiple errors with `errors.Join`. Package-level `var ErrFoo = errors.New(...)`
-  for sentinels.
+  out, prefer `errors.AsType[T](err) T` over the `var target T; errors.As(err,
+  &target)` two-step. Combine multiple errors with `errors.Join`. Package-level
+  `var ErrFoo = errors.New(...)` for sentinels.
 - **Never return a typed-nil pointer as an `error`** — return literal `nil`.
 - **Accept interfaces, return structs.** Interfaces are consumer-defined, not shipped
   alongside their implementation.
 - **`context.Context` is always the first parameter**, never a struct field. Thread it
   through call chains; don't reach for `context.Background()` deep inside one.
-- **Concurrency**: run tests with `-race`. Launch a tracked goroutine with
-  `wg.Go(func() { ... })` (`sync.WaitGroup.Go`, Go 1.25+) instead of hand-rolling `wg.Add(1);
-  go func() { defer wg.Done(); ... }()`. Use `testing/synctest` (`synctest.Test`, GA since Go
-  1.25) for deterministic time/concurrency tests instead of real sleeps.
+- **Context decoupling belongs at boundaries, never in primitives**: leaf stores, clients,
+  and helpers must always respect the `context.Context` they are passed. Decoupling via
+  `context.WithoutCancel` plus an authored timeout is reserved for lifecycle boundaries
+  (message ingress adapters) and deferred exit cleanups (recording terminal records, draining WALs).
+- **Edge and defer errors are logged, never dropped**: if an error occurs at the outermost
+  adapter boundary or in a deferred cleanup where it cannot be returned to a caller, log it
+  with structured context (`slog.Error`/`slog.Warn`) — never discard it with `_ =`.
+- **Concurrency & WaitGroups**: run tests with `-race`. Always launch a tracked goroutine
+  with `wg.Go(func() { ... })` (`sync.WaitGroup.Go`, Go 1.25+) — never hand-roll
+  `wg.Add(1); go func() { defer wg.Done(); ... }()`. Use `testing/synctest`
+  (`synctest.Test`, GA since Go 1.25) for deterministic time/concurrency tests instead of real sleeps.
 - **Benchmarks**: use `testing.B` and compare with `benchstat` before/after a change. Check
   escape analysis with `go build -gcflags=-m` when allocation matters.
 - **Prefer stdlib**: `any` (not `interface{}`), builtins (`min`/`max`/`clear`), `log/slog`,

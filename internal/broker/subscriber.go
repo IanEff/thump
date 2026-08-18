@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/ianeff/thump/internal/wire"
@@ -73,32 +74,47 @@ func (s *JetSubscriber[T]) backoffFor(numDelivered uint64) time.Duration {
 	return schedule[idx]
 }
 
+// dlqTimeout bounds dead-letter publishing on shutdown to 5s — detached from
+// caller cancellation so an undecodable or exhausted message is preserved.
+const dlqTimeout = 5 * time.Second
+
 // Run subscribes subject and dispatches every message to h until ctx is
 // cancelled. A message that fails to decode is dead-lettered immediately
 // (DOOR 1, no retry); one that decodes but fails h is nak'd with
 // backoffFor's delay and retried until NumDelivered reaches maxDeliver,
 // then dead-lettered (DOOR 2). Everything else is acked. Returns
-// ctx.Err() once cancelled.
+// ctx.Err() once cancelled, after draining in-flight handler executions.
 func (s *JetSubscriber[T]) Run(ctx context.Context, subject string, h Handler[T]) error {
 	cons, err := s.js.Consumer(ctx, StreamName, DurableFor(subject))
 	if err != nil {
 		return fmt.Errorf("broker: get consumer %s: %w", subject, err)
 	}
 
+	var wg sync.WaitGroup
 	cc, err := cons.Consume(func(msg jetstream.Msg) {
+		wg.Add(1)
+		defer wg.Done()
+
 		var obj T
 		if err := wire.Unmarshal(msg.Data(), &obj); err != nil {
 			// DOOR 1 — poison: never decodes. Dead-letter it now, no retry.
 			slog.Error("dead-lettering undecodable message", "subject", subject, "err", err)
-			_, _ = s.js.Publish(ctx, subject+".dlq", msg.Data())
-			_ = msg.TermWithReason("undecodable")
+			dlqCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dlqTimeout)
+			defer cancel()
+			if _, dlqErr := s.js.Publish(dlqCtx, subject+".dlq", msg.Data()); dlqErr != nil {
+				slog.Error("failed to publish undecodable message to dead-letter queue", "subject", subject+".dlq", "err", dlqErr)
+			}
+			if termErr := msg.TermWithReason("undecodable"); termErr != nil {
+				slog.Warn("failed to term undecodable message", "subject", subject, "err", termErr)
+			}
 			return
 		}
 
 		// Rebuild whatever trace was active when this message was published,
-		// from its headers. A no-op if there's no header — msgCtx just comes
-		// back equal to ctx.
-		msgCtx := propagation.TraceContext{}.Extract(ctx, propagation.HeaderCarrier(msg.Headers()))
+		// from its headers — detached from ctx so an in-flight delivery is
+		// given the shutdown grace period to complete rather than aborting
+		// the instant the pod receives SIGTERM.
+		msgCtx := propagation.TraceContext{}.Extract(context.WithoutCancel(ctx), propagation.HeaderCarrier(msg.Headers()))
 
 		if err := h(msgCtx, obj, func() { _ = msg.InProgress() }); err != nil {
 			// DOOR 2 — transient: handler failed. Retry with backoff until
@@ -114,23 +130,36 @@ func (s *JetSubscriber[T]) Run(ctx context.Context, subject string, h Handler[T]
 			if md != nil && md.NumDelivered >= maxDeliver {
 				slog.Error("dead-lettering message after exhausting retry budget",
 					"subject", subject, "delivered", delivered, "maxDeliver", maxDeliver, "err", err)
-				_, _ = s.js.Publish(ctx, subject+".dlq", msg.Data())
-				_ = msg.TermWithReason("retry budget exhausted")
+				dlqCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dlqTimeout)
+				defer cancel()
+				if _, dlqErr := s.js.Publish(dlqCtx, subject+".dlq", msg.Data()); dlqErr != nil {
+					slog.Error("failed to publish exhausted message to dead-letter queue", "subject", subject+".dlq", "err", dlqErr)
+				}
+				if termErr := msg.TermWithReason("retry budget exhausted"); termErr != nil {
+					slog.Warn("failed to term exhausted message", "subject", subject, "err", termErr)
+				}
 				return
 			}
 			delay := s.backoffFor(delivered)
 			slog.Error("handler failed, redelivering",
 				"subject", subject, "delivered", delivered, "retryIn", delay, "err", err)
-			_ = msg.NakWithDelay(delay)
+			if nakErr := msg.NakWithDelay(delay); nakErr != nil {
+				slog.Warn("failed to nak message for redelivery", "subject", subject, "err", nakErr)
+			}
 			return
 		}
 
-		_ = msg.Ack()
+		if ackErr := msg.Ack(); ackErr != nil {
+			slog.Warn("failed to ack message", "subject", subject, "err", ackErr)
+		}
 	})
 	if err != nil {
 		return fmt.Errorf("broker: consume %s: %w", subject, err)
 	}
-	defer cc.Stop()
+	defer func() {
+		cc.Stop()
+		wg.Wait()
+	}()
 
 	<-ctx.Done() // run until cancelled — this is the beat's main loop now
 	return ctx.Err()

@@ -148,7 +148,13 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 	// transient error) must never share checkpoint objects, or the second
 	// run silently clobbers the first's transcript at each matching step.
 	runID := fmt.Sprintf("%s/%d", sig.Fingerprint, time.Now().UnixNano())
-	defer func() { _ = e.Store.Finish(ctx, runID, err) }()
+	defer func() {
+		finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if finishErr := e.Store.Finish(finishCtx, runID, err); finishErr != nil {
+			slog.Error("clank: record terminal store record failed", "run_id", runID, "err", finishErr)
+		}
+	}()
 
 	// step is hoisted out of the reason loop below (`for ; step < ...`
 	// instead of `for step := 0; ...`) so the terminal log deferred next
