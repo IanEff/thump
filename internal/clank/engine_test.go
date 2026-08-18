@@ -1554,3 +1554,48 @@ func TestPropose_CarriesTheFiredSLOIdentityFromDetection(t *testing.T) {
 		t.Errorf("Engine.Propose SLORef mismatch (-want +got):\n%s", diff)
 	}
 }
+
+type cancellingModel struct {
+	onComplete func()
+}
+
+func (m *cancellingModel) Complete(ctx context.Context, _ []reason.Message, _ []reason.ToolSpec) (reason.Completion, error) {
+	if m.onComplete != nil {
+		m.onComplete()
+	}
+	if ctx.Err() != nil {
+		return reason.Completion{}, ctx.Err()
+	}
+	return reason.Completion{ToolCalls: []reason.ToolCall{{Name: "metrics", Args: json.RawMessage(`{"q":"latency_p99"}`)}}}, nil
+}
+
+// TestPropose_FinishesRunWhenContextCancelledMidFlight proves that when a run's
+// context is cancelled mid-flight, the deferred Finish call writes the terminal
+// record under a detached context rather than failing on the dead context.
+func TestPropose_FinishesRunWhenContextCancelledMidFlight(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	model := &cancellingModel{
+		onComplete: func() {
+			cancel() // cancel parent context while Complete is in flight
+		},
+	}
+	e, _ := newTestEngine(model)
+	memStore := clank.NewMemStore()
+	e.Store = memStore
+
+	_, err := e.Propose(ctx, sigBurnAccel())
+	if err == nil {
+		t.Fatal("Propose on cancelled context must return an error")
+	}
+
+	pending, err := memStore.Pending(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("cancelled run must be marked finished, but remained pending: %v", pending)
+	}
+}

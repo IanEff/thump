@@ -184,7 +184,7 @@ func (s *S3Store) Checkpoint(ctx context.Context, t Turn) error {
 	return s.putJSON(ctx, turnKey(t.RunID, t.Step), t)
 }
 
-// Pending always returns nil, same as DirStore.
+// Pending always returns nil — see the Store doc comment.
 func (s *S3Store) Pending(ctx context.Context) ([]Turn, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -203,6 +203,9 @@ func (s *S3Store) Finish(ctx context.Context, runID string, runErr error) error 
 }
 
 func (s *S3Store) putJSON(ctx context.Context, key string, v any) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("s3 store: marshal: %w", err)

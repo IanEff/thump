@@ -2,6 +2,7 @@ package broker_test
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -246,5 +247,51 @@ func TestSubscriber_HeartbeatPreventsRedeliveryOfASlowHandler(t *testing.T) {
 	}
 	if info.NumRedelivered != 0 {
 		t.Errorf("want 0 redeliveries, got %d", info.NumRedelivered)
+	}
+}
+
+// TestSubscriber_DrainsInFlightHandlerOnContextCancellation proves that when
+// Run's parent ctx is cancelled, Run waits for in-flight handler callbacks to
+// complete before returning.
+func TestSubscriber_DrainsInFlightHandlerOnContextCancellation(t *testing.T) {
+	t.Parallel()
+	js := natstest.New(t)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+
+	if err := broker.EnsureTopology(context.Background(), js); err != nil {
+		t.Fatal(err)
+	}
+
+	pub := publish.NewJetPublisher[signal.Detection](js)
+	if err := pub.Publish(context.Background(), "thump.detections", signal.Detection{Fingerprint: "slo_burn:argocd"}); err != nil {
+		t.Fatal(err)
+	}
+
+	handlerStarted := make(chan struct{})
+	var handlerFinished atomic.Bool
+	sub := broker.NewJetSubscriber[signal.Detection](js)
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		_ = sub.Run(runCtx, "thump.detections", func(_ context.Context, _ signal.Detection, _ func()) error {
+			close(handlerStarted)
+			time.Sleep(50 * time.Millisecond)
+			handlerFinished.Store(true)
+			return nil
+		})
+	})
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler never started")
+	}
+
+	cancelRun()
+	wg.Wait()
+
+	if !handlerFinished.Load() {
+		t.Error("JetSubscriber.Run returned before in-flight handler finished executing")
 	}
 }

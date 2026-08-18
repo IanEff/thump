@@ -234,3 +234,68 @@ func readLines(t *testing.T, path string) []string {
 	}
 	return strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
 }
+
+// TestS3Store_CheckpointHonorsContextCancellation proves that Checkpoint
+// returns an error when handed an already-cancelled context.
+func TestS3Store_CheckpointHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	client, bucket := s3test.New(t)
+	key := newTestSealKey(t)
+	store := clank.NewS3Store(client, bucket, key)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	want := clank.Turn{RunID: "r1", Step: 0, Msgs: []reason.Message{{Role: "user", Content: "investigate"}}}
+	if err := store.Checkpoint(ctx, want); err == nil {
+		t.Fatal("Checkpoint on cancelled context must return an error")
+	}
+}
+
+// TestS3Store_FinishHonorsContextCancellation proves that Finish returns an
+// error when handed an already-cancelled context.
+func TestS3Store_FinishHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	client, bucket := s3test.New(t)
+	key := newTestSealKey(t)
+	store := clank.NewS3Store(client, bucket, key)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := store.Finish(ctx, "r1", nil); err == nil {
+		t.Fatal("Finish on cancelled context must return an error")
+	}
+}
+
+// TestDirStore_FinishHonorsContextCancellation proves that Finish returns an
+// error when handed an already-cancelled context.
+func TestDirStore_FinishHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := clank.NewDirStore(dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := store.Finish(ctx, "r1", errors.New("aborted")); err == nil {
+		t.Fatal("Finish on cancelled context must return an error")
+	}
+}
+
+// TestMemStore_FinishHonorsContextCancellation proves that Finish returns an
+// error when handed an already-cancelled context.
+func TestMemStore_FinishHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	store := clank.NewMemStore()
+	if err := store.Checkpoint(context.Background(), clank.Turn{RunID: "r1", Step: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := store.Finish(ctx, "r1", nil); err == nil {
+		t.Fatal("Finish on cancelled context must return an error")
+	}
+}
