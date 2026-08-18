@@ -57,7 +57,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	cfg, err := config.LoadThump(lc.NATSURL != "")
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("load config", "err", err)
 		return 1
 	}
 	notifier := buildNotifier(cfg, notifierCtor)
@@ -65,7 +65,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	cat, err := contract.LoadCatalogFile(cfg.ActionCatalog, contract.Preconditions)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load action catalog: %v\n", err)
+		slog.Error("load action catalog", "err", err)
 		return 1
 	}
 
@@ -75,7 +75,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		CAFile:   cfg.TLSCAFile,
 	})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "tracer setup: %v\n", err)
+		slog.Error("tracer setup", "err", err)
 		return 1
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
@@ -88,7 +88,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			CAFile:   cfg.TLSCAFile,
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			slog.Error("metrics tls setup", "err", err)
 			return 1
 		}
 	}
@@ -108,12 +108,12 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	// first branch).
 	exec, sw, err := buildExecutor(cfg, cat, f)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
+		slog.Error("build executor", "err", err)
 		return 1
 	}
 	watcher, err := buildReversalWatcher(cfg)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "build reversal watcher: %v\n", err)
+		slog.Error("build reversal watcher", "err", err)
 		return 1
 	}
 	tr := &Transport{
@@ -156,7 +156,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			}
 		}
 		if err := tr.Tick(ctx); err != nil {
-			_, _ = fmt.Fprintf(stderr, "tick: %v\n", err)
+			slog.Error("tick", "err", err)
 			return 1
 		}
 		return 0
@@ -182,46 +182,46 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		CAFile:   cfg.TLSCAFile,
 	}, beat.BrokerHooks(health, "thump", func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("connect broker", "err", err)
 		return 1
 	}
 	defer closeNC()
 
 	if err := beat.AwaitConsumers(ctx, js, health, "thump.decisions"); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("await consumers", "err", err)
 		return 1
 	}
 
 	walConfig, err := beat.LoadWALConfig(cfg.WALConfig)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+		slog.Error("load wal config", "err", err)
 		return 1
 	}
 
 	orderPub, _, err := beat.NewWALPublisher[Order](js, cfg.WALDir, "thump", "thump.orders", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("order wal publisher", "err", err)
 		return 1
 	}
 	outcomePub, _, err := beat.NewWALPublisher[outcome.Outcome](js, cfg.WALDir, "thump", "thump.outcomes", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("outcome wal publisher", "err", err)
 		return 1
 	}
 	declinePub, _, err := beat.NewWALPublisher[decision.Decision](js, cfg.WALDir, "thump", "thump.declines", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("decline wal publisher", "err", err)
 		return 1
 	}
 	heldPub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "thump", "thump.held", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("held wal publisher", "err", err)
 		return 1
 	}
 
 	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("s3 segment sink", "err", err)
 		return 1
 	}
 	defer func() {
@@ -247,12 +247,12 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 
 	exec, sw, err := buildExecutor(cfg, cat, f)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "build executor: %v\n", err)
+		slog.Error("build executor", "err", err)
 		return 1
 	}
 	watcher, err := buildReversalWatcher(cfg)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "build reversal watcher: %v\n", err)
+		slog.Error("build reversal watcher", "err", err)
 		return 1
 	}
 	tr := &Transport{
@@ -379,7 +379,7 @@ func buildReversalWatcher(cfg config.Thump) (*ReversalWatcher, error) {
 // Notifier at transport.go:161).
 func buildNotifier(cfg config.Thump, ctor func(url string) Notifier) Notifier {
 	if cfg.SlackWebhookURL == "" {
-		slog.Warn("no Slack webhook configured - held actions will page nobody", "beat", "thump", "fix", "set SLACK_WEBHOOK_URL")
+		slog.Warn("no Slack webhook configured - held actions will page nobody", "fix", "set SLACK_WEBHOOK_URL")
 		return nil
 	}
 	return ctor(cfg.SlackWebhookURL)
@@ -387,7 +387,7 @@ func buildNotifier(cfg config.Thump, ctor func(url string) Notifier) Notifier {
 
 func buildForge(cfg config.Thump, ctor func(repo, token string) Forge) Forge {
 	if cfg.ForgeRepo == "" || cfg.ForgeToken == "" {
-		slog.Warn("no Forge configured -  maintenance releases will refuse to bind", "beat", "thump", "fix", "set FORGE_REPO and FORGE_TOKEN")
+		slog.Warn("no Forge configured -  maintenance releases will refuse to bind", "fix", "set FORGE_REPO and FORGE_TOKEN")
 		return nil
 	}
 	return ctor(cfg.ForgeRepo, cfg.ForgeToken)
