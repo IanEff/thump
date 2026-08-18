@@ -51,13 +51,13 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 
 	cfg, err := config.LoadHiss(lc.NATSURL != "")
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
+		slog.Error("load config", "err", err)
 		return 1
 	}
 
 	pol, err := LoadPolicy(cfg.Policy)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "failed to load policy: %v\n", err)
+		slog.Error("load policy", "err", err)
 		return 1
 	}
 
@@ -67,7 +67,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 		CAFile:   cfg.TLSCAFile,
 	})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "tracer setup: %v", err)
+		slog.Error("tracer setup", "err", err)
 		return 1
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
@@ -80,7 +80,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 			CAFile:   cfg.TLSCAFile,
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "metrics tls setup: %v\n", err)
+			slog.Error("metrics tls setup", "err", err)
 			return 1
 		}
 	}
@@ -111,7 +111,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	}
 	if lc.Once {
 		if err := tr.Tick(ctx); err != nil {
-			_, _ = fmt.Fprintf(stderr, "tick: %v\n", err)
+			slog.Error("tick", "err", err)
 			return 1
 		}
 		return 0
@@ -133,7 +133,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 		CAFile:   cfg.TLSCAFile,
 	}, beat.BrokerHooks(health, "hiss", func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("connect broker", "err", err)
 		return 1
 	}
 	defer closeNC()
@@ -145,19 +145,19 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 
 	walConfig, err := beat.LoadWALConfig(cfg.WALConfig)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "load wal config: %v\n", err)
+		slog.Error("load wal config", "err", err)
 		return 1
 	}
 
 	pub, _, err := beat.NewWALPublisher[decision.Governed](js, cfg.WALDir, "hiss", "thump.decisions", walConfig)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("decision wal publisher", "err", err)
 		return 1
 	}
 
 	sink, err := objectstore.NewS3SegmentSink(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, sealbox.Key(cfg.SealKey))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("s3 segment sink", "err", err)
 		return 1
 	}
 	defer func() {
@@ -169,7 +169,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 	approvePub := publish.NewJetPublisher[approval.Approval](js)
 	controller, err := buildApprovalRequests(cfg, approvePub)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("approval requests controller", "err", err)
 		return 1
 	}
 
@@ -184,7 +184,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Hiss, pol Policy,
 
 	tr, err := buildTransport(ctx, js, pub, pol, approvals, tracer, stages)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		slog.Error("build transport", "err", err)
 		return 1
 	}
 
@@ -232,7 +232,7 @@ func buildTransport(ctx context.Context, js jetstream.JetStream, pub publish.Pub
 func buildApprovalRequests(cfg config.Hiss, approvePub publish.Publisher[approval.Approval]) (*ApprovalRequestController, error) {
 	if !cfg.ApprovalRequestsEnabled {
 		slog.Warn("no ApprovalRequest surface configured — holds are released through calipers only",
-			"beat", "hiss", "fix", "set APPROVALREQUESTS_ENABLED=true")
+			"fix", "set APPROVALREQUESTS_ENABLED=true")
 		return nil, nil
 	}
 	return NewApprovalRequestController(approvePub, cfg.ApprovalRetention)
