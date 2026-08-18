@@ -3,7 +3,6 @@ package clank
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 
 	"github.com/ianeff/thump/api/v1/decision"
@@ -31,7 +30,7 @@ import (
 // sealed segments to object storage in the background. The two-subscriber
 // shape is clank's own; the beat kit supplies the consumer/publisher
 // primitives but leaves this composition here.
-func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, limits Limits, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reason.Model, intake *Intake, store Store, tools map[string]reason.Tool, cat *contract.StaticCatalog, classes []contract.FailureClassDefinition, weights ScoringWeights, limits Limits, tracer trace.Tracer, recorder *Recorder, stages *beat.StageRecorder, health *health.Health) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 
@@ -39,7 +38,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Clank, model reas
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
-	}, beat.BrokerHooks(health, "clank", func() { brokerLost(beat.ErrBrokerClosed) }))
+	}, beat.BrokerHooks(health, func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
 		slog.Error("connect broker", "err", err)
 		return 1

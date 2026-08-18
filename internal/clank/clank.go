@@ -172,7 +172,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, weights, limits, tracer, recorder, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, model, intake, store, tools, cat, classes, weights, limits, tracer, recorder, stages, health)
 	}
 
 	health.SetReady(true)

@@ -26,7 +26,7 @@ func RunConsumer[In any](ctx context.Context, js jetstream.JetStream, subject st
 // replica leaves its Service at once — but a beat is a pull consumer nothing
 // routes traffic to, so leaving endpoints costs nothing and stops a rolling
 // deploy from marching through a broker outage.
-func BrokerHooks(h *health.Health, beatName string, onClosed func()) broker.Hooks {
+func BrokerHooks(h *health.Health, onClosed func()) broker.Hooks {
 	return broker.Hooks{
 		OnDisconnect: func(err error) {
 			slog.Warn("broker disconnected, retrying", "err", err)

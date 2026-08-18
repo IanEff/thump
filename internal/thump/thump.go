@@ -97,7 +97,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 	stages := beat.NewStageRecorder(reg)
 
 	if lc.NATSURL != "" {
-		return runBroker(ctx, cfg.NATSURL, cfg, cat, notifier, f, tracer, stages, health, stderr)
+		return runBroker(ctx, cfg.NATSURL, cfg, cat, notifier, f, tracer, stages, health)
 	}
 	health.SetReady(true)
 
@@ -172,7 +172,7 @@ func Main(args []string, stdout io.Writer, stderr io.Writer, version, commit, da
 // dry-run-execute, publish thump.orders + thump.outcomes. thump.orders has no
 // consumer (DurableFor("thump.orders") == "") — publishing it anyway is
 // fine, WAL-only the day it stops being fine, per Ian's call.
-func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, f Forge, tracer trace.Tracer, stages *beat.StageRecorder, health *health.Health, stderr io.Writer) int {
+func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contract.StaticCatalog, notifier Notifier, f Forge, tracer trace.Tracer, stages *beat.StageRecorder, health *health.Health) int {
 	ctx, brokerLost := context.WithCancelCause(ctx)
 	defer brokerLost(nil)
 
@@ -180,7 +180,7 @@ func runBroker(ctx context.Context, natsURL string, cfg config.Thump, cat *contr
 		CertFile: cfg.TLSCertFile,
 		KeyFile:  cfg.TLSKeyFile,
 		CAFile:   cfg.TLSCAFile,
-	}, beat.BrokerHooks(health, "thump", func() { brokerLost(beat.ErrBrokerClosed) }))
+	}, beat.BrokerHooks(health, func() { brokerLost(beat.ErrBrokerClosed) }))
 	if err != nil {
 		slog.Error("connect broker", "err", err)
 		return 1

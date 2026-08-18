@@ -110,7 +110,7 @@ func Main(args []string, stdout, stderr io.Writer, version, commit, date string)
 			CertFile: cfg.TLSCertFile,
 			KeyFile:  cfg.TLSKeyFile,
 			CAFile:   cfg.TLSCAFile,
-		}, beat.BrokerHooks(health, "rattle", func() { brokerLost(beat.ErrBrokerClosed) }))
+		}, beat.BrokerHooks(health, func() { brokerLost(beat.ErrBrokerClosed) }))
 		if err != nil {
 			slog.Error("connect broker", "err", err)
 			return 1
