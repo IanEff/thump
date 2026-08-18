@@ -299,8 +299,12 @@ func (e *Engine) Propose(ctx context.Context, sig signal.Detection) (set proposa
 					})
 					continue
 				}
-				ref, err := tool.Run(ctx, call.Args)
-				if err != nil {
+				var ref proposal.EvidenceRef
+				if err := beat.Stage(ctx, e.tracer(), e.Stages, "tool:"+call.Name, func(sctx context.Context) error {
+					var err error
+					ref, err = tool.Run(sctx, call.Args)
+					return err
+				}); err != nil {
 					return proposal.Set{}, fmt.Errorf("tool %q: %w", call.Name, err)
 				}
 				// A tool that can name its own evidence in a form the model

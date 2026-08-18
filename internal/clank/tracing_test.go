@@ -14,13 +14,10 @@ import (
 	"github.com/ianeff/thump/internal/tracing"
 )
 
-// TestPropose_SpansShareTheDetectionsTraceID pins B1: one signal.Detection is
-// one distributed trace. In production the trace context arrives already on
-// ctx — rattle mints it from the Fingerprint and propagates it over JetStream
-// headers before clank's transport ever calls Propose; Propose itself never
-// forces a TraceID. This test stands in for that hand-off the same way: a
-// remote SpanContext seeded from tracing.TraceIDFromFingerprint, exactly what
-// extracting the propagated context off the wire would produce.
+// TestPropose_SpansShareTheDetectionsTraceID pins that one signal.Detection is
+// one distributed trace — rattle mints it from the Fingerprint and propagates
+// it over JetStream headers, and clank's reason-loop stages and tool runs
+// nest under that trace without Propose ever minting its own TraceID.
 func TestPropose_SpansShareTheDetectionsTraceID(t *testing.T) {
 	t.Parallel()
 	exporter := tracetest.NewInMemoryExporter()
@@ -73,7 +70,7 @@ func TestPropose_SpansShareTheDetectionsTraceID(t *testing.T) {
 		}
 	}
 
-	for _, stage := range []string{"assemble_sao", "llm_complete", "causal_score", "gate_eval"} {
+	for _, stage := range []string{"assemble_sao", "llm_complete", "tool:metrics", "causal_score", "score_confidence", "gate_eval"} {
 		if !gotNames[stage] {
 			t.Errorf("no span named %q — want one span per reason-loop stage", stage)
 		}
