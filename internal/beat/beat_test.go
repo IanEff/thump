@@ -3,6 +3,7 @@ package beat_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -36,8 +37,21 @@ func TestStart_UnparseableFlagExitsNonZero(t *testing.T) {
 	if !exit || code != 1 {
 		t.Fatalf("a bad flag must exit 1: got exit=%v code=%d", exit, code)
 	}
-	if !strings.Contains(stderr.String(), "failed to parse flags") {
-		t.Errorf("expected a parse-error message on stderr, got %q", stderr.String())
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout.String())), &rec); err != nil {
+		t.Fatalf("startup failure is not a structured JSON record on stdout: %v, raw stdout: %q", err, stdout.String())
+	}
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["msg"] != "failed to parse flags" {
+		t.Errorf("msg = %v, want 'failed to parse flags'", rec["msg"])
+	}
+	if rec["beat"] != "hiss" {
+		t.Errorf("beat = %v, want hiss", rec["beat"])
+	}
+	if rec["err"] == nil || rec["err"] == "" {
+		t.Errorf("err attribute missing or empty in JSON record: %v", rec)
 	}
 }
 

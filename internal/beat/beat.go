@@ -62,11 +62,13 @@ func Start(name string, args []string, stdout, stderr io.Writer, v Version) (lc 
 	printVersion := fs.Bool("version", false, "print version and exit")
 	once := fs.Bool("once", false, "offline mode only: run a single poll pass and exit, instead of looping forever")
 
+	slog.SetDefault(slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With("beat", name))
+
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return Lifecycle{}, 0, true
 		}
-		_, _ = fmt.Fprintf(stderr, "failed to parse flags: %v\n", err)
+		slog.Error("failed to parse flags", "err", err)
 		return Lifecycle{}, 1, true
 	}
 
@@ -74,8 +76,6 @@ func Start(name string, args []string, stdout, stderr io.Writer, v Version) (lc 
 		_, _ = fmt.Fprintf(stdout, "%s %s\ncommit: %s\nbuilt: %s\n", name, v.Version, v.Commit, v.Date)
 		return Lifecycle{}, 0, true
 	}
-
-	slog.SetDefault(slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
