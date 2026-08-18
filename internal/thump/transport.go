@@ -94,7 +94,18 @@ func (tr *Transport) handle(ctx context.Context, g decision.Governed, _ func()) 
 		}); err != nil {
 			return fmt.Errorf("%w: %s: %w", ErrRenderFailed, g.Decision.SignalRef, err)
 		}
-		oc := tr.Exec.Execute(ctx, order, tr.now())
+
+		var oc outcome.Outcome
+		_ = beat.Stage(ctx, otelx.TracerOrNoop(tr.Tracer), tr.Stages, "execute", func(sctx context.Context) error {
+			oc = tr.Exec.Execute(sctx, order, tr.now())
+			if oc.Result == outcome.ResultFailure {
+				if oc.Error != "" {
+					return errors.New(oc.Error)
+				}
+				return errors.New("execute failed")
+			}
+			return nil
+		})
 		switch {
 		case tr.Reversal != nil && oc.Mode == outcome.ModeLive && oc.Result == outcome.ResultApplied:
 			// a cluster mutation ran directly — watch its SLO convergence window.
@@ -168,7 +179,17 @@ func (tr *Transport) now() time.Time {
 // long-lived ctx the poll loop or consumer runs under, cancelled only at
 // shutdown.
 func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
-	settlement := tr.Reversal.Watch(ctx, order)
+	var settlement Settlement
+	_ = beat.Stage(ctx, otelx.TracerOrNoop(tr.Tracer), tr.Stages, "settle", func(sctx context.Context) error {
+		settlement = tr.Reversal.Watch(sctx, order)
+		if sctx.Err() != nil {
+			return sctx.Err()
+		}
+		if !settlement.Converged {
+			return errors.New("non-converging")
+		}
+		return nil
+	})
 	if ctx.Err() != nil {
 		return // shutdown mid-watch, not a real convergence read — nothing to settle
 	}
@@ -196,7 +217,17 @@ func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 		return
 	}
 	undo := settlement.Undo
-	oc := tr.Exec.Execute(ctx, undo, tr.now())
+	var oc outcome.Outcome
+	_ = beat.Stage(ctx, otelx.TracerOrNoop(tr.Tracer), tr.Stages, "undo", func(sctx context.Context) error {
+		oc = tr.Exec.Execute(sctx, undo, tr.now())
+		if oc.Result == outcome.ResultFailure {
+			if oc.Error != "" {
+				return errors.New(oc.Error)
+			}
+			return errors.New("undo failed")
+		}
+		return nil
+	})
 	if err := tr.OrderPub.Publish(ctx, "thump.orders", undo); err != nil {
 		slog.Error("publish undo order", "signalRef", undo.SignalRef, "err", err)
 	}
@@ -216,12 +247,26 @@ func (tr *Transport) watchAndSettle(ctx context.Context, order Order) {
 // in-flight poll the same way it already loses an in-flight watchAndSettle
 // (the bare go above) — accepted parity, not new debt.
 func (tr *Transport) watchAndAccept(ctx context.Context, order Order) {
-	accepted, err := tr.Acceptance.Poll(ctx, order)
+	var accepted bool
+	var pollErr error
+	_ = beat.Stage(ctx, otelx.TracerOrNoop(tr.Tracer), tr.Stages, "acceptance_poll", func(sctx context.Context) error {
+		accepted, pollErr = tr.Acceptance.Poll(sctx, order)
+		if sctx.Err() != nil {
+			return sctx.Err()
+		}
+		if pollErr != nil {
+			return pollErr
+		}
+		if !accepted {
+			return errors.New("release not accepted")
+		}
+		return nil
+	})
 	if ctx.Err() != nil {
 		return // shutdown mid-poll, not a real acceptance read — nothing to settle
 	}
-	if err != nil {
-		tr.recordAccept(ctx, order, outcome.ResultFailure, fmt.Sprintf("acceptance poll failed: %v", err))
+	if pollErr != nil {
+		tr.recordAccept(ctx, order, outcome.ResultFailure, fmt.Sprintf("acceptance poll failed: %v", pollErr))
 		return
 	}
 	if !accepted {
