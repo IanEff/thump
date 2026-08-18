@@ -20,6 +20,13 @@ the package docs under `internal/` and `api/`.
   alongside their implementation.
 - **`context.Context` is always the first parameter**, never a struct field. Thread it
   through call chains; don't reach for `context.Background()` deep inside one.
+- **Context decoupling belongs at boundaries, never in primitives**: leaf stores, clients,
+  and helpers must always respect the `context.Context` they are passed. Decoupling via
+  `context.WithoutCancel` plus an authored timeout is reserved for lifecycle boundaries
+  (message ingress adapters) and deferred exit cleanups (recording terminal records, draining WALs).
+- **Edge and defer errors are logged, never dropped**: if an error occurs at the outermost
+  adapter boundary or in a deferred cleanup where it cannot be returned to a caller, log it
+  with structured context (`slog.Error`/`slog.Warn`) — never discard it with `_ =`.
 - **Concurrency & WaitGroups**: run tests with `-race`. Always launch a tracked goroutine
   with `wg.Go(func() { ... })` (`sync.WaitGroup.Go`, Go 1.25+) — never hand-roll
   `wg.Add(1); go func() { defer wg.Done(); ... }()`. Use `testing/synctest`
