@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ianeff/thump/api/v1/approval"
 	"github.com/ianeff/thump/api/v1/decision"
+	"github.com/ianeff/thump/api/v1/outcome"
 	"github.com/ianeff/thump/api/v1/proposal"
 	"github.com/ianeff/thump/api/v1/signal"
 	"github.com/ianeff/thump/internal/broker"
@@ -469,7 +473,7 @@ func TestMain_ForcePublishesToThumpDecisionsOverNATSWhenNATSURLIsSet(t *testing.
 // and TestMain_ReturnsUsageErrorForAnUndocumentedVerbExactly below fail
 // immediately, which is the drift detector — not a second source of truth
 // to keep in sync by hand.
-const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard|validate> [flags]\n"
+const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard|validate|step|pipeline|mock> [flags]\n"
 
 // TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest pins the usage string
 // and the switch together. They drifted apart in trim already — the usage
@@ -486,10 +490,12 @@ func TestMain_RoutesEveryDocumentedVerbAndRefusesTheRest(t *testing.T) {
 	t.Setenv("THUMP_SEAL_KEY", "") // corpus checks this before anything network-shaped
 	t.Setenv("ANTHROPIC_API_KEY", "")
 
-	for _, verb := range []string{"incidents", "approve", "force", "unseal", "corpus", "rca", "tune", "replay", "harvest", "probe", "transcript", "scorecard", "validate"} {
+	for _, verb := range []string{"incidents", "approve", "force", "unseal", "corpus", "rca", "tune", "replay", "harvest", "probe", "transcript", "scorecard", "validate", "step", "pipeline", "mock"} {
 		t.Run(verb, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			calipers.Main([]string{verb}, &out, &errOut)
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			calipers.MainContext(ctx, []string{verb}, &out, &errOut)
 
 			if errOut.String() == wantTopUsage {
 				t.Errorf("verb %q fell through to the default case — it is documented in topUsage but not routed in the switch", verb)
@@ -523,5 +529,252 @@ func TestMain_ReturnsUsageErrorForAnUndocumentedVerbExactly(t *testing.T) {
 	}
 	if diff := cmp.Diff(wantTopUsage, errOut.String()); diff != "" {
 		t.Error("wrong usage line for an undocumented verb (-want +got)", diff)
+	}
+}
+
+func TestMain_StepRattleRunsIsolatedRattleAndPrintsJSON(t *testing.T) {
+	t.Parallel()
+	watchPath := filepath.Join("..", "..", "config", "dev", "rattle", "watch.yaml")
+	queryPath := filepath.Join("..", "..", "config", "dev", "rattle", "query.yaml")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now().Unix()
+		query := r.URL.Query().Get("query")
+		if query == `slo:current_burn_rate:ratio{sloth_id="cart-availability"}` {
+			resp := fmt.Sprintf(`{
+				"status": "success",
+				"data": {
+					"resultType": "matrix",
+					"result": [{
+						"metric": {"__name__": "slo:current_burn_rate:ratio", "sloth_id": "cart-availability"},
+						"values": [
+							[%d, "1.0"],
+							[%d, "2.0"],
+							[%d, "4.0"],
+							[%d, "8.0"]
+						]
+					}]
+				}
+			}`, now-30, now-20, now-10, now)
+			_, _ = w.Write([]byte(resp))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.MainContext(t.Context(), []string{
+		"step", "rattle",
+		"--watch", watchPath,
+		"--query-config", queryPath,
+		"--prom-url", srv.URL,
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+
+	var got signal.Detection
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v (raw: %s)", err, stdout.String())
+	}
+	if diff := cmp.Diff("cart", got.OriginService); diff != "" {
+		t.Errorf("wrong origin service (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("cart-availability", got.SLORef); diff != "" {
+		t.Errorf("wrong sloRef (-want +got):\n%s", diff)
+	}
+}
+
+func TestMain_StepHissRunsIsolatedHissAndPrintsJSON(t *testing.T) {
+	t.Parallel()
+	proposalPath := filepath.Join("..", "..", "test", "fixtures", "proposals", "cart-failure.json")
+	policyPath := filepath.Join("..", "..", "config", "dev", "hiss", "policy.yaml")
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.MainContext(t.Context(), []string{
+		"step", "hiss",
+		"--proposal", proposalPath,
+		"--policy", policyPath,
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+
+	var got decision.Governed
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v (raw: %s)", err, stdout.String())
+	}
+	if diff := cmp.Diff(decision.VerdictApproved, got.Decision.Verdict); diff != "" {
+		t.Errorf("wrong decision verdict (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("slo_burn:cart", got.Decision.SignalRef); diff != "" {
+		t.Errorf("wrong signalRef (-want +got):\n%s", diff)
+	}
+}
+
+func TestMain_StepThumpRunsIsolatedThumpAndPrintsJSON(t *testing.T) {
+	t.Parallel()
+	decisionPath := filepath.Join("..", "..", "test", "fixtures", "decisions", "cart-failure.json")
+	catalogPath := filepath.Join("..", "..", "config", "dev", "actions", "catalog.yaml")
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.MainContext(t.Context(), []string{
+		"step", "thump",
+		"--decision", decisionPath,
+		"--catalog", catalogPath,
+		"--dry-run=true",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+
+	var got outcome.Outcome
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v (raw: %s)", err, stdout.String())
+	}
+	if diff := cmp.Diff(outcome.ModeDryRun, got.Mode); diff != "" {
+		t.Errorf("wrong outcome mode (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(outcome.ResultRendered, got.Result); diff != "" {
+		t.Errorf("wrong outcome result (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("disable-cart-failure", got.ContractRef); diff != "" {
+		t.Errorf("wrong contractRef (-want +got):\n%s", diff)
+	}
+}
+
+func TestMain_StepUsageAndErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		args            []string
+		wantCode        int
+		wantErrContains string
+	}{
+		"calipers step with no subverb prints usage and returns exit code 2": {
+			args:            []string{"step"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers step <rattle|clank|hiss|thump> [flags]",
+		},
+		"calipers step with unknown subverb prints usage and returns exit code 2": {
+			args:            []string{"step", "frobnicate"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers step <rattle|clank|hiss|thump> [flags]",
+		},
+		"calipers step hiss with missing proposal prints usage and returns exit code 2": {
+			args:            []string{"step", "hiss"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers step hiss",
+		},
+		"calipers step thump with missing decision prints usage and returns exit code 2": {
+			args:            []string{"step", "thump"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers step thump",
+		},
+		"calipers step clank with missing detection prints usage and returns exit code 2": {
+			args:            []string{"step", "clank"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers step clank",
+		},
+		"calipers step hiss with non-existent proposal returns exit code 1": {
+			args:            []string{"step", "hiss", "--proposal", "nonexistent.json"},
+			wantCode:        1,
+			wantErrContains: "calipers:",
+		},
+		"calipers step thump with non-existent decision returns exit code 1": {
+			args:            []string{"step", "thump", "--decision", "nonexistent.json"},
+			wantCode:        1,
+			wantErrContains: "calipers:",
+		},
+		"calipers step clank with nonexistent detection file returns exit code 1": {
+			args:            []string{"step", "clank", "--detection", "nonexistent.json", "--profile", filepath.Join("..", "..", "config", "dev")},
+			wantCode:        1,
+			wantErrContains: "calipers:",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			code := calipers.MainContext(t.Context(), tc.args, &stdout, &stderr)
+
+			if diff := cmp.Diff(tc.wantCode, code); diff != "" {
+				t.Errorf("wrong exit code (-want +got):\n%s", diff)
+			}
+			if !strings.Contains(stderr.String(), tc.wantErrContains) {
+				t.Errorf("stderr does not contain %q, got: %s", tc.wantErrContains, stderr.String())
+			}
+		})
+	}
+}
+
+func TestMain_PipelineUsageAndErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		args            []string
+		wantCode        int
+		wantErrContains string
+	}{
+		"calipers pipeline with no args prints usage and returns exit code 2": {
+			args:            []string{"pipeline"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers pipeline --detection <path>",
+		},
+		"calipers pipeline with nonexistent detection file returns exit code 1": {
+			args:            []string{"pipeline", "--detection", "nonexistent.json"},
+			wantCode:        1,
+			wantErrContains: "calipers:",
+		},
+		"calipers pipeline with nonexistent profile directory returns exit code 1": {
+			args:            []string{"pipeline", "--detection", filepath.Join("..", "..", "test", "fixtures", "detections", "cart-failure.json"), "--profile", "nonexistent-dir"},
+			wantCode:        1,
+			wantErrContains: "calipers:",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			code := calipers.MainContext(t.Context(), tc.args, &stdout, &stderr)
+
+			if diff := cmp.Diff(tc.wantCode, code); diff != "" {
+				t.Errorf("wrong exit code (-want +got):\n%s", diff)
+			}
+			if !strings.Contains(stderr.String(), tc.wantErrContains) {
+				t.Errorf("stderr does not contain %q, got: %s", tc.wantErrContains, stderr.String())
+			}
+		})
+	}
+}
+
+func TestMain_MockStartsTelemetryAndBroker(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	time.AfterFunc(200*time.Millisecond, cancel)
+
+	var stdout, stderr bytes.Buffer
+	code := calipers.MainContext(ctx, []string{
+		"mock",
+		"--prom-port", "0",
+		"--nats",
+		"--nats-port", "-1",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("want exit code 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "mock telemetry server listening on") {
+		t.Errorf("stdout does not mention telemetry server, got: %s", out)
+	}
+	if !strings.Contains(out, "mock nats broker listening on") {
+		t.Errorf("stdout does not mention nats broker, got: %s", out)
 	}
 }
