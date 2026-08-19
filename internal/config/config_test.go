@@ -789,6 +789,7 @@ func TestEveryBrokerLoader_RequiresSealKeyNotJustClanks(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			tc.env(t)
+			t.Setenv("THUMP_SEAL_KEY", "")
 			if err := tc.load(true); err == nil || !strings.Contains(err.Error(), "THUMP_SEAL_KEY") {
 				t.Error("every beat seals its WAL segments — hardening one loader and not the rest is a hole with a test in front of it")
 			}
