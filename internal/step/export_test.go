@@ -16,5 +16,5 @@ func RunClankWithModelForTest(ctx context.Context, detectionFile, profileDir str
 // RunClankWithModelAndToolsForTest allows tests to drive RunClank using a
 // custom reason.Model seam and injected tools.
 func RunClankWithModelAndToolsForTest(ctx context.Context, detectionFile, profileDir string, model reason.Model, tools map[string]reason.Tool) (proposal.Set, error) {
-	return runClankWithTools(ctx, detectionFile, profileDir, model, tools)
+	return RunClankWithModelAndTools(ctx, detectionFile, profileDir, model, tools)
 }

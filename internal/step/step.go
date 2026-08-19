@@ -141,10 +141,12 @@ func RunClank(ctx context.Context, detectionFile, profileDir, modelName, apiKey 
 }
 
 func runClank(ctx context.Context, detectionFile, profileDir string, model reason.Model) (proposal.Set, error) {
-	return runClankWithTools(ctx, detectionFile, profileDir, model, nil)
+	return RunClankWithModelAndTools(ctx, detectionFile, profileDir, model, nil)
 }
 
-func runClankWithTools(ctx context.Context, detectionFile, profileDir string, model reason.Model, overrideTools map[string]reason.Tool) (proposal.Set, error) {
+// RunClankWithModelAndTools reasons over a detection using an explicit model
+// and toolset — the test seam for hermetic reasoning without network access.
+func RunClankWithModelAndTools(ctx context.Context, detectionFile, profileDir string, model reason.Model, overrideTools map[string]reason.Tool) (proposal.Set, error) {
 	if ctx.Err() != nil {
 		return proposal.Set{}, ctx.Err()
 	}
