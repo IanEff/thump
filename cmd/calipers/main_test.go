@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -151,7 +152,7 @@ func TestMain_SubprocessStepAndPipelineUsageErrors(t *testing.T) {
 			if diff := cmp.Diff(tc.wantCode, exitCode); diff != "" {
 				t.Errorf("wrong exit code (-want +got):\n%s", diff)
 			}
-			if !bytes.Contains([]byte(stderr), []byte(tc.wantErrContains)) {
+			if !strings.Contains(stderr, tc.wantErrContains) {
 				t.Errorf("stderr does not contain %q, got: %s", tc.wantErrContains, stderr)
 			}
 			if diff := cmp.Diff("", stdout); diff != "" {
