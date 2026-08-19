@@ -1,6 +1,14 @@
 # Gated on domains.rookCeph.enabled: the rook-ceph namespace doesn't exist
 # on the dev cluster profile (docs/dev-environment.md) — see values.yaml's
 # domains comment.
+#
+# configmaps is required alongside pods/deployments/replicasets: the kube
+# evidence tool's KubeChangeSource unions every subject namespace on every
+# reasoning run, not just the namespace of the fingerprint being reasoned
+# about (internal/evidence/kube_change.go), so any run on a rig with this
+# domain enabled needs the grant regardless of which fingerprint fired. Same
+# gap as rbac-acme-read.yaml, found live 2026-08-19 dead-lettering
+# slo_burn:argocd via thump.detections.
 {{- if .Values.domains.rookCeph.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -13,6 +21,9 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

@@ -392,3 +392,22 @@ func TestNATSConfig_GrantsHissTheRebuildHoldsEphemeralConsumer(t *testing.T) {
 		}
 	}
 }
+
+func TestNATSConfig_GrantsClankTheRebuildLedgerEphemeralConsumers(t *testing.T) {
+	t.Parallel()
+	// rebuildLedger (internal/clank/rebuild.go) mints fresh ephemeral
+	// consumers across proposals, outcomes, and declines on every startup to
+	// replay the in-memory ledger and casebase.
+	users := parseNATSUsers(t, renderNATSConf(t))
+	for _, want := range []string{
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.proposals",
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.outcomes",
+		"$JS.API.CONSUMER.CREATE.THUMP.*.thump.declines",
+		"$JS.API.CONSUMER.MSG.NEXT.THUMP.*",
+		"$JS.ACK.THUMP.*.>",
+	} {
+		if !slices.Contains(users["clank@thump.svc"].Publish, want) {
+			t.Errorf("clank@thump.svc does not hold %q — rebuildLedger's ephemeral consumer replay cannot create/fetch/ack without it", want)
+		}
+	}
+}
