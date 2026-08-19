@@ -1,0 +1,20 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "streams",
+    "result": [
+      {
+        "stream": {
+          "app": "cartservice",
+          "namespace": "otel-demo"
+        },
+        "values": [
+          [
+            "1750000000000000000",
+            "rpc error: code = Unavailable desc = connection error"
+          ]
+        ]
+      }
+    ]
+  }
+}

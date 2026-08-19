@@ -1,0 +1,55 @@
+{
+  "name": "cart-burn-accel",
+  "fingerprint": "slo_burn:cart",
+  "originService": "cart",
+  "serviceTier": "tier-1",
+  "detectorType": "sustained_burn",
+  "divergence": {
+    "metric": "cart_error_ratio",
+    "observed": 0.5,
+    "baseline": 0.0,
+    "confidence": 1.0,
+    "trajectory": "accelerating"
+  },
+  "topology": {
+    "upstream": [
+      {
+        "name": "flagd",
+        "state": "healthy"
+      },
+      {
+        "name": "redis",
+        "state": "healthy"
+      }
+    ],
+    "downstream": [
+      {
+        "name": "checkout",
+        "state": "degraded"
+      },
+      {
+        "name": "frontend",
+        "state": "healthy"
+      }
+    ]
+  },
+  "traffic": {
+    "affectedPct": 0.12,
+    "baseline": 100.0,
+    "baselineWindow": "1h"
+  },
+  "impact": {
+    "severity": {
+      "degradationPct": 0.5,
+      "trajectory": "accelerating"
+    },
+    "blastRadius": {
+      "affectedPct": 0.12,
+      "velocity": "accelerating",
+      "downstreamConsumers": 2
+    }
+  },
+  "contractRef": "cart-availability:v1",
+  "sloRef": "cart-availability",
+  "detectedAt": "2026-08-02T11:46:06.785322491Z"
+}
