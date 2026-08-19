@@ -100,7 +100,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.seal.secretName }}
-                  key: key
+                  key: {{ .Values.seal.secretKey }}
             - name: ACTION_CATALOG
               value: /etc/thump/actions/catalog.yaml
             - name: THUMP_EXECUTOR

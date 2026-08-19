@@ -100,7 +100,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.seal.secretName }}
-                  key: key
+                  key: {{ .Values.seal.secretKey }}
             - name: PROM_URL
               value: {{ .Values.prometheus.url | quote }}
             - name: WHIR_CATALOG

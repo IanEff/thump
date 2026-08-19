@@ -16,7 +16,7 @@ in [`design-decisions.md`](design-decisions.md).
 | **Operator** (`calipers`) | Approve a held action; force one past the risk gate | Approval only releases what hiss already conditionally granted. `force` is attributed, audited, rendered `forced` everywhere, and still kill-switch-gated |
 | **Cluster admin** (RBAC on `ApprovalRequest`) | Approve a held action as an authenticated Kubernetes subject | `spec.decision` accepts `approve` and nothing else. The API server records the patch independently of this engine |
 | **The model** (Anthropic API) | Choose which catalogued action to propose, and argue for it | It cannot leave the catalog, invent a magnitude, or grant itself permission. See below |
-| **Reader of the object store** | Read every WAL segment and reasoning transcript ever shipped | Sealed with AES-256-GCM in-process before upload, so bucket access alone yields ciphertext |
+| **Reader of the object store** | Read every WAL segment and reasoning transcript ever shipped | Sealed with AES-256-GCM in-process before upload, so bucket access alone yields ciphertext. Key durability is managed out-of-band (SOPS, ESO, Vault) — see D-31 |
 | **Reader of etcd** | Read `ApprovalRequest` objects | Deliberately the only thing in etcd. Reasoning, evidence, and verdicts never go there — see D-14 |
 | **Reader of the forge** (read access to a `maintenanceRelease` contract's GitOps repo) | Read the full rendered `Set` for any release: subject identifiers, losing candidates, confidence, citations | Nothing in this engine — bounded only by the repo's own visibility, which is public on the rig's own test repo. See D-26 |
 

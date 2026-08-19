@@ -707,6 +707,16 @@ On reversible, low- or med-blast, automatically self-undoing actions (`BandActRe
 
 **Why not preserve the model's veto everywhere?** The counter-argument is that a hedging model might perceive subtle hazards uncaptured by structured evidence queries. But on a bounded, self-reverting action with an active convergence watcher, measuring reality beats predicting it: thump applies the candidate, watches the SLO recovery window directly, and resolves the outcome (actions authored with `reversal.holdOnMiss: true`, like both flagd actions in `config/dev/actions/catalog.yaml:133, :162`, hold the undo for an operator via `ReversalWatcher` rather than firing blind; `internal/thump/reversal.go:55-58`). Where thump cannot land its own undo or where the blast radius is wide, model caution remains the last defense and retains its veto.
 
+## D-31 · Storage encryption keys are durable out-of-band dependencies, not namespace-scoped ephemera — **Ratified** (2026-08-19)
+
+**The problem:** `deploy/chart/thump/templates/secret.yaml` previously self-provisioned `seal.key` (`thump-seal`) and `nats.jetstream.key` (`nats-js-key`) via `lookup ... | default (randBytes 32)` when absent. Deleting the `thump` namespace (e.g. `tilt down`/`up`, helm reinstall, or cluster migration) destroyed the Secret; the next apply minted a new AES-256 key, permanently orphaning all historical WAL segments and transcripts in S3/Ceph (`sealbox: open: cipher: message authentication failed`) and breaking on-disk JetStream PVC recovery.
+
+**We do:** storage encryption keys are treated as durable external dependencies, matching the existing out-of-band posture of `anthropic` and `s3` (`create: false` by default). The Helm chart references pre-existing `v1/Secret` objects (`thump-seal` and `nats-js-key`).
+- In production and hybrid rigs (`thump-test`), keys are managed out-of-band (SOPS, External Secrets Operator, HashiCorp Vault, AWS/GCP KMS).
+- In local dev (`tilt`), keys are sourced from `.env` (`THUMP_SEAL_KEY`, `THUMP_NATS_JS_KEY`), persisting stably across `tilt down`/`up` cycles and enabling offline CLI tools (`calipers corpus`, `calipers unseal`, `task calibrate`).
+
+**Why:** WAL segments in S3 and JetStream data on persistent volumes outlive the Kubernetes namespace and cluster. Coupling key minting to namespace instantiation turns routine operational actions — recreating a namespace, tearing down a dev cluster, or spinning up a test rig against existing buckets — into silent cryptographic data-loss events.
+
 ## Departures from other source material
 
 The D-ledger above is indexed against one book, *Agentic Reliability

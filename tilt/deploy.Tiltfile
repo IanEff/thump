@@ -33,22 +33,12 @@ def setup(cluster, cluster_name, domain_values, domains):
     # blamed it on Tilt re-triggering.
     rendered = helm("deploy/chart/thump", namespace = "thump", values = [cluster["values"]])
 
-    # secret.yaml's thump-seal and nats-js-key Secrets are guarded by
-    # `{{- if not (lookup ...) }}` so a real `helm install` mints them once
-    # and leaves them alone. `lookup` always reads empty under `helm template`
-    # (what helm() above runs), so left in this manifest set, that guard is
-    # inert: every Tiltfile reload re-renders a *freshly random* key and
-    # k8s_yaml applies it over whatever's already live. That's what broke
-    # thump-test 2026-07-31 — an unrelated chart edit (OTel env vars)
-    # triggered a reload mid-session, silently rotated nats-js-key's value,
-    # and the running NATS pod could no longer decrypt its own on-disk
-    # JetStream store ("unable to recover keys" / stream "could not be
-    # recovered"). Strip both Secret objects out of what k8s_yaml ever sees —
-    # thump-seal-secret and thump-nats-js-key-secret in tilt/infra.Tiltfile
-    # (create-if-absent) become the *only* thing allowed to touch them under
-    # Tilt, enforcing the same once-only intent the chart's lookup guard has
-    # for a real `helm install`, by manifest filtering instead of a guard Tilt
-    # can't evaluate.
+    # secret.yaml's thump-seal and nats-js-key Secrets are off by default in
+    # the chart (D-31, matching anthropic and s3). If an override sets
+    # .Values.seal.create or .Values.nats.jetstream.create, strip both Secret
+    # objects out of what k8s_yaml sees — thump-seal-secret and
+    # thump-nats-js-key-secret in tilt/infra.Tiltfile source these durably from
+    # .env and remain the authority on their lifecycle under Tilt.
     _, rendered = filter_yaml(rendered, kind = "Secret", name = "thump-seal")
     _, rendered = filter_yaml(rendered, kind = "Secret", name = "nats-js-key")
 

@@ -144,7 +144,12 @@ if [ -f .env ]; then
   if grep -q "^THUMP_SEAL_KEY=" .env && ! grep -q "^THUMP_SEAL_KEY=\"\"" .env && ! grep -q "^THUMP_SEAL_KEY=''" .env && [ -n "$(grep "^THUMP_SEAL_KEY=" .env | cut -d= -f2-)" ]; then
     echo -e "  [${GREEN}OK${RESET}] THUMP_SEAL_KEY configured (enables WAL unseal and corpus mining)"
   else
-    echo -e "  [${DIM}INFO${RESET}] THUMP_SEAL_KEY unset (transcript unsealing will require key)"
+    echo -e "  [${DIM}INFO${RESET}] THUMP_SEAL_KEY unset (auto-generated on first tilt up or needed for unseal)"
+  fi
+  if grep -q "^THUMP_NATS_JS_KEY=" .env && ! grep -q "^THUMP_NATS_JS_KEY=\"\"" .env && ! grep -q "^THUMP_NATS_JS_KEY=''" .env && [ -n "$(grep "^THUMP_NATS_JS_KEY=" .env | cut -d= -f2-)" ]; then
+    echo -e "  [${GREEN}OK${RESET}] THUMP_NATS_JS_KEY configured (enables persistent NATS storage encryption)"
+  else
+    echo -e "  [${DIM}INFO${RESET}] THUMP_NATS_JS_KEY unset (auto-generated on first tilt up)"
   fi
 else
   echo -e "  [${DIM}INFO${RESET}] .env file not present (cp .env.example .env when testing live mode)"
