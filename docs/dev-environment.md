@@ -109,6 +109,9 @@ task dev:transcripts                    # every run under transcripts/, same lay
 
 `<run_id>` comes from a `"reasoned"` log line's `run_id` field. Both targets port-forward
 `svc/s3mock` to local 9091 (Tilt already owns 9090 for Prometheus) and tear it down on exit.
+`THUMP_SEAL_KEY` and `THUMP_NATS_JS_KEY` are persisted stably in `.env` (seeded automatically
+on first `tilt up` if absent, D-31), so transcript extraction and WAL decryption work across
+routine `tilt down`/`up` cycles without key drift.
 
 
 ## acme, the third domain

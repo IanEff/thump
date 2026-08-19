@@ -115,50 +115,33 @@ def setup(cluster, cluster_name, h):
         s3_deps = []
     h.kubectl_local("thump-s3-secret", s3_body, resource_deps = s3_deps)
 
-    # thump-seal-secret / thump-nats-js-key-secret: unlike
-    # thump-anthropic-secret and thump-s3-secret above, these two keys are
-    # pure internal material — no external system issues them, so there's
-    # nothing to source from .env. The chart's own secret.yaml self-provisions
-    # them on a real `helm install` via a `lookup`-guarded block, but `lookup`
-    # always reads empty under `helm template` (what Tilt's helm() runs) — the
-    # k8s_yaml() call in tilt/deploy.Tiltfile filter_yaml()s both Secret
-    # objects out of the chart's rendered manifests entirely, so that inert
-    # guard never gets a chance to matter under Tilt. These local_resources
-    # are the *only* thing that ever creates or touches either secret in a Tilt
-    # session: create-if-absent, never touch an existing one (unlike
-    # thump-s3-secret's dry-run-apply, which is meant to re-sync every run) —
-    # `kubectl get ... || kubectl create ...`, not `--dry-run=client -o yaml |
-    # apply`.
-    #
-    # `get || create` is the obvious shape for create-if-absent and it is the
-    # wrong one here: a `get` that fails because the API was unreachable is
-    # indistinguishable from one that fails because the secret is absent, and
-    # the `||` branch answers both by minting a fresh random key. On
-    # thump-seal that orphans every sealed WAL segment; on nats-js-key it
-    # orphans the on-disk JetStream store, which is exactly the failure
-    # recorded on 2026-07-31. So: only a literal NotFound authorises a create.
-    # Any other error returns non-zero so kubectl_local retries it, and says
-    # out loud that it declined to mint a key rather than doing it quietly.
-    def _ensure_key_secret(resource, secret):
+    # thump-seal-secret / thump-nats-js-key-secret: storage encryption keys
+    # (D-31, issue #186). Production expects these out-of-band (SOPS, ESO,
+    # Vault). Under Tilt, source them from .env so they stay stable across
+    # `tilt down`/`up` cycles rather than rotating on every namespace recreation.
+    # If absent from .env, generate once and persist to .env.
+    def _ensure_key_secret(resource, secret, env_var):
         kubectl = "kubectl --context " + cluster["context"]
         h.kubectl_local(
             resource,
-            h.ENSURE_NS
-            + " && out=$("
-            + kubectl
-            + " -n thump get secret "
-            + secret
-            + ' 2>&1); if [ $? -eq 0 ]; then exit 0; fi; case "$out" in *NotFound*) '
+            'set -a; source .env 2>/dev/null; set +a; '
+            + 'if [ -z "$' + env_var + '" ]; then '
+            + '  ' + env_var + '=$(openssl rand -base64 32); '
+            + '  echo "' + env_var + '=$' + env_var + '" >> .env; '
+            + '  echo "thump: generated new ' + env_var + ' and saved to .env"; '
+            + 'fi; '
+            + h.ENSURE_NS
+            + " && "
             + kubectl
             + " -n thump create secret generic "
             + secret
-            + ' --from-literal=key="$(openssl rand -base64 32)" ;; *) echo "thump: cannot tell whether secret '
-            + secret
-            + ' exists, refusing to mint a replacement key over data encrypted under the old one: $out" >&2; false ;; esac',
+            + ' --from-literal=key="$' + env_var + '" --dry-run=client -o yaml | '
+            + kubectl
+            + " apply -f -",
         )
 
-    _ensure_key_secret("thump-seal-secret", "thump-seal")
-    _ensure_key_secret("thump-nats-js-key-secret", "nats-js-key")
+    _ensure_key_secret("thump-seal-secret", "thump-seal", "THUMP_SEAL_KEY")
+    _ensure_key_secret("thump-nats-js-key-secret", "nats-js-key", "THUMP_NATS_JS_KEY")
 
     # The namespace is filtered out of the chart's manifests (see the
     # filter_yaml block in tilt/deploy.Tiltfile for why), so something else

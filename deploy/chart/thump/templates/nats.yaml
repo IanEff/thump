@@ -259,7 +259,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.nats.jetstream.secretName }}
-                  key: key
+                  key: {{ .Values.nats.jetstream.secretKey }}
           ports:
             - { containerPort: 4222, name: client }
             - { containerPort: 8222, name: monitor }

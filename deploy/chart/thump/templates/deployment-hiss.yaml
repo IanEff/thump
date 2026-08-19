@@ -104,7 +104,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.seal.secretName }}
-                  key: key
+                  key: {{ .Values.seal.secretKey }}
             - name: HISS_POLICY
               value: /etc/thump/hiss/policy.yaml
           volumeMounts:
