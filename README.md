@@ -7,6 +7,8 @@
 
 ![Thump](assets/rainbow_thump.png)
 
+NOTE: `thump` is currently in hiatus, pending a redesign, pending my finishing eating some Overhout and pawing at this event modeling business for a few.  Please stay tuned!
+
 A bounded SRE loop for Kubernetes with a reasoning plane bolted into the middle. It watches reliability signals, investigates an evidence snapshot with an LLM, and executes an authored, catalog-bound action once governance clears.
 
 What it can act on is determined by the action catalog. In the shipped profiles at `config/<profile>/actions/catalog.yaml`, that catalog holds seven actions: three Rook/Ceph runbooks (`hold-rebalance`, `accelerate-recovery`, `throttle-non-critical-paths`), three against the OpenTelemetry Astronomy Shop demo (`disable-product-catalog-failure`, `disable-cart-failure`, `restart-cart-pod`), and one synthetic `acme` domain action (`acme-shed-load`). Adding remediation capabilities means adding catalog entries; the reasoner and the governor stay untouched. [Onboarding a domain in config alone](#onboard-your-own-domain) exercises that boundary.
