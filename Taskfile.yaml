@@ -422,6 +422,44 @@ tasks:
     cmds:
       - go run ./cmd/calipers
 
+  beat:rattle:
+    desc: "Run rattle in isolated single-beat mode against Prometheus: task beat:rattle [WATCH=config/dev/rattle/watch.yaml] [QUERY=config/dev/rattle/query.yaml] [PROM_URL=http://localhost:9090]"
+    vars:
+      WATCH: '{{.WATCH | default "config/dev/rattle/watch.yaml"}}'
+      QUERY: '{{.QUERY | default "config/dev/rattle/query.yaml"}}'
+      PROM_URL: '{{.PROM_URL | default "http://localhost:9090"}}'
+    cmds:
+      - go run ./cmd/calipers step rattle --watch {{.WATCH}} --query-config {{.QUERY}} --prom-url {{.PROM_URL}}
+
+  beat:clank:
+    desc: "Run clank in isolated single-beat mode against a detection: task beat:clank DETECTION=<path> [PROFILE=config/dev] [MODEL=haiku] (key-gated)"
+    requires:
+      vars: [DETECTION]
+    vars:
+      PROFILE: '{{.PROFILE | default "config/dev"}}'
+      MODEL: '{{.MODEL | default "haiku"}}'
+    cmds:
+      - go run ./cmd/calipers step clank --detection {{.DETECTION}} --profile {{.PROFILE}} --model {{.MODEL}}
+
+  beat:hiss:
+    desc: "Run hiss in isolated single-beat mode against a proposal: task beat:hiss PROPOSAL=<path> [POLICY=config/dev/hiss/policy.yaml]"
+    requires:
+      vars: [PROPOSAL]
+    vars:
+      POLICY: '{{.POLICY | default "config/dev/hiss/policy.yaml"}}'
+    cmds:
+      - go run ./cmd/calipers step hiss --proposal {{.PROPOSAL}} --policy {{.POLICY}}
+
+  beat:thump:
+    desc: "Run thump in isolated single-beat mode against a decision: task beat:thump DECISION=<path> [CATALOG=config/dev/actions/catalog.yaml] [DRY_RUN=true]"
+    requires:
+      vars: [DECISION]
+    vars:
+      CATALOG: '{{.CATALOG | default "config/dev/actions/catalog.yaml"}}'
+      DRY_RUN: '{{.DRY_RUN | default "true"}}'
+    cmds:
+      - go run ./cmd/calipers step thump --decision {{.DECISION}} --catalog {{.CATALOG}} --dry-run={{.DRY_RUN}}
+
   # docs/dev-environment.md — the fully-local dev environment. dev:cluster is
   # the one piece Tilt itself can't do: `allow_k8s_contexts()` and `helm()`
   # both evaluate at Tiltfile load, so the k3d context has to exist before
@@ -563,6 +601,25 @@ tasks:
       - kubectl --context k3d-thump-dev -n thump logs job/dev-govern-{{.RUN_ID}}
       - kubectl --context k3d-thump-dev -n thump delete job dev-govern-{{.RUN_ID}} configmap dev-govern-input-{{.RUN_ID}} --ignore-not-found
       - rm -rf bin/govern/{{.RUN_ID}}
+
+  dev:pipeline:
+    desc: "Run headless end-to-end pipeline locally without cluster: task dev:pipeline DETECTION=<path> [PROFILE=config/dev] [MODEL=haiku] (key-gated)"
+    requires:
+      vars: [DETECTION]
+    vars:
+      PROFILE: '{{.PROFILE | default "config/dev"}}'
+      MODEL: '{{.MODEL | default "haiku"}}'
+    cmds:
+      - go run ./cmd/calipers pipeline --detection {{.DETECTION}} --profile {{.PROFILE}} --model {{.MODEL}}
+
+  dev:mock:
+    desc: "Run lightweight telemetry and NATS mock server: task dev:mock [PROM_PORT=9090] [NATS=false] [NATS_PORT=4222]"
+    vars:
+      PROM_PORT: '{{.PROM_PORT | default "9090"}}'
+      NATS_PORT: '{{.NATS_PORT | default "4222"}}'
+      NATS: '{{.NATS | default "false"}}'
+    cmds:
+      - go run ./cmd/calipers mock --prom-port {{.PROM_PORT}} {{if eq .NATS "true"}}--nats --nats-port {{.NATS_PORT}}{{end}}
 
   dev:probe:
     desc: >-

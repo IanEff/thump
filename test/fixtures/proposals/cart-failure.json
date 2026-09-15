@@ -1,0 +1,230 @@
+{
+  "name": "cart-burn-accel",
+  "runID": "slo_burn:cart/1786969860387330045",
+  "signalRef": "slo_burn:cart",
+  "sloRef": "cart-availability",
+  "saoSnapshot": {
+    "version": 1,
+    "assembledAt": "2026-08-02T11:46:10Z",
+    "signal": {
+      "confidence": 1,
+      "severity": {
+        "degradationPct": 0.5,
+        "trajectory": "accelerating"
+      },
+      "blastRadius": {
+        "affectedPct": 0.12,
+        "velocity": "accelerating",
+        "downstreamConsumers": 2
+      },
+      "originService": "cart"
+    },
+    "topology": {
+      "upstream": [
+        {
+          "name": "flagd",
+          "state": "healthy",
+          "trafficShare": 0.03
+        },
+        {
+          "name": "redis",
+          "state": "healthy",
+          "trafficShare": 0.89
+        },
+        {
+          "name": "unknown",
+          "state": "degraded",
+          "trafficShare": 0.08
+        }
+      ],
+      "downstream": [
+        {
+          "name": "checkout",
+          "state": "degraded",
+          "trafficShare": 0.2
+        },
+        {
+          "name": "frontend",
+          "state": "healthy",
+          "trafficShare": 0.8
+        }
+      ]
+    },
+    "change": {
+      "events": [
+        {
+          "id": "config/otel-demo/flagd-config/4283",
+          "type": "config",
+          "target": "flagd",
+          "age": 289392211635,
+          "historicalStaleness": 289392211635
+        },
+        {
+          "id": "deploy/otel-demo/checkout/1",
+          "type": "deploy",
+          "target": "checkout",
+          "age": 580392211635,
+          "historicalStaleness": 580392211635
+        },
+        {
+          "id": "deploy/otel-demo/cart/1",
+          "type": "deploy",
+          "target": "cart",
+          "age": 593392211635,
+          "historicalStaleness": 593392211635
+        }
+      ]
+    }
+  },
+  "failureClass": "service_failure",
+  "causalScores": [
+    {
+      "eventID": "config/otel-demo/flagd-config/4283",
+      "inTopology": true,
+      "temporal": 0.89,
+      "historical": 0.9,
+      "liveCorroborated": true,
+      "likelihood": 0.85,
+      "rationale": [
+        "temporal: 4m49s old -> 0.89",
+        "topological: in-path=true -> 0.20",
+        "historical: case-base prior -> 0.90"
+      ]
+    },
+    {
+      "eventID": "deploy/otel-demo/checkout/1",
+      "inTopology": true,
+      "temporal": 0.8,
+      "topological": 0.2,
+      "historical": 0.9,
+      "liveCorroborated": true,
+      "likelihood": 0.63,
+      "rationale": [
+        "temporal: 9m40s old -> 0.80",
+        "topological: in-path=true -> 0.20",
+        "historical: case-base prior -> 0.90"
+      ]
+    },
+    {
+      "eventID": "deploy/otel-demo/cart/1",
+      "temporal": 0.8,
+      "historical": 0.9,
+      "likelihood": 0.5,
+      "rationale": [
+        "temporal: 9m53s old -> 0.80",
+        "topological: in-path=false -> 0.00",
+        "historical: case-base prior -> 0.90",
+        "defence 1: uncorroborated -> capped at 0.50",
+        "target \"cart\" is not in this signal's topology -> scored for audit, excluded from confidence"
+      ]
+    }
+  ],
+  "hypotheses": [
+    {
+      "name": "cartFailure flag injected via recent flagd config change",
+      "weight": 0.85
+    },
+    {
+      "name": "Cart pod crash loop or transient restart issue",
+      "weight": 0.1
+    },
+    {
+      "name": "Redis connectivity degradation affecting cart state operations",
+      "weight": 0.05
+    }
+  ],
+  "evidence": [
+    {
+      "tool": "metrics",
+      "query": "cart_error_ratio",
+      "key": "cart_error_ratio",
+      "summary": "cart_error_ratio = 0.50",
+      "ref": "metrics://cart_error_ratio",
+      "live": true,
+      "subject": "cart"
+    },
+    {
+      "tool": "metrics",
+      "query": "severity_cart_availability",
+      "key": "severity_cart_availability",
+      "summary": "severity_cart_availability = 0.50",
+      "ref": "metrics://severity_cart_availability",
+      "live": true,
+      "subject": "cart"
+    },
+    {
+      "tool": "kube",
+      "query": "{\"resource\":\"pods\",\"namespace\":\"otel-demo\",\"selector\":{\"app.kubernetes.io/name\":\"cart\"}}",
+      "key": "kube-1",
+      "summary": "cart-79bf56b7f9-r5ngh (Running)",
+      "ref": "kube://otel-demo/pods",
+      "live": true,
+      "subject": "cart"
+    },
+    {
+      "tool": "loki",
+      "query": "{namespace=\"otel-demo\", service_name=\"cart\"}",
+      "key": "loki-1",
+      "summary": "50 log line(s); last: rpc error: code = Unavailable desc = connection error",
+      "ref": "loki://otel-demo/service_name=cart",
+      "live": true,
+      "subject": "cart"
+    }
+  ],
+  "serviceTier": "tier-1",
+  "gate": {
+    "budgetOK": true,
+    "dedupeOK": true,
+    "evidenceOK": true,
+    "passed": true
+  },
+  "proposals": [
+    {
+      "id": "p1",
+      "contractRef": "disable-cart-failure",
+      "confidence": 0.85,
+      "computedConfidence": 1,
+      "confidenceCeilingBound": true,
+      "terms": {
+        "signalConfidence": 1,
+        "corroborated": 3,
+        "grounding": 1,
+        "alignmentOK": true,
+        "likelihoodOK": true
+      },
+      "predictedImpact": {
+        "severityReductionPct": 0.9,
+        "blastRadiusDelta": 0,
+        "sloEffects": {
+          "time_to_effect": "30s"
+        }
+      },
+      "blastTier": "low",
+      "reversalPath": {
+        "method": "enable-cart-failure",
+        "watching": "cart_error_ratio",
+        "trigger": "cart_error_ratio < 0.02",
+        "automatic": true
+      },
+      "governanceLevel": {
+        "band": "act_reversible"
+      },
+      "rank": 1,
+      "citations": [
+        "cart_error_ratio",
+        "severity_cart_availability",
+        "kube-1",
+        "loki-1"
+      ]
+    }
+  ],
+  "recommended": "p1",
+  "rankingRationale": {
+    "dominantAxis": "time_to_effect",
+    "velocityWeight": "accelerating"
+  },
+  "status": {
+    "phase": "proposed",
+    "observedAt": "2026-08-02T11:46:30Z"
+  }
+}

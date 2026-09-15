@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -66,7 +67,7 @@ func run(t *testing.T, dir string, args ...string) (stdout, stderr string, exitC
 // test drives the compiled binary as a subprocess, not the package) so it
 // is pinned here too; a change to calipers.go's topUsage without a matching
 // change here fails this test rather than passing silently.
-const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard|validate> [flags]\n"
+const wantTopUsage = "usage: calipers <incidents|approve|force|unseal|corpus|rca|tune|replay|harvest|probe|transcript|scorecard|validate|step|pipeline|mock> [flags]\n"
 
 func TestMain_ReturnsUsageAndExitCodeTwoForBadInvocations(t *testing.T) {
 	t.Parallel()
@@ -118,5 +119,45 @@ func TestMain_RoutesArgsAndStreamsCorrectlyOnASuccessfulVerb(t *testing.T) {
 	}
 	if diff := cmp.Diff("\n", stdout); diff != "" {
 		t.Error("wrong stdout", diff)
+	}
+}
+
+func TestMain_SubprocessStepAndPipelineUsageErrors(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	tests := map[string]struct {
+		args            []string
+		wantCode        int
+		wantErrContains string
+	}{
+		"step with no subverb exits 2 with step usage": {
+			args:            []string{"step"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers step <rattle|clank|hiss|thump> [flags]",
+		},
+		"pipeline with no flags exits 2 with pipeline usage": {
+			args:            []string{"pipeline"},
+			wantCode:        2,
+			wantErrContains: "usage: calipers pipeline --detection <path>",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr, exitCode := run(t, dir, tc.args...)
+
+			if diff := cmp.Diff(tc.wantCode, exitCode); diff != "" {
+				t.Errorf("wrong exit code (-want +got):\n%s", diff)
+			}
+			if !strings.Contains(stderr, tc.wantErrContains) {
+				t.Errorf("stderr does not contain %q, got: %s", tc.wantErrContains, stderr)
+			}
+			if diff := cmp.Diff("", stdout); diff != "" {
+				t.Errorf("stdout not empty (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

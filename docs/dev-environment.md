@@ -18,6 +18,75 @@ a separate repo under `~/projects/ceph/`; `dev` is provisioned by this one, via
   you. A five-beat cycle on Haiku costs fractions of a cent; nothing about running this
   environment burns meaningful spend.
 
+## Isolated beat testing & lightweight development (zero cluster / low resource)
+
+When iterating on a single beat, testing policy logic, or running reasoning without provisioning a k3d cluster or Docker VM, `calipers` provides single-beat execution steps, a headless end-to-end pipeline runner, and a lightweight mock server.
+
+### Single-beat execution
+
+Drive individual beats directly from fixtures without NATS or Kubernetes:
+
+| Beat | Task / Command | Input | Output |
+|---|---|---|---|
+| rattle | `task beat:rattle [PROM_URL=http://localhost:9090]` | PromQL queries against Prometheus | `signal.Detection` JSON |
+| clank | `task beat:clank DETECTION=<path> [MODEL=haiku]` | Detection fixture + profile configs | `proposal.Set` JSON |
+| hiss | `task beat:hiss PROPOSAL=<path> [POLICY=<path>]` | Proposal fixture + policy YAML | `decision.Governed` JSON |
+| thump | `task beat:thump DECISION=<path> [CATALOG=<path>] [DRY_RUN=true]` | Decision fixture + catalog YAML | `outcome.Outcome` JSON |
+
+Equivalent direct CLI invocations:
+
+```sh
+# rattle: detect SLO burn against Prometheus (or dev:mock)
+go run ./cmd/calipers step rattle --watch config/dev/rattle/watch.yaml --query-config config/dev/rattle/query.yaml --prom-url http://localhost:9090
+
+# clank: reason over a captured detection (requires ANTHROPIC_API_KEY)
+go run ./cmd/calipers step clank --detection test/fixtures/detections/cart-failure.json --profile config/dev --model haiku
+
+# hiss: evaluate governance policy against a proposal
+go run ./cmd/calipers step hiss --proposal test/fixtures/proposals/cart-failure.json --policy config/dev/hiss/policy.yaml
+
+# thump: dry-run action synthesis and safety bounds against a decision
+go run ./cmd/calipers step thump --decision test/fixtures/decisions/cart-failure.json --catalog config/dev/actions/catalog.yaml --dry-run=true
+```
+
+### Headless pipeline execution
+
+Run the full five-beat loop in-process against local configuration profiles and live reasoning:
+
+```sh
+task dev:pipeline DETECTION=test/fixtures/detections/cart-failure.json
+```
+
+Or via CLI:
+
+```sh
+go run ./cmd/calipers pipeline --detection test/fixtures/detections/cart-failure.json --profile config/dev --model haiku
+```
+
+This runs detection ingestion, clank reasoning, hiss policy governance, and thump dry-run actuation in a single process without NATS or Kubernetes, printing the complete `pipeline.Result` JSON to stdout.
+
+### Lightweight mock telemetry & broker
+
+For local testing without the 12 GB substrate, `dev:mock` stands up an in-process HTTP stub for Prometheus/Loki and an optional embedded NATS JetStream server:
+
+```sh
+task dev:mock PROM_PORT=9090
+```
+
+With embedded NATS:
+
+```sh
+task dev:mock PROM_PORT=9090 NATS=true NATS_PORT=4222
+```
+
+Direct CLI invocation:
+
+```sh
+go run ./cmd/calipers mock --prom-port 9090 --nats --nats-port 4222
+```
+
+The mock telemetry server returns deterministic PromQL vector and matrix responses (such as `slo:current_burn_rate:ratio`), fake Loki query streams, and Kubernetes pod list stubs for telemetry tools in clank and rattle.
+
 ## Bringing it up
 
 ```sh
